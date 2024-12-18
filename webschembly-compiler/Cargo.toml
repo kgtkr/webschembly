@@ -1,0 +1,10 @@
+[package]
+edition = "2021"
+name = "webschembly-compiler"
+version = "0.1.0"
+
+[dependencies]
+wasm-encoder = "0.221.2"
+
+[lib]
+crate-type = ["cdylib"]
