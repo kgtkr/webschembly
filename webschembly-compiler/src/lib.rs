@@ -1,5 +1,7 @@
 pub mod lexer;
+pub mod parser_combinator;
 pub mod sexpr;
+pub mod sexpr_parser;
 pub mod token;
 
 #[no_mangle]

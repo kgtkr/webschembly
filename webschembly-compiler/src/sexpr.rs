@@ -6,5 +6,6 @@ pub enum SExpr {
     Symbol(String),
     List(Vec<SExpr>),
     Quote(Box<SExpr>),
+    // cdr is not list
     DottedList(Vec<SExpr>, Box<SExpr>),
 }
