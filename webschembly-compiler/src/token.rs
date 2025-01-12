@@ -1,12 +1,12 @@
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, Clone)]
 pub enum Token {
     Identifier(String),
     OpenParen,
     CloseParen,
-    Number(i64),
+    Int(i64),
     String(String),
-    Boolean(bool),
-    Character(char),
+    Bool(bool),
     Quote,
+    Dot,
     Eof,
 }

@@ -2,10 +2,9 @@ use super::token::Token;
 use nom::{
     branch::alt,
     bytes::complete::{tag, take_while},
-    character::complete::{anychar, satisfy, space1},
+    character::complete::{satisfy, space1},
     combinator::{eof, map, map_res},
     multi::many0,
-    sequence::tuple,
     IResult, Parser,
 };
 
@@ -18,11 +17,11 @@ fn identifier(input: &str) -> IResult<&str, Token> {
     Ok((input, Token::Identifier(format!("{}{}", first, rest))))
 }
 
-fn number(input: &str) -> IResult<&str, Token> {
-    let (input, number) = map_res(take_while(|c: char| c.is_ascii_digit()), |s: &str| {
+fn int(input: &str) -> IResult<&str, Token> {
+    let (input, int) = map_res(take_while(|c: char| c.is_ascii_digit()), |s: &str| {
         s.parse::<i64>()
     })(input)?;
-    Ok((input, Token::Number(number)))
+    Ok((input, Token::Int(int)))
 }
 
 fn string(input: &str) -> IResult<&str, Token> {
@@ -31,24 +30,17 @@ fn string(input: &str) -> IResult<&str, Token> {
     let (input, _) = tag("\"")(input)?;
     Ok((input, Token::String(string.to_string())))
 }
-
-fn character(input: &str) -> IResult<&str, Token> {
-    let (input, _) = tag("#\\")(input)?;
-    let (input, character) = anychar(input)?;
-    Ok((input, Token::Character(character)))
-}
-
 fn token(input: &str) -> IResult<&str, Token> {
     let (input, token) = alt((
         identifier,
         tag("(").map(|_| Token::OpenParen),
         tag(")").map(|_| Token::CloseParen),
-        number,
+        int,
         string,
-        tag("#t").map(|_| Token::Boolean(true)),
-        tag("#f").map(|_| Token::Boolean(false)),
-        character,
+        tag("#t").map(|_| Token::Bool(true)),
+        tag("#f").map(|_| Token::Bool(false)),
         tag("'").map(|_| Token::Quote),
+        tag(".").map(|_| Token::Dot),
     ))
     .parse(input)?;
     Ok((input, token))
