@@ -1,5 +1,6 @@
 pub mod lexer;
 pub mod parser_combinator;
+#[macro_use]
 pub mod sexpr;
 pub mod sexpr_parser;
 pub mod token;

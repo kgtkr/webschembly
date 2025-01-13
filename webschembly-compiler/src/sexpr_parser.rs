@@ -2,15 +2,7 @@ use super::sexpr::SExpr;
 use super::token::Token;
 
 use super::parser_combinator::{satisfy, satisfy_map_opt};
-use nom::{
-    branch::alt,
-    bytes::complete::{tag, take_while},
-    character::complete::space1,
-    combinator::{eof, map, map_opt, map_res},
-    error::ParseError,
-    multi::many0,
-    IResult, InputIter, Parser,
-};
+use nom::{branch::alt, error::ParseError, multi::many0, IResult, Parser};
 
 fn bool(input: &[Token]) -> IResult<&[Token], SExpr> {
     satisfy_map_opt(|t| match t {
@@ -83,7 +75,7 @@ fn list_or_dotted_list(input: &[Token]) -> IResult<&[Token], SExpr> {
 fn quote(input: &[Token]) -> IResult<&[Token], SExpr> {
     let (input, _) = satisfy(|t| *t == Token::Quote).parse(input)?;
     let (input, expr) = sexpr(input)?;
-    Ok((input, SExpr::Quote(Box::new(expr))))
+    Ok((input, list![SExpr::Symbol("quote".to_string()), expr]))
 }
 
 pub fn sexpr(input: &[Token]) -> IResult<&[Token], SExpr> {
