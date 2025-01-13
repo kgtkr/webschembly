@@ -1,4 +1,4 @@
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum SExpr {
     Bool(bool),
     Int(i64),
@@ -8,7 +8,28 @@ pub enum SExpr {
     Nil,
 }
 
-#[derive(Debug, Clone)]
+impl SExpr {
+    pub fn to_vec(self) -> Option<Vec<SExpr>> {
+        match self {
+            SExpr::Cons(cons) => cons.to_vec(),
+            SExpr::Nil => Some(vec![]),
+            _ => None,
+        }
+    }
+
+    pub fn from_vec(mut list: Vec<SExpr>) -> Self {
+        if list.is_empty() {
+            SExpr::Nil
+        } else {
+            let first = list.remove(0);
+            SExpr::Cons(Box::new(Cons::from_non_empty_list(NonEmptyList::List(
+                first, list,
+            ))))
+        }
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Cons {
     pub car: SExpr,
     pub cdr: SExpr,
@@ -27,6 +48,15 @@ impl Cons {
             cdr = cons.cdr;
         }
         (list, cdr)
+    }
+
+    pub fn to_vec(self) -> Option<Vec<SExpr>> {
+        let (list, cdr) = self.to_vec_and_cdr();
+        if cdr == SExpr::Nil {
+            Some(list)
+        } else {
+            None
+        }
     }
 
     pub fn to_non_empty_list(self) -> NonEmptyList {
@@ -78,5 +108,18 @@ macro_rules! list {
     };
     ($car:expr, $($cdr:expr),*) => {
         $crate::sexpr::SExpr::Cons(Box::new($crate::sexpr::Cons::new($car, list!($($cdr),*))))
+    };
+}
+
+#[macro_export]
+macro_rules! list_pattern {
+    () => {
+        $crate::sexpr::SExpr::Nil
+    };
+    ($car:pat) => {
+        $crate::sexpr::SExpr::Cons(box $crate::sexpr::Cons{car: $car, cdr: $crate::sexpr::SExpr::Nil})
+    };
+    ($car:pat, $($cdr:pat),*) => {
+        $crate::sexpr::SExpr::Cons(box $crate::sexpr::Cons{car: $car, cdr: list_pattern!($($cdr),*)})
     };
 }
