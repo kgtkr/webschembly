@@ -19,40 +19,53 @@ impl Cons {
         Self { car, cdr }
     }
 
-    pub fn to_list(self) -> List {
+    pub fn to_vec_and_cdr(self) -> (Vec<SExpr>, SExpr) {
         let mut list = vec![self.car];
         let mut cdr = self.cdr;
-        loop {
-            match cdr {
-                SExpr::Cons(cons) => {
-                    list.push(cons.car);
-                    cdr = cons.cdr;
-                }
-                SExpr::Nil => return List::List(list),
-                cdr => return List::DottedList(list, cdr),
-            }
+        while let SExpr::Cons(cons) = cdr {
+            list.push(cons.car);
+            cdr = cons.cdr;
         }
+        (list, cdr)
     }
 
-    pub fn from_list(list: List) -> Self {
-        let (mut list, cdr) = match list {
-            List::List(list) => (list, SExpr::Nil),
-            List::DottedList(list, cdr) => (list, cdr),
+    pub fn to_non_empty_list(self) -> NonEmptyList {
+        NonEmptyList::new(self.car, vec![], self.cdr)
+    }
+
+    pub fn from_non_empty_list(list: NonEmptyList) -> Self {
+        let (car, mut list, mut cdr) = match list {
+            NonEmptyList::List(car, list) => (car, list, SExpr::Nil),
+            NonEmptyList::DottedList(car, list, cdr) => (car, list, cdr),
         };
 
-        let mut cons = Cons::new(list.pop().unwrap(), cdr);
-        for car in list.into_iter().rev() {
-            cons = Cons::new(car, SExpr::Cons(Box::new(cons)));
+        while let Some(car) = list.pop() {
+            cdr = SExpr::Cons(Box::new(Cons::new(car, cdr)));
         }
-        cons
+        Cons::new(car, cdr)
     }
 }
 
 #[derive(Debug, Clone)]
-pub enum List {
-    List(Vec<SExpr>),
-    // cdr is not a list
-    DottedList(Vec<SExpr>, SExpr),
+pub enum NonEmptyList {
+    List(SExpr, Vec<SExpr>),
+    // cdr is not a cons or nil
+    DottedList(SExpr, Vec<SExpr>, SExpr),
+}
+
+impl NonEmptyList {
+    pub fn new(first: SExpr, middle: Vec<SExpr>, last: SExpr) -> Self {
+        match last {
+            SExpr::Cons(cons) => {
+                let (middle2, cdr) = cons.to_vec_and_cdr();
+                let mut middle = middle;
+                middle.extend(middle2);
+                NonEmptyList::new(first, middle, cdr)
+            }
+            SExpr::Nil => NonEmptyList::List(first, middle),
+            last => NonEmptyList::DottedList(first, middle, last),
+        }
+    }
 }
 
 #[macro_export]
