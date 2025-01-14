@@ -120,7 +120,7 @@ impl ModuleGenerator {
                 function.instruction(&Instruction::LocalGet(0));
                 function.instruction(&Instruction::I64Load(MemArg {
                     align: 2,
-                    offset: 4 * env as u64,
+                    offset: 4 + 8 * env as u64,
                     memory_index: 0,
                 }));
                 function.instruction(&Instruction::LocalSet(local as u32));
@@ -264,7 +264,7 @@ impl ModuleGenerator {
 
                 function.instruction(&Instruction::LocalGet(self.temp_local));
                 function.instruction(&Instruction::LocalGet(*car as u32));
-                function.instruction(&Instruction::I32Store(MemArg {
+                function.instruction(&Instruction::I64Store(MemArg {
                     align: 2,
                     offset: 0,
                     memory_index: 0,
@@ -272,9 +272,9 @@ impl ModuleGenerator {
 
                 function.instruction(&Instruction::LocalGet(self.temp_local));
                 function.instruction(&Instruction::LocalGet(*cdr as u32));
-                function.instruction(&Instruction::I32Store(MemArg {
+                function.instruction(&Instruction::I64Store(MemArg {
                     align: 2,
-                    offset: 4,
+                    offset: 8,
                     memory_index: 0,
                 }));
 
@@ -295,7 +295,7 @@ impl ModuleGenerator {
                 for (i, env) in envs.iter().enumerate() {
                     function.instruction(&Instruction::LocalGet(self.temp_local));
                     function.instruction(&Instruction::LocalGet(*env as u32));
-                    function.instruction(&Instruction::I32Store(MemArg {
+                    function.instruction(&Instruction::I64Store(MemArg {
                         align: 2,
                         offset: 4 + i as u64 * 8,
                         memory_index: 0,
@@ -306,15 +306,17 @@ impl ModuleGenerator {
             }
             ir::Expr::Call(closure, args) => {
                 function.instruction(&Instruction::LocalGet(*closure as u32));
+
+                for arg in args {
+                    function.instruction(&Instruction::LocalGet(*arg as u32));
+                }
+
+                function.instruction(&Instruction::LocalGet(*closure as u32));
                 function.instruction(&Instruction::I32Load(MemArg {
                     align: 2,
                     offset: 0,
                     memory_index: 0,
                 }));
-
-                for arg in args {
-                    function.instruction(&Instruction::LocalGet(*arg as u32));
-                }
 
                 function.instruction(&Instruction::CallIndirect {
                     type_index: *self.args_to_type_index.get(&(args.len() + 1)).unwrap(),
@@ -374,6 +376,11 @@ impl ModuleGenerator {
                 function.instruction(&Instruction::I64Const(Self::gen_box_bit_pattern(0b0110)));
                 function.instruction(&Instruction::I64Or);
             }
+            ir::Expr::Dump(val) => {
+                function.instruction(&Instruction::LocalGet(*val as u32));
+                function.instruction(&Instruction::Call(self.dump_func));
+                function.instruction(&Instruction::LocalGet(*val as u32));
+            }
         }
     }
 
@@ -383,7 +390,7 @@ impl ModuleGenerator {
     }
 
     fn gen_box_bit_pattern(type_id: u8) -> i64 {
-        (((1 << 12) - 1) << 48) | (type_id as i64) << 44
+        (((1 << 12) - 1) << 52) | (type_id as i64) << 48
     }
 
     fn convert_type(&self, ty: ir::Type) -> ValType {

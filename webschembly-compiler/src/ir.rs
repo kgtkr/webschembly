@@ -39,6 +39,7 @@ pub enum Expr {
     BoxClosure(usize),
     UnboxBool(usize),
     UnboxClosure(usize),
+    Dump(usize),
 }
 
 #[derive(Debug, Clone)]
@@ -260,6 +261,14 @@ impl LambdaGenerator {
                 }
                 Ok(Stat::Begin(ir_stats))
             }
+            ast::AST::Dump(expr) => {
+                let boxed_local = self.local(Type::Boxed);
+                let expr = self.gen_stat(ir_generator, Some(boxed_local), expr)?;
+                Ok(Stat::Begin(vec![
+                    expr,
+                    Stat::Expr(result, Expr::Dump(boxed_local)),
+                ]))
+            }
         }
     }
 
@@ -307,6 +316,7 @@ impl LambdaGenerator {
                 let car = self.quote(Some(car_local), &cons.car)?;
                 let cdr_local = self.local(Type::Boxed);
                 let cdr: Stat = self.quote(Some(cdr_local), &cons.cdr)?;
+
                 let unboxed = self.local(Type::Cons);
                 let cons = Stat::Expr(Some(unboxed), Expr::Cons(car_local, cdr_local));
 

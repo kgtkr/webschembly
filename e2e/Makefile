@@ -1,6 +1,10 @@
-.PHONY: test
-test:
+.PHONY: *.scm
+*.scm:
 	cd ../ && cargo build --target wasm32-unknown-unknown && cargo build
-	../target/debug/webschembly-compiler-cli test.scm test.wasm
-	wasm-objdump -hx ./test.wasm
-	node test.js
+	../target/debug/webschembly-compiler-cli $@ $@.wasm
+	wasm-objdump -hx $@.wasm
+	node test.js $@.wasm
+
+.PHONY: clean
+clean:
+	rm *.wasm

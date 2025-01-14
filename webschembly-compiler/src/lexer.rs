@@ -9,7 +9,7 @@ use nom::{
 };
 
 fn identifier(input: &str) -> IResult<&str, Token> {
-    const SYMBOLS: &str = "!$%&*+-./:<=>?^_~";
+    const SYMBOLS: &str = "!$%&*+-/:<=>?^_~";
 
     let (input, first) = satisfy(|c: char| c.is_ascii_alphabetic() || SYMBOLS.contains(c))(input)?;
     let (input, rest) =

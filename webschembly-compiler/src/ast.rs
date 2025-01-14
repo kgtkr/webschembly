@@ -14,6 +14,7 @@ pub enum AST {
     Call(Box<AST>, Vec<AST>),
     Var(String),
     Begin(Vec<AST>),
+    Dump(Box<AST>),
 }
 
 #[derive(Debug, Clone)]
@@ -132,6 +133,13 @@ impl AST {
                     .collect::<Result<Vec<AST>>>()?;
                 Ok(AST::Begin(exprs))
             }
+            SExpr::Cons(box Cons {
+                car: SExpr::Symbol("dump"),
+                cdr,
+            }) => match cdr {
+                list_pattern![expr] => Ok(AST::Dump(Box::new(AST::from_sexpr(expr)?))),
+                _ => Err(anyhow::anyhow!("Invalid dump expression")),
+            },
             SExpr::Cons(box Cons {
                 car: func,
                 cdr: args,
