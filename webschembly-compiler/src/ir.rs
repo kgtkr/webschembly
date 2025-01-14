@@ -3,12 +3,24 @@ use std::collections::HashMap;
 use crate::{ast, sexpr};
 use anyhow::Result;
 
+#[derive(Debug, Clone, Copy)]
+pub enum Type {
+    Boxed,
+    Bool,
+    Int,
+    String,
+    Symbol,
+    Nil,
+    Cons,
+    Closure,
+}
+
 #[derive(Debug, Clone)]
 pub enum Expr {
     Bool(bool),
-    Int(i64),
+    Int(i32),
     String(String),
-    Symbol(String),
+    StringToSymbol(usize),
     Nil,
     Cons(usize, usize),
     Closure(Vec<usize>, usize),
@@ -18,6 +30,15 @@ pub enum Expr {
     MutCellDeref(usize),*/
     Call(usize, Vec<usize>),
     Move(usize),
+    BoxBool(usize),
+    BoxInt(usize),
+    BoxString(usize),
+    BoxSymbol(usize),
+    BoxNil(usize),
+    BoxCons(usize),
+    BoxClosure(usize),
+    UnboxBool(usize),
+    UnboxClosure(usize),
 }
 
 #[derive(Debug, Clone)]
@@ -30,10 +51,10 @@ pub enum Stat {
 #[derive(Debug, Clone)]
 pub struct Func {
     pub envs: usize,
-    // 自信のクロージャを含む(+1される)
+    // 自身のクロージャを含む(+1される)
     pub args: usize,
     // argsを含む
-    pub locals: usize,
+    pub locals: Vec<Type>,
     pub ret: usize,
     pub body: Stat,
 }
@@ -81,14 +102,14 @@ impl IrGenerator {
 
 #[derive(Debug, Clone)]
 struct LambdaGenerator {
-    locals: usize,
+    locals: Vec<Type>,
     local_names: HashMap<String, usize>,
 }
 
 impl LambdaGenerator {
     fn new() -> Self {
         Self {
-            locals: 0,
+            locals: Vec::new(),
             local_names: HashMap::new(),
         }
     }
@@ -99,14 +120,14 @@ impl LambdaGenerator {
         envs: Vec<String>,
         lambda: &ast::Lambda,
     ) -> Result<usize> {
-        self.locals = 1; // for closure
+        self.locals.push(Type::Closure);
         for arg in &lambda.args {
             self.named_local(arg.clone());
         }
         for env in &envs {
             self.named_local(env.clone());
         }
-        let ret = self.local();
+        let ret = self.local(Type::Boxed);
         let body = self.gen_stat(ir_generator, Some(ret), &*lambda.body)?;
         let func = Func {
             envs: envs.len(),
@@ -128,10 +149,34 @@ impl LambdaGenerator {
         ast: &ast::AST,
     ) -> Result<Stat> {
         match ast {
-            ast::AST::Bool(b) => Ok(Stat::Expr(result, Expr::Bool(*b))),
-            ast::AST::Int(i) => Ok(Stat::Expr(result, Expr::Int(*i))),
-            ast::AST::String(s) => Ok(Stat::Expr(result, Expr::String(s.clone()))),
-            ast::AST::Nil => Ok(Stat::Expr(result, Expr::Nil)),
+            ast::AST::Bool(b) => {
+                let unboxed = self.local(Type::Bool);
+                Ok(Stat::Begin(vec![
+                    Stat::Expr(Some(unboxed), Expr::Bool(*b)),
+                    Stat::Expr(result, Expr::BoxBool(unboxed)),
+                ]))
+            }
+            ast::AST::Int(i) => {
+                let unboxed = self.local(Type::Int);
+                Ok(Stat::Begin(vec![
+                    Stat::Expr(Some(unboxed), Expr::Int(*i)),
+                    Stat::Expr(result, Expr::BoxInt(unboxed)),
+                ]))
+            }
+            ast::AST::String(s) => {
+                let unboxed = self.local(Type::String);
+                Ok(Stat::Begin(vec![
+                    Stat::Expr(Some(unboxed), Expr::String(s.clone())),
+                    Stat::Expr(result, Expr::BoxString(unboxed)),
+                ]))
+            }
+            ast::AST::Nil => {
+                let unboxed = self.local(Type::Nil);
+                Ok(Stat::Begin(vec![
+                    Stat::Expr(Some(unboxed), Expr::Nil),
+                    Stat::Expr(result, Expr::BoxNil(unboxed)),
+                ]))
+            }
             ast::AST::Quote(sexpr) => Ok(self.quote(result, sexpr)?),
             ast::AST::Define(name, expr) => {
                 let local = self.named_local(name.clone());
@@ -151,26 +196,44 @@ impl LambdaGenerator {
                     .collect::<Vec<_>>();
                 let lambda_gen = LambdaGenerator::new();
                 let func_id = lambda_gen.gen(ir_generator, names, lambda)?;
-                Ok(Stat::Expr(result, Expr::Closure(ids, func_id)))
+                let unboxed = self.local(Type::Closure);
+                Ok(Stat::Begin(vec![
+                    Stat::Expr(Some(unboxed), Expr::Closure(ids, func_id)),
+                    Stat::Expr(result, Expr::BoxClosure(unboxed)),
+                ]))
             }
             ast::AST::If(cond, then, els) => {
-                let cond_local = self.local();
-                let cond = self.gen_stat(ir_generator, Some(cond_local), cond)?;
+                let boxed_cond_local = self.local(Type::Boxed);
+                let cond = self.gen_stat(ir_generator, Some(boxed_cond_local), cond)?;
+
+                // TODO: condがboolかのチェック
+                let cond_local = self.local(Type::Bool);
+                let unbox_cond = Stat::Expr(Some(cond_local), Expr::UnboxBool(boxed_cond_local));
+
                 let then = self.gen_stat(ir_generator, result, then)?;
                 let els = self.gen_stat(ir_generator, result, els)?;
                 Ok(Stat::Begin(vec![
                     cond,
+                    unbox_cond,
                     Stat::If(cond_local, Box::new(then), Box::new(els)),
                 ]))
             }
             ast::AST::Call(func, args) => {
                 let mut stats = Vec::new();
-                let func_local = self.local();
-                let func = self.gen_stat(ir_generator, Some(func_local), func)?;
+
+                let boxed_func_local = self.local(Type::Boxed);
+                let boxed_func = self.gen_stat(ir_generator, Some(boxed_func_local), func)?;
+                stats.push(boxed_func);
+
+                // TODO: funcがクロージャかのチェック
+                let func_local = self.local(Type::Closure);
+                let func = Stat::Expr(Some(func_local), Expr::UnboxClosure(boxed_func_local));
                 stats.push(func);
+
+                // TODO: 引数の数が合っているかのチェック
                 let mut arg_locals = Vec::new();
                 for arg in args {
-                    let arg_local = self.local();
+                    let arg_local = self.local(Type::Boxed);
                     let arg = self.gen_stat(ir_generator, Some(arg_local), arg)?;
                     stats.push(arg);
                     arg_locals.push(arg_local);
@@ -192,6 +255,7 @@ impl LambdaGenerator {
                     ir_stats.push(ir_stat);
                 }
                 if ir_stats.is_empty() {
+                    // goshと同じようにbeginの中身が空の場合は0を返す
                     ir_stats.push(Stat::Expr(result, Expr::Int(0)));
                 }
                 Ok(Stat::Begin(ir_stats))
@@ -201,31 +265,69 @@ impl LambdaGenerator {
 
     fn quote(&mut self, result: Option<usize>, sexpr: &sexpr::SExpr) -> Result<Stat> {
         match sexpr {
-            sexpr::SExpr::Bool(b) => Ok(Stat::Expr(result, Expr::Bool(*b))),
-            sexpr::SExpr::Int(i) => Ok(Stat::Expr(result, Expr::Int(*i))),
-            sexpr::SExpr::String(s) => Ok(Stat::Expr(result, Expr::String(s.clone()))),
-            sexpr::SExpr::Symbol(s) => Ok(Stat::Expr(result, Expr::Symbol(s.clone()))),
-            sexpr::SExpr::Nil => Ok(Stat::Expr(result, Expr::Nil)),
+            sexpr::SExpr::Bool(b) => {
+                let unboxed = self.local(Type::Bool);
+                Ok(Stat::Begin(vec![
+                    Stat::Expr(Some(unboxed), Expr::Bool(*b)),
+                    Stat::Expr(result, Expr::BoxBool(unboxed)),
+                ]))
+            }
+            sexpr::SExpr::Int(i) => {
+                let unboxed = self.local(Type::Int);
+                Ok(Stat::Begin(vec![
+                    Stat::Expr(Some(unboxed), Expr::Int(*i)),
+                    Stat::Expr(result, Expr::BoxInt(unboxed)),
+                ]))
+            }
+            sexpr::SExpr::String(s) => {
+                let unboxed = self.local(Type::String);
+                Ok(Stat::Begin(vec![
+                    Stat::Expr(Some(unboxed), Expr::String(s.clone())),
+                    Stat::Expr(result, Expr::BoxString(unboxed)),
+                ]))
+            }
+            sexpr::SExpr::Symbol(s) => {
+                let string = self.local(Type::String);
+                let unboxed = self.local(Type::Symbol);
+                Ok(Stat::Begin(vec![
+                    Stat::Expr(Some(string), Expr::String(s.clone())),
+                    Stat::Expr(Some(unboxed), Expr::StringToSymbol(string)),
+                    Stat::Expr(result, Expr::BoxSymbol(unboxed)),
+                ]))
+            }
+            sexpr::SExpr::Nil => {
+                let unboxed = self.local(Type::Nil);
+                Ok(Stat::Begin(vec![
+                    Stat::Expr(Some(unboxed), Expr::Nil),
+                    Stat::Expr(result, Expr::BoxNil(unboxed)),
+                ]))
+            }
             sexpr::SExpr::Cons(cons) => {
-                let car_local = self.local();
+                let car_local = self.local(Type::Boxed);
                 let car = self.quote(Some(car_local), &cons.car)?;
-                let cdr_local = self.local();
-                let cdr = self.quote(Some(cdr_local), &cons.cdr)?;
-                let cons = Stat::Expr(result, Expr::Cons(car_local, cdr_local));
+                let cdr_local = self.local(Type::Boxed);
+                let cdr: Stat = self.quote(Some(cdr_local), &cons.cdr)?;
+                let unboxed = self.local(Type::Cons);
+                let cons = Stat::Expr(Some(unboxed), Expr::Cons(car_local, cdr_local));
 
-                Ok(Stat::Begin(vec![car, cdr, cons]))
+                Ok(Stat::Begin(vec![
+                    car,
+                    cdr,
+                    cons,
+                    Stat::Expr(result, Expr::BoxCons(unboxed)),
+                ]))
             }
         }
     }
 
-    fn local(&mut self) -> usize {
-        let local = self.locals;
-        self.locals += 1;
+    fn local(&mut self, typ: Type) -> usize {
+        let local = self.locals.len();
+        self.locals.push(typ);
         local
     }
 
     fn named_local(&mut self, name: String) -> usize {
-        let local = self.local();
+        let local = self.local(Type::Boxed);
         self.local_names.insert(name, local);
         local
     }

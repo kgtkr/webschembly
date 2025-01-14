@@ -4,7 +4,7 @@ use anyhow::Result;
 #[derive(Debug, Clone)]
 pub enum AST {
     Bool(bool),
-    Int(i64),
+    Int(i32),
     String(String),
     Nil,
     Quote(SExpr),
