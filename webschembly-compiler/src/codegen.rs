@@ -4,8 +4,8 @@ use super::ir;
 use std::borrow::Cow;
 use wasm_encoder::{
     BlockType, CodeSection, ConstExpr, ElementSection, Elements, EntityType, Function,
-    FunctionSection, ImportSection, Instruction, MemArg, MemoryType, Module, RefType, TableSection,
-    TableType, TypeSection, ValType,
+    FunctionSection, ImportSection, Instruction, MemArg, MemoryType, Module, RefType, StartSection,
+    TableSection, TableType, TypeSection, ValType,
 };
 
 #[derive(Debug)]
@@ -80,6 +80,8 @@ impl ModuleGenerator {
             "string_to_symbol",
             EntityType::Function(string_to_symbol_type),
         );
+        self.string_to_symbol_func = self.func_count;
+        self.func_count += 1;
 
         let mut element_functions = vec![];
         for func in &ir.funcs {
@@ -130,12 +132,34 @@ impl ModuleGenerator {
             // return
             function.instruction(&Instruction::LocalGet(func.ret as u32));
             function.instruction(&Instruction::Return);
+            function.instruction(&Instruction::End);
 
             code.function(&function);
 
             element_functions.push(self.func_count);
             self.func_count += 1;
         }
+
+        // entry function
+        let entry = {
+            let entry_type = self.type_count;
+            self.type_count += 1;
+            types.ty().function(vec![], vec![]);
+
+            let entry_func = self.func_count;
+            self.func_count += 1;
+
+            let mut function = Function::new(vec![]);
+            function.instruction(&Instruction::I32Const(0)); // dummy closure
+            function.instruction(&Instruction::Call(element_functions[ir.entry]));
+            function.instruction(&Instruction::Drop);
+            function.instruction(&Instruction::End);
+
+            functions.function(entry_type);
+            code.function(&function);
+
+            entry_func
+        };
 
         tables.table(TableType {
             element_type: RefType::FUNCREF,
@@ -147,15 +171,20 @@ impl ModuleGenerator {
 
         elements.active(
             Some(0),
-            &ConstExpr::i32_const(42),
+            &ConstExpr::i32_const(0),
             Elements::Functions(Cow::Borrowed(&element_functions)),
         );
 
+        let start = StartSection {
+            function_index: entry,
+        };
+
         module
-            .section(&imports)
             .section(&types)
+            .section(&imports)
             .section(&functions)
             .section(&tables)
+            .section(&start)
             .section(&elements)
             .section(&code);
 
