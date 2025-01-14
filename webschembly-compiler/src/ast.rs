@@ -9,11 +9,17 @@ pub enum AST {
     Nil,
     Quote(SExpr),
     Define(String, Box<AST>),
-    Lambda(Vec<String>, Box<AST>),
+    Lambda(Lambda),
     If(Box<AST>, Box<AST>, Box<AST>),
     Call(Box<AST>, Vec<AST>),
     Var(String),
     Begin(Vec<AST>),
+}
+
+#[derive(Debug, Clone)]
+pub struct Lambda {
+    pub args: Vec<String>,
+    pub body: Box<AST>,
 }
 
 impl AST {
@@ -61,7 +67,10 @@ impl AST {
                         })
                         .collect::<Result<Vec<String>>>()?;
                     let expr = AST::from_sexpr(expr)?;
-                    Ok(AST::Lambda(args, Box::new(expr)))
+                    Ok(AST::Lambda(Lambda {
+                        args,
+                        body: Box::new(expr),
+                    }))
                 }
                 _ => Err(anyhow::anyhow!("Invalid lambda expression")),
             },
