@@ -1,8 +1,8 @@
 use super::token::Token;
 use nom::{
     branch::alt,
-    bytes::complete::{tag, take_while},
-    character::complete::{satisfy, space1},
+    bytes::complete::{tag, take_while, take_while1},
+    character::complete::satisfy,
     combinator::{eof, map, map_res},
     multi::many0,
     IResult, Parser,
@@ -47,7 +47,7 @@ fn token(input: &str) -> IResult<&str, Token> {
 }
 
 fn space(input: &str) -> IResult<&str, ()> {
-    map(space1, |_| ()).parse(input)
+    map(take_while1(|c: char| c.is_ascii_whitespace()), |_| ()).parse(input)
 }
 
 fn line_comment(input: &str) -> IResult<&str, ()> {
