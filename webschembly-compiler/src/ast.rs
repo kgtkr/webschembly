@@ -13,6 +13,7 @@ pub enum AST {
     If(Box<AST>, Box<AST>, Box<AST>),
     Call(Box<AST>, Vec<AST>),
     Var(String),
+    Begin(Vec<AST>),
 }
 
 impl AST {
@@ -109,6 +110,19 @@ impl AST {
                 }
                 _ => Err(anyhow::anyhow!("Invalid let expression")),
             },
+            SExpr::Cons(box Cons {
+                car: SExpr::Symbol("begin"),
+                cdr,
+            }) => {
+                let exprs = cdr
+                    .to_vec()
+                    .ok_or_else(|| anyhow::anyhow!("Invalid begin expression"))?;
+                let exprs = exprs
+                    .into_iter()
+                    .map(AST::from_sexpr)
+                    .collect::<Result<Vec<AST>>>()?;
+                Ok(AST::Begin(exprs))
+            }
             SExpr::Cons(box Cons {
                 car: func,
                 cdr: args,
