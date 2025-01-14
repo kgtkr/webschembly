@@ -328,15 +328,20 @@ impl ModuleGenerator {
                 function.instruction(&Instruction::I64Or);
             }
             ir::Expr::BoxNil(val) => {
+                function.instruction(&Instruction::LocalGet(*val as u32));
+                function.instruction(&Instruction::I64ExtendI32U);
                 function.instruction(&Instruction::I64Const(Self::gen_box_bit_pattern(0b0001)));
+                function.instruction(&Instruction::I64Or);
             }
             ir::Expr::BoxCons(val) => {
                 function.instruction(&Instruction::LocalGet(*val as u32));
+                function.instruction(&Instruction::I64ExtendI32U);
                 function.instruction(&Instruction::I64Const(Self::gen_box_bit_pattern(0b0100)));
                 function.instruction(&Instruction::I64Or);
             }
             ir::Expr::BoxClosure(val) => {
                 function.instruction(&Instruction::LocalGet(*val as u32));
+                function.instruction(&Instruction::I64ExtendI32U);
                 function.instruction(&Instruction::I64Const(Self::gen_box_bit_pattern(0b0110)));
                 function.instruction(&Instruction::I64Or);
             }

@@ -1,0 +1,8 @@
+[package]
+edition = "2024"
+name = "webschembly-compiler-cli"
+version = "0.1.0"
+
+[dependencies]
+anyhow = "1.0.95"
+webschembly-compiler = {path = "../webschembly-compiler"}

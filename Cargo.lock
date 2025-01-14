@@ -99,3 +99,15 @@ dependencies = [
  "nom",
  "wasm-encoder",
 ]
+
+[[package]]
+name = "webschembly-compiler-cli"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "webschembly-compiler",
+]
+
+[[package]]
+name = "webschembly-runtime"
+version = "0.1.0"

@@ -1,0 +1,8 @@
+[package]
+edition = "2021"
+name = "webschembly-runtime"
+version = "0.1.0"
+
+[dependencies]
+[lib]
+crate-type = ["cdylib"]
