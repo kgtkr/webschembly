@@ -1,18 +1,18 @@
 #![feature(ptr_as_ref_unchecked)]
-use core::cell::{Cell, RefCell, UnsafeCell};
+use core::cell::RefCell;
 use std::collections::HashMap;
 
-const HEAP_SIZE: usize = 1024 * 1024;
-static mut HEAP: UnsafeCell<[u8; HEAP_SIZE]> = UnsafeCell::new([0; HEAP_SIZE]);
-static mut HEAP_OFFSET: Cell<usize> = Cell::new(0);
+thread_local!(
+    static HEAP_MANAGER: RefCell<HeapManager> = RefCell::new(HeapManager::new());
+);
 
 #[unsafe(no_mangle)]
 pub extern "C" fn malloc(size: i32) -> i32 {
     unsafe {
-        let offset = HEAP_OFFSET.get();
-        HEAP_OFFSET.set(offset + size as usize);
-
-        offset as i32 + HEAP.get() as i32
+        HEAP_MANAGER.with(|heap_manager| {
+            let mut heap_manager = heap_manager.borrow_mut();
+            heap_manager.malloc(size) as i32
+        })
     }
 }
 
@@ -32,10 +32,10 @@ pub extern "C" fn string_to_symbol(string: i32) -> i32 {
 }
 
 unsafe fn read_string(string: i32) -> Vec<u8> {
-    let len_ptr = string as *const i32;
+    let len_ptr = string as *const [u8; 4];
     let buf_ptr = (string + 4) as *const u8;
 
-    let len = *len_ptr;
+    let len = i32::from_le_bytes(*len_ptr);
     let mut bytes = Vec::with_capacity(len as usize);
     for i in 0..len {
         bytes.push(*buf_ptr.offset(i as isize));
@@ -64,11 +64,35 @@ impl SymbolManager {
             return *symbol as i32;
         }
 
-        self.symbol_to_bytes.insert(self.symbol_id, string.clone());
-        self.bytes_to_symbol.insert(string, self.symbol_id);
+        let symbol_id = self.symbol_id;
+        self.symbol_to_bytes.insert(symbol_id, string.clone());
+        self.bytes_to_symbol.insert(string, symbol_id);
 
         self.symbol_id += 1;
 
-        (self.symbol_id - 1) as i32
+        symbol_id as i32
+    }
+}
+
+const HEAP_SIZE: usize = 1024 * 8;
+
+struct HeapManager {
+    heap: [u8; HEAP_SIZE],
+    offset: usize,
+}
+
+impl HeapManager {
+    fn new() -> Self {
+        Self {
+            heap: [0; HEAP_SIZE],
+            offset: 0,
+        }
+    }
+
+    unsafe fn malloc(&mut self, size: i32) -> *const u8 {
+        let offset = self.offset;
+        self.offset += size as usize;
+
+        self.heap[offset as usize..].as_ptr()
     }
 }

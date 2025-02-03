@@ -25,7 +25,9 @@ compiler:
 	wasm2wat $< -o $@
 
 %.snapshot: %.result
-	cp -r $< $@
+	mkdir -p $@
+	rm -rf $(wildcard $@/*)
+	cp $(wildcard $</*) $@
 
 .PHONY: generate-snapshot
 generate-snapshot: $(SNAPSHOT)
