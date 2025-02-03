@@ -1,12 +1,6 @@
 const fs = require("fs");
 const runtimeInstance = new WebAssembly.Instance(
-  new WebAssembly.Module(
-    new Uint8Array(
-      fs.readFileSync(
-        "../target/wasm32-unknown-unknown/debug/webschembly_runtime.wasm"
-      )
-    )
-  ),
+  new WebAssembly.Module(new Uint8Array(fs.readFileSync("bin/runtime.wasm"))),
   {}
 );
 
