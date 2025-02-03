@@ -1,0 +1,59 @@
+name: ci
+on: push
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: cachix/install-nix-action@v27
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+          extra_nix_config: keep-outputs = true
+      - uses: cachix/cachix-action@v15
+        with:
+          name: kgtkr
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      - name: Build devShell
+        run: |
+          nix build .#devShell.$(nix eval --expr 'builtins.currentSystem' --impure --raw) --out-link result-devShell
+          nix print-dev-env > result-devShell.sh
+          echo "BASH_ENV=$PWD/result-devShell.sh" >> $GITHUB_ENV
+      - name: Cache cargo target
+        uses: actions/cache@v4
+        with:
+          path: ./target
+          key: cargo-cache-20250204-1-${{ github.sha }}
+          restore-keys: |
+            cargo-cache-20250204-1-
+      - name: Cache cargo home
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo
+          key: cargo-home-20250204-1-${{ github.sha }}
+          restore-keys: |
+            cargo-home-20250204-1-
+      - name: Format
+        run: |
+          cargo fmt --check
+          nixpkgs-fmt --check $(git ls-files ':(attr:!linguist-generated)*.nix')
+      - name: Clippy
+        run: |
+          cargo clippy
+      - name: crate2nix
+        run: |
+          cargo2nix -o
+          git diff --exit-code
+      - name: Build cli
+        run: |
+          nix build .#cli --out-link result-cli
+      - name: Build runtime
+        run: |
+          nix build .#runtime --out-link result-runtime
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cli
+          path: result-cli/bin/webschembly-compiler-cli
+      - uses: actions/upload-artifact@v4
+        with:
+          name: runtime
+          path: result-runtime/lib/webschembly_runtime.wasm

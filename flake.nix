@@ -36,8 +36,8 @@
       in
       {
         packages = {
-          webschembly-compiler-cli = (rustPkgs.workspace.webschembly-compiler-cli {}).bin;
-          webschembly-runtime = (wasmRustPkgs.workspace.webschembly-runtime {}).out.out;
+          cli = (rustPkgs.workspace.webschembly-compiler-cli { }).bin;
+          runtime = (wasmRustPkgs.workspace.webschembly-runtime { }).out;
         };
         defaultPackage = self.packages.${system}.webschembly-compiler-cli;
         devShell = rustPkgs.workspaceShell {
