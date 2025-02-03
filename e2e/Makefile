@@ -1,10 +1,43 @@
-.PHONY: *.scm
-*.scm:
+SCM := $(wildcard src/*.scm)
+LIST := $(patsubst %.scm,%,$(SCM))
+WASM := $(patsubst %.scm,%.wasm,$(SCM))
+OBJDUMP := $(patsubst %.scm,%.objdump,$(SCM))
+RESULT := $(patsubst %.scm,%.result,$(SCM))
+WAT := $(patsubst %.scm,%.wat,$(SCM))
+SNAPSHOT := $(patsubst %.scm,%.snapshot,$(SCM))
+
+.PHONY: compiler
+compiler:
 	cd ../ && cargo build --target wasm32-unknown-unknown && cargo build
-	../target/debug/webschembly-compiler-cli $@ $@.wasm
-	wasm-objdump -hx $@.wasm
-	node test.js $@.wasm
+
+%.wasm: %.scm compiler
+	../target/debug/webschembly-compiler-cli $< $@
+
+%.objdump: %.wasm
+	wasm-objdump -hx $< > $@
+
+%.result: %.wasm
+	mkdir -p $@
+	rm -f $@/*
+	node run.js $< > $@/stdout 2> $@/stderr; echo $$? > $@/exitcode
+
+%.wat: %.wasm
+	wasm2wat $< -o $@
+
+%.snapshot: %.result
+	cp -r $< $@
+
+.PHONY: generate-snapshot
+generate-snapshot: $(SNAPSHOT)
+
+.PHONY: test
+test: $(RESULT)
+	$(SHELL) ./test.sh $(LIST)
 
 .PHONY: clean
 clean:
-	rm *.wasm
+	rm -f $(WASM) $(OBJDUMP) $(WAT)
+	rm -rf $(RESULT)
+
+.PHONY: all
+all: $(WASM) $(OBJDUMP) $(RESULT) $(WAT)
