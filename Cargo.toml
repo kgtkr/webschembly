@@ -1,4 +1,3 @@
 [workspace]
-
 members = ["webschembly-compiler", "webschembly-compiler-cli", "webschembly-runtime"]
 resolver = "2"
