@@ -39,7 +39,7 @@
           cli = (rustPkgs.workspace.webschembly-compiler-cli { }).bin;
           runtime = (wasmRustPkgs.workspace.webschembly-runtime { }).out;
         };
-        defaultPackage = self.packages.${system}.webschembly-compiler-cli;
+        defaultPackage = self.packages.${system}.cli;
         devShell = rustPkgs.workspaceShell {
           nativeBuildInputs = [
             cargo2nix.packages.${system}.cargo2nix
