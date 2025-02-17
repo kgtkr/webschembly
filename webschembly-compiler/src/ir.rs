@@ -40,6 +40,7 @@ pub enum Expr {
     UnboxBool(usize),
     UnboxClosure(usize),
     Dump(usize),
+    ClosureEnv(usize /* closure */, usize /* env index */),
 }
 
 #[derive(Debug, Clone)]
@@ -51,7 +52,6 @@ pub enum Stat {
 
 #[derive(Debug, Clone)]
 pub struct Func {
-    pub envs: usize,
     // 自身のクロージャを含む(+1される)
     pub args: usize,
     // argsを含む
@@ -125,17 +125,19 @@ impl LambdaGenerator {
         for arg in &lambda.args {
             self.named_local(arg.clone());
         }
-        for env in &envs {
-            self.named_local(env.clone());
+        let mut stats = vec![];
+        for (i, env) in envs.iter().enumerate() {
+            let env_local = self.named_local(env.clone());
+            stats.push(Stat::Expr(Some(env_local), Expr::ClosureEnv(0, i)));
         }
+
         let ret = self.local(Type::Boxed);
-        let body = self.gen_stat(ir_generator, Some(ret), &*lambda.body)?;
+        stats.push(self.gen_stat(ir_generator, Some(ret), &*lambda.body)?);
         let func = Func {
-            envs: envs.len(),
             args: lambda.args.len() + 1,
             locals: self.locals,
             ret,
-            body,
+            body: Stat::Begin(stats),
         };
 
         let func_id = ir_generator.funcs.len();

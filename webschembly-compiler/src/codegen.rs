@@ -113,19 +113,6 @@ impl ModuleGenerator {
                     .collect::<Vec<_>>(),
             );
 
-            // envs to locals
-            for env in 0..func.envs {
-                let local = func.args + env;
-
-                function.instruction(&Instruction::LocalGet(0));
-                function.instruction(&Instruction::I64Load(MemArg {
-                    align: 2,
-                    offset: 4 + 8 * env as u64,
-                    memory_index: 0,
-                }));
-                function.instruction(&Instruction::LocalSet(local as u32));
-            }
-
             // body
             self.gen_stat(&mut function, &func.body);
 
@@ -380,6 +367,14 @@ impl ModuleGenerator {
                 function.instruction(&Instruction::LocalGet(*val as u32));
                 function.instruction(&Instruction::Call(self.dump_func));
                 function.instruction(&Instruction::LocalGet(*val as u32));
+            }
+            ir::Expr::ClosureEnv(closure, env_index) => {
+                function.instruction(&Instruction::LocalGet(*closure as u32));
+                function.instruction(&Instruction::I64Load(MemArg {
+                    align: 2,
+                    offset: 4 + 8 * *env_index as u64,
+                    memory_index: 0,
+                }));
             }
         }
     }
