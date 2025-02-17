@@ -52,11 +52,10 @@ pub enum Stat {
 
 #[derive(Debug, Clone)]
 pub struct Func {
-    // 自身のクロージャを含む(+1される)
     pub args: usize,
+    pub rets: Vec<usize>,
     // argsを含む
     pub locals: Vec<Type>,
-    pub ret: usize,
     pub body: Stat,
 }
 
@@ -94,9 +93,20 @@ impl IrGenerator {
                 body: Box::new(ast.clone()),
             },
         )?;
+        let entry_wrapper = self.funcs.len();
+        self.funcs.push(Func {
+            args: 0,
+            rets: vec![],
+            locals: vec![Type::Closure],
+            body: Stat::Begin(vec![
+                Stat::Expr(Some(0), Expr::Closure(vec![], entry)),
+                Stat::Expr(None, Expr::Call(0, vec![0])),
+            ]),
+        });
+
         Ok(Ir {
             funcs: self.funcs,
-            entry,
+            entry: entry_wrapper,
         })
     }
 }
@@ -121,22 +131,26 @@ impl LambdaGenerator {
         envs: Vec<String>,
         lambda: &ast::Lambda,
     ) -> Result<usize> {
-        self.locals.push(Type::Closure);
+        let self_closure = self.local(Type::Closure);
         for arg in &lambda.args {
             self.named_local(arg.clone());
         }
         let mut stats = vec![];
+        // クロージャから環境を復元
         for (i, env) in envs.iter().enumerate() {
             let env_local = self.named_local(env.clone());
-            stats.push(Stat::Expr(Some(env_local), Expr::ClosureEnv(0, i)));
+            stats.push(Stat::Expr(
+                Some(env_local),
+                Expr::ClosureEnv(self_closure, i),
+            ));
         }
 
         let ret = self.local(Type::Boxed);
         stats.push(self.gen_stat(ir_generator, Some(ret), &*lambda.body)?);
         let func = Func {
             args: lambda.args.len() + 1,
+            rets: vec![ret],
             locals: self.locals,
-            ret,
             body: Stat::Begin(stats),
         };
 
@@ -235,6 +249,7 @@ impl LambdaGenerator {
 
                 // TODO: 引数の数が合っているかのチェック
                 let mut arg_locals = Vec::new();
+                arg_locals.push(func_local); // 第一引数にクロージャを渡す
                 for arg in args {
                     let arg_local = self.local(Type::Boxed);
                     let arg = self.gen_stat(ir_generator, Some(arg_local), arg)?;

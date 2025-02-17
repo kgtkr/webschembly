@@ -10,7 +10,8 @@ use wasm_encoder::{
 
 #[derive(Debug)]
 pub struct ModuleGenerator {
-    args_to_type_index: HashMap<usize, u32>,
+    // args_len, rets_len -> type index
+    func_to_type_index: HashMap<(usize, usize), u32>,
     type_count: u32,
     func_count: u32,
     // runtime functions
@@ -23,7 +24,7 @@ pub struct ModuleGenerator {
 impl ModuleGenerator {
     pub fn new() -> Self {
         Self {
-            args_to_type_index: HashMap::new(),
+            func_to_type_index: HashMap::new(),
             type_count: 0,
             func_count: 0,
             malloc_func: 0,
@@ -83,19 +84,30 @@ impl ModuleGenerator {
         self.string_to_symbol_func = self.func_count;
         self.func_count += 1;
 
+        let runtime_func_count = self.func_count;
+
         let mut element_functions = vec![];
         for func in &ir.funcs {
-            let type_index = if let Some(type_index) = self.args_to_type_index.get(&func.args) {
+            let type_index = if let Some(type_index) =
+                self.func_to_type_index.get(&(func.args, func.rets.len()))
+            {
                 *type_index
             } else {
-                let mut params = vec![ValType::I32];
-                for _ in 1..func.args {
-                    params.push(ValType::I64);
-                }
+                let params = (0..func.args)
+                    .map(|local| func.locals[local])
+                    .map(Self::convert_type)
+                    .collect::<Vec<_>>();
+                let rets = func
+                    .rets
+                    .iter()
+                    .map(|&local| func.locals[local])
+                    .map(Self::convert_type)
+                    .collect::<Vec<_>>();
 
-                types.ty().function(params, vec![ValType::I64]);
+                types.ty().function(params, rets);
                 let type_index = self.type_count;
-                self.args_to_type_index.insert(func.args, type_index);
+                self.func_to_type_index
+                    .insert((func.args, func.rets.len()), type_index);
                 self.type_count += 1;
                 type_index
             };
@@ -107,7 +119,7 @@ impl ModuleGenerator {
                     .iter()
                     .skip(func.args)
                     .map(|ty| {
-                        let ty = self.convert_type(*ty);
+                        let ty = Self::convert_type(*ty);
                         (1, ty)
                     })
                     .collect::<Vec<_>>(),
@@ -117,7 +129,9 @@ impl ModuleGenerator {
             self.gen_stat(&mut function, &func.body);
 
             // return
-            function.instruction(&Instruction::LocalGet(func.ret as u32));
+            for ret in &func.rets {
+                function.instruction(&Instruction::LocalGet(*ret as u32));
+            }
             function.instruction(&Instruction::Return);
             function.instruction(&Instruction::End);
 
@@ -126,27 +140,6 @@ impl ModuleGenerator {
             element_functions.push(self.func_count);
             self.func_count += 1;
         }
-
-        // entry function
-        let entry = {
-            let entry_type = self.type_count;
-            self.type_count += 1;
-            types.ty().function(vec![], vec![]);
-
-            let entry_func = self.func_count;
-            self.func_count += 1;
-
-            let mut function = Function::new(vec![]);
-            function.instruction(&Instruction::I32Const(0)); // dummy closure
-            function.instruction(&Instruction::Call(element_functions[ir.entry]));
-            function.instruction(&Instruction::Drop);
-            function.instruction(&Instruction::End);
-
-            functions.function(entry_type);
-            code.function(&function);
-
-            entry_func
-        };
 
         tables.table(TableType {
             element_type: RefType::FUNCREF,
@@ -163,7 +156,8 @@ impl ModuleGenerator {
         );
 
         let start = StartSection {
-            function_index: entry,
+            // TODO: ir func index -> wasm func indexのMapを作る
+            function_index: ir.entry as u32 + runtime_func_count,
         };
 
         module
@@ -292,8 +286,6 @@ impl ModuleGenerator {
                 function.instruction(&Instruction::LocalGet(self.temp_local));
             }
             ir::Expr::Call(closure, args) => {
-                function.instruction(&Instruction::LocalGet(*closure as u32));
-
                 for arg in args {
                     function.instruction(&Instruction::LocalGet(*arg as u32));
                 }
@@ -306,7 +298,7 @@ impl ModuleGenerator {
                 }));
 
                 function.instruction(&Instruction::CallIndirect {
-                    type_index: *self.args_to_type_index.get(&(args.len() + 1)).unwrap(),
+                    type_index: *self.func_to_type_index.get(&(args.len(), 1)).unwrap(),
                     table_index: 0,
                 });
             }
@@ -388,7 +380,7 @@ impl ModuleGenerator {
         (((1 << 12) - 1) << 52) | (type_id as i64) << 48
     }
 
-    fn convert_type(&self, ty: ir::Type) -> ValType {
+    fn convert_type(ty: ir::Type) -> ValType {
         match ty {
             ir::Type::Boxed => ValType::I64,
             ir::Type::Bool => ValType::I32,
