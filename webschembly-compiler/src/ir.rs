@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::{ast, sexpr};
 use anyhow::Result;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum Type {
     Boxed,
     Bool,
@@ -28,6 +28,14 @@ pub enum Expr {
     set! が未実装なので一旦実装しない
     MutCell(usize),
     MutCellDeref(usize),*/
+    /*
+    TODO:
+    CallClosureにrename
+    もしくは以下の3命令に分割してもよい
+    * ClosureFuncRef: Closure -> FuncRef
+    * ClosureEnvs: Closure -> [Boxed]
+    * CallFuncRef
+    */
     Call(usize, Vec<usize>),
     Move(usize),
     BoxBool(usize),
@@ -52,11 +60,35 @@ pub enum Stat {
 
 #[derive(Debug, Clone)]
 pub struct Func {
-    pub args: usize,
-    pub rets: Vec<usize>,
-    // argsを含む
     pub locals: Vec<Type>,
+    // localsの先頭何個が引数か
+    pub args: usize,
+    // localsのうちどれが返り値か
+    pub rets: Vec<usize>,
     pub body: Stat,
+}
+
+impl Func {
+    pub fn arg_types(&self) -> Vec<Type> {
+        (0..self.args).map(|i| self.locals[i]).collect()
+    }
+
+    pub fn ret_types(&self) -> Vec<Type> {
+        self.rets.iter().map(|&ret| self.locals[ret]).collect()
+    }
+
+    pub fn func_type(&self) -> FuncType {
+        FuncType {
+            args: self.arg_types(),
+            rets: self.ret_types(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct FuncType {
+    pub args: Vec<Type>,
+    pub rets: Vec<Type>,
 }
 
 #[derive(Debug, Clone)]

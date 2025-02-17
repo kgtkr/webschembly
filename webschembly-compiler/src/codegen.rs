@@ -10,15 +10,14 @@ use wasm_encoder::{
 
 #[derive(Debug)]
 pub struct ModuleGenerator {
-    // args_len, rets_len -> type index
-    func_to_type_index: HashMap<(usize, usize), u32>,
+    func_to_type_index: HashMap<ir::FuncType, u32>,
     type_count: u32,
     func_count: u32,
     // runtime functions
     malloc_func: u32,
     dump_func: u32,
     string_to_symbol_func: u32,
-    temp_local: u32, // 0はenvで一度しか使われないので、一時変数として使う
+    temp_local: u32,
 }
 
 impl ModuleGenerator {
@@ -30,6 +29,7 @@ impl ModuleGenerator {
             malloc_func: 0,
             dump_func: 0,
             string_to_symbol_func: 0,
+            // TODO: 0はenvで一度しか使われないので、一時変数として使っているが、危ないので修正
             temp_local: 0,
         }
     }
@@ -88,29 +88,27 @@ impl ModuleGenerator {
 
         let mut element_functions = vec![];
         for func in &ir.funcs {
-            let type_index = if let Some(type_index) =
-                self.func_to_type_index.get(&(func.args, func.rets.len()))
-            {
-                *type_index
-            } else {
-                let params = (0..func.args)
-                    .map(|local| func.locals[local])
-                    .map(Self::convert_type)
-                    .collect::<Vec<_>>();
-                let rets = func
-                    .rets
-                    .iter()
-                    .map(|&local| func.locals[local])
-                    .map(Self::convert_type)
-                    .collect::<Vec<_>>();
+            let type_index =
+                if let Some(type_index) = self.func_to_type_index.get(&func.func_type()) {
+                    *type_index
+                } else {
+                    let params = func
+                        .arg_types()
+                        .into_iter()
+                        .map(Self::convert_type)
+                        .collect::<Vec<_>>();
+                    let rets = func
+                        .ret_types()
+                        .into_iter()
+                        .map(Self::convert_type)
+                        .collect::<Vec<_>>();
 
-                types.ty().function(params, rets);
-                let type_index = self.type_count;
-                self.func_to_type_index
-                    .insert((func.args, func.rets.len()), type_index);
-                self.type_count += 1;
-                type_index
-            };
+                    types.ty().function(params, rets);
+                    let type_index = self.type_count;
+                    self.func_to_type_index.insert(func.func_type(), type_index);
+                    self.type_count += 1;
+                    type_index
+                };
 
             functions.function(type_index);
 
@@ -126,7 +124,7 @@ impl ModuleGenerator {
             );
 
             // body
-            self.gen_stat(&mut function, &func.body);
+            self.gen_stat(&mut function, &func.locals, &func.body);
 
             // return
             for ret in &func.rets {
@@ -172,23 +170,23 @@ impl ModuleGenerator {
         module
     }
 
-    fn gen_stat(&mut self, function: &mut Function, stat: &ir::Stat) {
+    fn gen_stat(&mut self, function: &mut Function, locals: &Vec<ir::Type>, stat: &ir::Stat) {
         match stat {
             ir::Stat::If(cond, then_stat, else_stat) => {
                 function.instruction(&Instruction::LocalGet(*cond as u32));
                 function.instruction(&Instruction::If(BlockType::Empty));
-                self.gen_stat(function, then_stat);
+                self.gen_stat(function, locals, then_stat);
                 function.instruction(&Instruction::Else);
-                self.gen_stat(function, else_stat);
+                self.gen_stat(function, locals, else_stat);
                 function.instruction(&Instruction::End);
             }
             ir::Stat::Begin(stats) => {
                 for stat in stats {
-                    self.gen_stat(function, stat);
+                    self.gen_stat(function, locals, stat);
                 }
             }
             ir::Stat::Expr(result, expr) => {
-                self.gen_expr(function, expr);
+                self.gen_expr(function, locals, expr);
                 if let Some(result) = result {
                     function.instruction(&Instruction::LocalSet(*result as u32));
                 } else {
@@ -198,7 +196,7 @@ impl ModuleGenerator {
         }
     }
 
-    fn gen_expr(&mut self, function: &mut Function, expr: &ir::Expr) {
+    fn gen_expr(&mut self, function: &mut Function, locals: &Vec<ir::Type>, expr: &ir::Expr) {
         match expr {
             ir::Expr::Bool(b) => {
                 function.instruction(&Instruction::I32Const(if *b { 1 } else { 0 }));
@@ -298,7 +296,13 @@ impl ModuleGenerator {
                 }));
 
                 function.instruction(&Instruction::CallIndirect {
-                    type_index: *self.func_to_type_index.get(&(args.len(), 1)).unwrap(),
+                    type_index: *self
+                        .func_to_type_index
+                        .get(&ir::FuncType {
+                            args: args.iter().map(|arg| locals[*arg]).collect(),
+                            rets: vec![ir::Type::Boxed],
+                        })
+                        .unwrap(),
                     table_index: 0,
                 });
             }
