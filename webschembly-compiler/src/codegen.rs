@@ -8,9 +8,32 @@ use wasm_encoder::{
     TableSection, TableType, TypeSection, ValType,
 };
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct WasmFuncType {
+    pub params: Vec<ValType>,
+    pub results: Vec<ValType>,
+}
+
+impl WasmFuncType {
+    pub fn from_ir(ir_func_type: ir::FuncType) -> Self {
+        Self {
+            params: ir_func_type
+                .args
+                .into_iter()
+                .map(ModuleGenerator::convert_type)
+                .collect(),
+            results: ir_func_type
+                .rets
+                .into_iter()
+                .map(ModuleGenerator::convert_type)
+                .collect(),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct ModuleGenerator {
-    func_to_type_index: HashMap<ir::FuncType, u32>,
+    func_to_type_index: HashMap<WasmFuncType, u32>,
     type_count: u32,
     func_count: u32,
     // runtime functions
@@ -88,27 +111,30 @@ impl ModuleGenerator {
 
         let mut element_functions = vec![];
         for func in &ir.funcs {
-            let type_index =
-                if let Some(type_index) = self.func_to_type_index.get(&func.func_type()) {
-                    *type_index
-                } else {
-                    let params = func
-                        .arg_types()
-                        .into_iter()
-                        .map(Self::convert_type)
-                        .collect::<Vec<_>>();
-                    let rets = func
-                        .ret_types()
-                        .into_iter()
-                        .map(Self::convert_type)
-                        .collect::<Vec<_>>();
+            let type_index = if let Some(type_index) = self
+                .func_to_type_index
+                .get(&WasmFuncType::from_ir(func.func_type()))
+            {
+                *type_index
+            } else {
+                let params = func
+                    .arg_types()
+                    .into_iter()
+                    .map(Self::convert_type)
+                    .collect::<Vec<_>>();
+                let rets = func
+                    .ret_types()
+                    .into_iter()
+                    .map(Self::convert_type)
+                    .collect::<Vec<_>>();
 
-                    types.ty().function(params, rets);
-                    let type_index = self.type_count;
-                    self.func_to_type_index.insert(func.func_type(), type_index);
-                    self.type_count += 1;
-                    type_index
-                };
+                types.ty().function(params, rets);
+                let type_index = self.type_count;
+                self.func_to_type_index
+                    .insert(WasmFuncType::from_ir(func.func_type()), type_index);
+                self.type_count += 1;
+                type_index
+            };
 
             functions.function(type_index);
 
@@ -298,10 +324,10 @@ impl ModuleGenerator {
                 function.instruction(&Instruction::CallIndirect {
                     type_index: *self
                         .func_to_type_index
-                        .get(&ir::FuncType {
+                        .get(&WasmFuncType::from_ir(ir::FuncType {
                             args: args.iter().map(|arg| locals[*arg]).collect(),
                             rets: vec![ir::Type::Boxed],
-                        })
+                        }))
                         .unwrap(),
                     table_index: 0,
                 });
