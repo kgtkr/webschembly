@@ -4,8 +4,8 @@ use super::ir;
 use std::borrow::Cow;
 use wasm_encoder::{
     BlockType, CodeSection, ConstExpr, ElementSection, Elements, EntityType, Function,
-    FunctionSection, ImportSection, Instruction, MemArg, MemoryType, Module, RefType, StartSection,
-    TableSection, TableType, TypeSection, ValType,
+    FunctionSection, GlobalSection, GlobalType, ImportSection, Instruction, MemArg, MemoryType,
+    Module, RefType, StartSection, TableSection, TableType, TypeSection, ValType,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -36,11 +36,11 @@ pub struct ModuleGenerator {
     func_to_type_index: HashMap<WasmFuncType, u32>,
     type_count: u32,
     func_count: u32,
+    global_count: u32,
     // runtime functions
     malloc_func: u32,
     dump_func: u32,
     string_to_symbol_func: u32,
-    temp_local: u32,
     // wasm section
     imports: ImportSection,
     types: TypeSection,
@@ -48,6 +48,8 @@ pub struct ModuleGenerator {
     elements: ElementSection,
     tables: TableSection,
     code: CodeSection,
+    globals: GlobalSection,
+    malloc_tmp_global: u32,
 }
 
 impl ModuleGenerator {
@@ -56,17 +58,18 @@ impl ModuleGenerator {
             func_to_type_index: HashMap::new(),
             type_count: 0,
             func_count: 0,
+            global_count: 0,
             malloc_func: 0,
             dump_func: 0,
             string_to_symbol_func: 0,
-            // TODO: 0はenvで一度しか使われないので、一時変数として使っているが、危ないので修正
-            temp_local: 0,
+            malloc_tmp_global: 0,
             imports: ImportSection::new(),
             types: TypeSection::new(),
             functions: FunctionSection::new(),
             elements: ElementSection::new(),
             tables: TableSection::new(),
             code: CodeSection::new(),
+            globals: GlobalSection::new(),
         }
     }
 
@@ -131,6 +134,17 @@ impl ModuleGenerator {
 
         let runtime_func_count = self.func_count;
 
+        self.malloc_tmp_global = self.global_count;
+        self.globals.global(
+            GlobalType {
+                val_type: ValType::I32,
+                mutable: true,
+                shared: false,
+            },
+            &ConstExpr::i32_const(0),
+        );
+        self.global_count += 1;
+
         let mut element_functions = vec![];
         for func in &ir.funcs {
             let type_index = self.func_type(&WasmFuncType::from_ir(func.func_type()));
@@ -188,6 +202,7 @@ impl ModuleGenerator {
             .section(&self.imports)
             .section(&self.functions)
             .section(&self.tables)
+            .section(&self.globals)
             .section(&start)
             .section(&self.elements)
             .section(&self.code);
@@ -233,9 +248,7 @@ impl ModuleGenerator {
                 let bs = s.as_bytes();
 
                 self.gen_malloc(function, 4 + bs.len() as u32);
-                function.instruction(&Instruction::LocalSet(self.temp_local));
-
-                function.instruction(&Instruction::LocalGet(self.temp_local));
+                function.instruction(&Instruction::GlobalGet(self.malloc_tmp_global));
                 function.instruction(&Instruction::I32Const(bs.len() as i32));
                 function.instruction(&Instruction::I32Store(MemArg {
                     align: 2,
@@ -244,7 +257,7 @@ impl ModuleGenerator {
                 }));
 
                 for (i, b) in bs.iter().enumerate() {
-                    function.instruction(&Instruction::LocalGet(self.temp_local));
+                    function.instruction(&Instruction::GlobalGet(self.malloc_tmp_global));
                     function.instruction(&Instruction::I32Const(*b as i32));
                     function.instruction(&Instruction::I32Store8(MemArg {
                         align: 0,
@@ -253,7 +266,7 @@ impl ModuleGenerator {
                     }));
                 }
 
-                function.instruction(&Instruction::LocalGet(self.temp_local));
+                function.instruction(&Instruction::GlobalGet(self.malloc_tmp_global));
             }
             ir::Expr::StringToSymbol(s) => {
                 function.instruction(&Instruction::LocalGet(*s as u32));
@@ -264,9 +277,8 @@ impl ModuleGenerator {
             }
             ir::Expr::Cons(car, cdr) => {
                 self.gen_malloc(function, 16);
-                function.instruction(&Instruction::LocalSet(self.temp_local));
 
-                function.instruction(&Instruction::LocalGet(self.temp_local));
+                function.instruction(&Instruction::GlobalGet(self.malloc_tmp_global));
                 function.instruction(&Instruction::LocalGet(*car as u32));
                 function.instruction(&Instruction::I64Store(MemArg {
                     align: 2,
@@ -274,7 +286,7 @@ impl ModuleGenerator {
                     memory_index: 0,
                 }));
 
-                function.instruction(&Instruction::LocalGet(self.temp_local));
+                function.instruction(&Instruction::GlobalGet(self.malloc_tmp_global));
                 function.instruction(&Instruction::LocalGet(*cdr as u32));
                 function.instruction(&Instruction::I64Store(MemArg {
                     align: 2,
@@ -282,13 +294,12 @@ impl ModuleGenerator {
                     memory_index: 0,
                 }));
 
-                function.instruction(&Instruction::LocalGet(self.temp_local));
+                function.instruction(&Instruction::GlobalGet(self.malloc_tmp_global));
             }
             ir::Expr::Closure(envs, func) => {
                 self.gen_malloc(function, 4 + 8 * envs.len() as u32);
-                function.instruction(&Instruction::LocalSet(self.temp_local));
 
-                function.instruction(&Instruction::LocalGet(self.temp_local));
+                function.instruction(&Instruction::GlobalGet(self.malloc_tmp_global));
                 function.instruction(&Instruction::I32Const(*func as i32));
                 function.instruction(&Instruction::I32Store(MemArg {
                     align: 2,
@@ -297,7 +308,7 @@ impl ModuleGenerator {
                 }));
 
                 for (i, env) in envs.iter().enumerate() {
-                    function.instruction(&Instruction::LocalGet(self.temp_local));
+                    function.instruction(&Instruction::GlobalGet(self.malloc_tmp_global));
                     function.instruction(&Instruction::LocalGet(*env as u32));
                     function.instruction(&Instruction::I64Store(MemArg {
                         align: 2,
@@ -306,7 +317,7 @@ impl ModuleGenerator {
                     }));
                 }
 
-                function.instruction(&Instruction::LocalGet(self.temp_local));
+                function.instruction(&Instruction::GlobalGet(self.malloc_tmp_global));
             }
             ir::Expr::Call(closure, args) => {
                 for arg in args {
@@ -400,6 +411,7 @@ impl ModuleGenerator {
     fn gen_malloc(&mut self, function: &mut Function, size: u32) {
         function.instruction(&Instruction::I32Const(size as i32));
         function.instruction(&Instruction::Call(self.malloc_func));
+        function.instruction(&Instruction::GlobalSet(self.malloc_tmp_global));
     }
 
     fn gen_box_bit_pattern(type_id: u8) -> i64 {
