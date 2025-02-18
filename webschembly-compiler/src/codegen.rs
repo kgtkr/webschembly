@@ -41,6 +41,13 @@ pub struct ModuleGenerator {
     dump_func: u32,
     string_to_symbol_func: u32,
     temp_local: u32,
+    // wasm section
+    imports: ImportSection,
+    types: TypeSection,
+    functions: FunctionSection,
+    elements: ElementSection,
+    tables: TableSection,
+    code: CodeSection,
 }
 
 impl ModuleGenerator {
@@ -54,20 +61,41 @@ impl ModuleGenerator {
             string_to_symbol_func: 0,
             // TODO: 0はenvで一度しか使われないので、一時変数として使っているが、危ないので修正
             temp_local: 0,
+            imports: ImportSection::new(),
+            types: TypeSection::new(),
+            functions: FunctionSection::new(),
+            elements: ElementSection::new(),
+            tables: TableSection::new(),
+            code: CodeSection::new(),
+        }
+    }
+
+    fn add_runtime_function(&mut self, name: &str, func_type: WasmFuncType) -> u32 {
+        let type_index = self.func_type(&func_type);
+        self.imports
+            .import("runtime", name, EntityType::Function(type_index));
+        let func_index = self.func_count;
+        self.func_count += 1;
+        func_index
+    }
+
+    fn func_type(&mut self, func_type: &WasmFuncType) -> u32 {
+        if let Some(type_index) = self.func_to_type_index.get(&func_type) {
+            *type_index
+        } else {
+            self.types
+                .ty()
+                .function(func_type.params.clone(), func_type.results.clone());
+            let type_index = self.type_count;
+            self.func_to_type_index
+                .insert(func_type.clone(), type_index);
+            self.type_count += 1;
+            type_index
         }
     }
 
     pub fn gen(mut self, ir: &ir::Ir) -> Module {
-        let mut module = Module::new();
-
-        let mut imports = ImportSection::new();
-        let mut types = TypeSection::new();
-        let mut functions = FunctionSection::new();
-        let mut elements = ElementSection::new();
-        let mut tables = TableSection::new();
-        let mut code = CodeSection::new();
-
-        imports.import(
+        self.imports.import(
             "runtime",
             "memory",
             MemoryType {
@@ -79,64 +107,34 @@ impl ModuleGenerator {
             },
         );
 
-        // malloc
-        types.ty().function(vec![ValType::I32], vec![ValType::I32]);
-        let malloc_type = self.type_count;
-        self.type_count += 1;
-        imports.import("runtime", "malloc", EntityType::Function(malloc_type));
-        self.malloc_func = self.func_count;
-        self.func_count += 1;
-
-        // dump
-        types.ty().function(vec![ValType::I64], vec![]);
-        let dump_type = self.type_count;
-        self.type_count += 1;
-        imports.import("runtime", "dump", EntityType::Function(dump_type));
-        self.dump_func = self.func_count;
-        self.func_count += 1;
-
-        // string_to_symbol
-        types.ty().function(vec![ValType::I32], vec![ValType::I32]);
-        let string_to_symbol_type = self.type_count;
-        self.type_count += 1;
-        imports.import(
-            "runtime",
-            "string_to_symbol",
-            EntityType::Function(string_to_symbol_type),
+        self.malloc_func = self.add_runtime_function(
+            "malloc",
+            WasmFuncType {
+                params: vec![ValType::I32],
+                results: vec![ValType::I32],
+            },
         );
-        self.string_to_symbol_func = self.func_count;
-        self.func_count += 1;
+        self.dump_func = self.add_runtime_function(
+            "dump",
+            WasmFuncType {
+                params: vec![ValType::I64],
+                results: vec![],
+            },
+        );
+        self.string_to_symbol_func = self.add_runtime_function(
+            "string_to_symbol",
+            WasmFuncType {
+                params: vec![ValType::I32],
+                results: vec![ValType::I32],
+            },
+        );
 
         let runtime_func_count = self.func_count;
 
         let mut element_functions = vec![];
         for func in &ir.funcs {
-            let type_index = if let Some(type_index) = self
-                .func_to_type_index
-                .get(&WasmFuncType::from_ir(func.func_type()))
-            {
-                *type_index
-            } else {
-                let params = func
-                    .arg_types()
-                    .into_iter()
-                    .map(Self::convert_type)
-                    .collect::<Vec<_>>();
-                let rets = func
-                    .ret_types()
-                    .into_iter()
-                    .map(Self::convert_type)
-                    .collect::<Vec<_>>();
-
-                types.ty().function(params, rets);
-                let type_index = self.type_count;
-                self.func_to_type_index
-                    .insert(WasmFuncType::from_ir(func.func_type()), type_index);
-                self.type_count += 1;
-                type_index
-            };
-
-            functions.function(type_index);
+            let type_index = self.func_type(&WasmFuncType::from_ir(func.func_type()));
+            self.functions.function(type_index);
 
             let mut function = Function::new(
                 func.locals
@@ -159,13 +157,13 @@ impl ModuleGenerator {
             function.instruction(&Instruction::Return);
             function.instruction(&Instruction::End);
 
-            code.function(&function);
+            self.code.function(&function);
 
             element_functions.push(self.func_count);
             self.func_count += 1;
         }
 
-        tables.table(TableType {
+        self.tables.table(TableType {
             element_type: RefType::FUNCREF,
             minimum: element_functions.len() as u64,
             maximum: None,
@@ -173,7 +171,7 @@ impl ModuleGenerator {
             shared: false,
         });
 
-        elements.active(
+        self.elements.active(
             Some(0),
             &ConstExpr::i32_const(0),
             Elements::Functions(Cow::Borrowed(&element_functions)),
@@ -184,14 +182,15 @@ impl ModuleGenerator {
             function_index: ir.entry as u32 + runtime_func_count,
         };
 
+        let mut module = Module::new();
         module
-            .section(&types)
-            .section(&imports)
-            .section(&functions)
-            .section(&tables)
+            .section(&self.types)
+            .section(&self.imports)
+            .section(&self.functions)
+            .section(&self.tables)
             .section(&start)
-            .section(&elements)
-            .section(&code);
+            .section(&self.elements)
+            .section(&self.code);
 
         module
     }
@@ -322,13 +321,10 @@ impl ModuleGenerator {
                 }));
 
                 function.instruction(&Instruction::CallIndirect {
-                    type_index: *self
-                        .func_to_type_index
-                        .get(&WasmFuncType::from_ir(ir::FuncType {
-                            args: args.iter().map(|arg| locals[*arg]).collect(),
-                            rets: vec![ir::Type::Boxed],
-                        }))
-                        .unwrap(),
+                    type_index: self.func_type(&WasmFuncType::from_ir(ir::FuncType {
+                        args: args.iter().map(|arg| locals[*arg]).collect(),
+                        rets: vec![ir::Type::Boxed],
+                    })),
                     table_index: 0,
                 });
             }
