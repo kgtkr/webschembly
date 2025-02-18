@@ -162,7 +162,9 @@ impl ModuleGenerator {
             );
 
             // body
-            self.gen_stat(&mut function, &func.locals, &func.body);
+            for stmt in &func.body {
+                self.gen_stat(&mut function, &func.locals, stmt);
+            }
 
             // return
             for ret in &func.rets {
@@ -215,15 +217,14 @@ impl ModuleGenerator {
             ir::Stat::If(cond, then_stat, else_stat) => {
                 function.instruction(&Instruction::LocalGet(*cond as u32));
                 function.instruction(&Instruction::If(BlockType::Empty));
-                self.gen_stat(function, locals, then_stat);
-                function.instruction(&Instruction::Else);
-                self.gen_stat(function, locals, else_stat);
-                function.instruction(&Instruction::End);
-            }
-            ir::Stat::Begin(stats) => {
-                for stat in stats {
+                for stat in then_stat {
                     self.gen_stat(function, locals, stat);
                 }
+                function.instruction(&Instruction::Else);
+                for stat in else_stat {
+                    self.gen_stat(function, locals, stat);
+                }
+                function.instruction(&Instruction::End);
             }
             ir::Stat::Expr(result, expr) => {
                 self.gen_expr(function, locals, expr);
