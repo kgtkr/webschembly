@@ -115,8 +115,7 @@ impl IrGenerator {
     }
 
     fn gen(mut self, ast: &ast::AST) -> Result<Ir> {
-        let lambda_gen = LambdaGenerator::new(&mut self);
-        let entry = lambda_gen.gen(
+        let entry = self.gen_func(
             vec![],
             &ast::Lambda {
                 args: Vec::new(),
@@ -139,6 +138,13 @@ impl IrGenerator {
             entry: entry_wrapper,
         })
     }
+
+    fn gen_func(&mut self, envs: Vec<String>, lambda: &ast::Lambda) -> Result<usize> {
+        let func = LambdaGenerator::new(self).gen(envs, lambda)?;
+        let func_id = self.funcs.len();
+        self.funcs.push(func);
+        Ok(func_id)
+    }
 }
 
 #[derive(Debug)]
@@ -157,7 +163,7 @@ impl<'a> LambdaGenerator<'a> {
         }
     }
 
-    fn gen(mut self, envs: Vec<String>, lambda: &ast::Lambda) -> Result<usize> {
+    fn gen(mut self, envs: Vec<String>, lambda: &ast::Lambda) -> Result<Func> {
         let self_closure = self.local(Type::Closure);
         for arg in &lambda.args {
             self.named_local(arg.clone());
@@ -182,16 +188,12 @@ impl<'a> LambdaGenerator<'a> {
             body.extend(block_gen.stats);
             body
         };
-        let func = Func {
+        Ok(Func {
             args: lambda.args.len() + 1,
             rets: vec![ret],
             locals: self.locals,
             body,
-        };
-
-        let func_id = self.ir_generator.funcs.len();
-        self.ir_generator.funcs.push(func);
-        Ok(func_id)
+        })
     }
 
     fn local(&mut self, typ: Type) -> usize {
@@ -269,8 +271,7 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                     .iter()
                     .map(|&(_, &local)| local)
                     .collect::<Vec<_>>();
-                let func_id =
-                    LambdaGenerator::new(self.lambda_gen.ir_generator).gen(names, lambda)?;
+                let func_id = self.lambda_gen.ir_generator.gen_func(names, lambda)?;
                 let unboxed = self.lambda_gen.local(Type::Closure);
                 self.stats
                     .push(Stat::Expr(Some(unboxed), Expr::Closure(ids, func_id)));
