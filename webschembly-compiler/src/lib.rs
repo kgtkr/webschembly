@@ -10,10 +10,9 @@ pub mod sexpr_parser;
 pub mod token;
 
 pub fn compile(input: &str) -> anyhow::Result<Vec<u8>> {
-    let (_, tokens) = lexer::tokens(input).map_err(|e| anyhow::anyhow!("{}", e))?;
-    let (_, sexpr) =
-        sexpr_parser::sexpr(tokens.as_slice()).map_err(|e| anyhow::anyhow!("{}", e))?;
-    let ast = ast::AST::from_sexpr(sexpr)?;
+    let tokens = lexer::lex(input).map_err(|e| anyhow::anyhow!("{}", e))?;
+    let sexprs = sexpr_parser::parse(tokens.as_slice()).map_err(|e| anyhow::anyhow!("{}", e))?;
+    let ast = ast::AST::from_sexprs(sexprs)?;
     let ir = ir::Ir::from_ast(&ast)?;
     let code = codegen::ModuleGenerator::new().gen(&ir);
     Ok(code.finish())

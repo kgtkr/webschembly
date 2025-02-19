@@ -117,7 +117,7 @@ impl IrGenerator {
             vec![],
             &ast::Lambda {
                 args: Vec::new(),
-                body: Box::new(ast.clone()),
+                body: ast.exprs.clone(),
             },
         )?;
         let entry_wrapper = self.funcs.len();
@@ -180,7 +180,7 @@ impl<'a> LambdaGenerator<'a> {
         let ret = self.local(Type::Boxed);
         let body = {
             let mut block_gen = BlockGenerator::new(&mut self);
-            block_gen.gen_stat(Some(ret), &*lambda.body)?;
+            block_gen.gen_stats(Some(ret), &lambda.body)?;
             let mut body = Vec::new();
             body.extend(restore_envs);
             body.extend(block_gen.stats);
@@ -221,23 +221,23 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
         }
     }
 
-    fn gen_stat(&mut self, result: Option<usize>, ast: &ast::AST) -> Result<()> {
+    fn gen_stat(&mut self, result: Option<usize>, ast: &ast::Expr) -> Result<()> {
         match ast {
-            ast::AST::Bool(b) => {
+            ast::Expr::Bool(b) => {
                 let unboxed = self.lambda_gen.local(Type::Val(ValType::Bool));
                 self.stats.push(Stat::Expr(Some(unboxed), Expr::Bool(*b)));
                 self.stats
                     .push(Stat::Expr(result, Expr::Box(ValType::Bool, unboxed)));
                 Ok(())
             }
-            ast::AST::Int(i) => {
+            ast::Expr::Int(i) => {
                 let unboxed = self.lambda_gen.local(Type::Val(ValType::Int));
                 self.stats.push(Stat::Expr(Some(unboxed), Expr::Int(*i)));
                 self.stats
                     .push(Stat::Expr(result, Expr::Box(ValType::Int, unboxed)));
                 Ok(())
             }
-            ast::AST::String(s) => {
+            ast::Expr::String(s) => {
                 let unboxed = self.lambda_gen.local(Type::Val(ValType::String));
                 self.stats
                     .push(Stat::Expr(Some(unboxed), Expr::String(s.clone())));
@@ -245,23 +245,23 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                     .push(Stat::Expr(result, Expr::Box(ValType::String, unboxed)));
                 Ok(())
             }
-            ast::AST::Nil => {
+            ast::Expr::Nil => {
                 let unboxed = self.lambda_gen.local(Type::Val(ValType::Nil));
                 self.stats.push(Stat::Expr(Some(unboxed), Expr::Nil));
                 self.stats
                     .push(Stat::Expr(result, Expr::Box(ValType::Nil, unboxed)));
                 Ok(())
             }
-            ast::AST::Quote(sexpr) => {
+            ast::Expr::Quote(sexpr) => {
                 self.quote(result, sexpr)?;
                 Ok(())
             }
-            ast::AST::Define(name, expr) => {
+            ast::Expr::Define(name, expr) => {
                 let local = self.lambda_gen.named_local(name.clone());
                 self.gen_stat(Some(local), expr)?;
                 Ok(())
             }
-            ast::AST::Lambda(lambda) => {
+            ast::Expr::Lambda(lambda) => {
                 // クロージャで使われているかに関わらず全てのローカル変数を環境に含める
                 let local_names = self.lambda_gen.local_names.iter().collect::<Vec<_>>();
                 let names = local_names
@@ -280,7 +280,7 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                     .push(Stat::Expr(result, Expr::Box(ValType::Closure, unboxed)));
                 Ok(())
             }
-            ast::AST::If(cond, then, els) => {
+            ast::Expr::If(cond, then, els) => {
                 let boxed_cond_local = self.lambda_gen.local(Type::Boxed);
                 self.gen_stat(Some(boxed_cond_local), cond)?;
 
@@ -308,7 +308,7 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
 
                 Ok(())
             }
-            ast::AST::Call(func, args) => {
+            ast::Expr::Call(func, args) => {
                 let boxed_func_local = self.lambda_gen.local(Type::Boxed);
                 self.gen_stat(Some(boxed_func_local), func)?;
 
@@ -331,7 +331,7 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                     .push(Stat::Expr(result, Expr::Call(func_local, arg_locals)));
                 Ok(())
             }
-            ast::AST::Var(name) => {
+            ast::Expr::Var(name) => {
                 let local = self
                     .lambda_gen
                     .local_names
@@ -340,17 +340,11 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                 self.stats.push(Stat::Expr(result, Expr::Move(*local)));
                 Ok(())
             }
-            ast::AST::Begin(stats) => {
-                for stat in stats {
-                    self.gen_stat(result, stat)?;
-                }
-                if stats.is_empty() {
-                    // goshと同じようにbeginの中身が空の場合は0を返す
-                    self.stats.push(Stat::Expr(result, Expr::Int(0)));
-                }
+            ast::Expr::Begin(stats) => {
+                self.gen_stats(result, stats)?;
                 Ok(())
             }
-            ast::AST::Dump(expr) => {
+            ast::Expr::Dump(expr) => {
                 let boxed_local = self.lambda_gen.local(Type::Boxed);
                 self.gen_stat(Some(boxed_local), expr)?;
                 self.stats.push(Stat::Expr(result, Expr::Dump(boxed_local)));
@@ -415,5 +409,18 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                 Ok(())
             }
         }
+    }
+
+    fn gen_stats(&mut self, result: Option<usize>, stats: &Vec<ast::Expr>) -> Result<()> {
+        if let Some((last, rest)) = stats.split_last() {
+            for stat in rest {
+                self.gen_stat(None, stat)?;
+            }
+            self.gen_stat(result, last)?;
+        } else {
+            // goshと同じようにbeginの中身が空の場合は0を返す
+            self.stats.push(Stat::Expr(result, Expr::Int(0)));
+        }
+        Ok(())
     }
 }

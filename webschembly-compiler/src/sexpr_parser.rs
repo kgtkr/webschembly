@@ -4,6 +4,7 @@ use super::sexpr::SExpr;
 use super::token::Token;
 
 use super::parser_combinator::{satisfy, satisfy_map_opt};
+use nom::combinator::eof;
 use nom::{branch::alt, multi::many0, IResult, Parser};
 
 fn bool(input: &[Token]) -> IResult<&[Token], SExpr> {
@@ -79,6 +80,17 @@ fn quote(input: &[Token]) -> IResult<&[Token], SExpr> {
     Ok((input, list![SExpr::Symbol("quote".to_string()), expr]))
 }
 
-pub fn sexpr(input: &[Token]) -> IResult<&[Token], SExpr> {
+fn sexpr(input: &[Token]) -> IResult<&[Token], SExpr> {
     alt((bool, int, string, symbol, nil_or_list_or_dotted_list, quote)).parse(input)
+}
+
+fn sexprs(input: &[Token]) -> IResult<&[Token], Vec<SExpr>> {
+    let (input, sexprs) = many0(sexpr).parse(input)?;
+    Ok((input, sexprs))
+}
+
+pub fn parse(input: &[Token]) -> Result<Vec<SExpr>, nom::Err<nom::error::Error<&[Token]>>> {
+    let (input, sexprs) = sexprs(input)?;
+    let (_, _) = eof(input)?;
+    Ok(sexprs)
 }

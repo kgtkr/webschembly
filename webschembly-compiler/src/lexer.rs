@@ -67,9 +67,14 @@ fn token_and_ignore(input: &str) -> IResult<&str, Token> {
     Ok((input, token))
 }
 
-pub fn tokens(input: &str) -> IResult<&str, Vec<Token>> {
+fn tokens(input: &str) -> IResult<&str, Vec<Token>> {
     let (input, _) = ignore(input)?;
     let (input, tokens) = many0(token_and_ignore)(input)?;
-    let (input, _) = eof(input)?;
     Ok((input, tokens))
+}
+
+pub fn lex(input: &str) -> Result<Vec<Token>, nom::Err<nom::error::Error<&str>>> {
+    let (input, tokens) = tokens(input)?;
+    let (_, _) = eof(input)?;
+    Ok(tokens)
 }
