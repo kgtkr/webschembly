@@ -356,54 +356,14 @@ impl ModuleGenerator {
             ir::Expr::Move(val) => {
                 function.instruction(&Instruction::LocalGet(*val as u32));
             }
-            ir::Expr::UnboxBool(val) => {
+            ir::Expr::Unbox(_typ, val) => {
                 function.instruction(&Instruction::LocalGet(*val as u32));
                 function.instruction(&Instruction::I32WrapI64);
             }
-            ir::Expr::UnboxClosure(val) => {
-                function.instruction(&Instruction::LocalGet(*val as u32));
-                function.instruction(&Instruction::I32WrapI64);
-            }
-            ir::Expr::BoxBool(val) => {
+            ir::Expr::Box(typ, val) => {
                 function.instruction(&Instruction::LocalGet(*val as u32));
                 function.instruction(&Instruction::I64ExtendI32U);
-                function.instruction(&Instruction::I64Const(Self::gen_box_bit_pattern(0b0010)));
-                function.instruction(&Instruction::I64Or);
-            }
-            ir::Expr::BoxInt(val) => {
-                function.instruction(&Instruction::LocalGet(*val as u32));
-                function.instruction(&Instruction::I64ExtendI32U);
-                function.instruction(&Instruction::I64Const(Self::gen_box_bit_pattern(0b0011)));
-                function.instruction(&Instruction::I64Or);
-            }
-            ir::Expr::BoxString(val) => {
-                function.instruction(&Instruction::LocalGet(*val as u32));
-                function.instruction(&Instruction::I64ExtendI32U);
-                function.instruction(&Instruction::I64Const(Self::gen_box_bit_pattern(0b0101)));
-                function.instruction(&Instruction::I64Or);
-            }
-            ir::Expr::BoxSymbol(val) => {
-                function.instruction(&Instruction::LocalGet(*val as u32));
-                function.instruction(&Instruction::I64ExtendI32U);
-                function.instruction(&Instruction::I64Const(Self::gen_box_bit_pattern(0b0111)));
-                function.instruction(&Instruction::I64Or);
-            }
-            ir::Expr::BoxNil(val) => {
-                function.instruction(&Instruction::LocalGet(*val as u32));
-                function.instruction(&Instruction::I64ExtendI32U);
-                function.instruction(&Instruction::I64Const(Self::gen_box_bit_pattern(0b0001)));
-                function.instruction(&Instruction::I64Or);
-            }
-            ir::Expr::BoxCons(val) => {
-                function.instruction(&Instruction::LocalGet(*val as u32));
-                function.instruction(&Instruction::I64ExtendI32U);
-                function.instruction(&Instruction::I64Const(Self::gen_box_bit_pattern(0b0100)));
-                function.instruction(&Instruction::I64Or);
-            }
-            ir::Expr::BoxClosure(val) => {
-                function.instruction(&Instruction::LocalGet(*val as u32));
-                function.instruction(&Instruction::I64ExtendI32U);
-                function.instruction(&Instruction::I64Const(Self::gen_box_bit_pattern(0b0110)));
+                function.instruction(&Instruction::I64Const(Self::valtype_to_bit_pattern(*typ)));
                 function.instruction(&Instruction::I64Or);
             }
             ir::Expr::Dump(val) => {
@@ -428,7 +388,20 @@ impl ModuleGenerator {
         function.instruction(&Instruction::GlobalSet(self.malloc_tmp_global));
     }
 
-    fn gen_box_bit_pattern(type_id: u8) -> i64 {
+    fn valtype_to_type_id(typ: ir::ValType) -> u8 {
+        match typ {
+            ir::ValType::Bool => 0b0010,
+            ir::ValType::Int => 0b0011,
+            ir::ValType::String => 0b0101,
+            ir::ValType::Symbol => 0b0111,
+            ir::ValType::Nil => 0b0001,
+            ir::ValType::Cons => 0b0100,
+            ir::ValType::Closure => 0b0110,
+        }
+    }
+
+    fn valtype_to_bit_pattern(typ: ir::ValType) -> i64 {
+        let type_id = Self::valtype_to_type_id(typ);
         (((1 << 12) - 1) << 52) | (type_id as i64) << 48
     }
 

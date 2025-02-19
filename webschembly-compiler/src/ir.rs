@@ -43,15 +43,8 @@ pub enum Expr {
     */
     Call(usize, Vec<usize>),
     Move(usize),
-    BoxBool(usize),
-    BoxInt(usize),
-    BoxString(usize),
-    BoxSymbol(usize),
-    BoxNil(usize),
-    BoxCons(usize),
-    BoxClosure(usize),
-    UnboxBool(usize),
-    UnboxClosure(usize),
+    Box(ValType, usize),
+    Unbox(ValType, usize),
     Dump(usize),
     ClosureEnv(usize /* closure */, usize /* env index */),
 }
@@ -233,13 +226,15 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
             ast::AST::Bool(b) => {
                 let unboxed = self.lambda_gen.local(Type::Val(ValType::Bool));
                 self.stats.push(Stat::Expr(Some(unboxed), Expr::Bool(*b)));
-                self.stats.push(Stat::Expr(result, Expr::BoxBool(unboxed)));
+                self.stats
+                    .push(Stat::Expr(result, Expr::Box(ValType::Bool, unboxed)));
                 Ok(())
             }
             ast::AST::Int(i) => {
                 let unboxed = self.lambda_gen.local(Type::Val(ValType::Int));
                 self.stats.push(Stat::Expr(Some(unboxed), Expr::Int(*i)));
-                self.stats.push(Stat::Expr(result, Expr::BoxInt(unboxed)));
+                self.stats
+                    .push(Stat::Expr(result, Expr::Box(ValType::Int, unboxed)));
                 Ok(())
             }
             ast::AST::String(s) => {
@@ -247,13 +242,14 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                 self.stats
                     .push(Stat::Expr(Some(unboxed), Expr::String(s.clone())));
                 self.stats
-                    .push(Stat::Expr(result, Expr::BoxString(unboxed)));
+                    .push(Stat::Expr(result, Expr::Box(ValType::String, unboxed)));
                 Ok(())
             }
             ast::AST::Nil => {
                 let unboxed = self.lambda_gen.local(Type::Val(ValType::Nil));
                 self.stats.push(Stat::Expr(Some(unboxed), Expr::Nil));
-                self.stats.push(Stat::Expr(result, Expr::BoxNil(unboxed)));
+                self.stats
+                    .push(Stat::Expr(result, Expr::Box(ValType::Nil, unboxed)));
                 Ok(())
             }
             ast::AST::Quote(sexpr) => {
@@ -281,7 +277,7 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                 self.stats
                     .push(Stat::Expr(Some(unboxed), Expr::Closure(ids, func_id)));
                 self.stats
-                    .push(Stat::Expr(result, Expr::BoxClosure(unboxed)));
+                    .push(Stat::Expr(result, Expr::Box(ValType::Closure, unboxed)));
                 Ok(())
             }
             ast::AST::If(cond, then, els) => {
@@ -292,7 +288,7 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                 let cond_local = self.lambda_gen.local(Type::Val(ValType::Bool));
                 self.stats.push(Stat::Expr(
                     Some(cond_local),
-                    Expr::UnboxBool(boxed_cond_local),
+                    Expr::Unbox(ValType::Bool, boxed_cond_local),
                 ));
 
                 let then_stats = {
@@ -320,7 +316,7 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                 let func_local = self.lambda_gen.local(Type::Val(ValType::Closure));
                 self.stats.push(Stat::Expr(
                     Some(func_local),
-                    Expr::UnboxClosure(boxed_func_local),
+                    Expr::Unbox(ValType::Closure, boxed_func_local),
                 ));
 
                 // TODO: 引数の数が合っているかのチェック
@@ -368,13 +364,15 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
             sexpr::SExpr::Bool(b) => {
                 let unboxed = self.lambda_gen.local(Type::Val(ValType::Bool));
                 self.stats.push(Stat::Expr(Some(unboxed), Expr::Bool(*b)));
-                self.stats.push(Stat::Expr(result, Expr::BoxBool(unboxed)));
+                self.stats
+                    .push(Stat::Expr(result, Expr::Box(ValType::Bool, unboxed)));
                 Ok(())
             }
             sexpr::SExpr::Int(i) => {
                 let unboxed = self.lambda_gen.local(Type::Val(ValType::Int));
                 self.stats.push(Stat::Expr(Some(unboxed), Expr::Int(*i)));
-                self.stats.push(Stat::Expr(result, Expr::BoxInt(unboxed)));
+                self.stats
+                    .push(Stat::Expr(result, Expr::Box(ValType::Int, unboxed)));
                 Ok(())
             }
             sexpr::SExpr::String(s) => {
@@ -382,7 +380,7 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                 self.stats
                     .push(Stat::Expr(Some(unboxed), Expr::String(s.clone())));
                 self.stats
-                    .push(Stat::Expr(result, Expr::BoxString(unboxed)));
+                    .push(Stat::Expr(result, Expr::Box(ValType::String, unboxed)));
                 Ok(())
             }
             sexpr::SExpr::Symbol(s) => {
@@ -393,13 +391,14 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                 self.stats
                     .push(Stat::Expr(Some(unboxed), Expr::StringToSymbol(string)));
                 self.stats
-                    .push(Stat::Expr(result, Expr::BoxSymbol(unboxed)));
+                    .push(Stat::Expr(result, Expr::Box(ValType::Symbol, unboxed)));
                 Ok(())
             }
             sexpr::SExpr::Nil => {
                 let unboxed = self.lambda_gen.local(Type::Val(ValType::Nil));
                 self.stats.push(Stat::Expr(Some(unboxed), Expr::Nil));
-                self.stats.push(Stat::Expr(result, Expr::BoxNil(unboxed)));
+                self.stats
+                    .push(Stat::Expr(result, Expr::Box(ValType::Nil, unboxed)));
                 Ok(())
             }
             sexpr::SExpr::Cons(cons) => {
@@ -411,7 +410,8 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                 let unboxed = self.lambda_gen.local(Type::Val(ValType::Cons));
                 self.stats
                     .push(Stat::Expr(Some(unboxed), Expr::Cons(car_local, cdr_local)));
-                self.stats.push(Stat::Expr(result, Expr::BoxCons(unboxed)));
+                self.stats
+                    .push(Stat::Expr(result, Expr::Box(ValType::Cons, unboxed)));
                 Ok(())
             }
         }
