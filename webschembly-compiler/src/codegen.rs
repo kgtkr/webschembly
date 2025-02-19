@@ -31,6 +31,13 @@ impl WasmFuncType {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+
+struct FuncIndex {
+    func_idx: u32,
+    elem_idx: u32,
+}
+
 #[derive(Debug)]
 pub struct ModuleGenerator {
     func_to_type_index: HashMap<WasmFuncType, u32>,
@@ -45,11 +52,12 @@ pub struct ModuleGenerator {
     imports: ImportSection,
     types: TypeSection,
     functions: FunctionSection,
-    elements: ElementSection,
     tables: TableSection,
     code: CodeSection,
     globals: GlobalSection,
     malloc_tmp_global: u32,
+    element_funcs: Vec<u32>,
+    func_indices: HashMap<usize, FuncIndex>,
 }
 
 impl ModuleGenerator {
@@ -66,10 +74,11 @@ impl ModuleGenerator {
             imports: ImportSection::new(),
             types: TypeSection::new(),
             functions: FunctionSection::new(),
-            elements: ElementSection::new(),
             tables: TableSection::new(),
             code: CodeSection::new(),
             globals: GlobalSection::new(),
+            element_funcs: Vec::new(),
+            func_indices: HashMap::new(),
         }
     }
 
@@ -132,8 +141,6 @@ impl ModuleGenerator {
             },
         );
 
-        let runtime_func_count = self.func_count;
-
         self.malloc_tmp_global = self.global_count;
         self.globals.global(
             GlobalType {
@@ -145,10 +152,8 @@ impl ModuleGenerator {
         );
         self.global_count += 1;
 
-        let mut element_functions = vec![];
-        for func in &ir.funcs {
+        for (i, func) in ir.funcs.iter().enumerate() {
             let type_index = self.func_type(&WasmFuncType::from_ir(func.func_type()));
-            self.functions.function(type_index);
 
             let mut function = Function::new(
                 func.locals
@@ -173,29 +178,35 @@ impl ModuleGenerator {
             function.instruction(&Instruction::Return);
             function.instruction(&Instruction::End);
 
-            self.code.function(&function);
+            let func_idx = FuncIndex {
+                func_idx: self.func_count,
+                elem_idx: self.element_funcs.len() as u32,
+            };
+            self.func_indices.insert(i, func_idx);
 
-            element_functions.push(self.func_count);
+            self.functions.function(type_index);
+            self.code.function(&function);
+            self.element_funcs.push(self.func_count);
             self.func_count += 1;
         }
 
         self.tables.table(TableType {
             element_type: RefType::FUNCREF,
-            minimum: element_functions.len() as u64,
+            minimum: self.element_funcs.len() as u64,
             maximum: None,
             table64: false,
             shared: false,
         });
 
-        self.elements.active(
+        let mut elements = ElementSection::new();
+        elements.active(
             Some(0),
             &ConstExpr::i32_const(0),
-            Elements::Functions(Cow::Borrowed(&element_functions)),
+            Elements::Functions(Cow::Borrowed(&self.element_funcs)),
         );
 
         let start = StartSection {
-            // TODO: ir func index -> wasm func indexのMapを作る
-            function_index: ir.entry as u32 + runtime_func_count,
+            function_index: self.func_indices[&ir.entry].func_idx,
         };
 
         let mut module = Module::new();
@@ -206,7 +217,7 @@ impl ModuleGenerator {
             .section(&self.tables)
             .section(&self.globals)
             .section(&start)
-            .section(&self.elements)
+            .section(&elements)
             .section(&self.code);
 
         module
@@ -301,7 +312,9 @@ impl ModuleGenerator {
                 self.gen_malloc(function, 4 + 8 * envs.len() as u32);
 
                 function.instruction(&Instruction::GlobalGet(self.malloc_tmp_global));
-                function.instruction(&Instruction::I32Const(*func as i32));
+                function.instruction(&Instruction::I32Const(
+                    self.func_indices[func].elem_idx as i32,
+                ));
                 function.instruction(&Instruction::I32Store(MemArg {
                     align: 2,
                     offset: 0,
