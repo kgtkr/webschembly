@@ -65,10 +65,7 @@ impl Expr {
                 car: SExpr::Symbol("lambda"),
                 cdr,
             }) => match cdr {
-                SExpr::Cons(box Cons {
-                    car: args,
-                    cdr: sexprs,
-                }) => {
+                list_pattern![args, ..sexprs] => {
                     let args = args
                         .to_vec()
                         .ok_or_else(|| anyhow::anyhow!("Expected a list of symbols"))?;
@@ -106,10 +103,7 @@ impl Expr {
                 car: SExpr::Symbol("let"),
                 cdr,
             }) => match cdr {
-                SExpr::Cons(box Cons {
-                    car: bindings,
-                    cdr: body_sexprs,
-                }) => {
+                list_pattern![bindings, ..body_sexprs] => {
                     let bindings = bindings
                         .to_vec()
                         .ok_or_else(|| anyhow::anyhow!("Expected a list of bindings"))?;
@@ -127,16 +121,16 @@ impl Expr {
                         names.push(name);
                         exprs.push(value);
                     }
-                    let body_exprs = body_sexprs
-                        .to_vec()
-                        .ok_or_else(|| anyhow::anyhow!("Expected a list of expressions"))?;
-                    let mut lambda =
-                        vec![SExpr::Symbol("lambda".to_string()), SExpr::from_vec(names)];
-                    lambda.extend(body_exprs);
+                    let lambda = list![
+                        SExpr::Symbol("lambda".to_string()),
+                        SExpr::from_vec(names),
+                        ..body_sexprs
+                    ];
 
-                    let mut result = vec![SExpr::from_vec(lambda)];
-                    result.extend(exprs);
-                    Expr::from_sexpr(SExpr::from_vec(result))
+                    let exprs = SExpr::from_vec(exprs);
+
+                    let result = list![lambda, ..exprs];
+                    Expr::from_sexpr(result)
                 }
                 _ => Err(anyhow::anyhow!("Invalid let expression")),
             },
