@@ -435,13 +435,7 @@ impl ModuleGenerator {
     fn convert_type(ty: ir::Type) -> ValType {
         match ty {
             ir::Type::Boxed => ValType::I64,
-            ir::Type::Bool => ValType::I32,
-            ir::Type::Int => ValType::I32,
-            ir::Type::String => ValType::I32,
-            ir::Type::Symbol => ValType::I32,
-            ir::Type::Nil => ValType::I32,
-            ir::Type::Cons => ValType::I32,
-            ir::Type::Closure => ValType::I32,
+            ir::Type::Val(_) => ValType::I32,
         }
     }
 }
