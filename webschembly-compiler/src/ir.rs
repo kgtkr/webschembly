@@ -39,6 +39,8 @@ pub enum Expr {
     Unbox(ValType, usize),
     Dump(usize),
     ClosureEnv(usize /* closure */, usize /* env index */),
+    GlobalSet(usize, usize),
+    GlobalGet(usize),
 }
 
 #[derive(Debug, Clone)]
@@ -83,6 +85,7 @@ pub struct FuncType {
 #[derive(Debug, Clone)]
 pub struct Ir {
     pub funcs: Vec<Func>,
+    pub global_count: usize,
     pub entry: usize,
 }
 
@@ -97,11 +100,17 @@ impl Ir {
 #[derive(Debug)]
 struct IrGenerator {
     funcs: Vec<Func>,
+    global_count: usize,
+    global_names: HashMap<String, usize>,
 }
 
 impl IrGenerator {
     fn new() -> Self {
-        Self { funcs: Vec::new() }
+        Self {
+            funcs: Vec::new(),
+            global_count: 0,
+            global_names: HashMap::new(),
+        }
     }
 
     fn gen(mut self, ast: &ast::AST) -> Result<Ir> {
@@ -126,6 +135,7 @@ impl IrGenerator {
         Ok(Ir {
             funcs: self.funcs,
             entry: entry_wrapper,
+            global_count: self.global_count,
         })
     }
 
@@ -134,6 +144,17 @@ impl IrGenerator {
         let func_id = self.funcs.len();
         self.funcs.push(func);
         Ok(func_id)
+    }
+
+    fn global_id(&mut self, name: String) -> usize {
+        if let Some(&id) = self.global_names.get(&name) {
+            id
+        } else {
+            let id = self.global_count;
+            self.global_count += 1;
+            self.global_names.insert(name, id);
+            id
+        }
     }
 }
 
@@ -326,13 +347,15 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                 Ok(())
             }
             ast::Expr::Var(name) => {
-                let local = self
-                    .lambda_gen
-                    .local_names
-                    .get(name)
-                    .ok_or_else(|| anyhow::anyhow!("Unknown variable"))?;
-                self.stats.push(Stat::Expr(result, Expr::Move(*local)));
-                Ok(())
+                if let Some(local) = self.lambda_gen.local_names.get(name) {
+                    self.stats.push(Stat::Expr(result, Expr::Move(*local)));
+                    Ok(())
+                } else {
+                    let global_id = self.lambda_gen.ir_generator.global_id(name.clone());
+                    self.stats
+                        .push(Stat::Expr(result, Expr::GlobalGet(global_id)));
+                    Ok(())
+                }
             }
             ast::Expr::Begin(stats) => {
                 self.gen_stats(result, stats)?;

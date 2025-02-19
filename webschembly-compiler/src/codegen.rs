@@ -58,6 +58,7 @@ pub struct ModuleGenerator {
     malloc_tmp_global: u32,
     element_funcs: Vec<u32>,
     func_indices: HashMap<usize, FuncIndex>,
+    global_to_index: HashMap<usize, u32>,
 }
 
 impl ModuleGenerator {
@@ -79,6 +80,7 @@ impl ModuleGenerator {
             globals: GlobalSection::new(),
             element_funcs: Vec::new(),
             func_indices: HashMap::new(),
+            global_to_index: HashMap::new(),
         }
     }
 
@@ -151,6 +153,21 @@ impl ModuleGenerator {
             &ConstExpr::i32_const(0),
         );
         self.global_count += 1;
+
+        for global in 0..ir.global_count {
+            let global_index = self.global_count;
+            self.globals.global(
+                GlobalType {
+                    val_type: ValType::I64,
+                    mutable: true,
+                    shared: false,
+                },
+                // TODO: nilか0で初期化
+                &ConstExpr::i64_const(0),
+            );
+            self.global_count += 1;
+            self.global_to_index.insert(global, global_index);
+        }
 
         for (i, func) in ir.funcs.iter().enumerate() {
             let type_index = self.func_type(&WasmFuncType::from_ir(func.func_type()));
@@ -378,6 +395,17 @@ impl ModuleGenerator {
                     offset: 4 + 8 * *env_index as u64,
                     memory_index: 0,
                 }));
+            }
+            ir::Expr::GlobalGet(global) => {
+                function.instruction(&Instruction::GlobalGet(
+                    *self.global_to_index.get(global).unwrap(),
+                ));
+            }
+            ir::Expr::GlobalSet(global, val) => {
+                function.instruction(&Instruction::LocalGet(*val as u32));
+                function.instruction(&Instruction::GlobalSet(
+                    *self.global_to_index.get(global).unwrap(),
+                ));
             }
         }
     }
