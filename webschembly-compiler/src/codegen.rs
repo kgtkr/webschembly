@@ -333,7 +333,7 @@ impl ModuleGenerator {
 
                 function.instruction(&Instruction::GlobalGet(self.malloc_tmp_global));
             }
-            ir::Expr::Call(closure, args) => {
+            ir::Expr::CallClosure(closure, args) => {
                 for arg in args {
                     function.instruction(&Instruction::LocalGet(*arg as u32));
                 }

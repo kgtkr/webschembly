@@ -33,15 +33,7 @@ pub enum Expr {
     set! が未実装なので一旦実装しない
     MutCell(usize),
     MutCellDeref(usize),*/
-    /*
-    TODO:
-    CallClosureにrename
-    もしくは以下の3命令に分割してもよい
-    * ClosureFuncRef: Closure -> FuncRef
-    * ClosureEnvs: Closure -> [Boxed]
-    * CallFuncRef
-    */
-    Call(usize, Vec<usize>),
+    CallClosure(usize, Vec<usize>),
     Move(usize),
     Box(ValType, usize),
     Unbox(ValType, usize),
@@ -127,7 +119,7 @@ impl IrGenerator {
             locals: vec![Type::Val(ValType::Closure)],
             body: vec![
                 Stat::Expr(Some(0), Expr::Closure(vec![], entry)),
-                Stat::Expr(None, Expr::Call(0, vec![0])),
+                Stat::Expr(None, Expr::CallClosure(0, vec![0])),
             ],
         });
 
@@ -327,8 +319,10 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                     self.gen_stat(Some(arg_local), arg)?;
                     arg_locals.push(arg_local);
                 }
-                self.stats
-                    .push(Stat::Expr(result, Expr::Call(func_local, arg_locals)));
+                self.stats.push(Stat::Expr(
+                    result,
+                    Expr::CallClosure(func_local, arg_locals),
+                ));
                 Ok(())
             }
             ast::Expr::Var(name) => {
