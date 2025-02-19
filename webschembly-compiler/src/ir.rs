@@ -149,6 +149,7 @@ struct FuncGenerator<'a> {
     locals: Vec<Type>,
     local_names: HashMap<String, usize>,
     ir_generator: &'a mut IrGenerator,
+    is_global: bool,
 }
 
 impl<'a> FuncGenerator<'a> {
@@ -157,12 +158,14 @@ impl<'a> FuncGenerator<'a> {
             locals: Vec::new(),
             local_names: HashMap::new(),
             ir_generator,
+            is_global: false,
         }
     }
 
     fn entry_gen(mut self, ast: &ast::AST) -> Result<Func> {
+        self.is_global = true;
         let body = {
-            let mut block_gen = BlockGenerator::new(&mut self);
+            let mut block_gen = BlockGenerator::new(&mut self, true);
             block_gen.gen_stats(None, &ast.exprs)?;
             block_gen.stats
         };
@@ -192,7 +195,7 @@ impl<'a> FuncGenerator<'a> {
 
         let ret = self.local(Type::Boxed);
         let body = {
-            let mut block_gen = BlockGenerator::new(&mut self);
+            let mut block_gen = BlockGenerator::new(&mut self, true);
             block_gen.gen_stats(Some(ret), &lambda.body)?;
             let mut body = Vec::new();
             body.extend(restore_envs);
@@ -224,18 +227,21 @@ impl<'a> FuncGenerator<'a> {
 struct BlockGenerator<'a, 'b> {
     stats: Vec<Stat>,
     func_gen: &'b mut FuncGenerator<'a>,
+    definable: bool,
 }
 
 impl<'a, 'b> BlockGenerator<'a, 'b> {
-    fn new(func_gen: &'b mut FuncGenerator<'a>) -> Self {
+    fn new(func_gen: &'b mut FuncGenerator<'a>, definable: bool) -> Self {
         Self {
             stats: Vec::new(),
             func_gen,
+            definable,
         }
     }
 
     fn gen_stat(&mut self, result: Option<usize>, ast: &ast::Expr) -> Result<()> {
-        match ast {
+        let mut is_define_node = false;
+        let result = match ast {
             ast::Expr::Bool(b) => {
                 let unboxed = self.func_gen.local(Type::Val(ValType::Bool));
                 self.stats.push(Stat::Expr(Some(unboxed), Expr::Bool(*b)));
@@ -270,9 +276,24 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                 Ok(())
             }
             ast::Expr::Define(name, expr) => {
-                let local = self.func_gen.named_local(name.clone());
-                self.gen_stat(Some(local), expr)?;
-                Ok(())
+                // TODO: ローカル変数の巻き上げ、再定義のチェック
+                is_define_node = true;
+                if self.definable {
+                    if self.func_gen.is_global {
+                        let local = self.func_gen.local(Type::Boxed);
+                        self.gen_stat(Some(local), expr)?;
+                        let global_id = self.func_gen.ir_generator.global_id(name.clone());
+                        self.stats
+                            .push(Stat::Expr(None, Expr::GlobalSet(global_id, local)));
+                        Ok(())
+                    } else {
+                        let local = self.func_gen.named_local(name.clone());
+                        self.gen_stat(Some(local), expr)?;
+                        Ok(())
+                    }
+                } else {
+                    Err(anyhow::anyhow!("define is not allowed here"))
+                }
             }
             ast::Expr::Lambda(lambda) => {
                 // TODO: 現在はクロージャで使われているかに関わらず全てのローカル変数を環境に含める
@@ -305,13 +326,13 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                 ));
 
                 let then_stats = {
-                    let mut then_gen = BlockGenerator::new(self.func_gen);
+                    let mut then_gen = BlockGenerator::new(self.func_gen, self.definable);
                     then_gen.gen_stat(result, then)?;
                     then_gen.stats
                 };
 
                 let else_stats = {
-                    let mut els_gen = BlockGenerator::new(self.func_gen);
+                    let mut els_gen = BlockGenerator::new(self.func_gen, self.definable);
                     els_gen.gen_stat(result, els)?;
                     els_gen.stats
                 };
@@ -358,7 +379,9 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                 }
             }
             ast::Expr::Begin(stats) => {
-                self.gen_stats(result, stats)?;
+                let mut block_gen = BlockGenerator::new(self.func_gen, self.definable);
+                block_gen.gen_stats(result, stats)?;
+                self.stats.extend(block_gen.stats);
                 Ok(())
             }
             ast::Expr::Dump(expr) => {
@@ -367,7 +390,13 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                 self.stats.push(Stat::Expr(result, Expr::Dump(boxed_local)));
                 Ok(())
             }
+        };
+
+        if !is_define_node && !self.func_gen.is_global {
+            self.definable = false;
         }
+
+        result
     }
 
     fn quote(&mut self, result: Option<usize>, sexpr: &sexpr::SExpr) -> Result<()> {

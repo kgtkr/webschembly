@@ -406,6 +406,7 @@ impl ModuleGenerator {
                 function.instruction(&Instruction::GlobalSet(
                     *self.global_to_index.get(global).unwrap(),
                 ));
+                function.instruction(&Instruction::LocalGet(*val as u32));
             }
         }
     }
