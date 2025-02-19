@@ -106,7 +106,10 @@ impl Expr {
                 car: SExpr::Symbol("let"),
                 cdr,
             }) => match cdr {
-                list_pattern![bindings, expr] => {
+                SExpr::Cons(box Cons {
+                    car: bindings,
+                    cdr: body_sexprs,
+                }) => {
                     let bindings = bindings
                         .to_vec()
                         .ok_or_else(|| anyhow::anyhow!("Expected a list of bindings"))?;
@@ -124,12 +127,14 @@ impl Expr {
                         names.push(name);
                         exprs.push(value);
                     }
+                    let body_exprs = body_sexprs
+                        .to_vec()
+                        .ok_or_else(|| anyhow::anyhow!("Expected a list of expressions"))?;
+                    let mut lambda =
+                        vec![SExpr::Symbol("lambda".to_string()), SExpr::from_vec(names)];
+                    lambda.extend(body_exprs);
 
-                    let mut result = vec![list![
-                        SExpr::Symbol("lambda".to_string()),
-                        SExpr::from_vec(names),
-                        expr
-                    ]];
+                    let mut result = vec![SExpr::from_vec(lambda)];
                     result.extend(exprs);
                     Expr::from_sexpr(SExpr::from_vec(result))
                 }
