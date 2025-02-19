@@ -103,6 +103,7 @@ impl Expr {
                 car: SExpr::Symbol("let"),
                 cdr,
             }) => match cdr {
+                // TODO: 効率が悪いが一旦ラムダ式に変換
                 list_pattern![bindings, ..body_sexprs] => {
                     let bindings = bindings
                         .to_vec()
