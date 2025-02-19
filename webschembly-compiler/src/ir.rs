@@ -114,33 +114,19 @@ impl IrGenerator {
     }
 
     fn gen(mut self, ast: &ast::AST) -> Result<Ir> {
-        let entry = self.gen_func(
-            vec![],
-            &ast::Lambda {
-                args: Vec::new(),
-                body: ast.exprs.clone(),
-            },
-        )?;
-        let entry_wrapper = self.funcs.len();
-        self.funcs.push(Func {
-            args: 0,
-            rets: vec![],
-            locals: vec![Type::Val(ValType::Closure)],
-            body: vec![
-                Stat::Expr(Some(0), Expr::Closure(vec![], entry)),
-                Stat::Expr(None, Expr::CallClosure(0, vec![0])),
-            ],
-        });
+        let func = FuncGenerator::new(&mut self).entry_gen(ast)?;
+        let func_id = self.funcs.len();
+        self.funcs.push(func);
 
         Ok(Ir {
             funcs: self.funcs,
-            entry: entry_wrapper,
+            entry: func_id,
             global_count: self.global_count,
         })
     }
 
     fn gen_func(&mut self, envs: Vec<String>, lambda: &ast::Lambda) -> Result<usize> {
-        let func = FuncGenerator::new(self).gen(envs, lambda)?;
+        let func = FuncGenerator::new(self).lambda_gen(envs, lambda)?;
         let func_id = self.funcs.len();
         self.funcs.push(func);
         Ok(func_id)
@@ -174,7 +160,21 @@ impl<'a> FuncGenerator<'a> {
         }
     }
 
-    fn gen(mut self, envs: Vec<String>, lambda: &ast::Lambda) -> Result<Func> {
+    fn entry_gen(mut self, ast: &ast::AST) -> Result<Func> {
+        let body = {
+            let mut block_gen = BlockGenerator::new(&mut self);
+            block_gen.gen_stats(None, &ast.exprs)?;
+            block_gen.stats
+        };
+        Ok(Func {
+            args: 0,
+            rets: vec![],
+            locals: self.locals,
+            body,
+        })
+    }
+
+    fn lambda_gen(mut self, envs: Vec<String>, lambda: &ast::Lambda) -> Result<Func> {
         let self_closure = self.local(Type::Val(ValType::Closure));
         for arg in &lambda.args {
             self.named_local(arg.clone());
