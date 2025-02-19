@@ -22,8 +22,11 @@ bin/runtime.wasm:
 %.wasm: %.scm bin/cli
 	bin/cli $< $@
 
+# TODO:
+# wasm-objdumpはGC proposalに対応していないのでそれを含むwasmファイルを与えるとエラーになる
+# しかし、wasm-dis は型エラーがあるwasmファイルを与えるとエラーになるのでデバッグには使いにくい
 %.objdump: %.wasm
-	wasm-objdump -hx $< > $@
+	wasm-objdump -hxd $< > $@
 
 %.result: %.wasm bin/runtime.wasm
 	mkdir -p $@
@@ -31,7 +34,7 @@ bin/runtime.wasm:
 	node run.js $< > $@/stdout 2> $@/stderr; echo $$? > $@/exitcode
 
 %.wat: %.wasm
-	wasm2wat $< -o $@
+	wasm-dis $< -o $@
 
 %.snapshot: %.result
 	mkdir -p $@
