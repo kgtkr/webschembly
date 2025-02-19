@@ -325,6 +325,12 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                         .func_gen
                         .local_names
                         .get(name)
+                        /*
+                        TODO: ローカルスコープで以下のコードが動いてしまう
+                        (define a 1)
+                        (hoge)
+                        (define a 2)
+                        */
                         .ok_or_else(|| anyhow::anyhow!("define is not allowed here"))?
                         .local;
                     self.gen_stat(Some(local), expr)?;
