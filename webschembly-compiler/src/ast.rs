@@ -1,50 +1,149 @@
 use crate::sexpr::{Cons, SExpr};
+use crate::x::{FamilyX, RunX};
 use anyhow::Result;
 
 #[derive(Debug, Clone)]
-pub struct AST {
-    pub exprs: Vec<Expr>,
+pub struct AST<X>
+where
+    X: XBound,
+{
+    pub x: RunX<AstX, X>,
+    pub exprs: Vec<Expr<X>>,
 }
 
-impl AST {
+impl AST<Parsed> {
     pub fn from_sexprs(exprs: Vec<SExpr>) -> Result<Self> {
         let exprs = exprs
             .into_iter()
             .map(Expr::from_sexpr)
             .collect::<Result<Vec<_>>>()?;
-        Ok(AST { exprs })
+        Ok(AST { x: (), exprs })
     }
+}
+#[derive(Debug, Clone, Copy)]
+pub struct AstX;
+#[derive(Debug, Clone, Copy)]
+pub struct BoolX;
+#[derive(Debug, Clone, Copy)]
+pub struct IntX;
+#[derive(Debug, Clone, Copy)]
+pub struct StringX;
+#[derive(Debug, Clone, Copy)]
+pub struct NilX;
+#[derive(Debug, Clone, Copy)]
+pub struct QuoteX;
+#[derive(Debug, Clone, Copy)]
+
+pub struct DefineX;
+#[derive(Debug, Clone, Copy)]
+
+pub struct LambdaX;
+#[derive(Debug, Clone, Copy)]
+
+pub struct IfX;
+#[derive(Debug, Clone, Copy)]
+
+pub struct CallX;
+#[derive(Debug, Clone, Copy)]
+
+pub struct VarX;
+#[derive(Debug, Clone, Copy)]
+
+pub struct BeginX;
+#[derive(Debug, Clone, Copy)]
+
+pub struct DumpX;
+
+pub trait XBound = Sized
+where
+    AstX: FamilyX<Self>,
+    BoolX: FamilyX<Self>,
+    IntX: FamilyX<Self>,
+    StringX: FamilyX<Self>,
+    NilX: FamilyX<Self>,
+    QuoteX: FamilyX<Self>,
+    DefineX: FamilyX<Self>,
+    LambdaX: FamilyX<Self>,
+    IfX: FamilyX<Self>,
+    CallX: FamilyX<Self>,
+    VarX: FamilyX<Self>,
+    BeginX: FamilyX<Self>,
+    DumpX: FamilyX<Self>;
+
+#[derive(Debug, Clone, Copy)]
+pub struct Parsed;
+impl FamilyX<Parsed> for AstX {
+    type R = ();
+}
+impl FamilyX<Parsed> for BoolX {
+    type R = ();
+}
+impl FamilyX<Parsed> for IntX {
+    type R = ();
+}
+impl FamilyX<Parsed> for StringX {
+    type R = ();
+}
+impl FamilyX<Parsed> for NilX {
+    type R = ();
+}
+impl FamilyX<Parsed> for QuoteX {
+    type R = ();
+}
+impl FamilyX<Parsed> for DefineX {
+    type R = ();
+}
+impl FamilyX<Parsed> for LambdaX {
+    type R = ();
+}
+impl FamilyX<Parsed> for IfX {
+    type R = ();
+}
+impl FamilyX<Parsed> for CallX {
+    type R = ();
+}
+impl FamilyX<Parsed> for VarX {
+    type R = ();
+}
+impl FamilyX<Parsed> for BeginX {
+    type R = ();
+}
+impl FamilyX<Parsed> for DumpX {
+    type R = ();
 }
 
 #[derive(Debug, Clone)]
-pub enum Expr {
-    Bool(bool),
-    Int(i32),
-    String(String),
-    Nil,
-    Quote(SExpr),
-    Define(String, Box<Expr>),
-    Lambda(Lambda),
-    If(Box<Expr>, Box<Expr>, Box<Expr>),
-    Call(Box<Expr>, Vec<Expr>),
-    Var(String),
-    Begin(Vec<Expr>),
-    Dump(Box<Expr>),
+pub enum Expr<X>
+where
+    X: XBound,
+{
+    Bool(RunX<BoolX, X>, bool),
+    Int(RunX<IntX, X>, i32),
+    String(RunX<StringX, X>, String),
+    Nil(RunX<NilX, X>),
+    Quote(RunX<QuoteX, X>, SExpr),
+    Define(RunX<DefineX, X>, String, Box<Expr<X>>),
+    Lambda(RunX<LambdaX, X>, Lambda<X>),
+    If(RunX<IfX, X>, Box<Expr<X>>, Box<Expr<X>>, Box<Expr<X>>),
+    Call(RunX<CallX, X>, Box<Expr<X>>, Vec<Expr<X>>),
+    Var(RunX<VarX, X>, String),
+    Begin(RunX<BeginX, X>, Vec<Expr<X>>),
+    Dump(RunX<DumpX, X>, Box<Expr<X>>),
 }
 
-impl Expr {
+impl Expr<Parsed> {
     fn from_sexpr(sexpr: SExpr) -> Result<Self> {
         match sexpr {
-            SExpr::Bool(b) => Ok(Expr::Bool(b)),
-            SExpr::Int(i) => Ok(Expr::Int(i)),
-            SExpr::String(s) => Ok(Expr::String(s)),
-            SExpr::Symbol(s) => Ok(Expr::Var(s)),
-            SExpr::Nil => Ok(Expr::Nil),
+            SExpr::Bool(b) => Ok(Expr::Bool((), b)),
+            SExpr::Int(i) => Ok(Expr::Int((), i)),
+            SExpr::String(s) => Ok(Expr::String((), s)),
+            SExpr::Symbol(s) => Ok(Expr::Var((), s)),
+            SExpr::Nil => Ok(Expr::Nil(())),
             SExpr::Cons(box Cons {
                 car: SExpr::Symbol("quote"),
                 cdr,
             }) => match cdr {
-                list_pattern![sexpr] => Ok(Expr::Quote(sexpr)),
+                list_pattern![sexpr] => Ok(Expr::Quote((), sexpr)),
                 _ => Err(anyhow::anyhow!("Invalid quote expression")),
             },
             SExpr::Cons(box Cons {
@@ -52,7 +151,7 @@ impl Expr {
                 cdr,
             }) => match cdr {
                 list_pattern![SExpr::Symbol(name), expr] => {
-                    Ok(Expr::Define(name, Box::new(Expr::from_sexpr(expr)?)))
+                    Ok(Expr::Define((), name, Box::new(Expr::from_sexpr(expr)?)))
                 }
                 list_pattern![SExpr::Cons(box Cons { car, cdr }), expr] => Expr::from_sexpr(list![
                     SExpr::Symbol("define".to_string()),
@@ -82,8 +181,8 @@ impl Expr {
                     let exprs = sexprs
                         .into_iter()
                         .map(Expr::from_sexpr)
-                        .collect::<Result<Vec<Expr>>>()?;
-                    Ok(Expr::Lambda(Lambda { args, body: exprs }))
+                        .collect::<Result<Vec<_>>>()?;
+                    Ok(Expr::Lambda((), Lambda { args, body: exprs }))
                 }
                 _ => Err(anyhow::anyhow!("Invalid lambda expression")),
             },
@@ -95,7 +194,7 @@ impl Expr {
                     let cond = Expr::from_sexpr(cond)?;
                     let then = Expr::from_sexpr(then)?;
                     let els = Expr::from_sexpr(els)?;
-                    Ok(Expr::If(Box::new(cond), Box::new(then), Box::new(els)))
+                    Ok(Expr::If((), Box::new(cond), Box::new(then), Box::new(els)))
                 }
                 _ => Err(anyhow::anyhow!("Invalid if expression",)),
             },
@@ -145,14 +244,14 @@ impl Expr {
                 let exprs = exprs
                     .into_iter()
                     .map(Expr::from_sexpr)
-                    .collect::<Result<Vec<Expr>>>()?;
-                Ok(Expr::Begin(exprs))
+                    .collect::<Result<Vec<_>>>()?;
+                Ok(Expr::Begin((), exprs))
             }
             SExpr::Cons(box Cons {
                 car: SExpr::Symbol("dump"),
                 cdr,
             }) => match cdr {
-                list_pattern![expr] => Ok(Expr::Dump(Box::new(Expr::from_sexpr(expr)?))),
+                list_pattern![expr] => Ok(Expr::Dump((), Box::new(Expr::from_sexpr(expr)?))),
                 _ => Err(anyhow::anyhow!("Invalid dump expression")),
             },
             SExpr::Cons(box Cons {
@@ -166,15 +265,18 @@ impl Expr {
                 let args = args
                     .into_iter()
                     .map(Expr::from_sexpr)
-                    .collect::<Result<Vec<Expr>>>()?;
-                Ok(Expr::Call(Box::new(func), args))
+                    .collect::<Result<Vec<_>>>()?;
+                Ok(Expr::Call((), Box::new(func), args))
             }
         }
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct Lambda {
+pub struct Lambda<X>
+where
+    X: XBound,
+{
     pub args: Vec<String>,
-    pub body: Vec<Expr>,
+    pub body: Vec<Expr<X>>,
 }

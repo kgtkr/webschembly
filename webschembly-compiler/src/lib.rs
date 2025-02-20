@@ -1,4 +1,4 @@
-#![feature(string_deref_patterns, box_patterns)]
+#![feature(string_deref_patterns, box_patterns, trait_alias)]
 pub mod lexer;
 pub mod parser_combinator;
 #[macro_use]
@@ -8,6 +8,7 @@ pub mod codegen;
 pub mod ir;
 pub mod sexpr_parser;
 pub mod token;
+pub mod x;
 
 pub fn compile(input: &str) -> anyhow::Result<Vec<u8>> {
     let tokens = lexer::lex(input).map_err(|e| anyhow::anyhow!("{}", e))?;
