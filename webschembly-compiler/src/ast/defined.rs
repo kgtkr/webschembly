@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use super::ast::*;
 use super::parsed::*;
 use crate::x::FamilyX;
@@ -14,7 +12,7 @@ type Prev = Parsed;
 
 #[derive(Debug, Clone)]
 pub struct DefinedLambdaR {
-    pub defines: HashSet<String>,
+    pub defines: Vec<String>,
 }
 
 impl FamilyX<Defined> for AstX {
@@ -48,7 +46,7 @@ impl FamilyX<Defined> for DumpX {
 impl AST<Defined> {
     pub fn from_ast(ast: AST<Prev>) -> Result<Self> {
         let new_exprs: Vec<Expr<Defined>> =
-            Expr::<Defined>::from_block(ast.exprs, DefineContext::Global, &mut HashSet::new())?;
+            Expr::<Defined>::from_block(ast.exprs, DefineContext::Global, &mut Vec::new())?;
         Ok(AST {
             x: ast.x,
             exprs: new_exprs,
@@ -77,7 +75,7 @@ impl Expr<Defined> {
     fn from_expr(
         expr: Expr<Prev>,
         ctx: DefineContext,
-        names: &mut HashSet<String>,
+        names: &mut Vec<String>,
     ) -> Result<(DefineContext, Self)> {
         match expr {
             Expr::Literal(x, lit) => Ok((ctx.to_undefinable_if_local(), Expr::Literal(x, lit))),
@@ -92,7 +90,7 @@ impl Expr<Defined> {
                                 def.name
                             ));
                         } else {
-                            names.insert(def.name.clone());
+                            names.push(def.name.clone());
                         }
                     }
                     DefineContext::LocalUndefinable => {
@@ -118,7 +116,7 @@ impl Expr<Defined> {
                 ))
             }
             Expr::Lambda(_, lambda) => {
-                let mut names = HashSet::new();
+                let mut names = Vec::new();
                 let new_body =
                     Self::from_block(lambda.body, DefineContext::LocalDefinable, &mut names)?;
                 Ok((
@@ -195,7 +193,7 @@ impl Expr<Defined> {
     fn from_block(
         exprs: Vec<Expr<Prev>>,
         mut ctx: DefineContext,
-        names: &mut HashSet<String>,
+        names: &mut Vec<String>,
     ) -> Result<Vec<Self>> {
         let mut result = Vec::new();
         for expr in exprs {
