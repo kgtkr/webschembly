@@ -15,7 +15,7 @@ pub type DefinedAST = AST<Defined>;
 pub type DefinedExpr = Expr<Defined>;
 
 #[derive(Debug, Clone)]
-pub struct LambdaR {
+pub struct DefinedLambdaR {
     pub defines: HashSet<String>,
 }
 
@@ -29,7 +29,7 @@ impl FamilyX<Defined> for DefineX {
     type R = ();
 }
 impl FamilyX<Defined> for LambdaX {
-    type R = LambdaR;
+    type R = DefinedLambdaR;
 }
 impl FamilyX<Defined> for IfX {
     type R = ();
@@ -123,14 +123,14 @@ impl DefinedExpr {
                     ),
                 ))
             }
-            Expr::Lambda(x, lambda) => {
+            Expr::Lambda(_, lambda) => {
                 let mut names = HashSet::new();
                 let new_body =
                     Self::from_block(lambda.body, DefineContext::LocalDefinable, &mut names)?;
                 Ok((
                     ctx,
                     Expr::Lambda(
-                        LambdaR { defines: names },
+                        DefinedLambdaR { defines: names },
                         Lambda {
                             args: lambda.args,
                             body: new_body,

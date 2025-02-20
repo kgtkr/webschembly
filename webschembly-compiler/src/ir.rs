@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{ast, sexpr};
+use crate::{ast, sexpr, x::RunX};
 use anyhow::Result;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
@@ -90,7 +90,7 @@ pub struct Ir {
 }
 
 impl Ir {
-    pub fn from_ast<X: ast::XBound>(ast: &ast::AST<X>) -> Result<Ir> {
+    pub fn from_ast(ast: &ast::AST<ast::Final>) -> Result<Ir> {
         let ir_gen = IrGenerator::new();
 
         Ok(ir_gen.gen(ast)?)
@@ -113,7 +113,7 @@ impl IrGenerator {
         }
     }
 
-    fn gen<X: ast::XBound>(mut self, ast: &ast::AST<X>) -> Result<Ir> {
+    fn gen(mut self, ast: &ast::AST<ast::Final>) -> Result<Ir> {
         let func = FuncGenerator::new(&mut self).entry_gen(ast)?;
         let func_id = self.funcs.len();
         self.funcs.push(func);
@@ -125,12 +125,13 @@ impl IrGenerator {
         })
     }
 
-    fn gen_func<X: ast::XBound>(
+    fn gen_func(
         &mut self,
         envs: Vec<String>,
-        lambda: &ast::Lambda<X>,
+        x: RunX<ast::LambdaX, ast::Final>,
+        lambda: &ast::Lambda<ast::Final>,
     ) -> Result<usize> {
-        let func = FuncGenerator::new(self).lambda_gen(envs, lambda)?;
+        let func = FuncGenerator::new(self).lambda_gen(envs, x, lambda)?;
         let func_id = self.funcs.len();
         self.funcs.push(func);
         Ok(func_id)
@@ -148,16 +149,10 @@ impl IrGenerator {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-struct NamedLocal {
-    local: usize,
-    overridable: bool,
-}
-
 #[derive(Debug)]
 struct FuncGenerator<'a> {
     locals: Vec<Type>,
-    local_names: HashMap<String, NamedLocal>,
+    local_names: HashMap<String, usize>,
     ir_generator: &'a mut IrGenerator,
     is_global: bool,
 }
@@ -172,7 +167,7 @@ impl<'a> FuncGenerator<'a> {
         }
     }
 
-    fn entry_gen<X: ast::XBound>(mut self, ast: &ast::AST<X>) -> Result<Func> {
+    fn entry_gen(mut self, ast: &ast::AST<ast::Final>) -> Result<Func> {
         self.is_global = true;
         let body = {
             let mut block_gen = BlockGenerator::new(&mut self);
@@ -187,29 +182,29 @@ impl<'a> FuncGenerator<'a> {
         })
     }
 
-    fn lambda_gen<X: ast::XBound>(
+    fn lambda_gen(
         mut self,
         envs: Vec<String>,
-        lambda: &ast::Lambda<X>,
+        x: RunX<ast::LambdaX, ast::Final>,
+        lambda: &ast::Lambda<ast::Final>,
     ) -> Result<Func> {
         let self_closure = self.local(Type::Val(ValType::Closure));
         for arg in &lambda.args {
-            self.define_named_local(arg.clone(), true)?;
+            self.define_named_local(arg.clone());
         }
 
         let mut restore_envs = Vec::new();
         // クロージャから環境を復元
         for (i, env) in envs.iter().enumerate() {
-            let env_local = self.define_named_local(env.clone(), true)?;
+            let env_local = self.define_named_local(env.clone());
             restore_envs.push(Stat::Expr(
                 Some(env_local),
                 Expr::ClosureEnv(self_closure, i),
             ));
         }
 
-        let defines = Self::collect_defines(&lambda.body);
-        for define in defines {
-            self.define_named_local(define, false)?;
+        for define in x.defines {
+            self.define_named_local(define);
         }
 
         let ret = self.local(Type::Boxed);
@@ -229,45 +224,16 @@ impl<'a> FuncGenerator<'a> {
         })
     }
 
-    fn collect_defines<X: ast::XBound>(exprs: &Vec<ast::Expr<X>>) -> Vec<String> {
-        fn inner<X: ast::XBound>(exprs: &Vec<ast::Expr<X>>, names: &mut Vec<String>) {
-            for expr in exprs {
-                match expr {
-                    ast::Expr::Define(_, ast::Define { name, .. }) => {
-                        names.push(name.clone());
-                    }
-                    ast::Expr::Begin(_, ast::Begin { exprs: stats }) => {
-                        inner(stats, names);
-                        return;
-                    }
-                    _ => {
-                        return;
-                    }
-                }
-            }
-        }
-
-        let mut names = Vec::new();
-        inner(exprs, &mut names);
-        names
-    }
-
     fn local(&mut self, typ: Type) -> usize {
         let local = self.locals.len();
         self.locals.push(typ);
         local
     }
 
-    fn define_named_local(&mut self, name: String, overridable: bool) -> Result<usize> {
-        if let Some(named_local) = self.local_names.get(&name) {
-            if !named_local.overridable {
-                return Err(anyhow::anyhow!("duplicated local name: {}", name));
-            }
-        }
+    fn define_named_local(&mut self, name: String) -> usize {
         let local = self.local(Type::Boxed);
-        self.local_names
-            .insert(name, NamedLocal { local, overridable });
-        Ok(local)
+        self.local_names.insert(name, local);
+        local
     }
 }
 
@@ -285,11 +251,7 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
         }
     }
 
-    fn gen_stat<X: ast::XBound>(
-        &mut self,
-        result: Option<usize>,
-        ast: &ast::Expr<X>,
-    ) -> Result<()> {
+    fn gen_stat(&mut self, result: Option<usize>, ast: &ast::Expr<ast::Final>) -> Result<()> {
         match ast {
             ast::Expr::Literal(_, lit) => match lit {
                 ast::Literal::Bool(b) => {
@@ -335,23 +297,12 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                         .push(Stat::Expr(None, Expr::GlobalSet(global_id, local)));
                     Ok(())
                 } else {
-                    let local = self
-                        .func_gen
-                        .local_names
-                        .get(name)
-                        /*
-                        TODO: ローカルスコープで以下のコードが動いてしまう
-                        (define a 1)
-                        (hoge)
-                        (define a 2)
-                        */
-                        .ok_or_else(|| anyhow::anyhow!("define is not allowed here"))?
-                        .local;
-                    self.gen_stat(Some(local), expr)?;
+                    let local = self.func_gen.local_names.get(name).unwrap();
+                    self.gen_stat(Some(*local), expr)?;
                     Ok(())
                 }
             }
-            ast::Expr::Lambda(_, lambda) => {
+            ast::Expr::Lambda(x, lambda) => {
                 // TODO: 現在はクロージャで使われているかに関わらず全てのローカル変数を環境に含める
                 let local_names = self.func_gen.local_names.iter().collect::<Vec<_>>();
                 let names = local_names
@@ -360,9 +311,12 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                     .collect::<Vec<_>>();
                 let ids = local_names
                     .iter()
-                    .map(|&(_, &named_local)| named_local.local)
+                    .map(|&(_, &local)| local)
                     .collect::<Vec<_>>();
-                let func_id = self.func_gen.ir_generator.gen_func(names, lambda)?;
+                let func_id = self
+                    .func_gen
+                    .ir_generator
+                    .gen_func(names, x.clone(), lambda)?;
                 let unboxed = self.func_gen.local(Type::Val(ValType::Closure));
                 self.stats
                     .push(Stat::Expr(Some(unboxed), Expr::Closure(ids, func_id)));
@@ -424,9 +378,8 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                 Ok(())
             }
             ast::Expr::Var(_, name) => {
-                if let Some(named_local) = self.func_gen.local_names.get(name) {
-                    self.stats
-                        .push(Stat::Expr(result, Expr::Move(named_local.local)));
+                if let Some(local) = self.func_gen.local_names.get(name) {
+                    self.stats.push(Stat::Expr(result, Expr::Move(*local)));
                     Ok(())
                 } else {
                     let global_id = self.func_gen.ir_generator.global_id(name.clone());
@@ -508,10 +461,10 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
         }
     }
 
-    fn gen_stats<X: ast::XBound>(
+    fn gen_stats(
         &mut self,
         result: Option<usize>,
-        stats: &Vec<ast::Expr<X>>,
+        stats: &Vec<ast::Expr<ast::Final>>,
     ) -> Result<()> {
         if let Some((last, rest)) = stats.split_last() {
             for stat in rest {
