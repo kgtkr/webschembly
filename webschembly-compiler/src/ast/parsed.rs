@@ -73,10 +73,10 @@ impl Expr<Parsed> {
                         expr: Box::new(Expr::from_sexpr(expr)?),
                     },
                 )),
-                list_pattern![SExpr::Cons(box Cons { car, cdr }), expr] => Expr::from_sexpr(list![
+                list_pattern![list_pattern![name, ..args], ..expr] => Expr::from_sexpr(list![
                     SExpr::Symbol("define".to_string()),
-                    car,
-                    list![SExpr::Symbol("lambda".to_string()), cdr, expr]
+                    name,
+                    list![SExpr::Symbol("lambda".to_string()), args, ..expr]
                 ]),
                 _ => Err(anyhow::anyhow!("Invalid define expression")),
             },
@@ -185,11 +185,7 @@ impl Expr<Parsed> {
                 car: SExpr::Symbol("set!"),
                 cdr,
             }) => match cdr {
-                list_pattern![name, expr] => {
-                    let name = match name {
-                        SExpr::Symbol(s) => Ok(s),
-                        _ => Err(anyhow::anyhow!("Expected a symbol")),
-                    }?;
+                list_pattern![SExpr::Symbol(name), expr] => {
                     let expr = Expr::from_sexpr(expr)?;
                     Ok(Expr::Set(
                         (),

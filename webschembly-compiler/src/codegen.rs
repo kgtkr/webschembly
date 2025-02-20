@@ -348,7 +348,21 @@ impl ModuleGenerator {
                 function.instruction(&Instruction::LocalGet(*val as u32));
             }
             ir::Expr::Closure(envs, func) => {
-                self.gen_malloc(function, 4 + 8 * envs.len() as u32);
+                let sizes = envs
+                    .iter()
+                    .map(|env| Self::type_size(locals[*env]))
+                    .collect::<Vec<_>>();
+                let env_offsets = sizes
+                    .iter()
+                    .scan(0, |sum, size| {
+                        let offset = *sum;
+                        *sum += size;
+                        Some(offset)
+                    })
+                    .collect::<Vec<_>>();
+                let envs_size = sizes.iter().sum::<u32>();
+
+                self.gen_malloc(function, 4 + envs_size);
 
                 function.instruction(&Instruction::GlobalGet(self.malloc_tmp_global));
                 function.instruction(&Instruction::I32Const(
@@ -363,11 +377,26 @@ impl ModuleGenerator {
                 for (i, env) in envs.iter().enumerate() {
                     function.instruction(&Instruction::GlobalGet(self.malloc_tmp_global));
                     function.instruction(&Instruction::LocalGet(*env as u32));
-                    function.instruction(&Instruction::I64Store(MemArg {
-                        align: 2,
-                        offset: 4 + i as u64 * 8,
-                        memory_index: 0,
-                    }));
+                    match sizes[i] {
+                        // TODO: ref typeなどに対応
+                        4 => {
+                            function.instruction(&Instruction::I32Store(MemArg {
+                                align: 2,
+                                offset: 4 + env_offsets[i] as u64,
+                                memory_index: 0,
+                            }));
+                        }
+                        8 => {
+                            function.instruction(&Instruction::I64Store(MemArg {
+                                align: 2,
+                                offset: 4 + env_offsets[i] as u64,
+                                memory_index: 0,
+                            }));
+                        }
+                        _ => {
+                            panic!("unsupported size");
+                        }
+                    }
                 }
 
                 function.instruction(&Instruction::GlobalGet(self.malloc_tmp_global));
@@ -410,13 +439,41 @@ impl ModuleGenerator {
                 function.instruction(&Instruction::Call(self.dump_func));
                 function.instruction(&Instruction::LocalGet(*val as u32));
             }
-            ir::Expr::ClosureEnv(closure, env_index) => {
+            ir::Expr::ClosureEnv(env_types, closure, env_index) => {
+                let env_sizes = env_types
+                    .iter()
+                    .map(|ty| Self::type_size(*ty))
+                    .collect::<Vec<_>>();
+                let env_offsets = env_sizes
+                    .iter()
+                    .scan(0, |sum, size| {
+                        let offset = *sum;
+                        *sum += size;
+                        Some(offset)
+                    })
+                    .collect::<Vec<_>>();
+
                 function.instruction(&Instruction::LocalGet(*closure as u32));
-                function.instruction(&Instruction::I64Load(MemArg {
-                    align: 2,
-                    offset: 4 + 8 * *env_index as u64,
-                    memory_index: 0,
-                }));
+                match env_sizes[*env_index] {
+                    // TODO: ref typeなどに対応
+                    4 => {
+                        function.instruction(&Instruction::I32Load(MemArg {
+                            align: 2,
+                            offset: 4 + env_offsets[*env_index] as u64,
+                            memory_index: 0,
+                        }));
+                    }
+                    8 => {
+                        function.instruction(&Instruction::I64Load(MemArg {
+                            align: 2,
+                            offset: 4 + env_offsets[*env_index] as u64,
+                            memory_index: 0,
+                        }));
+                    }
+                    _ => {
+                        panic!("unsupported size");
+                    }
+                }
             }
             ir::Expr::GlobalGet(global) => {
                 function.instruction(&Instruction::GlobalGet(
@@ -461,6 +518,14 @@ impl ModuleGenerator {
             ir::Type::Boxed => ValType::I64,
             ir::Type::MutCell => ValType::I32,
             ir::Type::Val(_) => ValType::I32,
+        }
+    }
+
+    fn type_size(ty: ir::Type) -> u32 {
+        match ty {
+            ir::Type::Boxed => 8,
+            ir::Type::MutCell => 4,
+            ir::Type::Val(_) => 4,
         }
     }
 }

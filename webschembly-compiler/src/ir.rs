@@ -39,7 +39,11 @@ pub enum Expr {
     Box(ValType, usize),
     Unbox(ValType, usize),
     Dump(usize),
-    ClosureEnv(usize /* closure */, usize /* env index */),
+    ClosureEnv(
+        Vec<Type>, /* env types */
+        usize,     /* closure */
+        usize,     /* env index */
+    ),
     GlobalSet(usize, usize),
     GlobalGet(usize),
 }
@@ -190,12 +194,22 @@ impl<'a> FuncGenerator<'a> {
         }
 
         let mut restore_envs = Vec::new();
-        // クロージャから環境を復元
-        for (i, env) in x.captures.iter().enumerate() {
-            let env_local = self.define_ast_local(env.clone());
+        // 環境を復元するためのローカル変数を定義
+        for var_id in x.captures.iter() {
+            self.define_ast_local(*var_id);
+        }
+        // 環境の型を収集
+        let env_types = x
+            .captures
+            .iter()
+            .map(|id| self.locals[*self.local_ids.get(id).unwrap()])
+            .collect::<Vec<_>>();
+        // 環境を復元する処理を追加
+        for (i, var_id) in x.captures.iter().enumerate() {
+            let env_local = *self.local_ids.get(var_id).unwrap();
             restore_envs.push(Stat::Expr(
                 Some(env_local),
-                Expr::ClosureEnv(self_closure, i),
+                Expr::ClosureEnv(env_types.clone(), self_closure, i),
             ));
         }
 

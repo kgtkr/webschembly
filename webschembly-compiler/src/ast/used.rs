@@ -13,6 +13,7 @@ use crate::x::FamilyX;
 
 TODO:
 定義したラムダ式と同じラムダ式からのみset!される変数はBox化しなくても良い
+flag_mutateのようなflag_captureを用意して、mutate && capture な変数だけをBox化する
 */
 
 #[derive(Debug, Clone)]
@@ -334,9 +335,15 @@ impl Expr<Used> {
                 let var_id = match ctx {
                     Context::Global => VarId::Global(var_id_gen.get_global(&set.name)),
                     Context::Local(LocalContext { env }) => {
-                        let local_var = env.get(&set.name).unwrap();
-                        var_id_gen.flag_mutate(local_var.id);
-                        VarId::Local(local_var.id)
+                        if let Some(local_var) = env.get(&set.name) {
+                            if local_var.is_captured {
+                                state.captures.insert(local_var.id);
+                            }
+                            var_id_gen.flag_mutate(local_var.id);
+                            VarId::Local(local_var.id)
+                        } else {
+                            VarId::Global(var_id_gen.get_global(&set.name))
+                        }
                     }
                 };
                 let new_expr = Self::from_expr(*set.expr, ctx, var_id_gen, state);
