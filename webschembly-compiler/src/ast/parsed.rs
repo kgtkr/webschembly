@@ -6,9 +6,6 @@ use anyhow::Result;
 #[derive(Debug, Clone, Copy)]
 pub struct Parsed;
 
-pub type ParsedAST = AST<Parsed>;
-pub type ParsedExpr = Expr<Parsed>;
-
 impl FamilyX<Parsed> for AstX {
     type R = ();
 }
@@ -37,7 +34,7 @@ impl FamilyX<Parsed> for DumpX {
     type R = ();
 }
 
-impl ParsedAST {
+impl AST<Parsed> {
     pub fn from_sexprs(exprs: Vec<SExpr>) -> Result<Self> {
         let exprs = exprs
             .into_iter()
@@ -47,7 +44,7 @@ impl ParsedAST {
     }
 }
 
-impl ParsedExpr {
+impl Expr<Parsed> {
     fn from_sexpr(sexpr: SExpr) -> Result<Self> {
         match sexpr {
             SExpr::Bool(b) => Ok(Expr::Literal((), Literal::Bool(b))),

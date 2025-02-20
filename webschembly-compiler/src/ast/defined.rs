@@ -11,8 +11,7 @@ use anyhow::Result;
 #[derive(Debug, Clone, Copy)]
 pub struct Defined;
 
-pub type DefinedAST = AST<Defined>;
-pub type DefinedExpr = Expr<Defined>;
+type Prev = Parsed;
 
 #[derive(Debug, Clone)]
 pub struct DefinedLambdaR {
@@ -20,38 +19,38 @@ pub struct DefinedLambdaR {
 }
 
 impl FamilyX<Defined> for AstX {
-    type R = ();
+    type R = <Self as FamilyX<Prev>>::R;
 }
 impl FamilyX<Defined> for LiteralX {
-    type R = ();
+    type R = <Self as FamilyX<Prev>>::R;
 }
 impl FamilyX<Defined> for DefineX {
-    type R = ();
+    type R = <Self as FamilyX<Prev>>::R;
 }
 impl FamilyX<Defined> for LambdaX {
     type R = DefinedLambdaR;
 }
 impl FamilyX<Defined> for IfX {
-    type R = ();
+    type R = <Self as FamilyX<Prev>>::R;
 }
 impl FamilyX<Defined> for CallX {
-    type R = ();
+    type R = <Self as FamilyX<Prev>>::R;
 }
 impl FamilyX<Defined> for VarX {
-    type R = ();
+    type R = <Self as FamilyX<Prev>>::R;
 }
 impl FamilyX<Defined> for BeginX {
-    type R = ();
+    type R = <Self as FamilyX<Prev>>::R;
 }
 impl FamilyX<Defined> for DumpX {
-    type R = ();
+    type R = <Self as FamilyX<Prev>>::R;
 }
 
-impl DefinedAST {
-    pub fn from_ast(ast: ParsedAST) -> Result<Self> {
-        let new_exprs =
-            DefinedExpr::from_block(ast.exprs, DefineContext::Global, &mut HashSet::new())?;
-        Ok(DefinedAST {
+impl AST<Defined> {
+    pub fn from_ast(ast: AST<Prev>) -> Result<Self> {
+        let new_exprs: Vec<Expr<Defined>> =
+            Expr::<Defined>::from_block(ast.exprs, DefineContext::Global, &mut HashSet::new())?;
+        Ok(AST {
             x: ast.x,
             exprs: new_exprs,
         })
@@ -75,9 +74,9 @@ impl DefineContext {
     }
 }
 
-impl DefinedExpr {
+impl Expr<Defined> {
     fn from_expr(
-        expr: ParsedExpr,
+        expr: Expr<Prev>,
         ctx: DefineContext,
         names: &mut HashSet<String>,
     ) -> Result<(DefineContext, Self)> {
@@ -112,12 +111,8 @@ impl DefinedExpr {
                         Define {
                             name: def.name,
                             expr: Box::new(
-                                DefinedExpr::from_expr(
-                                    *def.expr,
-                                    ctx.to_undefinable_if_local(),
-                                    names,
-                                )
-                                .map(|(_, expr)| expr)?,
+                                Self::from_expr(*def.expr, ctx.to_undefinable_if_local(), names)
+                                    .map(|(_, expr)| expr)?,
                             ),
                         },
                     ),
@@ -144,29 +139,28 @@ impl DefinedExpr {
                     (),
                     If {
                         cond: Box::new(
-                            DefinedExpr::from_expr(*if_.cond, ctx.to_undefinable_if_local(), names)
+                            Self::from_expr(*if_.cond, ctx.to_undefinable_if_local(), names)
                                 .map(|(_, expr)| expr)?,
                         ),
                         then: Box::new(
-                            DefinedExpr::from_expr(*if_.then, ctx.to_undefinable_if_local(), names)
+                            Self::from_expr(*if_.then, ctx.to_undefinable_if_local(), names)
                                 .map(|(_, expr)| expr)?,
                         ),
                         els: Box::new(
-                            DefinedExpr::from_expr(*if_.els, ctx.to_undefinable_if_local(), names)
+                            Self::from_expr(*if_.els, ctx.to_undefinable_if_local(), names)
                                 .map(|(_, expr)| expr)?,
                         ),
                     },
                 ),
             )),
             Expr::Call(_, call) => {
-                let new_func =
-                    DefinedExpr::from_expr(*call.func, ctx.to_undefinable_if_local(), names)
-                        .map(|(_, expr)| expr)?;
+                let new_func = Self::from_expr(*call.func, ctx.to_undefinable_if_local(), names)
+                    .map(|(_, expr)| expr)?;
                 let new_args = call
                     .args
                     .into_iter()
                     .map(|arg| {
-                        DefinedExpr::from_expr(arg, ctx.to_undefinable_if_local(), names)
+                        Self::from_expr(arg, ctx.to_undefinable_if_local(), names)
                             .map(|(_, expr)| expr)
                     })
                     .collect::<Result<Vec<_>>>()?;
@@ -189,7 +183,7 @@ impl DefinedExpr {
                 ))
             }
             Expr::Dump(_, dump) => {
-                let new_expr = DefinedExpr::from_expr(*dump, ctx.to_undefinable_if_local(), names)
+                let new_expr = Self::from_expr(*dump, ctx.to_undefinable_if_local(), names)
                     .map(|(_, expr)| expr)?;
                 Ok((
                     ctx.to_undefinable_if_local(),
@@ -200,13 +194,13 @@ impl DefinedExpr {
     }
 
     fn from_block(
-        exprs: Vec<ParsedExpr>,
+        exprs: Vec<Expr<Prev>>,
         mut ctx: DefineContext,
         names: &mut HashSet<String>,
     ) -> Result<Vec<Self>> {
         let mut result = Vec::new();
         for expr in exprs {
-            let (new_ctx, expr) = DefinedExpr::from_expr(expr, ctx, names)?;
+            let (new_ctx, expr) = Self::from_expr(expr, ctx, names)?;
             ctx = new_ctx;
             result.push(expr);
         }

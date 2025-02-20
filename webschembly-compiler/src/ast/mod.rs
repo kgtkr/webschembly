@@ -9,8 +9,8 @@ use crate::sexpr::SExpr;
 use anyhow::Result;
 
 pub type Final = Defined;
-pub fn parse_and_process(sexprs: Vec<SExpr>) -> Result<DefinedAST> {
-    let parsed = ParsedAST::from_sexprs(sexprs)?;
-    let defined = DefinedAST::from_ast(parsed)?;
+pub fn parse_and_process(sexprs: Vec<SExpr>) -> Result<AST<Final>> {
+    let parsed = AST::<Parsed>::from_sexprs(sexprs)?;
+    let defined = AST::<Defined>::from_ast(parsed)?;
     Ok(defined)
 }
