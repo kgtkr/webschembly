@@ -12,19 +12,7 @@ pub type ParsedExpr = Expr<Parsed>;
 impl FamilyX<Parsed> for AstX {
     type R = ();
 }
-impl FamilyX<Parsed> for BoolX {
-    type R = ();
-}
-impl FamilyX<Parsed> for IntX {
-    type R = ();
-}
-impl FamilyX<Parsed> for StringX {
-    type R = ();
-}
-impl FamilyX<Parsed> for NilX {
-    type R = ();
-}
-impl FamilyX<Parsed> for QuoteX {
+impl FamilyX<Parsed> for LiteralX {
     type R = ();
 }
 impl FamilyX<Parsed> for DefineX {
@@ -62,16 +50,16 @@ impl AST<Parsed> {
 impl Expr<Parsed> {
     fn from_sexpr(sexpr: SExpr) -> Result<Self> {
         match sexpr {
-            SExpr::Bool(b) => Ok(Expr::Bool((), b)),
-            SExpr::Int(i) => Ok(Expr::Int((), i)),
-            SExpr::String(s) => Ok(Expr::String((), s)),
+            SExpr::Bool(b) => Ok(Expr::Literal((), Literal::Bool(b))),
+            SExpr::Int(i) => Ok(Expr::Literal((), Literal::Int(i))),
+            SExpr::String(s) => Ok(Expr::Literal((), Literal::String(s))),
             SExpr::Symbol(s) => Ok(Expr::Var((), s)),
-            SExpr::Nil => Ok(Expr::Nil(())),
+            SExpr::Nil => Ok(Expr::Literal((), Literal::Nil)),
             SExpr::Cons(box Cons {
                 car: SExpr::Symbol("quote"),
                 cdr,
             }) => match cdr {
-                list_pattern![sexpr] => Ok(Expr::Quote((), sexpr)),
+                list_pattern![sexpr] => Ok(Expr::Literal((), Literal::Quote(sexpr))),
                 _ => Err(anyhow::anyhow!("Invalid quote expression")),
             },
             SExpr::Cons(box Cons {

@@ -291,39 +291,41 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
         ast: &ast::Expr<X>,
     ) -> Result<()> {
         match ast {
-            ast::Expr::Bool(_, b) => {
-                let unboxed = self.func_gen.local(Type::Val(ValType::Bool));
-                self.stats.push(Stat::Expr(Some(unboxed), Expr::Bool(*b)));
-                self.stats
-                    .push(Stat::Expr(result, Expr::Box(ValType::Bool, unboxed)));
-                Ok(())
-            }
-            ast::Expr::Int(_, i) => {
-                let unboxed = self.func_gen.local(Type::Val(ValType::Int));
-                self.stats.push(Stat::Expr(Some(unboxed), Expr::Int(*i)));
-                self.stats
-                    .push(Stat::Expr(result, Expr::Box(ValType::Int, unboxed)));
-                Ok(())
-            }
-            ast::Expr::String(_, s) => {
-                let unboxed = self.func_gen.local(Type::Val(ValType::String));
-                self.stats
-                    .push(Stat::Expr(Some(unboxed), Expr::String(s.clone())));
-                self.stats
-                    .push(Stat::Expr(result, Expr::Box(ValType::String, unboxed)));
-                Ok(())
-            }
-            ast::Expr::Nil(_) => {
-                let unboxed = self.func_gen.local(Type::Val(ValType::Nil));
-                self.stats.push(Stat::Expr(Some(unboxed), Expr::Nil));
-                self.stats
-                    .push(Stat::Expr(result, Expr::Box(ValType::Nil, unboxed)));
-                Ok(())
-            }
-            ast::Expr::Quote(_, sexpr) => {
-                self.quote(result, sexpr)?;
-                Ok(())
-            }
+            ast::Expr::Literal(_, lit) => match lit {
+                ast::Literal::Bool(b) => {
+                    let unboxed = self.func_gen.local(Type::Val(ValType::Bool));
+                    self.stats.push(Stat::Expr(Some(unboxed), Expr::Bool(*b)));
+                    self.stats
+                        .push(Stat::Expr(result, Expr::Box(ValType::Bool, unboxed)));
+                    Ok(())
+                }
+                ast::Literal::Int(i) => {
+                    let unboxed = self.func_gen.local(Type::Val(ValType::Int));
+                    self.stats.push(Stat::Expr(Some(unboxed), Expr::Int(*i)));
+                    self.stats
+                        .push(Stat::Expr(result, Expr::Box(ValType::Int, unboxed)));
+                    Ok(())
+                }
+                ast::Literal::String(s) => {
+                    let unboxed = self.func_gen.local(Type::Val(ValType::String));
+                    self.stats
+                        .push(Stat::Expr(Some(unboxed), Expr::String(s.clone())));
+                    self.stats
+                        .push(Stat::Expr(result, Expr::Box(ValType::String, unboxed)));
+                    Ok(())
+                }
+                ast::Literal::Nil => {
+                    let unboxed = self.func_gen.local(Type::Val(ValType::Nil));
+                    self.stats.push(Stat::Expr(Some(unboxed), Expr::Nil));
+                    self.stats
+                        .push(Stat::Expr(result, Expr::Box(ValType::Nil, unboxed)));
+                    Ok(())
+                }
+                ast::Literal::Quote(sexpr) => {
+                    self.quote(result, sexpr)?;
+                    Ok(())
+                }
+            },
             ast::Expr::Define(_, ast::Define { name, expr }) => {
                 if self.func_gen.is_global {
                     let local = self.func_gen.local(Type::Boxed);

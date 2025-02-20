@@ -4,15 +4,7 @@ use crate::x::{FamilyX, RunX};
 #[derive(Debug, Clone, Copy)]
 pub struct AstX;
 #[derive(Debug, Clone, Copy)]
-pub struct BoolX;
-#[derive(Debug, Clone, Copy)]
-pub struct IntX;
-#[derive(Debug, Clone, Copy)]
-pub struct StringX;
-#[derive(Debug, Clone, Copy)]
-pub struct NilX;
-#[derive(Debug, Clone, Copy)]
-pub struct QuoteX;
+pub struct LiteralX;
 #[derive(Debug, Clone, Copy)]
 
 pub struct DefineX;
@@ -38,11 +30,7 @@ pub struct DumpX;
 pub trait XBound = Sized
 where
     AstX: FamilyX<Self>,
-    BoolX: FamilyX<Self>,
-    IntX: FamilyX<Self>,
-    StringX: FamilyX<Self>,
-    NilX: FamilyX<Self>,
-    QuoteX: FamilyX<Self>,
+    LiteralX: FamilyX<Self>,
     DefineX: FamilyX<Self>,
     LambdaX: FamilyX<Self>,
     IfX: FamilyX<Self>,
@@ -65,12 +53,8 @@ pub enum Expr<X>
 where
     X: XBound,
 {
-    Bool(RunX<BoolX, X>, bool),
-    Int(RunX<IntX, X>, i32),
-    String(RunX<StringX, X>, String),
-    Nil(RunX<NilX, X>),
+    Literal(RunX<LiteralX, X>, Literal),
     Var(RunX<VarX, X>, String),
-    Quote(RunX<QuoteX, X>, SExpr),
     Define(RunX<DefineX, X>, Define<X>),
     Lambda(RunX<LambdaX, X>, Lambda<X>),
     If(RunX<IfX, X>, If<X>),
@@ -78,6 +62,15 @@ where
     Begin(RunX<BeginX, X>, Begin<X>),
     // TODO: callに統合
     Dump(RunX<DumpX, X>, Box<Expr<X>>),
+}
+
+#[derive(Debug, Clone)]
+pub enum Literal {
+    Bool(bool),
+    Int(i32),
+    String(String),
+    Nil,
+    Quote(SExpr),
 }
 
 #[derive(Debug, Clone)]
