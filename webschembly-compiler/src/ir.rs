@@ -280,22 +280,7 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                     Ok(())
                 }
             },
-            ast::Expr::Define(x, ast::Define { name: _, expr }) => match x.var_id {
-                ast::VarId::Local(id) => {
-                    let local = self.func_gen.local_ids.get(&id).unwrap();
-                    self.gen_stat(Some(*local), expr)?;
-                    Ok(())
-                }
-                ast::VarId::Global(id) => {
-                    let local = self.func_gen.local(Type::Boxed);
-                    self.gen_stat(Some(local), expr)?;
-                    self.stats.push(Stat::Expr(
-                        None,
-                        Expr::GlobalSet(self.func_gen.ir_generator.global_id(id), local),
-                    ));
-                    Ok(())
-                }
-            },
+            ast::Expr::Define(x, _) => *x,
             ast::Expr::Lambda(x, lambda) => {
                 let captures = x
                     .captures
@@ -390,6 +375,22 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                 self.stats.push(Stat::Expr(result, Expr::Dump(boxed_local)));
                 Ok(())
             }
+            ast::Expr::Set(x, ast::Set { expr, .. }) => match x.var_id {
+                ast::VarId::Local(id) => {
+                    let local = self.func_gen.local_ids.get(&id).unwrap();
+                    self.gen_stat(Some(*local), expr)?;
+                    Ok(())
+                }
+                ast::VarId::Global(id) => {
+                    let local = self.func_gen.local(Type::Boxed);
+                    self.gen_stat(Some(local), expr)?;
+                    self.stats.push(Stat::Expr(
+                        None,
+                        Expr::GlobalSet(self.func_gen.ir_generator.global_id(id), local),
+                    ));
+                    Ok(())
+                }
+            },
         }
     }
 

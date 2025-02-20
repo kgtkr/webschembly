@@ -17,6 +17,7 @@ pub enum VarX {}
 pub enum BeginX {}
 
 pub enum DumpX {}
+pub enum SetX {}
 
 pub trait XBound = Sized
 where
@@ -28,7 +29,8 @@ where
     CallX: FamilyX<Self>,
     VarX: FamilyX<Self>,
     BeginX: FamilyX<Self>,
-    DumpX: FamilyX<Self>;
+    DumpX: FamilyX<Self>,
+    SetX: FamilyX<Self>;
 
 #[derive(Debug, Clone)]
 pub struct Ast<X>
@@ -51,6 +53,7 @@ where
     If(RunX<IfX, X>, If<X>),
     Call(RunX<CallX, X>, Call<X>),
     Begin(RunX<BeginX, X>, Begin<X>),
+    Set(RunX<SetX, X>, Set<X>),
     // TODO: callに統合
     Dump(RunX<DumpX, X>, Box<Expr<X>>),
 }
@@ -107,4 +110,13 @@ where
     X: XBound,
 {
     pub exprs: Vec<Expr<X>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Set<X>
+where
+    X: XBound,
+{
+    pub name: String,
+    pub expr: Box<Expr<X>>,
 }

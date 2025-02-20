@@ -23,7 +23,7 @@ impl FamilyX<Defined> for LiteralX {
     type R = <Self as FamilyX<Prev>>::R;
 }
 impl FamilyX<Defined> for DefineX {
-    type R = <Self as FamilyX<Prev>>::R;
+    type R = !;
 }
 impl FamilyX<Defined> for LambdaX {
     type R = DefinedLambdaR;
@@ -41,6 +41,9 @@ impl FamilyX<Defined> for BeginX {
     type R = <Self as FamilyX<Prev>>::R;
 }
 impl FamilyX<Defined> for DumpX {
+    type R = <Self as FamilyX<Prev>>::R;
+}
+impl FamilyX<Defined> for SetX {
     type R = <Self as FamilyX<Prev>>::R;
 }
 
@@ -102,11 +105,12 @@ impl Expr<Defined> {
                     }
                 };
 
+                // defineは巻き上げを行う以外set!と同じ
                 Ok((
                     ctx,
-                    Expr::Define(
+                    Expr::Set(
                         x,
-                        Define {
+                        Set {
                             name: def.name,
                             expr: Box::new(
                                 Self::from_expr(*def.expr, ctx.to_undefinable_if_local(), names)
@@ -186,6 +190,20 @@ impl Expr<Defined> {
                 Ok((
                     ctx.to_undefinable_if_local(),
                     Expr::Dump((), Box::new(new_expr)),
+                ))
+            }
+            Expr::Set(_, set) => {
+                let new_expr = Self::from_expr(*set.expr, ctx.to_undefinable_if_local(), names)
+                    .map(|(_, expr)| expr)?;
+                Ok((
+                    ctx.to_undefinable_if_local(),
+                    Expr::Set(
+                        (),
+                        Set {
+                            name: set.name,
+                            expr: Box::new(new_expr),
+                        },
+                    ),
                 ))
             }
         }

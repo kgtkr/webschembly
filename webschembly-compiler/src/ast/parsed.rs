@@ -33,6 +33,9 @@ impl FamilyX<Parsed> for BeginX {
 impl FamilyX<Parsed> for DumpX {
     type R = ();
 }
+impl FamilyX<Parsed> for SetX {
+    type R = ();
+}
 
 impl Ast<Parsed> {
     pub fn from_sexprs(exprs: Vec<SExpr>) -> Result<Self> {
@@ -176,6 +179,26 @@ impl Expr<Parsed> {
                 cdr,
             }) => match cdr {
                 list_pattern![expr] => Ok(Expr::Dump((), Box::new(Expr::from_sexpr(expr)?))),
+                _ => Err(anyhow::anyhow!("Invalid dump expression")),
+            },
+            SExpr::Cons(box Cons {
+                car: SExpr::Symbol("set!"),
+                cdr,
+            }) => match cdr {
+                list_pattern![name, expr] => {
+                    let name = match name {
+                        SExpr::Symbol(s) => Ok(s),
+                        _ => Err(anyhow::anyhow!("Expected a symbol")),
+                    }?;
+                    let expr = Expr::from_sexpr(expr)?;
+                    Ok(Expr::Set(
+                        (),
+                        Set {
+                            name,
+                            expr: Box::new(expr),
+                        },
+                    ))
+                }
                 _ => Err(anyhow::anyhow!("Invalid dump expression")),
             },
             SExpr::Cons(box Cons {

@@ -10,6 +10,9 @@ use crate::x::FamilyX;
 変数の使用を解析する
 * ラムダ式でキャプチャするべき変数の決定
 * set! されている変数をBox化する
+
+TODO:
+定義したラムダ式と同じラムダ式からのみset!される変数はBox化しなくても良い
 */
 
 #[derive(Debug, Clone)]
@@ -48,7 +51,7 @@ pub struct UsedVarR {
 }
 
 #[derive(Debug, Clone)]
-pub struct UsedDefineR {
+pub struct UsedSetR {
     pub var_id: VarId,
 }
 
@@ -60,7 +63,7 @@ impl FamilyX<Used> for LiteralX {
 }
 
 impl FamilyX<Used> for DefineX {
-    type R = UsedDefineR;
+    type R = <Self as FamilyX<Prev>>::R;
 }
 
 impl FamilyX<Used> for LambdaX {
@@ -85,6 +88,10 @@ impl FamilyX<Used> for BeginX {
 
 impl FamilyX<Used> for DumpX {
     type R = <Self as FamilyX<Prev>>::R;
+}
+
+impl FamilyX<Used> for SetX {
+    type R = UsedSetR;
 }
 
 #[derive(Debug, Clone)]
@@ -206,28 +213,7 @@ impl Expr<Used> {
                 };
                 Expr::Var(UsedVarR { var_id }, var)
             }
-            Expr::Define(_, def) => {
-                let var_id = match ctx {
-                    Context::Global => VarId::Global(var_id_gen.get_global(&def.name)),
-                    /*
-                    ここでの defineはset! と同じ扱いをする
-                    つまりdefineで定義された変数は全てBox化が必要ってことでは？？？
-                    */
-                    Context::Local(LocalContext { env }) => {
-                        let local_var = env.get(&def.name).unwrap();
-                        var_id_gen.flag_mutate(local_var.id);
-                        debug_assert!(!local_var.is_captured);
-                        VarId::Local(local_var.id)
-                    }
-                };
-                Expr::Define(
-                    UsedDefineR { var_id },
-                    Define {
-                        name: def.name,
-                        expr: Box::new(Self::from_expr(*def.expr, ctx, var_id_gen, state)),
-                    },
-                )
-            }
+            Expr::Define(x, _) => x,
             Expr::Lambda(x, lambda) => {
                 let mut new_env = HashMap::new();
                 match ctx {
@@ -343,6 +329,24 @@ impl Expr<Used> {
             Expr::Dump(x, dump) => {
                 let new_expr = Box::new(Self::from_expr(*dump, ctx, var_id_gen, state));
                 Expr::Dump(x, new_expr)
+            }
+            Expr::Set(_, set) => {
+                let var_id = match ctx {
+                    Context::Global => VarId::Global(var_id_gen.get_global(&set.name)),
+                    Context::Local(LocalContext { env }) => {
+                        let local_var = env.get(&set.name).unwrap();
+                        var_id_gen.flag_mutate(local_var.id);
+                        VarId::Local(local_var.id)
+                    }
+                };
+                let new_expr = Self::from_expr(*set.expr, ctx, var_id_gen, state);
+                Expr::Set(
+                    UsedSetR { var_id },
+                    Set {
+                        name: set.name,
+                        expr: Box::new(new_expr),
+                    },
+                )
             }
         }
     }
