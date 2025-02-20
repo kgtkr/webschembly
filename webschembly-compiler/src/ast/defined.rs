@@ -6,6 +6,7 @@ use anyhow::Result;
 // 変数の巻き上げを行うためにラムダ式で定義されている変数の名前リストを作成する
 // また、変数の重複チェックと、defineできない場所でdefineが行われていないかも確認する
 
+#[derive(Debug, Clone)]
 pub enum Defined {}
 
 type Prev = Parsed;

@@ -100,16 +100,14 @@ impl Ir {
 #[derive(Debug)]
 struct IrGenerator {
     funcs: Vec<Func>,
-    global_count: usize,
-    global_names: HashMap<String, usize>,
+    global_ids: HashMap<ast::GlobalVarId, usize>,
 }
 
 impl IrGenerator {
     fn new() -> Self {
         Self {
             funcs: Vec::new(),
-            global_count: 0,
-            global_names: HashMap::new(),
+            global_ids: HashMap::new(),
         }
     }
 
@@ -121,30 +119,28 @@ impl IrGenerator {
         Ok(Ir {
             funcs: self.funcs,
             entry: func_id,
-            global_count: self.global_count,
+            global_count: self.global_ids.len(),
         })
     }
 
     fn gen_func(
         &mut self,
-        envs: Vec<String>,
         x: RunX<ast::LambdaX, ast::Final>,
         lambda: &ast::Lambda<ast::Final>,
     ) -> Result<usize> {
-        let func = FuncGenerator::new(self).lambda_gen(envs, x, lambda)?;
+        let func = FuncGenerator::new(self).lambda_gen(x, lambda)?;
         let func_id = self.funcs.len();
         self.funcs.push(func);
         Ok(func_id)
     }
 
-    fn global_id(&mut self, name: String) -> usize {
-        if let Some(&id) = self.global_names.get(&name) {
-            id
+    fn global_id(&mut self, id: ast::GlobalVarId) -> usize {
+        if let Some(&global_id) = self.global_ids.get(&id) {
+            global_id
         } else {
-            let id = self.global_count;
-            self.global_count += 1;
-            self.global_names.insert(name, id);
-            id
+            let global_id = self.global_ids.len();
+            self.global_ids.insert(id, global_id);
+            global_id
         }
     }
 }
@@ -152,23 +148,20 @@ impl IrGenerator {
 #[derive(Debug)]
 struct FuncGenerator<'a> {
     locals: Vec<Type>,
-    local_names: HashMap<String, usize>,
+    local_ids: HashMap<ast::LocalVarId, usize>,
     ir_generator: &'a mut IrGenerator,
-    is_global: bool,
 }
 
 impl<'a> FuncGenerator<'a> {
     fn new(ir_generator: &'a mut IrGenerator) -> Self {
         Self {
             locals: Vec::new(),
-            local_names: HashMap::new(),
+            local_ids: HashMap::new(),
             ir_generator,
-            is_global: false,
         }
     }
 
     fn entry_gen(mut self, ast: &ast::AST<ast::Final>) -> Result<Func> {
-        self.is_global = true;
         let body = {
             let mut block_gen = BlockGenerator::new(&mut self);
             block_gen.gen_stats(None, &ast.exprs)?;
@@ -184,27 +177,26 @@ impl<'a> FuncGenerator<'a> {
 
     fn lambda_gen(
         mut self,
-        envs: Vec<String>,
         x: RunX<ast::LambdaX, ast::Final>,
         lambda: &ast::Lambda<ast::Final>,
     ) -> Result<Func> {
         let self_closure = self.local(Type::Val(ValType::Closure));
-        for arg in &lambda.args {
-            self.define_named_local(arg.clone());
+        for &arg in &x.args {
+            self.define_ast_local(arg);
         }
 
         let mut restore_envs = Vec::new();
         // クロージャから環境を復元
-        for (i, env) in envs.iter().enumerate() {
-            let env_local = self.define_named_local(env.clone());
+        for (i, env) in x.captures.iter().enumerate() {
+            let env_local = self.define_ast_local(env.clone());
             restore_envs.push(Stat::Expr(
                 Some(env_local),
                 Expr::ClosureEnv(self_closure, i),
             ));
         }
 
-        for define in x.defines {
-            self.define_named_local(define);
+        for id in x.defines {
+            self.define_ast_local(id);
         }
 
         let ret = self.local(Type::Boxed);
@@ -230,9 +222,9 @@ impl<'a> FuncGenerator<'a> {
         local
     }
 
-    fn define_named_local(&mut self, name: String) -> usize {
-        let local = self.local(Type::Boxed);
-        self.local_names.insert(name, local);
+    fn define_ast_local(&mut self, id: ast::LocalVarId) -> usize {
+        let local: usize = self.local(Type::Boxed);
+        self.local_ids.insert(id, local);
         local
     }
 }
@@ -288,38 +280,32 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                     Ok(())
                 }
             },
-            ast::Expr::Define(_, ast::Define { name, expr }) => {
-                if self.func_gen.is_global {
-                    let local = self.func_gen.local(Type::Boxed);
-                    self.gen_stat(Some(local), expr)?;
-                    let global_id = self.func_gen.ir_generator.global_id(name.clone());
-                    self.stats
-                        .push(Stat::Expr(None, Expr::GlobalSet(global_id, local)));
-                    Ok(())
-                } else {
-                    let local = self.func_gen.local_names.get(name).unwrap();
+            ast::Expr::Define(x, ast::Define { name: _, expr }) => match x.var_id {
+                ast::VarId::Local(id) => {
+                    let local = self.func_gen.local_ids.get(&id).unwrap();
                     self.gen_stat(Some(*local), expr)?;
                     Ok(())
                 }
-            }
+                ast::VarId::Global(id) => {
+                    let local = self.func_gen.local(Type::Boxed);
+                    self.gen_stat(Some(local), expr)?;
+                    self.stats.push(Stat::Expr(
+                        None,
+                        Expr::GlobalSet(self.func_gen.ir_generator.global_id(id), local),
+                    ));
+                    Ok(())
+                }
+            },
             ast::Expr::Lambda(x, lambda) => {
-                // TODO: 現在はクロージャで使われているかに関わらず全てのローカル変数を環境に含める
-                let local_names = self.func_gen.local_names.iter().collect::<Vec<_>>();
-                let names = local_names
+                let captures = x
+                    .captures
                     .iter()
-                    .map(|&(name, _)| name.clone())
+                    .map(|id| *self.func_gen.local_ids.get(id).unwrap())
                     .collect::<Vec<_>>();
-                let ids = local_names
-                    .iter()
-                    .map(|&(_, &local)| local)
-                    .collect::<Vec<_>>();
-                let func_id = self
-                    .func_gen
-                    .ir_generator
-                    .gen_func(names, x.clone(), lambda)?;
+                let func_id: usize = self.func_gen.ir_generator.gen_func(x.clone(), lambda)?;
                 let unboxed = self.func_gen.local(Type::Val(ValType::Closure));
                 self.stats
-                    .push(Stat::Expr(Some(unboxed), Expr::Closure(ids, func_id)));
+                    .push(Stat::Expr(Some(unboxed), Expr::Closure(captures, func_id)));
                 self.stats
                     .push(Stat::Expr(result, Expr::Box(ValType::Closure, unboxed)));
                 Ok(())
@@ -377,17 +363,21 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                 ));
                 Ok(())
             }
-            ast::Expr::Var(_, name) => {
-                if let Some(local) = self.func_gen.local_names.get(name) {
-                    self.stats.push(Stat::Expr(result, Expr::Move(*local)));
+            ast::Expr::Var(x, _) => match x.var_id {
+                ast::VarId::Local(id) => {
+                    self.stats.push(Stat::Expr(
+                        result,
+                        Expr::Move(*self.func_gen.local_ids.get(&id).unwrap()),
+                    ));
                     Ok(())
-                } else {
-                    let global_id = self.func_gen.ir_generator.global_id(name.clone());
+                }
+                ast::VarId::Global(id) => {
+                    let global_id = self.func_gen.ir_generator.global_id(id);
                     self.stats
                         .push(Stat::Expr(result, Expr::GlobalGet(global_id)));
                     Ok(())
                 }
-            }
+            },
             ast::Expr::Begin(_, ast::Begin { exprs: stats }) => {
                 let mut block_gen = BlockGenerator::new(self.func_gen);
                 block_gen.gen_stats(result, stats)?;

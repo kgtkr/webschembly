@@ -3,6 +3,7 @@ use crate::sexpr::{Cons, SExpr};
 use crate::x::FamilyX;
 use anyhow::Result;
 
+#[derive(Debug, Clone)]
 pub enum Parsed {}
 
 impl FamilyX<Parsed> for AstX {
