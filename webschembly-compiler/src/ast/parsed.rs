@@ -34,13 +34,13 @@ impl FamilyX<Parsed> for DumpX {
     type R = ();
 }
 
-impl AST<Parsed> {
+impl Ast<Parsed> {
     pub fn from_sexprs(exprs: Vec<SExpr>) -> Result<Self> {
         let exprs = exprs
             .into_iter()
             .map(Expr::from_sexpr)
             .collect::<Result<Vec<_>>>()?;
-        Ok(AST { x: (), exprs })
+        Ok(Ast { x: (), exprs })
     }
 }
 

@@ -44,11 +44,11 @@ impl FamilyX<Defined> for DumpX {
     type R = <Self as FamilyX<Prev>>::R;
 }
 
-impl AST<Defined> {
-    pub fn from_ast(ast: AST<Prev>) -> Result<Self> {
+impl Ast<Defined> {
+    pub fn from_ast(ast: Ast<Prev>) -> Result<Self> {
         let new_exprs: Vec<Expr<Defined>> =
             Expr::<Defined>::from_block(ast.exprs, DefineContext::Global, &mut Vec::new())?;
-        Ok(AST {
+        Ok(Ast {
             x: ast.x,
             exprs: new_exprs,
         })

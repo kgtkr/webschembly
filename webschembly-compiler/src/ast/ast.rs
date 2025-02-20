@@ -31,7 +31,7 @@ where
     DumpX: FamilyX<Self>;
 
 #[derive(Debug, Clone)]
-pub struct AST<X>
+pub struct Ast<X>
 where
     X: XBound,
 {

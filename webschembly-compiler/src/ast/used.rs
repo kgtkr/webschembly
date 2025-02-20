@@ -162,8 +162,8 @@ impl VarIdGen {
     }
 }
 
-impl AST<Used> {
-    pub fn from_ast(ast: AST<Prev>) -> Self {
+impl Ast<Used> {
+    pub fn from_ast(ast: Ast<Prev>) -> Self {
         let mut var_id_gen = VarIdGen::new();
         let new_exprs = ast
             .exprs
@@ -171,7 +171,7 @@ impl AST<Used> {
             .map(|expr| Expr::from_expr(expr, &Context::Global, &mut var_id_gen, &mut State::new()))
             .collect();
 
-        AST {
+        Ast {
             x: UsedAstR {
                 box_vars: var_id_gen.mutates,
                 global_vars: var_id_gen.globals.values().copied().collect(),

@@ -90,7 +90,7 @@ pub struct Ir {
 }
 
 impl Ir {
-    pub fn from_ast(ast: &ast::AST<ast::Final>) -> Result<Ir> {
+    pub fn from_ast(ast: &ast::Ast<ast::Final>) -> Result<Ir> {
         let ir_gen = IrGenerator::new();
 
         Ok(ir_gen.gen(ast)?)
@@ -111,7 +111,7 @@ impl IrGenerator {
         }
     }
 
-    fn gen(mut self, ast: &ast::AST<ast::Final>) -> Result<Ir> {
+    fn gen(mut self, ast: &ast::Ast<ast::Final>) -> Result<Ir> {
         let func = FuncGenerator::new(&mut self).entry_gen(ast)?;
         let func_id = self.funcs.len();
         self.funcs.push(func);
@@ -161,7 +161,7 @@ impl<'a> FuncGenerator<'a> {
         }
     }
 
-    fn entry_gen(mut self, ast: &ast::AST<ast::Final>) -> Result<Func> {
+    fn entry_gen(mut self, ast: &ast::Ast<ast::Final>) -> Result<Func> {
         let body = {
             let mut block_gen = BlockGenerator::new(&mut self);
             block_gen.gen_stats(None, &ast.exprs)?;
