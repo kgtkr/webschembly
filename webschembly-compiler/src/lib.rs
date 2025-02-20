@@ -13,7 +13,7 @@ pub mod x;
 pub fn compile(input: &str) -> anyhow::Result<Vec<u8>> {
     let tokens = lexer::lex(input).map_err(|e| anyhow::anyhow!("{}", e))?;
     let sexprs = sexpr_parser::parse(tokens.as_slice()).map_err(|e| anyhow::anyhow!("{}", e))?;
-    let ast = ast::AST::from_sexprs(sexprs)?;
+    let ast = ast::parse_and_process(sexprs)?;
     let ir = ir::Ir::from_ast(&ast)?;
     let code = codegen::ModuleGenerator::new().gen(&ir);
     Ok(code.finish())

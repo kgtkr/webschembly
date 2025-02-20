@@ -37,7 +37,7 @@ impl FamilyX<Parsed> for DumpX {
     type R = ();
 }
 
-impl AST<Parsed> {
+impl ParsedAST {
     pub fn from_sexprs(exprs: Vec<SExpr>) -> Result<Self> {
         let exprs = exprs
             .into_iter()
@@ -47,7 +47,7 @@ impl AST<Parsed> {
     }
 }
 
-impl Expr<Parsed> {
+impl ParsedExpr {
     fn from_sexpr(sexpr: SExpr) -> Result<Self> {
         match sexpr {
             SExpr::Bool(b) => Ok(Expr::Literal((), Literal::Bool(b))),
