@@ -69,14 +69,24 @@ where
     Int(RunX<IntX, X>, i32),
     String(RunX<StringX, X>, String),
     Nil(RunX<NilX, X>),
-    Quote(RunX<QuoteX, X>, SExpr),
-    Define(RunX<DefineX, X>, String, Box<Expr<X>>),
-    Lambda(RunX<LambdaX, X>, Lambda<X>),
-    If(RunX<IfX, X>, Box<Expr<X>>, Box<Expr<X>>, Box<Expr<X>>),
-    Call(RunX<CallX, X>, Box<Expr<X>>, Vec<Expr<X>>),
     Var(RunX<VarX, X>, String),
-    Begin(RunX<BeginX, X>, Vec<Expr<X>>),
+    Quote(RunX<QuoteX, X>, SExpr),
+    Define(RunX<DefineX, X>, Define<X>),
+    Lambda(RunX<LambdaX, X>, Lambda<X>),
+    If(RunX<IfX, X>, If<X>),
+    Call(RunX<CallX, X>, Call<X>),
+    Begin(RunX<BeginX, X>, Begin<X>),
+    // TODO: callに統合
     Dump(RunX<DumpX, X>, Box<Expr<X>>),
+}
+
+#[derive(Debug, Clone)]
+pub struct Define<X>
+where
+    X: XBound,
+{
+    pub name: String,
+    pub expr: Box<Expr<X>>,
 }
 
 #[derive(Debug, Clone)]
@@ -86,4 +96,31 @@ where
 {
     pub args: Vec<String>,
     pub body: Vec<Expr<X>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct If<X>
+where
+    X: XBound,
+{
+    pub cond: Box<Expr<X>>,
+    pub then: Box<Expr<X>>,
+    pub els: Box<Expr<X>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Call<X>
+where
+    X: XBound,
+{
+    pub func: Box<Expr<X>>,
+    pub args: Vec<Expr<X>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Begin<X>
+where
+    X: XBound,
+{
+    pub exprs: Vec<Expr<X>>,
 }

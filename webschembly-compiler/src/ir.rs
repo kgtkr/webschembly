@@ -233,10 +233,10 @@ impl<'a> FuncGenerator<'a> {
         fn inner<X: ast::XBound>(exprs: &Vec<ast::Expr<X>>, names: &mut Vec<String>) {
             for expr in exprs {
                 match expr {
-                    ast::Expr::Define(_, name, _) => {
+                    ast::Expr::Define(_, ast::Define { name, .. }) => {
                         names.push(name.clone());
                     }
-                    ast::Expr::Begin(_, stats) => {
+                    ast::Expr::Begin(_, ast::Begin { exprs: stats }) => {
                         inner(stats, names);
                         return;
                     }
@@ -324,7 +324,7 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                 self.quote(result, sexpr)?;
                 Ok(())
             }
-            ast::Expr::Define(_, name, expr) => {
+            ast::Expr::Define(_, ast::Define { name, expr }) => {
                 if self.func_gen.is_global {
                     let local = self.func_gen.local(Type::Boxed);
                     self.gen_stat(Some(local), expr)?;
@@ -368,7 +368,7 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                     .push(Stat::Expr(result, Expr::Box(ValType::Closure, unboxed)));
                 Ok(())
             }
-            ast::Expr::If(_, cond, then, els) => {
+            ast::Expr::If(_, ast::If { cond, then, els }) => {
                 let boxed_cond_local = self.func_gen.local(Type::Boxed);
                 self.gen_stat(Some(boxed_cond_local), cond)?;
 
@@ -396,7 +396,7 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
 
                 Ok(())
             }
-            ast::Expr::Call(_, func, args) => {
+            ast::Expr::Call(_, ast::Call { func, args }) => {
                 let boxed_func_local = self.func_gen.local(Type::Boxed);
                 self.gen_stat(Some(boxed_func_local), func)?;
 
@@ -433,7 +433,7 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                     Ok(())
                 }
             }
-            ast::Expr::Begin(_, stats) => {
+            ast::Expr::Begin(_, ast::Begin { exprs: stats }) => {
                 let mut block_gen = BlockGenerator::new(self.func_gen);
                 block_gen.gen_stats(result, stats)?;
                 self.stats.extend(block_gen.stats);

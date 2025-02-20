@@ -78,9 +78,13 @@ impl Expr<Parsed> {
                 car: SExpr::Symbol("define"),
                 cdr,
             }) => match cdr {
-                list_pattern![SExpr::Symbol(name), expr] => {
-                    Ok(Expr::Define((), name, Box::new(Expr::from_sexpr(expr)?)))
-                }
+                list_pattern![SExpr::Symbol(name), expr] => Ok(Expr::Define(
+                    (),
+                    Define {
+                        name,
+                        expr: Box::new(Expr::from_sexpr(expr)?),
+                    },
+                )),
                 list_pattern![SExpr::Cons(box Cons { car, cdr }), expr] => Expr::from_sexpr(list![
                     SExpr::Symbol("define".to_string()),
                     car,
@@ -122,7 +126,14 @@ impl Expr<Parsed> {
                     let cond = Expr::from_sexpr(cond)?;
                     let then = Expr::from_sexpr(then)?;
                     let els = Expr::from_sexpr(els)?;
-                    Ok(Expr::If((), Box::new(cond), Box::new(then), Box::new(els)))
+                    Ok(Expr::If(
+                        (),
+                        If {
+                            cond: Box::new(cond),
+                            then: Box::new(then),
+                            els: Box::new(els),
+                        },
+                    ))
                 }
                 _ => Err(anyhow::anyhow!("Invalid if expression",)),
             },
@@ -173,7 +184,7 @@ impl Expr<Parsed> {
                     .into_iter()
                     .map(Expr::from_sexpr)
                     .collect::<Result<Vec<_>>>()?;
-                Ok(Expr::Begin((), exprs))
+                Ok(Expr::Begin((), Begin { exprs }))
             }
             SExpr::Cons(box Cons {
                 car: SExpr::Symbol("dump"),
@@ -194,7 +205,13 @@ impl Expr<Parsed> {
                     .into_iter()
                     .map(Expr::from_sexpr)
                     .collect::<Result<Vec<_>>>()?;
-                Ok(Expr::Call((), Box::new(func), args))
+                Ok(Expr::Call(
+                    (),
+                    Call {
+                        func: Box::new(func),
+                        args: args,
+                    },
+                ))
             }
         }
     }
