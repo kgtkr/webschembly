@@ -213,8 +213,13 @@ impl<'a> FuncGenerator<'a> {
             ));
         }
 
+        let mut create_mut_cells = Vec::new();
+
         for id in x.defines {
-            self.define_ast_local(id);
+            let local = self.define_ast_local(id);
+            if self.ir_generator.box_vars.contains(&id) {
+                create_mut_cells.push(Stat::Expr(Some(local), Expr::CreateMutCell));
+            }
         }
 
         let ret = self.local(Type::Boxed);
@@ -223,6 +228,7 @@ impl<'a> FuncGenerator<'a> {
             block_gen.gen_stats(Some(ret), &lambda.body)?;
             let mut body = Vec::new();
             body.extend(restore_envs);
+            body.extend(create_mut_cells);
             body.extend(block_gen.stats);
             body
         };
