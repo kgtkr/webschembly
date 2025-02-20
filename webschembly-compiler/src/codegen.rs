@@ -325,6 +325,28 @@ impl ModuleGenerator {
 
                 function.instruction(&Instruction::GlobalGet(self.malloc_tmp_global));
             }
+            ir::Expr::CreateMutCell => {
+                self.gen_malloc(function, 8);
+                function.instruction(&Instruction::GlobalGet(self.malloc_tmp_global));
+            }
+            ir::Expr::DerefMutCell(cell) => {
+                function.instruction(&Instruction::LocalGet(*cell as u32));
+                function.instruction(&Instruction::I64Load(MemArg {
+                    align: 2,
+                    offset: 0,
+                    memory_index: 0,
+                }));
+            }
+            ir::Expr::SetMutCell(cell, val) => {
+                function.instruction(&Instruction::LocalGet(*cell as u32));
+                function.instruction(&Instruction::LocalGet(*val as u32));
+                function.instruction(&Instruction::I64Store(MemArg {
+                    align: 2,
+                    offset: 0,
+                    memory_index: 0,
+                }));
+                function.instruction(&Instruction::LocalGet(*val as u32));
+            }
             ir::Expr::Closure(envs, func) => {
                 self.gen_malloc(function, 4 + 8 * envs.len() as u32);
 
@@ -437,6 +459,7 @@ impl ModuleGenerator {
     fn convert_type(ty: ir::Type) -> ValType {
         match ty {
             ir::Type::Boxed => ValType::I64,
+            ir::Type::MutCell => ValType::I32,
             ir::Type::Val(_) => ValType::I32,
         }
     }

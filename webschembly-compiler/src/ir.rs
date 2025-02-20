@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::{ast, sexpr, x::RunX};
 use anyhow::Result;
@@ -6,6 +6,8 @@ use anyhow::Result;
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum Type {
     Boxed,
+    // 一旦中身はBoxedで固定
+    MutCell,
     Val(ValType),
 }
 
@@ -28,11 +30,10 @@ pub enum Expr {
     StringToSymbol(usize),
     Nil,
     Cons(usize, usize),
+    CreateMutCell,
+    DerefMutCell(usize),
+    SetMutCell(usize /* mutcell */, usize /* value */),
     Closure(Vec<usize>, usize),
-    /*
-    set! が未実装なので一旦実装しない
-    MutCell(usize),
-    MutCellDeref(usize),*/
     CallClosure(usize, Vec<usize>),
     Move(usize),
     Box(ValType, usize),
@@ -101,6 +102,7 @@ impl Ir {
 struct IrGenerator {
     funcs: Vec<Func>,
     global_ids: HashMap<ast::GlobalVarId, usize>,
+    box_vars: HashSet<ast::LocalVarId>,
 }
 
 impl IrGenerator {
@@ -108,10 +110,12 @@ impl IrGenerator {
         Self {
             funcs: Vec::new(),
             global_ids: HashMap::new(),
+            box_vars: HashSet::new(),
         }
     }
 
     fn gen(mut self, ast: &ast::Ast<ast::Final>) -> Result<Ir> {
+        self.box_vars = ast.x.box_vars.clone();
         let func = FuncGenerator::new(&mut self).entry_gen(ast)?;
         let func_id = self.funcs.len();
         self.funcs.push(func);
@@ -223,7 +227,11 @@ impl<'a> FuncGenerator<'a> {
     }
 
     fn define_ast_local(&mut self, id: ast::LocalVarId) -> usize {
-        let local: usize = self.local(Type::Boxed);
+        let local = self.local(if self.ir_generator.box_vars.contains(&id) {
+            Type::MutCell
+        } else {
+            Type::Boxed
+        });
         self.local_ids.insert(id, local);
         local
     }
@@ -350,11 +358,19 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
             }
             ast::Expr::Var(x, _) => match x.var_id {
                 ast::VarId::Local(id) => {
-                    self.stats.push(Stat::Expr(
-                        result,
-                        Expr::Move(*self.func_gen.local_ids.get(&id).unwrap()),
-                    ));
-                    Ok(())
+                    if self.func_gen.ir_generator.box_vars.contains(&id) {
+                        self.stats.push(Stat::Expr(
+                            result,
+                            Expr::DerefMutCell(*self.func_gen.local_ids.get(&id).unwrap()),
+                        ));
+                        Ok(())
+                    } else {
+                        self.stats.push(Stat::Expr(
+                            result,
+                            Expr::Move(*self.func_gen.local_ids.get(&id).unwrap()),
+                        ));
+                        Ok(())
+                    }
                 }
                 ast::VarId::Global(id) => {
                     let global_id = self.func_gen.ir_generator.global_id(id);
@@ -377,9 +393,21 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
             }
             ast::Expr::Set(x, ast::Set { expr, .. }) => match x.var_id {
                 ast::VarId::Local(id) => {
-                    let local = self.func_gen.local_ids.get(&id).unwrap();
-                    self.gen_stat(Some(*local), expr)?;
-                    Ok(())
+                    if self.func_gen.ir_generator.box_vars.contains(&id) {
+                        let boxed_local = self.func_gen.local(Type::Boxed);
+                        self.gen_stat(Some(boxed_local), expr)?;
+                        let local = self.func_gen.local_ids.get(&id).unwrap();
+                        self.stats
+                            .push(Stat::Expr(None, Expr::SetMutCell(*local, boxed_local)));
+                        self.stats.push(Stat::Expr(result, Expr::Move(boxed_local)));
+                        Ok(())
+                    } else {
+                        // TODO: 今のところはset!されている変数がmutcellでないことはないが将来的にありえる
+                        let local = *self.func_gen.local_ids.get(&id).unwrap();
+                        self.gen_stat(Some(local), expr)?;
+                        self.stats.push(Stat::Expr(result, Expr::Move(local)));
+                        Ok(())
+                    }
                 }
                 ast::VarId::Global(id) => {
                     let local = self.func_gen.local(Type::Boxed);
@@ -388,6 +416,7 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                         None,
                         Expr::GlobalSet(self.func_gen.ir_generator.global_id(id), local),
                     ));
+                    self.stats.push(Stat::Expr(result, Expr::Move(local)));
                     Ok(())
                 }
             },
