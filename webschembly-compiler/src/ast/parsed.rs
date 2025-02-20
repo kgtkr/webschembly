@@ -1,77 +1,14 @@
+use super::ast::*;
 use crate::sexpr::{Cons, SExpr};
-use crate::x::{FamilyX, RunX};
+use crate::x::FamilyX;
 use anyhow::Result;
-
-#[derive(Debug, Clone)]
-pub struct AST<X>
-where
-    X: XBound,
-{
-    pub x: RunX<AstX, X>,
-    pub exprs: Vec<Expr<X>>,
-}
-
-impl AST<Parsed> {
-    pub fn from_sexprs(exprs: Vec<SExpr>) -> Result<Self> {
-        let exprs = exprs
-            .into_iter()
-            .map(Expr::from_sexpr)
-            .collect::<Result<Vec<_>>>()?;
-        Ok(AST { x: (), exprs })
-    }
-}
-#[derive(Debug, Clone, Copy)]
-pub struct AstX;
-#[derive(Debug, Clone, Copy)]
-pub struct BoolX;
-#[derive(Debug, Clone, Copy)]
-pub struct IntX;
-#[derive(Debug, Clone, Copy)]
-pub struct StringX;
-#[derive(Debug, Clone, Copy)]
-pub struct NilX;
-#[derive(Debug, Clone, Copy)]
-pub struct QuoteX;
-#[derive(Debug, Clone, Copy)]
-
-pub struct DefineX;
-#[derive(Debug, Clone, Copy)]
-
-pub struct LambdaX;
-#[derive(Debug, Clone, Copy)]
-
-pub struct IfX;
-#[derive(Debug, Clone, Copy)]
-
-pub struct CallX;
-#[derive(Debug, Clone, Copy)]
-
-pub struct VarX;
-#[derive(Debug, Clone, Copy)]
-
-pub struct BeginX;
-#[derive(Debug, Clone, Copy)]
-
-pub struct DumpX;
-
-pub trait XBound = Sized
-where
-    AstX: FamilyX<Self>,
-    BoolX: FamilyX<Self>,
-    IntX: FamilyX<Self>,
-    StringX: FamilyX<Self>,
-    NilX: FamilyX<Self>,
-    QuoteX: FamilyX<Self>,
-    DefineX: FamilyX<Self>,
-    LambdaX: FamilyX<Self>,
-    IfX: FamilyX<Self>,
-    CallX: FamilyX<Self>,
-    VarX: FamilyX<Self>,
-    BeginX: FamilyX<Self>,
-    DumpX: FamilyX<Self>;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Parsed;
+
+pub type ParsedAST = AST<Parsed>;
+pub type ParsedExpr = Expr<Parsed>;
+
 impl FamilyX<Parsed> for AstX {
     type R = ();
 }
@@ -112,23 +49,14 @@ impl FamilyX<Parsed> for DumpX {
     type R = ();
 }
 
-#[derive(Debug, Clone)]
-pub enum Expr<X>
-where
-    X: XBound,
-{
-    Bool(RunX<BoolX, X>, bool),
-    Int(RunX<IntX, X>, i32),
-    String(RunX<StringX, X>, String),
-    Nil(RunX<NilX, X>),
-    Quote(RunX<QuoteX, X>, SExpr),
-    Define(RunX<DefineX, X>, String, Box<Expr<X>>),
-    Lambda(RunX<LambdaX, X>, Lambda<X>),
-    If(RunX<IfX, X>, Box<Expr<X>>, Box<Expr<X>>, Box<Expr<X>>),
-    Call(RunX<CallX, X>, Box<Expr<X>>, Vec<Expr<X>>),
-    Var(RunX<VarX, X>, String),
-    Begin(RunX<BeginX, X>, Vec<Expr<X>>),
-    Dump(RunX<DumpX, X>, Box<Expr<X>>),
+impl AST<Parsed> {
+    pub fn from_sexprs(exprs: Vec<SExpr>) -> Result<Self> {
+        let exprs = exprs
+            .into_iter()
+            .map(Expr::from_sexpr)
+            .collect::<Result<Vec<_>>>()?;
+        Ok(AST { x: (), exprs })
+    }
 }
 
 impl Expr<Parsed> {
@@ -270,13 +198,4 @@ impl Expr<Parsed> {
             }
         }
     }
-}
-
-#[derive(Debug, Clone)]
-pub struct Lambda<X>
-where
-    X: XBound,
-{
-    pub args: Vec<String>,
-    pub body: Vec<Expr<X>>,
 }
