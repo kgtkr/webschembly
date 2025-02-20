@@ -3,8 +3,7 @@ use crate::sexpr::{Cons, SExpr};
 use crate::x::FamilyX;
 use anyhow::Result;
 
-#[derive(Debug, Clone, Copy)]
-pub struct Parsed;
+pub enum Parsed {}
 
 impl FamilyX<Parsed> for AstX {
     type R = ();

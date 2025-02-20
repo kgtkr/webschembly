@@ -1,31 +1,22 @@
 use crate::sexpr::SExpr;
 use crate::x::{FamilyX, RunX};
 
-#[derive(Debug, Clone, Copy)]
-pub struct AstX;
-#[derive(Debug, Clone, Copy)]
-pub struct LiteralX;
-#[derive(Debug, Clone, Copy)]
+pub enum AstX {}
+pub enum LiteralX {}
 
-pub struct DefineX;
-#[derive(Debug, Clone, Copy)]
+pub enum DefineX {}
 
-pub struct LambdaX;
-#[derive(Debug, Clone, Copy)]
+pub enum LambdaX {}
 
-pub struct IfX;
-#[derive(Debug, Clone, Copy)]
+pub enum IfX {}
 
-pub struct CallX;
-#[derive(Debug, Clone, Copy)]
+pub enum CallX {}
 
-pub struct VarX;
-#[derive(Debug, Clone, Copy)]
+pub enum VarX {}
 
-pub struct BeginX;
-#[derive(Debug, Clone, Copy)]
+pub enum BeginX {}
 
-pub struct DumpX;
+pub enum DumpX {}
 
 pub trait XBound = Sized
 where
