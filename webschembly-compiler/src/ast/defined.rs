@@ -40,9 +40,6 @@ impl FamilyX<Defined> for VarX {
 impl FamilyX<Defined> for BeginX {
     type R = <Self as FamilyX<Prev>>::R;
 }
-impl FamilyX<Defined> for DumpX {
-    type R = <Self as FamilyX<Prev>>::R;
-}
 impl FamilyX<Defined> for SetX {
     type R = <Self as FamilyX<Prev>>::R;
 }
@@ -182,14 +179,6 @@ impl Expr<Defined> {
                 Ok((
                     ctx.to_undefinable_if_local(),
                     Expr::Begin((), Begin { exprs: new_exprs }),
-                ))
-            }
-            Expr::Dump(_, dump) => {
-                let new_expr = Self::from_expr(*dump, ctx.to_undefinable_if_local(), names)
-                    .map(|(_, expr)| expr)?;
-                Ok((
-                    ctx.to_undefinable_if_local(),
-                    Expr::Dump((), Box::new(new_expr)),
                 ))
             }
             Expr::Set(_, set) => {

@@ -1,10 +1,10 @@
 (begin
     (if #t
-        (dump "True1")
-        (dump "False1")
+        (display "True1")
+        (display "False1")
     )
     (if #f
-        (dump "True2")
-        (dump "False2")
+        (display "True2")
+        (display "False2")
     )
 )

@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use crate::ast;
+
 use super::ir;
 use std::borrow::Cow;
 use wasm_encoder::{
@@ -434,11 +436,6 @@ impl ModuleGenerator {
                 function.instruction(&Instruction::I64Const(Self::valtype_to_bit_pattern(*typ)));
                 function.instruction(&Instruction::I64Or);
             }
-            ir::Expr::Dump(val) => {
-                function.instruction(&Instruction::LocalGet(*val as u32));
-                function.instruction(&Instruction::Call(self.dump_func));
-                function.instruction(&Instruction::LocalGet(*val as u32));
-            }
             ir::Expr::ClosureEnv(env_types, closure, env_index) => {
                 let env_sizes = env_types
                     .iter()
@@ -487,6 +484,19 @@ impl ModuleGenerator {
                 ));
                 function.instruction(&Instruction::LocalGet(*val as u32));
             }
+            ir::Expr::Error(_) => {
+                function.instruction(&Instruction::Unreachable);
+                function.instruction(&Instruction::I32Const(0)); // TODO: これなくても型エラーにならない気がする
+            }
+            ir::Expr::Builtin(builtin, args) => {
+                for arg in args {
+                    function.instruction(&Instruction::LocalGet(*arg as u32));
+                }
+                self.gen_builtin(*builtin, function);
+            }
+            ir::Expr::BuiltinClosure(builtin) => {
+                unimplemented!();
+            }
         }
     }
 
@@ -526,6 +536,18 @@ impl ModuleGenerator {
             ir::Type::Boxed => 8,
             ir::Type::MutCell => 4,
             ir::Type::Val(_) => 4,
+        }
+    }
+
+    fn gen_builtin(&self, builtin: ast::Builtin, function: &mut Function) {
+        match builtin {
+            ast::Builtin::Display => {
+                function.instruction(&Instruction::Call(self.dump_func));
+                function.instruction(&Instruction::I32Const(0));
+            }
+            ast::Builtin::Add => {
+                function.instruction(&Instruction::I32Add);
+            }
         }
     }
 }

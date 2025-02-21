@@ -18,6 +18,7 @@ pub struct GlobalVarId(pub usize);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum VarId {
     Global(GlobalVarId),
+    Builtin(Builtin),
     Local(LocalVarId),
 }
 
@@ -72,10 +73,6 @@ impl FamilyX<Used> for VarX {
 }
 
 impl FamilyX<Used> for BeginX {
-    type R = <Self as FamilyX<Prev>>::R;
-}
-
-impl FamilyX<Used> for DumpX {
     type R = <Self as FamilyX<Prev>>::R;
 }
 
@@ -145,13 +142,15 @@ impl VarIdGen {
         LocalVarId(id)
     }
 
-    fn get_global(&mut self, name: &str) -> GlobalVarId {
-        if let Some(id) = self.globals.get(name) {
-            *id
+    fn get_global_or_builtins(&mut self, name: &str) -> VarId {
+        if let Some(builtin) = Builtin::from_name(name) {
+            VarId::Builtin(builtin)
+        } else if let Some(id) = self.globals.get(name) {
+            VarId::Global(*id)
         } else {
             let id = self.gen_global();
             self.globals.insert(name.to_string(), id);
-            id
+            VarId::Global(id)
         }
     }
 
@@ -198,7 +197,7 @@ impl Expr<Used> {
             Expr::Literal(x, lit) => Expr::Literal(x, lit),
             Expr::Var(_, var) => {
                 let var_id = match ctx {
-                    Context::Global => VarId::Global(var_id_gen.get_global(&var)),
+                    Context::Global => var_id_gen.get_global_or_builtins(&var),
                     Context::Local(LocalContext { env }) => {
                         if let Some(local_var) = env.get(&var) {
                             if local_var.is_captured {
@@ -206,7 +205,7 @@ impl Expr<Used> {
                             }
                             VarId::Local(local_var.id)
                         } else {
-                            VarId::Global(var_id_gen.get_global(&var))
+                            var_id_gen.get_global_or_builtins(&var)
                         }
                     }
                 };
@@ -329,13 +328,9 @@ impl Expr<Used> {
                     .collect();
                 Expr::Begin(x, Begin { exprs: new_exprs })
             }
-            Expr::Dump(x, dump) => {
-                let new_expr = Box::new(Self::from_expr(*dump, ctx, var_id_gen, state));
-                Expr::Dump(x, new_expr)
-            }
             Expr::Set(_, set) => {
                 let var_id = match ctx {
-                    Context::Global => VarId::Global(var_id_gen.get_global(&set.name)),
+                    Context::Global => var_id_gen.get_global_or_builtins(&set.name),
                     Context::Local(LocalContext { env }) => {
                         if let Some(local_var) = env.get(&set.name) {
                             if local_var.is_captured {
@@ -344,7 +339,7 @@ impl Expr<Used> {
                             var_id_gen.flag_mutate(local_var.id);
                             VarId::Local(local_var.id)
                         } else {
-                            VarId::Global(var_id_gen.get_global(&set.name))
+                            var_id_gen.get_global_or_builtins(&set.name)
                         }
                     }
                 };

@@ -1,5 +1,7 @@
 use crate::sexpr::SExpr;
 use crate::x::{FamilyX, RunX};
+use strum::IntoEnumIterator;
+use strum_macros::EnumIter;
 
 pub enum AstX {}
 pub enum LiteralX {}
@@ -16,7 +18,6 @@ pub enum VarX {}
 
 pub enum BeginX {}
 
-pub enum DumpX {}
 pub enum SetX {}
 
 pub trait XBound = Sized
@@ -29,7 +30,6 @@ where
     CallX: FamilyX<Self>,
     VarX: FamilyX<Self>,
     BeginX: FamilyX<Self>,
-    DumpX: FamilyX<Self>,
     SetX: FamilyX<Self>;
 
 #[derive(Debug, Clone)]
@@ -54,8 +54,6 @@ where
     Call(RunX<CallX, X>, Call<X>),
     Begin(RunX<BeginX, X>, Begin<X>),
     Set(RunX<SetX, X>, Set<X>),
-    // TODO: callに統合
-    Dump(RunX<DumpX, X>, Box<Expr<X>>),
 }
 
 #[derive(Debug, Clone)]
@@ -119,4 +117,23 @@ where
 {
     pub name: String,
     pub expr: Box<Expr<X>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumIter)]
+pub enum Builtin {
+    Display,
+    Add,
+}
+
+impl Builtin {
+    pub fn name(self) -> &'static str {
+        match self {
+            Builtin::Display => "display",
+            Builtin::Add => "+",
+        }
+    }
+
+    pub fn from_name(name: &str) -> Option<Self> {
+        Builtin::iter().find(|&builtin| builtin.name() == name)
+    }
 }

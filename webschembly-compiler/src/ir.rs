@@ -3,10 +3,12 @@ use std::collections::{HashMap, HashSet};
 use crate::{ast, sexpr, x::RunX};
 use anyhow::Result;
 
+// TODO: IR生成に失敗するべきではないのでResultを使う必要はない
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum Type {
     Boxed,
     // 一旦中身はBoxedで固定
+    // TODO: FuncTypeの型がMutCellになることはないので型を綺麗に整理したい
     MutCell,
     Val(ValType),
 }
@@ -38,7 +40,6 @@ pub enum Expr {
     Move(usize),
     Box(ValType, usize),
     Unbox(ValType, usize),
-    Dump(usize),
     ClosureEnv(
         Vec<Type>, /* env types */
         usize,     /* closure */
@@ -46,6 +47,10 @@ pub enum Expr {
     ),
     GlobalSet(usize, usize),
     GlobalGet(usize),
+    // Builtin = BuiltinClosure + CallClosureだが後から最適化するのは大変なので一旦分けておく
+    Builtin(ast::Builtin, Vec<usize>),
+    BuiltinClosure(ast::Builtin),
+    Error(String),
 }
 
 #[derive(Debug, Clone)]
@@ -352,29 +357,98 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                 Ok(())
             }
             ast::Expr::Call(_, ast::Call { func, args }) => {
-                let boxed_func_local = self.func_gen.local(Type::Boxed);
-                self.gen_stat(Some(boxed_func_local), func)?;
+                match func.as_ref() {
+                    ast::Expr::Var(
+                        ast::UsedVarR {
+                            var_id: ast::VarId::Builtin(builtin),
+                        },
+                        _,
+                    ) => {
+                        let builtin_typ = builtin_func_type(*builtin);
+                        debug_assert!(builtin_typ.rets.len() == 1);
+                        let ret_type = builtin_typ.rets[0];
+                        if builtin_typ.args.len() != args.len() {
+                            self.stats.push(Stat::Expr(
+                                result,
+                                Expr::Error("builtin args count mismatch".to_string()),
+                            ));
+                        } else {
+                            let mut arg_locals = Vec::new();
+                            for (typ, arg) in builtin_typ.args.iter().zip(args) {
+                                let boxed_arg_local = self.func_gen.local(Type::Boxed);
+                                self.gen_stat(Some(boxed_arg_local), arg)?;
+                                let arg_local = match typ {
+                                    Type::Boxed => boxed_arg_local,
+                                    Type::MutCell => {
+                                        unreachable!()
+                                    }
+                                    Type::Val(val_type) => {
+                                        let unboxed_arg_local =
+                                            self.func_gen.local(Type::Val(*val_type));
+                                        // TODO: 動的型チェック
+                                        self.stats.push(Stat::Expr(
+                                            Some(unboxed_arg_local),
+                                            Expr::Unbox(*val_type, boxed_arg_local),
+                                        ));
+                                        unboxed_arg_local
+                                    }
+                                };
+                                arg_locals.push(arg_local);
+                            }
 
-                // TODO: funcがクロージャかのチェック
-                let func_local = self.func_gen.local(Type::Val(ValType::Closure));
-                self.stats.push(Stat::Expr(
-                    Some(func_local),
-                    Expr::Unbox(ValType::Closure, boxed_func_local),
-                ));
+                            let ret_local = match ret_type {
+                                Type::Boxed => self.func_gen.local(Type::Boxed),
+                                Type::MutCell => {
+                                    unreachable!()
+                                }
+                                Type::Val(val_type) => self.func_gen.local(Type::Val(val_type)),
+                            };
+                            self.stats.push(Stat::Expr(
+                                Some(ret_local),
+                                Expr::Builtin(*builtin, arg_locals),
+                            ));
+                            match ret_type {
+                                Type::Boxed => {
+                                    self.stats.push(Stat::Expr(result, Expr::Move(ret_local)));
+                                }
+                                Type::MutCell => {
+                                    unreachable!()
+                                }
+                                Type::Val(val_type) => {
+                                    self.stats
+                                        .push(Stat::Expr(result, Expr::Box(val_type, ret_local)));
+                                }
+                            }
+                        }
 
-                // TODO: 引数の数が合っているかのチェック
-                let mut arg_locals = Vec::new();
-                arg_locals.push(func_local); // 第一引数にクロージャを渡す
-                for arg in args {
-                    let arg_local = self.func_gen.local(Type::Boxed);
-                    self.gen_stat(Some(arg_local), arg)?;
-                    arg_locals.push(arg_local);
+                        Ok(())
+                    }
+                    _ => {
+                        let boxed_func_local = self.func_gen.local(Type::Boxed);
+                        self.gen_stat(Some(boxed_func_local), func)?;
+
+                        // TODO: funcがクロージャかのチェック
+                        let func_local = self.func_gen.local(Type::Val(ValType::Closure));
+                        self.stats.push(Stat::Expr(
+                            Some(func_local),
+                            Expr::Unbox(ValType::Closure, boxed_func_local),
+                        ));
+
+                        // TODO: 引数の数が合っているかのチェック
+                        let mut arg_locals = Vec::new();
+                        arg_locals.push(func_local); // 第一引数にクロージャを渡す
+                        for arg in args {
+                            let arg_local = self.func_gen.local(Type::Boxed);
+                            self.gen_stat(Some(arg_local), arg)?;
+                            arg_locals.push(arg_local);
+                        }
+                        self.stats.push(Stat::Expr(
+                            result,
+                            Expr::CallClosure(func_local, arg_locals),
+                        ));
+                        Ok(())
+                    }
                 }
-                self.stats.push(Stat::Expr(
-                    result,
-                    Expr::CallClosure(func_local, arg_locals),
-                ));
-                Ok(())
             }
             ast::Expr::Var(x, _) => match x.var_id {
                 ast::VarId::Local(id) => {
@@ -398,17 +472,23 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                         .push(Stat::Expr(result, Expr::GlobalGet(global_id)));
                     Ok(())
                 }
+                ast::VarId::Builtin(builtin) => {
+                    let closure_local = self.func_gen.local(Type::Val(ValType::Closure));
+                    self.stats.push(Stat::Expr(
+                        Some(closure_local),
+                        Expr::BuiltinClosure(builtin),
+                    ));
+                    self.stats.push(Stat::Expr(
+                        result,
+                        Expr::Box(ValType::Closure, closure_local),
+                    ));
+                    Ok(())
+                }
             },
             ast::Expr::Begin(_, ast::Begin { exprs: stats }) => {
                 let mut block_gen = BlockGenerator::new(self.func_gen);
                 block_gen.gen_stats(result, stats)?;
                 self.stats.extend(block_gen.stats);
-                Ok(())
-            }
-            ast::Expr::Dump(_, expr) => {
-                let boxed_local = self.func_gen.local(Type::Boxed);
-                self.gen_stat(Some(boxed_local), expr)?;
-                self.stats.push(Stat::Expr(result, Expr::Dump(boxed_local)));
                 Ok(())
             }
             ast::Expr::Set(x, ast::Set { expr, .. }) => match x.var_id {
@@ -437,6 +517,12 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                         Expr::GlobalSet(self.func_gen.ir_generator.global_id(id), local),
                     ));
                     self.stats.push(Stat::Expr(result, Expr::Move(local)));
+                    Ok(())
+                }
+                ast::VarId::Builtin(_) => {
+                    // builtinへのset!は未規定なのでコンパイルエラーではなくその実行パスを通ったときのみエラーにしたほうがいいのでError命令を生成
+                    self.stats
+                        .push(Stat::Expr(result, Expr::Error("set! builtin".to_string())));
                     Ok(())
                 }
             },
@@ -516,5 +602,18 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
             self.stats.push(Stat::Expr(result, Expr::Int(0)));
         }
         Ok(())
+    }
+}
+
+fn builtin_func_type(builtin: ast::Builtin) -> FuncType {
+    match builtin {
+        ast::Builtin::Display => FuncType {
+            args: vec![Type::Boxed],
+            rets: vec![Type::Val(ValType::Nil)],
+        },
+        ast::Builtin::Add => FuncType {
+            args: vec![Type::Val(ValType::Int), Type::Val(ValType::Int)],
+            rets: vec![Type::Val(ValType::Int)],
+        },
     }
 }

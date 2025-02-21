@@ -30,9 +30,6 @@ impl FamilyX<Parsed> for VarX {
 impl FamilyX<Parsed> for BeginX {
     type R = ();
 }
-impl FamilyX<Parsed> for DumpX {
-    type R = ();
-}
 impl FamilyX<Parsed> for SetX {
     type R = ();
 }
@@ -175,13 +172,6 @@ impl Expr<Parsed> {
                 Ok(Expr::Begin((), Begin { exprs }))
             }
             SExpr::Cons(box Cons {
-                car: SExpr::Symbol("dump"),
-                cdr,
-            }) => match cdr {
-                list_pattern![expr] => Ok(Expr::Dump((), Box::new(Expr::from_sexpr(expr)?))),
-                _ => Err(anyhow::anyhow!("Invalid dump expression")),
-            },
-            SExpr::Cons(box Cons {
                 car: SExpr::Symbol("set!"),
                 cdr,
             }) => match cdr {
@@ -195,7 +185,7 @@ impl Expr<Parsed> {
                         },
                     ))
                 }
-                _ => Err(anyhow::anyhow!("Invalid dump expression")),
+                _ => Err(anyhow::anyhow!("Invalid set! expression")),
             },
             SExpr::Cons(box Cons {
                 car: func,
