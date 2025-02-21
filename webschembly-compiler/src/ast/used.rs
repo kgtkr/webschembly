@@ -5,17 +5,6 @@ use super::ast::*;
 use super::defined::*;
 use crate::x::FamilyX;
 
-/*
-名前付き変数にモジュール内で一意なIDを割り振る
-変数の使用を解析する
-* ラムダ式でキャプチャするべき変数の決定
-* set! されている変数をBox化する
-
-TODO:
-定義したラムダ式と同じラムダ式からのみset!される変数はBox化しなくても良い
-flag_mutateのようなflag_captureを用意して、mutate && capture な変数だけをBox化する
-*/
-
 #[derive(Debug, Clone)]
 pub enum Used {}
 type Prev = Defined;
@@ -34,7 +23,6 @@ pub enum VarId {
 
 #[derive(Debug, Clone)]
 pub struct UsedAstR {
-    // TODO: 現在未使用
     pub box_vars: HashSet<LocalVarId>,
     pub global_vars: HashSet<GlobalVarId>,
 }
@@ -130,7 +118,8 @@ struct VarIdGen {
     global: usize,
     local: usize,
     globals: HashMap<String, GlobalVarId>,
-    mutates: HashSet<LocalVarId>,
+    mutated_vars: HashSet<LocalVarId>,
+    captured_vars: HashSet<LocalVarId>,
 }
 
 impl VarIdGen {
@@ -139,7 +128,8 @@ impl VarIdGen {
             global: 0,
             local: 0,
             globals: HashMap::new(),
-            mutates: HashSet::new(),
+            mutated_vars: HashSet::new(),
+            captured_vars: HashSet::new(),
         }
     }
 
@@ -166,7 +156,11 @@ impl VarIdGen {
     }
 
     fn flag_mutate(&mut self, id: LocalVarId) {
-        self.mutates.insert(id);
+        self.mutated_vars.insert(id);
+    }
+
+    fn flag_capture(&mut self, id: LocalVarId) {
+        self.captured_vars.insert(id);
     }
 }
 
@@ -181,7 +175,11 @@ impl Ast<Used> {
 
         Ast {
             x: UsedAstR {
-                box_vars: var_id_gen.mutates,
+                box_vars: var_id_gen
+                    .mutated_vars
+                    .intersection(&var_id_gen.captured_vars)
+                    .copied()
+                    .collect(),
                 global_vars: var_id_gen.globals.values().copied().collect(),
             },
             exprs: new_exprs,
@@ -278,6 +276,10 @@ impl Expr<Used> {
                 }
 
                 state.captures.extend(new_state.captures.iter().copied());
+
+                for free_var in new_state.captures.iter() {
+                    var_id_gen.flag_capture(*free_var);
+                }
 
                 Expr::Lambda(
                     UsedLambdaR {
