@@ -5,6 +5,7 @@ version = "0.1.0"
 
 [dependencies]
 anyhow = "1.0.95"
+log = "0.4.26"
 nom = "7.1.3"
 strum = "0.27"
 strum_macros = "0.27"

@@ -10,6 +10,13 @@ const runtimeImportObjects = {
       importObject
     );
   },
+  webschembly_log: (bufPtr, bufSize) => {
+    console.log(
+      new TextDecoder().decode(
+        new Uint8Array(runtimeInstance.exports.memory.buffer, bufPtr, bufSize)
+      )
+    );
+  },
 };
 
 const runtimeInstance = new WebAssembly.Instance(
@@ -18,6 +25,7 @@ const runtimeInstance = new WebAssembly.Instance(
     env: runtimeImportObjects,
   }
 );
+runtimeInstance.exports.init();
 
 function valueToString(x) {
   const dataView = new DataView(runtimeInstance.exports.memory.buffer);

@@ -49,6 +49,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "884e2677b40cc8c339eaefcb701c32ef1fd2493d71118dc0ca4b6a736c93bd67"
 
 [[package]]
+name = "log"
+version = "0.4.26"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "30bde2b3dc3671ae49d8e2e9f044c7c005836e7a023ee57cffa25ab82764bb9e"
+
+[[package]]
 name = "memchr"
 version = "2.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -162,6 +168,7 @@ name = "webschembly-compiler"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "log",
  "nom",
  "strum",
  "strum_macros",
@@ -180,5 +187,6 @@ dependencies = [
 name = "webschembly-runtime"
 version = "0.1.0"
 dependencies = [
+ "log",
  "webschembly-compiler",
 ]

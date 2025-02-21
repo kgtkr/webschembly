@@ -2,6 +2,7 @@
 use core::cell::RefCell;
 use std::collections::HashMap;
 use webschembly_compiler;
+mod logger;
 
 thread_local!(
     static HEAP_MANAGER: RefCell<HeapManager> = RefCell::new(HeapManager::new());
@@ -110,5 +111,11 @@ pub extern "C" fn run(buf_ptr: i32, buf_len: i32) {
 }
 
 extern "C" {
-    fn instantiate(bufPtr: i32, bufSize: i32);
+    fn instantiate(buf_ptr: i32, buf_size: i32);
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn init() {
+    log::set_logger(&logger::WasmLogger).unwrap();
+    log::set_max_level(log::LevelFilter::Debug);
 }
