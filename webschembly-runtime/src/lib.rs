@@ -94,8 +94,28 @@ impl HeapManager {
     }
 }
 
+thread_local!(
+    static COMPILER: RefCell<webschembly_compiler::compiler::Compiler> =
+        RefCell::new(webschembly_compiler::compiler::Compiler::new());
+);
+
+fn load_src_inner(src: String, is_stdlib: bool) {
+    COMPILER.with(|compiler| {
+        let mut compiler = compiler.borrow_mut();
+        let wasm = compiler.compile(&src, is_stdlib).unwrap();
+        unsafe { instantiate(wasm.as_ptr() as i32, wasm.len() as i32) };
+        drop(wasm);
+    });
+}
+
 #[unsafe(no_mangle)]
-pub extern "C" fn run(buf_ptr: i32, buf_len: i32) {
+pub extern "C" fn load_stdlib() {
+    let stdlib = webschembly_compiler::stdlib::generate_stdlib();
+    load_src_inner(stdlib, true);
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn load_src(buf_ptr: i32, buf_len: i32) {
     let buf_ptr = buf_ptr as *const u8;
     let mut bytes = Vec::with_capacity(buf_len as usize);
     for i in 0..buf_len {
@@ -104,14 +124,8 @@ pub extern "C" fn run(buf_ptr: i32, buf_len: i32) {
         }
     }
     // TODO: free buf_ptr
-    let stdlib = webschembly_compiler::stdlib::generate_stdlib();
     let src = String::from_utf8(bytes).unwrap();
-    let mut compiler = webschembly_compiler::compiler::Compiler::new();
-    for (is_stdlib, s) in [(true, stdlib), (false, src)].iter() {
-        let wasm = compiler.compile(&s, *is_stdlib).unwrap();
-        unsafe { instantiate(wasm.as_ptr() as i32, wasm.len() as i32) };
-        drop(wasm);
-    }
+    load_src_inner(src, false);
 }
 
 extern "C" {

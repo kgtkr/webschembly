@@ -9,7 +9,8 @@ const srcBufPtr = runtime.exports.malloc(srcBuf.length);
 new Uint8Array(runtime.exports.memory.buffer).set(srcBuf, srcBufPtr);
 
 try {
-  runtime.exports.run(srcBufPtr, srcBuf.length);
+  runtime.exports.load_stdlib();
+  runtime.exports.load_src(srcBufPtr, srcBuf.length);
 } catch (e) {
   // エラーログに絶対パスなどが入るとsnapshot testに支障が出るため
   // TODO: 言語としてエラーメッセージを整備する
