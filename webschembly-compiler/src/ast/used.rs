@@ -111,19 +111,19 @@ impl State {
 }
 
 #[derive(Debug, Clone)]
-struct VarIdGen {
-    global: usize,
-    local: usize,
+pub struct VarIdGen {
+    global_count: usize,
+    local_count: usize,
     globals: HashMap<String, GlobalVarId>,
     mutated_vars: HashSet<LocalVarId>,
     captured_vars: HashSet<LocalVarId>,
 }
 
 impl VarIdGen {
-    fn new() -> Self {
+    pub fn new() -> Self {
         VarIdGen {
-            global: 0,
-            local: 0,
+            global_count: 0,
+            local_count: 0,
             globals: HashMap::new(),
             mutated_vars: HashSet::new(),
             captured_vars: HashSet::new(),
@@ -131,14 +131,14 @@ impl VarIdGen {
     }
 
     fn gen_global(&mut self) -> GlobalVarId {
-        let id = self.global;
-        self.global += 1;
+        let id = self.global_count;
+        self.global_count += 1;
         GlobalVarId(id)
     }
 
     fn gen_local(&mut self) -> LocalVarId {
-        let id = self.local;
-        self.local += 1;
+        let id = self.local_count;
+        self.local_count += 1;
         LocalVarId(id)
     }
 
@@ -164,12 +164,11 @@ impl VarIdGen {
 }
 
 impl Ast<Used> {
-    pub fn from_ast(ast: Ast<Prev>) -> Self {
-        let mut var_id_gen = VarIdGen::new();
+    pub fn from_ast(ast: Ast<Prev>, var_id_gen: &mut VarIdGen) -> Self {
         let new_exprs = ast
             .exprs
             .into_iter()
-            .map(|expr| Expr::from_expr(expr, &Context::Global, &mut var_id_gen, &mut State::new()))
+            .map(|expr| Expr::from_expr(expr, &Context::Global, var_id_gen, &mut State::new()))
             .collect();
 
         Ast {
