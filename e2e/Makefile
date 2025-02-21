@@ -28,7 +28,7 @@ bin/runtime.wasm:
 %.objdump: %.wasm
 	wasm-objdump -hxd $< > $@
 
-%.result: %.wasm bin/runtime.wasm
+%.result: %.scm bin/runtime.wasm
 	mkdir -p $@
 	rm -f $@/*
 	node run.js $< > $@/stdout 2> $@/stderr; echo $$? > $@/exitcode

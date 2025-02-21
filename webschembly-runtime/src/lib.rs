@@ -1,6 +1,7 @@
 #![feature(ptr_as_ref_unchecked)]
 use core::cell::RefCell;
 use std::collections::HashMap;
+use webschembly_compiler;
 
 thread_local!(
     static HEAP_MANAGER: RefCell<HeapManager> = RefCell::new(HeapManager::new());
@@ -14,11 +15,6 @@ pub extern "C" fn malloc(size: i32) -> i32 {
             heap_manager.malloc(size) as i32
         })
     }
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn dump(value: i64) {
-    println!("{:b}", value);
 }
 
 thread_local!(
@@ -95,4 +91,24 @@ impl HeapManager {
 
         self.heap[offset as usize..].as_ptr()
     }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn run(buf_ptr: i32, buf_len: i32) {
+    let buf_ptr = buf_ptr as *const u8;
+    let mut bytes = Vec::with_capacity(buf_len as usize);
+    for i in 0..buf_len {
+        unsafe {
+            bytes.push(*buf_ptr.offset(i as isize));
+        }
+    }
+    // TODO: free buf_ptr
+    let src = String::from_utf8(bytes).unwrap();
+    let wasm = webschembly_compiler::compile(&src).unwrap();
+    unsafe { instantiate(wasm.as_ptr() as i32, wasm.len() as i32) };
+    drop(wasm);
+}
+
+extern "C" {
+    fn instantiate(bufPtr: i32, bufSize: i32);
 }

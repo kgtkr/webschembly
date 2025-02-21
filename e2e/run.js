@@ -1,7 +1,22 @@
 const fs = require("fs");
+
+const runtimeImportObjects = {
+  instantiate: (bufPtr, bufSize) => {
+    // TODO: free memory
+    return new WebAssembly.Instance(
+      new WebAssembly.Module(
+        new Uint8Array(runtimeInstance.exports.memory.buffer, bufPtr, bufSize)
+      ),
+      importObject
+    );
+  },
+};
+
 const runtimeInstance = new WebAssembly.Instance(
   new WebAssembly.Module(new Uint8Array(fs.readFileSync("bin/runtime.wasm"))),
-  {}
+  {
+    env: runtimeImportObjects,
+  }
 );
 
 function valueToString(x) {
@@ -40,14 +55,16 @@ function valueToString(x) {
   }
 }
 
-const instance = new WebAssembly.Instance(
-  new WebAssembly.Module(new Uint8Array(fs.readFileSync(process.argv[2]))),
-  {
-    runtime: {
-      ...runtimeInstance.exports,
-      dump: (x) => {
-        console.log(valueToString(x));
-      },
+const importObject = {
+  runtime: {
+    ...runtimeInstance.exports,
+    dump: (x) => {
+      console.log(valueToString(x));
     },
-  }
-);
+  },
+};
+
+const srcBuf = new Uint8Array(fs.readFileSync(process.argv[2]));
+const srcBufPtr = runtimeInstance.exports.malloc(srcBuf.length);
+new Uint8Array(runtimeInstance.exports.memory.buffer).set(srcBuf, srcBufPtr);
+runtimeInstance.exports.run(srcBufPtr, srcBuf.length);
