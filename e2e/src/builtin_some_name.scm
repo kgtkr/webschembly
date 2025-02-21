@@ -1,0 +1,6 @@
+(define (f)
+  (define (+ a b) 30)
+  (display (+ 2 4))
+)
+(f)
+(display (+ 1 2))

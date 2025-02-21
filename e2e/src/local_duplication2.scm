@@ -1,0 +1,8 @@
+(define a 1)
+(define (f)
+  (define a 2)
+  (display a)
+)
+(define a 3)
+(f)
+(display a)
