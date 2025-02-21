@@ -4,6 +4,7 @@ use crate::ast;
 
 use super::ir;
 use std::borrow::Cow;
+use strum::IntoEnumIterator;
 use wasm_encoder::{
     BlockType, CodeSection, ConstExpr, ElementSection, Elements, EntityType, Function,
     FunctionSection, GlobalSection, GlobalType, ImportSection, Instruction, MemArg, MemoryType,
@@ -61,6 +62,7 @@ pub struct ModuleGenerator {
     element_funcs: Vec<u32>,
     func_indices: HashMap<usize, FuncIndex>,
     global_to_index: HashMap<usize, u32>,
+    builtin_to_global: HashMap<ast::Builtin, u32>,
 }
 
 impl ModuleGenerator {
@@ -83,6 +85,7 @@ impl ModuleGenerator {
             element_funcs: Vec::new(),
             func_indices: HashMap::new(),
             global_to_index: HashMap::new(),
+            builtin_to_global: HashMap::new(),
         }
     }
 
@@ -169,6 +172,20 @@ impl ModuleGenerator {
             );
             self.global_count += 1;
             self.global_to_index.insert(global, global_index);
+        }
+
+        for builtin in ast::Builtin::iter() {
+            let global_index = self.global_count;
+            self.globals.global(
+                GlobalType {
+                    val_type: ValType::I64,
+                    mutable: true,
+                    shared: false,
+                },
+                &ConstExpr::i64_const(0),
+            );
+            self.global_count += 1;
+            self.builtin_to_global.insert(builtin, global_index);
         }
 
         for (i, func) in ir.funcs.iter().enumerate() {
@@ -494,8 +511,17 @@ impl ModuleGenerator {
                 }
                 self.gen_builtin(*builtin, function);
             }
-            ir::Expr::BuiltinClosure(builtin) => {
-                unimplemented!();
+            ir::Expr::GetBuiltin(builtin) => {
+                function.instruction(&Instruction::GlobalGet(
+                    *self.builtin_to_global.get(builtin).unwrap(),
+                ));
+            }
+            ir::Expr::SetBuiltin(builtin, val) => {
+                function.instruction(&Instruction::LocalGet(*val as u32));
+                function.instruction(&Instruction::GlobalSet(
+                    *self.builtin_to_global.get(builtin).unwrap(),
+                ));
+                function.instruction(&Instruction::LocalGet(*val as u32));
             }
         }
     }

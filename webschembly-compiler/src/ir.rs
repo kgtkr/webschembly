@@ -49,7 +49,8 @@ pub enum Expr {
     GlobalGet(usize),
     // Builtin = BuiltinClosure + CallClosureだが後から最適化するのは大変なので一旦分けておく
     Builtin(ast::Builtin, Vec<usize>),
-    BuiltinClosure(ast::Builtin),
+    GetBuiltin(ast::Builtin),
+    SetBuiltin(ast::Builtin, usize),
     Error(String),
 }
 
@@ -473,15 +474,8 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                     Ok(())
                 }
                 ast::VarId::Builtin(builtin) => {
-                    let closure_local = self.func_gen.local(Type::Val(ValType::Closure));
-                    self.stats.push(Stat::Expr(
-                        Some(closure_local),
-                        Expr::BuiltinClosure(builtin),
-                    ));
-                    self.stats.push(Stat::Expr(
-                        result,
-                        Expr::Box(ValType::Closure, closure_local),
-                    ));
+                    self.stats
+                        .push(Stat::Expr(result, Expr::GetBuiltin(builtin)));
                     Ok(())
                 }
             },
@@ -519,10 +513,13 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                     self.stats.push(Stat::Expr(result, Expr::Move(local)));
                     Ok(())
                 }
-                ast::VarId::Builtin(_) => {
-                    // builtinへのset!は未規定なのでコンパイルエラーではなくその実行パスを通ったときのみエラーにしたほうがいいのでError命令を生成
+                ast::VarId::Builtin(builtin) => {
+                    // TODO: 標準ライブラリ以外が書き換えようとしたら実行時エラーにするべき
+                    let local = self.func_gen.local(Type::Boxed);
+                    self.gen_stat(Some(local), expr)?;
                     self.stats
-                        .push(Stat::Expr(result, Expr::Error("set! builtin".to_string())));
+                        .push(Stat::Expr(None, Expr::SetBuiltin(builtin, local)));
+                    self.stats.push(Stat::Expr(result, Expr::Move(local)));
                     Ok(())
                 }
             },
