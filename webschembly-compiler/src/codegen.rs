@@ -51,6 +51,7 @@ pub struct ModuleGenerator {
     malloc_func: u32,
     dump_func: u32,
     string_to_symbol_func: u32,
+    get_global_func: u32,
     // wasm section
     imports: ImportSection,
     types: TypeSection,
@@ -75,6 +76,7 @@ impl ModuleGenerator {
             malloc_func: 0,
             dump_func: 0,
             string_to_symbol_func: 0,
+            get_global_func: 0,
             malloc_tmp_global: 0,
             imports: ImportSection::new(),
             types: TypeSection::new(),
@@ -147,6 +149,13 @@ impl ModuleGenerator {
                 results: vec![ValType::I32],
             },
         );
+        self.get_global_func = self.add_runtime_function(
+            "get_global",
+            WasmFuncType {
+                params: vec![ValType::I32],
+                results: vec![ValType::I32],
+            },
+        );
 
         self.malloc_tmp_global = self.global_count;
         self.globals.global(
@@ -163,12 +172,12 @@ impl ModuleGenerator {
             let global_index = self.global_count;
             self.globals.global(
                 GlobalType {
-                    val_type: ValType::I64,
+                    val_type: ValType::I32,
                     mutable: true,
                     shared: false,
                 },
                 // TODO: nilか0で初期化
-                &ConstExpr::i64_const(0),
+                &ConstExpr::i32_const(0),
             );
             self.global_count += 1;
             self.global_to_index.insert(global, global_index);
@@ -493,12 +502,22 @@ impl ModuleGenerator {
                 function.instruction(&Instruction::GlobalGet(
                     *self.global_to_index.get(global).unwrap(),
                 ));
+                function.instruction(&Instruction::I64Load(MemArg {
+                    align: 2,
+                    offset: 0,
+                    memory_index: 0,
+                }));
             }
             ir::Expr::GlobalSet(global, val) => {
-                function.instruction(&Instruction::LocalGet(*val as u32));
-                function.instruction(&Instruction::GlobalSet(
+                function.instruction(&Instruction::GlobalGet(
                     *self.global_to_index.get(global).unwrap(),
                 ));
+                function.instruction(&Instruction::LocalGet(*val as u32));
+                function.instruction(&Instruction::I64Store(MemArg {
+                    align: 2,
+                    offset: 0,
+                    memory_index: 0,
+                }));
                 function.instruction(&Instruction::LocalGet(*val as u32));
             }
             ir::Expr::Error(_) => {
@@ -522,6 +541,14 @@ impl ModuleGenerator {
                     *self.builtin_to_global.get(builtin).unwrap(),
                 ));
                 function.instruction(&Instruction::LocalGet(*val as u32));
+            }
+            ir::Expr::InitGlobal(global_id) => {
+                function.instruction(&Instruction::I32Const(*global_id as i32));
+                function.instruction(&Instruction::Call(self.get_global_func));
+                function.instruction(&Instruction::GlobalSet(
+                    *self.global_to_index.get(global_id).unwrap(),
+                ));
+                function.instruction(&Instruction::I32Const(0));
             }
         }
     }

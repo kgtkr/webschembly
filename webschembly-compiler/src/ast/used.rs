@@ -117,6 +117,9 @@ pub struct VarIdGen {
     globals: HashMap<String, GlobalVarId>,
     mutated_vars: HashSet<LocalVarId>,
     captured_vars: HashSet<LocalVarId>,
+    // 以下はモジュールごとにリセットされる状態
+    // このモジュールで使ったグローバル変数
+    use_globals: HashSet<GlobalVarId>,
 }
 
 impl VarIdGen {
@@ -127,6 +130,7 @@ impl VarIdGen {
             globals: HashMap::new(),
             mutated_vars: HashSet::new(),
             captured_vars: HashSet::new(),
+            use_globals: HashSet::new(),
         }
     }
 
@@ -145,11 +149,15 @@ impl VarIdGen {
     fn get_global_or_builtins(&mut self, name: &str) -> VarId {
         if let Some(builtin) = Builtin::from_name(name) {
             VarId::Builtin(builtin)
-        } else if let Some(id) = self.globals.get(name) {
-            VarId::Global(*id)
         } else {
-            let id = self.gen_global();
-            self.globals.insert(name.to_string(), id);
+            let id = if let Some(id) = self.globals.get(name) {
+                *id
+            } else {
+                let id = self.gen_global();
+                self.globals.insert(name.to_string(), id);
+                id
+            };
+            self.use_globals.insert(id);
             VarId::Global(id)
         }
     }
@@ -161,10 +169,15 @@ impl VarIdGen {
     fn flag_capture(&mut self, id: LocalVarId) {
         self.captured_vars.insert(id);
     }
+
+    fn reset_for_module(&mut self) {
+        self.use_globals.clear();
+    }
 }
 
 impl Ast<Used> {
     pub fn from_ast(ast: Ast<Prev>, var_id_gen: &mut VarIdGen) -> Self {
+        var_id_gen.reset_for_module();
         let new_exprs = ast
             .exprs
             .into_iter()
@@ -178,7 +191,7 @@ impl Ast<Used> {
                     .intersection(&var_id_gen.captured_vars)
                     .copied()
                     .collect(),
-                global_vars: var_id_gen.globals.values().copied().collect(),
+                global_vars: var_id_gen.use_globals.clone(),
             },
             exprs: new_exprs,
         }

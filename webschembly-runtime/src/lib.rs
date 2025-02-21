@@ -120,3 +120,35 @@ pub extern "C" fn init() {
     log::set_max_level(log::LevelFilter::Debug);
     log::info!("Runtime initialized");
 }
+
+struct GlobalManager {
+    // global id -> ptr
+    globals: HashMap<i32, i32>,
+}
+
+impl GlobalManager {
+    fn new() -> Self {
+        Self {
+            globals: HashMap::new(),
+        }
+    }
+
+    fn get_global(&mut self, id: i32) -> i32 {
+        if let Some(ptr) = self.globals.get(&id) {
+            *ptr
+        } else {
+            let ptr = malloc(8);
+            self.globals.insert(id, ptr);
+            ptr
+        }
+    }
+}
+
+thread_local!(
+    static GLOBAL_MANAGER: RefCell<GlobalManager> = RefCell::new(GlobalManager::new());
+);
+
+#[unsafe(no_mangle)]
+pub extern "C" fn get_global(global_id: i32) -> i32 {
+    GLOBAL_MANAGER.with(|global_manager| global_manager.borrow_mut().get_global(global_id))
+}

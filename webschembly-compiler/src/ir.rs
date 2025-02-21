@@ -52,6 +52,7 @@ pub enum Expr {
     GetBuiltin(ast::Builtin),
     SetBuiltin(ast::Builtin, usize),
     Error(String),
+    InitGlobal(usize),
 }
 
 #[derive(Debug, Clone)]
@@ -178,6 +179,11 @@ impl<'a> FuncGenerator<'a> {
     fn entry_gen(mut self, ast: &ast::Ast<ast::Final>) -> Result<Func> {
         let body = {
             let mut block_gen = BlockGenerator::new(&mut self);
+            for global in &ast.x.global_vars {
+                block_gen
+                    .stats
+                    .push(Stat::Expr(None, Expr::InitGlobal(global.0)));
+            }
             block_gen.gen_stats(None, &ast.exprs)?;
             block_gen.stats
         };
