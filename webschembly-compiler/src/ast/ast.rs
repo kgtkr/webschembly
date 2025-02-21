@@ -136,4 +136,15 @@ impl Builtin {
     pub fn from_name(name: &str) -> Option<Self> {
         Builtin::iter().find(|&builtin| builtin.name() == name)
     }
+
+    pub fn id(self) -> i32 {
+        match self {
+            Builtin::Display => 0,
+            Builtin::Add => 1,
+        }
+    }
+
+    pub fn from_id(id: i32) -> Option<Self> {
+        Builtin::iter().find(|&builtin| builtin.id() == id)
+    }
 }

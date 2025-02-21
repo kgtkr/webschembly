@@ -104,10 +104,14 @@ pub extern "C" fn run(buf_ptr: i32, buf_len: i32) {
         }
     }
     // TODO: free buf_ptr
+    let stdlib = webschembly_compiler::stdlib::generate_stdlib();
     let src = String::from_utf8(bytes).unwrap();
-    let wasm = webschembly_compiler::compile(&src).unwrap();
-    unsafe { instantiate(wasm.as_ptr() as i32, wasm.len() as i32) };
-    drop(wasm);
+    let mut compiler = webschembly_compiler::compiler::Compiler::new();
+    for s in [stdlib, src].iter() {
+        let wasm = compiler.compile(&s).unwrap();
+        unsafe { instantiate(wasm.as_ptr() as i32, wasm.len() as i32) };
+        drop(wasm);
+    }
 }
 
 extern "C" {
@@ -124,12 +128,14 @@ pub extern "C" fn init() {
 struct GlobalManager {
     // global id -> ptr
     globals: HashMap<i32, i32>,
+    builtins: HashMap<i32, i32>,
 }
 
 impl GlobalManager {
     fn new() -> Self {
         Self {
             globals: HashMap::new(),
+            builtins: HashMap::new(),
         }
     }
 
@@ -142,6 +148,16 @@ impl GlobalManager {
             ptr
         }
     }
+
+    fn get_builtin(&mut self, id: i32) -> i32 {
+        if let Some(ptr) = self.builtins.get(&id) {
+            *ptr
+        } else {
+            let ptr = malloc(8);
+            self.builtins.insert(id, ptr);
+            ptr
+        }
+    }
 }
 
 thread_local!(
@@ -151,4 +167,9 @@ thread_local!(
 #[unsafe(no_mangle)]
 pub extern "C" fn get_global(global_id: i32) -> i32 {
     GLOBAL_MANAGER.with(|global_manager| global_manager.borrow_mut().get_global(global_id))
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn get_builtin(builtin_id: i32) -> i32 {
+    GLOBAL_MANAGER.with(|global_manager| global_manager.borrow_mut().get_builtin(builtin_id))
 }

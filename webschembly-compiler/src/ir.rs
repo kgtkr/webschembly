@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::{ast, sexpr, x::RunX};
 use anyhow::Result;
+use strum::IntoEnumIterator;
 
 // TODO: IR生成に失敗するべきではないのでResultを使う必要はない
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
@@ -53,6 +54,7 @@ pub enum Expr {
     SetBuiltin(ast::Builtin, usize),
     Error(String),
     InitGlobal(usize),
+    InitBuiltin(ast::Builtin),
 }
 
 #[derive(Debug, Clone)]
@@ -183,6 +185,11 @@ impl<'a> FuncGenerator<'a> {
                 block_gen
                     .stats
                     .push(Stat::Expr(None, Expr::InitGlobal(global.0)));
+            }
+            for builtin in ast::Builtin::iter() {
+                block_gen
+                    .stats
+                    .push(Stat::Expr(None, Expr::InitBuiltin(builtin)));
             }
             block_gen.gen_stats(None, &ast.exprs)?;
             block_gen.stats

@@ -42,7 +42,25 @@ struct FuncIndex {
 }
 
 #[derive(Debug)]
-pub struct ModuleGenerator {
+pub struct Codegen {
+    element_offset: usize,
+}
+
+impl Codegen {
+    pub fn new() -> Self {
+        Self { element_offset: 0 }
+    }
+
+    pub fn gen(&mut self, ir: &ir::Ir) -> anyhow::Result<Vec<u8>> {
+        let mut module_gen = ModuleGenerator::new(self.element_offset);
+        let module = module_gen.gen(&ir);
+        self.element_offset += module_gen.element_funcs.len();
+        Ok(module.finish())
+    }
+}
+
+#[derive(Debug)]
+struct ModuleGenerator {
     func_to_type_index: HashMap<WasmFuncType, u32>,
     type_count: u32,
     func_count: u32,
@@ -52,6 +70,7 @@ pub struct ModuleGenerator {
     dump_func: u32,
     string_to_symbol_func: u32,
     get_global_func: u32,
+    get_builtin_func: u32,
     // wasm section
     imports: ImportSection,
     types: TypeSection,
@@ -64,10 +83,11 @@ pub struct ModuleGenerator {
     func_indices: HashMap<usize, FuncIndex>,
     global_to_index: HashMap<usize, u32>,
     builtin_to_global: HashMap<ast::Builtin, u32>,
+    element_offset: usize,
 }
 
 impl ModuleGenerator {
-    pub fn new() -> Self {
+    fn new(element_offset: usize) -> Self {
         Self {
             func_to_type_index: HashMap::new(),
             type_count: 0,
@@ -77,6 +97,7 @@ impl ModuleGenerator {
             dump_func: 0,
             string_to_symbol_func: 0,
             get_global_func: 0,
+            get_builtin_func: 0,
             malloc_tmp_global: 0,
             imports: ImportSection::new(),
             types: TypeSection::new(),
@@ -88,6 +109,7 @@ impl ModuleGenerator {
             func_indices: HashMap::new(),
             global_to_index: HashMap::new(),
             builtin_to_global: HashMap::new(),
+            element_offset,
         }
     }
 
@@ -115,7 +137,7 @@ impl ModuleGenerator {
         }
     }
 
-    pub fn gen(mut self, ir: &ir::Ir) -> Module {
+    pub fn gen(&mut self, ir: &ir::Ir) -> Module {
         self.imports.import(
             "runtime",
             "memory",
@@ -125,6 +147,18 @@ impl ModuleGenerator {
                 memory64: false,
                 shared: false,
                 page_size_log2: None,
+            },
+        );
+
+        self.imports.import(
+            "runtime",
+            "table",
+            TableType {
+                element_type: RefType::FUNCREF,
+                minimum: 1,
+                maximum: None,
+                table64: false,
+                shared: false,
             },
         );
 
@@ -151,6 +185,13 @@ impl ModuleGenerator {
         );
         self.get_global_func = self.add_runtime_function(
             "get_global",
+            WasmFuncType {
+                params: vec![ValType::I32],
+                results: vec![ValType::I32],
+            },
+        );
+        self.get_builtin_func = self.add_runtime_function(
+            "get_builtin",
             WasmFuncType {
                 params: vec![ValType::I32],
                 results: vec![ValType::I32],
@@ -187,11 +228,11 @@ impl ModuleGenerator {
             let global_index = self.global_count;
             self.globals.global(
                 GlobalType {
-                    val_type: ValType::I64,
+                    val_type: ValType::I32,
                     mutable: true,
                     shared: false,
                 },
-                &ConstExpr::i64_const(0),
+                &ConstExpr::i32_const(0),
             );
             self.global_count += 1;
             self.builtin_to_global.insert(builtin, global_index);
@@ -225,7 +266,7 @@ impl ModuleGenerator {
 
             let func_idx = FuncIndex {
                 func_idx: self.func_count,
-                elem_idx: self.element_funcs.len() as u32,
+                elem_idx: self.element_funcs.len() as u32 + self.element_offset as u32,
             };
             self.func_indices.insert(i, func_idx);
 
@@ -235,18 +276,10 @@ impl ModuleGenerator {
             self.func_count += 1;
         }
 
-        self.tables.table(TableType {
-            element_type: RefType::FUNCREF,
-            minimum: self.element_funcs.len() as u64,
-            maximum: None,
-            table64: false,
-            shared: false,
-        });
-
         let mut elements = ElementSection::new();
         elements.active(
             Some(0),
-            &ConstExpr::i32_const(0),
+            &ConstExpr::i32_const(self.element_offset as i32),
             Elements::Functions(Cow::Borrowed(&self.element_funcs)),
         );
 
@@ -534,12 +567,22 @@ impl ModuleGenerator {
                 function.instruction(&Instruction::GlobalGet(
                     *self.builtin_to_global.get(builtin).unwrap(),
                 ));
+                function.instruction(&Instruction::I64Load(MemArg {
+                    align: 2,
+                    offset: 0,
+                    memory_index: 0,
+                }));
             }
             ir::Expr::SetBuiltin(builtin, val) => {
-                function.instruction(&Instruction::LocalGet(*val as u32));
-                function.instruction(&Instruction::GlobalSet(
+                function.instruction(&Instruction::GlobalGet(
                     *self.builtin_to_global.get(builtin).unwrap(),
                 ));
+                function.instruction(&Instruction::LocalGet(*val as u32));
+                function.instruction(&Instruction::I64Store(MemArg {
+                    align: 2,
+                    offset: 0,
+                    memory_index: 0,
+                }));
                 function.instruction(&Instruction::LocalGet(*val as u32));
             }
             ir::Expr::InitGlobal(global_id) => {
@@ -547,6 +590,14 @@ impl ModuleGenerator {
                 function.instruction(&Instruction::Call(self.get_global_func));
                 function.instruction(&Instruction::GlobalSet(
                     *self.global_to_index.get(global_id).unwrap(),
+                ));
+                function.instruction(&Instruction::I32Const(0));
+            }
+            ir::Expr::InitBuiltin(builtin) => {
+                function.instruction(&Instruction::I32Const(builtin.id()));
+                function.instruction(&Instruction::Call(self.get_builtin_func));
+                function.instruction(&Instruction::GlobalSet(
+                    *self.builtin_to_global.get(builtin).unwrap(),
                 ));
                 function.instruction(&Instruction::I32Const(0));
             }
