@@ -105,4 +105,12 @@ const importObject = {
 const srcBuf = new Uint8Array(fs.readFileSync(srcName));
 const srcBufPtr = runtimeInstance.exports.malloc(srcBuf.length);
 new Uint8Array(runtimeInstance.exports.memory.buffer).set(srcBuf, srcBufPtr);
-runtimeInstance.exports.run(srcBufPtr, srcBuf.length);
+
+try {
+  runtimeInstance.exports.run(srcBufPtr, srcBuf.length);
+} catch (e) {
+  // エラーログに絶対パスなどが入るとsnapshot testに支障が出るため
+  // TODO: 言語としてエラーメッセージを整備する
+  console.error(e.name, e.message);
+  process.exit(1);
+}

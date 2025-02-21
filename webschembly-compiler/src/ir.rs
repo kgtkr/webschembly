@@ -104,11 +104,16 @@ pub struct Ir {
 }
 
 impl Ir {
-    pub fn from_ast(ast: &ast::Ast<ast::Final>) -> Result<Ir> {
-        let ir_gen = IrGenerator::new();
+    pub fn from_ast(ast: &ast::Ast<ast::Final>, config: Config) -> Result<Ir> {
+        let ir_gen = IrGenerator::new(config);
 
         Ok(ir_gen.gen(ast)?)
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct Config {
+    pub allow_set_builtin: bool,
 }
 
 #[derive(Debug)]
@@ -116,14 +121,16 @@ struct IrGenerator {
     funcs: Vec<Func>,
     global_ids: HashMap<ast::GlobalVarId, usize>,
     box_vars: HashSet<ast::LocalVarId>,
+    config: Config,
 }
 
 impl IrGenerator {
-    fn new() -> Self {
+    fn new(config: Config) -> Self {
         Self {
             funcs: Vec::new(),
             global_ids: HashMap::new(),
             box_vars: HashSet::new(),
+            config,
         }
     }
 
@@ -509,7 +516,6 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                         self.stats.push(Stat::Expr(result, Expr::Move(boxed_local)));
                         Ok(())
                     } else {
-                        // TODO: 今のところはset!されている変数がmutcellでないことはないが将来的にありえる
                         let local = *self.func_gen.local_ids.get(&id).unwrap();
                         self.gen_stat(Some(local), expr)?;
                         self.stats.push(Stat::Expr(result, Expr::Move(local)));
@@ -527,13 +533,20 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                     Ok(())
                 }
                 ast::VarId::Builtin(builtin) => {
-                    // TODO: 標準ライブラリ以外が書き換えようとしたら実行時エラーにするべき
-                    let local = self.func_gen.local(Type::Boxed);
-                    self.gen_stat(Some(local), expr)?;
-                    self.stats
-                        .push(Stat::Expr(None, Expr::SetBuiltin(builtin, local)));
-                    self.stats.push(Stat::Expr(result, Expr::Move(local)));
-                    Ok(())
+                    if self.func_gen.ir_generator.config.allow_set_builtin {
+                        let local = self.func_gen.local(Type::Boxed);
+                        self.gen_stat(Some(local), expr)?;
+                        self.stats
+                            .push(Stat::Expr(None, Expr::SetBuiltin(builtin, local)));
+                        self.stats.push(Stat::Expr(result, Expr::Move(local)));
+                        Ok(())
+                    } else {
+                        self.stats.push(Stat::Expr(
+                            result,
+                            Expr::Error("set! builtin is not allowed".to_string()),
+                        ));
+                        Ok(())
+                    }
                 }
             },
         }

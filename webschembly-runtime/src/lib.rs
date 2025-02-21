@@ -107,8 +107,8 @@ pub extern "C" fn run(buf_ptr: i32, buf_len: i32) {
     let stdlib = webschembly_compiler::stdlib::generate_stdlib();
     let src = String::from_utf8(bytes).unwrap();
     let mut compiler = webschembly_compiler::compiler::Compiler::new();
-    for s in [stdlib, src].iter() {
-        let wasm = compiler.compile(&s).unwrap();
+    for (is_stdlib, s) in [(true, stdlib), (false, src)].iter() {
+        let wasm = compiler.compile(&s, *is_stdlib).unwrap();
         unsafe { instantiate(wasm.as_ptr() as i32, wasm.len() as i32) };
         drop(wasm);
     }

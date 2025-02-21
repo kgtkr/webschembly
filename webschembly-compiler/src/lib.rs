@@ -14,5 +14,5 @@ pub mod x;
 
 pub fn compile(input: &str) -> anyhow::Result<Vec<u8>> {
     let mut compiler = compiler::Compiler::new();
-    compiler.compile(input)
+    compiler.compile(input, false)
 }
