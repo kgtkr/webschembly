@@ -7,11 +7,17 @@ pub mod ast;
 pub mod codegen;
 pub mod ir;
 pub mod sexpr_parser;
+pub mod stdlib;
 pub mod token;
 pub mod x;
 
 pub fn compile(input: &str) -> anyhow::Result<Vec<u8>> {
-    let tokens = lexer::lex(input).map_err(|e| anyhow::anyhow!("{}", e))?;
+    let stdlib = stdlib::generate_stdlib();
+
+    // モジュール化の仕組みを整える
+    let input = format!("{}\n{}", stdlib, input);
+
+    let tokens = lexer::lex(&input).map_err(|e| anyhow::anyhow!("{}", e))?;
     let sexprs = sexpr_parser::parse(tokens.as_slice()).map_err(|e| anyhow::anyhow!("{}", e))?;
     let ast = ast::parse_and_process(sexprs)?;
     let ir = ir::Ir::from_ast(&ast)?;

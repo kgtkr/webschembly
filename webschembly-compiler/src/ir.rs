@@ -602,7 +602,7 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
     }
 }
 
-fn builtin_func_type(builtin: ast::Builtin) -> FuncType {
+pub fn builtin_func_type(builtin: ast::Builtin) -> FuncType {
     match builtin {
         ast::Builtin::Display => FuncType {
             args: vec![Type::Boxed],
