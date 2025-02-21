@@ -3,3 +3,4 @@
 *.result
 *.wat
 bin/*
+/log/

@@ -1,21 +1,48 @@
 const fs = require("fs");
+const path = require("path");
+
+const logDir = process.env.LOG_DIR || null;
+const srcName = process.argv[2];
+const logBasename = path.basename(srcName) + "-" + Date.now();
+let logFile = null;
+if (logDir !== null) {
+  try {
+    fs.mkdirSync(logDir);
+  } catch (e) {
+    if (e.code !== "EEXIST") {
+      throw e;
+    }
+  }
+
+  logFile = fs.openSync(path.join(logDir, logBasename + ".log"), "a");
+}
+let instantiateCount = 0;
 
 const runtimeImportObjects = {
   instantiate: (bufPtr, bufSize) => {
-    // TODO: free memory
-    return new WebAssembly.Instance(
-      new WebAssembly.Module(
-        new Uint8Array(runtimeInstance.exports.memory.buffer, bufPtr, bufSize)
-      ),
-      importObject
+    const buf = new Uint8Array(
+      runtimeInstance.exports.memory.buffer,
+      bufPtr,
+      bufSize
     );
+    if (logDir !== null) {
+      fs.writeFileSync(
+        path.join(logDir, logBasename + "-" + instantiateCount + ".wasm"),
+        buf
+      );
+    }
+    instantiateCount++;
+
+    // TODO: free memory
+    return new WebAssembly.Instance(new WebAssembly.Module(buf), importObject);
   },
   webschembly_log: (bufPtr, bufSize) => {
-    console.log(
-      new TextDecoder().decode(
-        new Uint8Array(runtimeInstance.exports.memory.buffer, bufPtr, bufSize)
-      )
+    const s = new TextDecoder().decode(
+      new Uint8Array(runtimeInstance.exports.memory.buffer, bufPtr, bufSize)
     );
+    if (logFile !== null) {
+      fs.writeSync(logFile, s + "\n");
+    }
   },
 };
 
@@ -72,7 +99,7 @@ const importObject = {
   },
 };
 
-const srcBuf = new Uint8Array(fs.readFileSync(process.argv[2]));
+const srcBuf = new Uint8Array(fs.readFileSync(srcName));
 const srcBufPtr = runtimeInstance.exports.malloc(srcBuf.length);
 new Uint8Array(runtimeInstance.exports.memory.buffer).set(srcBuf, srcBufPtr);
 runtimeInstance.exports.run(srcBufPtr, srcBuf.length);
