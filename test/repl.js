@@ -1,5 +1,4 @@
 import { createRuntime } from "./runtime.js";
-import * as fs from "fs";
 
 const runtime = createRuntime({ runtimeName: "repl.scm" });
 
