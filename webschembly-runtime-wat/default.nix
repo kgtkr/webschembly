@@ -1,13 +1,13 @@
 { stdenv, binaryen }:
 stdenv.mkDerivation {
-  name = "runtime-wat";
+  name = "webschembly-runtime-wat";
   src = ./.;
   buildInputs = [ binaryen ];
   buildPhase = ''
-    wasm-as -o runtime.wasm $src/runtime.wat
+    wasm-as -o webschembly_runtime_wat.wasm $src/lib.wat
   '';
   installPhase = ''
     mkdir -p $out/lib
-    cp runtime.wasm $out/lib
+    cp webschembly_runtime_wat.wasm $out/lib
   '';
 }

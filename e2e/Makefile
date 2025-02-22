@@ -13,19 +13,9 @@ bin/cli:
 	cd ../ && cargo build --bin webschembly-compiler-cli
 	ln -sf $$PWD/../target/debug/webschembly-compiler-cli bin/cli
 
-.PHONY: bin/runtime-rust.wasm
-bin/runtime-rust.wasm:
-	mkdir -p bin
-	cd ../ && cargo build --target wasm32-unknown-unknown --lib
-	ln -sf $$PWD/../target/wasm32-unknown-unknown/debug/webschembly_runtime.wasm $@
-
-.PHONY: bin/runtime-wat.wasm
-bin/runtime-wat.wasm:
-	mkdir -p bin
-	wasm-as ../runtime-wat/runtime.wat -o $@
-
-bin/runtime.wasm: bin/runtime-rust.wasm bin/runtime-wat.wasm
-	wasm-merge -o $@ $(foreach f, $^, $(f) runtime)
+.PHONY: bin/runtime.wasm
+bin/runtime.wasm:
+	ln -sf $$(nix build ..#webschembly-runtime-debug --no-link --print-out-paths)/lib/webschembly_runtime.wasm $@
 
 %.wasms: %.scm bin/cli
 	mkdir -p $@

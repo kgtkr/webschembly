@@ -9,7 +9,7 @@
     };
   };
 
-  outputs = { self, nixpkgs, flake-utils, cargo2nix, ... }:
+  outputs = { nixpkgs, flake-utils, cargo2nix, ... }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         rustToolchain = pkgs.pkgsBuildHost.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
@@ -18,26 +18,40 @@
           inherit system overlays;
         };
         pkgs = import nixpkgs pkgsArgs;
-        rustPkgs = pkgs.rustBuilder.makePackageSet {
-          rustToolchain = rustToolchain;
-          packageFun = import ./Cargo.nix;
-        };
-        wasmRustPkgs = pkgs.rustBuilder.makePackageSet {
-          rustToolchain = rustToolchain;
-          packageFun = import ./Cargo.nix;
-          target = "wasm32-unknown-unknown";
-        };
-        cli = (rustPkgs.workspace.webschembly-compiler-cli { }).bin;
-        runtime-rust = (wasmRustPkgs.workspace.webschembly-runtime { }).out;
-        runtime-wat = pkgs.callPackage ./runtime-wat {};
-        runtime = pkgs.callPackage ./runtime.nix { inherit runtime-rust runtime-wat; };
+        mkWebschembly =
+          { release }:
+          let
+            rustPkgs = pkgs.rustBuilder.makePackageSet {
+              rustToolchain = rustToolchain;
+              packageFun = import ./Cargo.nix;
+              inherit release;
+            };
+            wasmRustPkgs = pkgs.rustBuilder.makePackageSet {
+              rustToolchain = rustToolchain;
+              packageFun = import ./Cargo.nix;
+              target = "wasm32-unknown-unknown";
+              inherit release;
+            };
+            webschembly-compiler-cli = (rustPkgs.workspace.webschembly-compiler-cli { }).bin;
+            webschembly-runtime-rust = (wasmRustPkgs.workspace.webschembly-runtime-rust { }).out;
+            webschembly-runtime-wat = pkgs.callPackage ./webschembly-runtime-wat { };
+            webschembly-runtime = pkgs.callPackage ./webschembly-runtime { inherit webschembly-runtime-rust webschembly-runtime-wat; };
+          in
+          {
+            inherit webschembly-compiler-cli webschembly-runtime;
+            inherit (rustPkgs) workspaceShell;
+          };
+        webschembly = mkWebschembly { release = true; };
+        webschembly-debug = mkWebschembly { release = false; };
       in
       {
         packages = {
-          inherit cli runtime-rust runtime-wat runtime;
+          inherit (webschembly) webschembly-compiler-cli webschembly-runtime;
+          webschembly-compiler-cli-debug = webschembly-debug.webschembly-compiler-cli;
+          webschembly-runtime-debug = webschembly-debug.webschembly-runtime;
         };
-        defaultPackage = cli;
-        devShell = rustPkgs.workspaceShell {
+        defaultPackage = webschembly.webschembly-compiler-cli;
+        devShell = webschembly.workspaceShell {
           nativeBuildInputs = [
             cargo2nix.packages.${system}.cargo2nix
           ] ++ pkgs.lib.optionals pkgs.stdenv.isLinux [

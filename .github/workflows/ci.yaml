@@ -49,10 +49,10 @@ jobs:
           make test
       - name: Build cli
         run: |
-          nix build .#cli --out-link result-cli
+          nix build .#webschembly-compiler-cli --out-link result-cli
       - name: Build runtime
         run: |
-          nix build .#runtime --out-link result-runtime
+          nix build .#webschembly-compiler-runtime --out-link result-runtime
       - uses: actions/upload-artifact@v4
         with:
           name: cli

@@ -6,7 +6,7 @@ args@{
   rootFeatures ? [
     "webschembly-compiler/default"
     "webschembly-compiler-cli/default"
-    "webschembly-runtime/default"
+    "webschembly-runtime-rust/default"
   ],
   rustPackages,
   buildRustPackages,
@@ -26,7 +26,7 @@ args@{
   ignoreLockHash,
 }:
 let
-  nixifiedLockHash = "7bf8c06ee320e03f95c3f7009bfd5622bf5282d64ea76b80f526e7cb4db62c26";
+  nixifiedLockHash = "35d7b6b76e3b67217024f493427d0a5734e0aa29c2d9bd2e0969494e3102f421";
   workspaceSrc = if args.workspaceSrc == null then ./. else args.workspaceSrc;
   currentLockHash = builtins.hashFile "sha256" (workspaceSrc + /Cargo.lock);
   lockHashIgnored = if ignoreLockHash
@@ -50,7 +50,7 @@ in
   workspace = {
     webschembly-compiler = rustPackages.unknown.webschembly-compiler."0.1.0";
     webschembly-compiler-cli = rustPackages.unknown.webschembly-compiler-cli."0.1.0";
-    webschembly-runtime = rustPackages.unknown.webschembly-runtime."0.1.0";
+    webschembly-runtime-rust = rustPackages.unknown.webschembly-runtime-rust."0.1.0";
   };
   "registry+https://github.com/rust-lang/crates.io-index".anstream."0.6.18" = overridableMkRustCrate (profileName: rec {
     name = "anstream";
@@ -492,8 +492,8 @@ in
     };
   });
   
-  "unknown".webschembly-runtime."0.1.0" = overridableMkRustCrate (profileName: rec {
-    name = "webschembly-runtime";
+  "unknown".webschembly-runtime-rust."0.1.0" = overridableMkRustCrate (profileName: rec {
+    name = "webschembly-runtime-rust";
     version = "0.1.0";
     registry = "unknown";
     src = fetchCrateLocal workspaceSrc;

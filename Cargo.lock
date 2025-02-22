@@ -304,7 +304,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "webschembly-runtime"
+name = "webschembly-runtime-rust"
 version = "0.1.0"
 dependencies = [
  "log",
