@@ -1,0 +1,10 @@
+{
+  "name": "webschembly-test",
+  "type": "module",
+  "scripts": {
+    "test": "vitest"
+  },
+  "devDependencies": {
+    "vitest": "^3.0.6"
+  }
+}

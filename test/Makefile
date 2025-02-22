@@ -3,9 +3,7 @@ LIST := $(patsubst %.scm,%,$(SCM))
 WASM := $(patsubst %.scm,%.wasm,$(SCM))
 WASMS := $(patsubst %.scm,%.wasms,$(SCM))
 OBJDUMP := $(patsubst %.scm,%.objdump,$(SCM))
-RESULT := $(patsubst %.scm,%.result,$(SCM))
 WAT := $(patsubst %.scm,%.wat,$(SCM))
-SNAPSHOT := $(patsubst %.scm,%.snapshot,$(SCM))
 
 LOCAL_WEBSCHEMBLY_RUNTIME := ../webschembly-runtime/webschembly_runtime.wasm
 WEBSCHEMBLY_RUNTIME ?= $(LOCAL_WEBSCHEMBLY_RUNTIME)
@@ -36,30 +34,17 @@ $(WEBSCHEMBLY_COMPILER_CLI):
 %.objdump: %.wasm
 	wasm-objdump -hxd $< > $@
 
-%.result: %.scm $(WEBSCHEMBLY_RUNTIME)
-	mkdir -p $@
-	rm -f $@/*
-	WEBSCHEMBLY_RUNTIME=$(WEBSCHEMBLY_RUNTIME) node run.js $< > $@/stdout 2> $@/stderr; echo $$? > $@/exitcode
-
 %.wat: %.wasm
 	wasm-dis $< -o $@
 
-%.snapshot: %.result
-	mkdir -p $@
-	rm -rf $(wildcard $@/*)
-	cp $(wildcard $</*) $@
-
-.PHONY: generate-snapshot
-generate-snapshot: $(SNAPSHOT)
-
 .PHONY: test
-test: $(RESULT)
-	$(SHELL) ./test.sh $(LIST)
+test:
+	WEBSCHEMBLY_RUNTIME=$(WEBSCHEMBLY_RUNTIME) npm test
 
 .PHONY: clean
 clean:
 	rm -f $(WASM) $(OBJDUMP) $(WAT)
-	rm -rf $(RESULT) $(WASMS)
+	rm -rf $(WASMS)
 
 .PHONY: all
-all: $(WASM) $(OBJDUMP) $(RESULT) $(WAT)
+all: $(WASM) $(OBJDUMP) $(WAT)

@@ -1,9 +1,15 @@
-const fs = require("fs");
-const path = require("path");
+import * as fs from "fs";
+import * as path from "path";
 
-function getRuntime(srcName) {
-  const logDir = process.env.LOG_DIR || null;
-  const logBasename = path.basename(srcName) + "-" + Date.now();
+export function createRuntime({
+  runtimeName = "untitled",
+  exit = process.exit,
+  logDir = process.env.LOG_DIR || null,
+  runtimeBuf = fs.readFileSync(process.env["WEBSCHEMBLY_RUNTIME"]),
+  println = console.log,
+  eprintln = console.error,
+}) {
+  const logBasename = path.basename(runtimeName) + "-" + Date.now();
   let logFile = null;
   if (logDir !== null) {
     try {
@@ -50,9 +56,7 @@ function getRuntime(srcName) {
   };
 
   const runtimeInstance = new WebAssembly.Instance(
-    new WebAssembly.Module(
-      new Uint8Array(fs.readFileSync(process.env["WEBSCHEMBLY_RUNTIME"]))
-    ),
+    new WebAssembly.Module(new Uint8Array(runtimeBuf)),
     {
       env: runtimeImportObjects,
     }
@@ -97,17 +101,43 @@ function getRuntime(srcName) {
         throw new Error(`unknown type: ${typeId}`);
     }
   }
-
   const importObject = {
     runtime: {
       ...runtimeInstance.exports,
       dump: (x) => {
-        console.log(valueToString(x));
+        println(valueToString(x));
       },
     },
   };
 
-  return runtimeInstance;
-}
+  const errorHandle =
+    (f) =>
+    (...args) => {
+      try {
+        f(...args);
+      } catch (e) {
+        if (e instanceof WebAssembly.RuntimeError) {
+          // エラーログに絶対パスなどが入るとsnapshot testに支障が出るため
+          // TODO: 言語としてエラーメッセージを整備する
+          eprintln(`${e.name}: ${e.message}`);
+          exit(1);
+        } else {
+          throw e;
+        }
+      }
+    };
 
-module.exports = { getRuntime };
+  return {
+    loadStdlib: errorHandle(() => {
+      runtimeInstance.exports.load_stdlib();
+    }),
+    loadSrc: errorHandle((srcBuf) => {
+      const srcBufPtr = runtimeInstance.exports.malloc(srcBuf.length);
+      new Uint8Array(runtimeInstance.exports.memory.buffer).set(
+        srcBuf,
+        srcBufPtr
+      );
+      runtimeInstance.exports.load_src(srcBufPtr, srcBuf.length);
+    }),
+  };
+}

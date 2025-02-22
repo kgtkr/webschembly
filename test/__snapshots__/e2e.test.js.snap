@@ -1,0 +1,132 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`E2E test > add.scm > snapshot test 1`] = `
+{
+  "exitCode": 0,
+  "stderr": "",
+  "stdout": "3
+",
+}
+`;
+
+exports[`E2E test > builtin_some_name.scm > snapshot test 1`] = `
+{
+  "exitCode": 0,
+  "stderr": "",
+  "stdout": "30
+3
+",
+}
+`;
+
+exports[`E2E test > closure.scm > snapshot test 1`] = `
+{
+  "exitCode": 0,
+  "stderr": "",
+  "stdout": "42
+45
+",
+}
+`;
+
+exports[`E2E test > define.scm > snapshot test 1`] = `
+{
+  "exitCode": 0,
+  "stderr": "",
+  "stdout": ""Hello, World!"
+",
+}
+`;
+
+exports[`E2E test > define_builtin.scm > snapshot test 1`] = `
+{
+  "exitCode": 1,
+  "stderr": "RuntimeError: unreachable
+",
+  "stdout": "",
+}
+`;
+
+exports[`E2E test > display.scm > snapshot test 1`] = `
+{
+  "exitCode": 0,
+  "stderr": "",
+  "stdout": "(2 . (() . ("hello" . ((1 . (2 . ())) . (<symbol#0> . (<symbol#1> . (<symbol#0> . ())))))))
+",
+}
+`;
+
+exports[`E2E test > get_builtin.scm > snapshot test 1`] = `
+{
+  "exitCode": 0,
+  "stderr": "",
+  "stdout": "3
+",
+}
+`;
+
+exports[`E2E test > global_duplication.scm > snapshot test 1`] = `
+{
+  "exitCode": 0,
+  "stderr": "",
+  "stdout": "2
+2
+3
+3
+4
+4
+",
+}
+`;
+
+exports[`E2E test > if.scm > snapshot test 1`] = `
+{
+  "exitCode": 0,
+  "stderr": "",
+  "stdout": ""True1"
+"False2"
+",
+}
+`;
+
+exports[`E2E test > lambda.scm > snapshot test 1`] = `
+{
+  "exitCode": 0,
+  "stderr": "",
+  "stdout": "42
+",
+}
+`;
+
+exports[`E2E test > local_duplication.scm > snapshot test 1`] = `
+{
+  "exitCode": 0,
+  "stderr": "",
+  "stdout": "1
+2
+3
+2
+3
+4
+",
+}
+`;
+
+exports[`E2E test > local_duplication2.scm > snapshot test 1`] = `
+{
+  "exitCode": 0,
+  "stderr": "",
+  "stdout": "2
+3
+",
+}
+`;
+
+exports[`E2E test > set_builtin.scm > snapshot test 1`] = `
+{
+  "exitCode": 1,
+  "stderr": "RuntimeError: unreachable
+",
+  "stdout": "",
+}
+`;
