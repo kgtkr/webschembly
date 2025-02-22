@@ -1,6 +1,7 @@
 SCM := $(wildcard src/*.scm)
 LIST := $(patsubst %.scm,%,$(SCM))
 WASM := $(patsubst %.scm,%.wasm,$(SCM))
+WASMS := $(patsubst %.scm,%.wasms,$(SCM))
 OBJDUMP := $(patsubst %.scm,%.objdump,$(SCM))
 RESULT := $(patsubst %.scm,%.result,$(SCM))
 WAT := $(patsubst %.scm,%.wat,$(SCM))
@@ -19,8 +20,15 @@ bin/runtime.wasm:
 	ln -sf $$PWD/../target/wasm32-unknown-unknown/debug/webschembly_runtime.wasm bin/runtime.wasm
 
 
-%.wasm: %.scm bin/cli
-	bin/cli $< $@
+%.wasms: %.scm bin/cli
+	mkdir -p $@
+	rm -f $@/*.wasm
+	bin/cli $< -o $@/o.wasm
+
+%.wasm: %.wasms bin/runtime.wasm
+	false
+	# TODO: メモリもマージすることを考えるとmulti memoryなどが必要
+	# wasm-merge -o $@ bin/runtime.wasm runtime $(wildcard $</*.wasm)
 
 # TODO:
 # wasm-objdumpはGC proposalに対応していないのでそれを含むwasmファイルを与えるとエラーになる
@@ -51,7 +59,7 @@ test: $(RESULT)
 .PHONY: clean
 clean:
 	rm -f $(WASM) $(OBJDUMP) $(WAT)
-	rm -rf $(RESULT)
+	rm -rf $(RESULT) $(WASMS)
 
 .PHONY: all
 all: $(WASM) $(OBJDUMP) $(RESULT) $(WAT)
