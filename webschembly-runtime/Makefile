@@ -13,7 +13,3 @@ webschembly_runtime_wat.wasm: lib.wat
 .PHONY: $(CARGO_WEBSCHEMBLY_RUNTIME_RUST)
 $(CARGO_WEBSCHEMBLY_RUNTIME_RUST):
 	cd ../ && cargo build --target wasm32-unknown-unknown
-
-# for nix
-%.wasm:
-	echo "Missing target $@"
