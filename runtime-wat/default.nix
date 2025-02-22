@@ -7,7 +7,7 @@ stdenv.mkDerivation {
     wasm-as -o runtime.wasm $src/runtime.wat
   '';
   installPhase = ''
-    mkdir -p $out
-    cp runtime.wasm $out
+    mkdir -p $out/lib
+    cp runtime.wasm $out/lib
   '';
 }

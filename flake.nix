@@ -18,17 +18,11 @@
           inherit system overlays;
         };
         pkgs = import nixpkgs pkgsArgs;
-        wasmPkgs = import nixpkgs (pkgsArgs // {
-          crossSystem = {
-            system = "wasm32-wasi";
-            useLLVM = true;
-          };
-        });
         rustPkgs = pkgs.rustBuilder.makePackageSet {
           rustToolchain = rustToolchain;
           packageFun = import ./Cargo.nix;
         };
-        wasmRustPkgs = wasmPkgs.rustBuilder.makePackageSet {
+        wasmRustPkgs = pkgs.rustBuilder.makePackageSet {
           rustToolchain = rustToolchain;
           packageFun = import ./Cargo.nix;
           target = "wasm32-unknown-unknown";
@@ -36,10 +30,11 @@
         cli = (rustPkgs.workspace.webschembly-compiler-cli { }).bin;
         runtime-rust = (wasmRustPkgs.workspace.webschembly-runtime { }).out;
         runtime-wat = pkgs.callPackage ./runtime-wat {};
+        runtime = pkgs.callPackage ./runtime.nix { inherit runtime-rust runtime-wat; };
       in
       {
         packages = {
-          inherit cli runtime-rust runtime-wat;
+          inherit cli runtime-rust runtime-wat runtime;
         };
         defaultPackage = cli;
         devShell = rustPkgs.workspaceShell {
