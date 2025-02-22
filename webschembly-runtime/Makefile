@@ -1,0 +1,19 @@
+CARGO_WEBSCHEMBLY_RUNTIME_RUST := ../target/wasm32-unknown-unknown/debug/webschembly_runtime_rust.wasm
+WEBSCHEMBLY_RUNTIME_RUST ?= $(CARGO_WEBSCHEMBLY_RUNTIME_RUST)
+
+.PHONY: build
+build: webschembly_runtime.wasm
+
+webschembly_runtime.wasm: webschembly_runtime_wat.wasm $(WEBSCHEMBLY_RUNTIME_RUST)
+	wasm-merge -o $@ $(foreach f, $^, $(f) runtime) --enable-reference-types --enable-multimemory
+
+webschembly_runtime_wat.wasm: lib.wat
+	wasm-as -o $@ $<
+
+.PHONY: $(CARGO_WEBSCHEMBLY_RUNTIME_RUST)
+$(CARGO_WEBSCHEMBLY_RUNTIME_RUST):
+	cd ../ && cargo build --target wasm32-unknown-unknown
+
+# for nix
+%.wasm:
+	echo "Missing target $@"

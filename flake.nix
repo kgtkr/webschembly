@@ -34,8 +34,7 @@
             };
             webschembly-compiler-cli = (rustPkgs.workspace.webschembly-compiler-cli { }).bin;
             webschembly-runtime-rust = (wasmRustPkgs.workspace.webschembly-runtime-rust { }).out;
-            webschembly-runtime-wat = pkgs.callPackage ./webschembly-runtime-wat { };
-            webschembly-runtime = pkgs.callPackage ./webschembly-runtime { inherit webschembly-runtime-rust webschembly-runtime-wat; };
+            webschembly-runtime = pkgs.callPackage ./webschembly-runtime { inherit webschembly-runtime-rust; };
           in
           {
             inherit webschembly-compiler-cli webschembly-runtime;

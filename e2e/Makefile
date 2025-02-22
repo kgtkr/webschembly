@@ -6,6 +6,8 @@ OBJDUMP := $(patsubst %.scm,%.objdump,$(SCM))
 RESULT := $(patsubst %.scm,%.result,$(SCM))
 WAT := $(patsubst %.scm,%.wat,$(SCM))
 SNAPSHOT := $(patsubst %.scm,%.snapshot,$(SCM))
+LOCAL_WEBSCHEMBLY_RUNTIME := ../webschembly-runtime/webschembly_runtime.wasm
+WEBSCHEMBLY_RUNTIME ?= $(LOCAL_WEBSCHEMBLY_RUNTIME)
 
 .PHONY: bin/cli
 bin/cli:
@@ -13,9 +15,12 @@ bin/cli:
 	cd ../ && cargo build --bin webschembly-compiler-cli
 	ln -sf $$PWD/../target/debug/webschembly-compiler-cli bin/cli
 
-.PHONY: bin/runtime.wasm
-bin/runtime.wasm:
-	ln -sf $$(nix build ..#webschembly-runtime-debug --no-link --print-out-paths)/lib/webschembly_runtime.wasm $@
+bin/runtime.wasm: $(WEBSCHEMBLY_RUNTIME)
+	ln -sf $$(realpath $<) $@
+
+.PHONY: $(LOCAL_WEBSCHEMBLY_RUNTIME)
+$(LOCAL_WEBSCHEMBLY_RUNTIME):
+	$(MAKE) -C ../webschembly-runtime
 
 %.wasms: %.scm bin/cli
 	mkdir -p $@
