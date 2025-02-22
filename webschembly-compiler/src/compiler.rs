@@ -27,7 +27,7 @@ impl Compiler {
             ir::Config {
                 allow_set_builtin: is_stdlib,
             },
-        )?;
+        );
         let code = self.codegen.gen(&ir)?;
         Ok(code)
     }
