@@ -50,7 +50,9 @@ function getRuntime(srcName) {
   };
 
   const runtimeInstance = new WebAssembly.Instance(
-    new WebAssembly.Module(new Uint8Array(fs.readFileSync("bin/runtime.wasm"))),
+    new WebAssembly.Module(
+      new Uint8Array(fs.readFileSync(process.env["WEBSCHEMBLY_RUNTIME"]))
+    ),
     {
       env: runtimeImportObjects,
     }

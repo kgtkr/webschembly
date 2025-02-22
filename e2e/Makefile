@@ -6,29 +6,29 @@ OBJDUMP := $(patsubst %.scm,%.objdump,$(SCM))
 RESULT := $(patsubst %.scm,%.result,$(SCM))
 WAT := $(patsubst %.scm,%.wat,$(SCM))
 SNAPSHOT := $(patsubst %.scm,%.snapshot,$(SCM))
+
 LOCAL_WEBSCHEMBLY_RUNTIME := ../webschembly-runtime/webschembly_runtime.wasm
 WEBSCHEMBLY_RUNTIME ?= $(LOCAL_WEBSCHEMBLY_RUNTIME)
 
-.PHONY: bin/cli
-bin/cli:
-	mkdir -p bin
-	cd ../ && cargo build --bin webschembly-compiler-cli
-	ln -sf $$PWD/../target/debug/webschembly-compiler-cli bin/cli
+CARGO_WEBSCHEMBLY_COMPILER_CLI := ../target/debug/webschembly-compiler-cli
+WEBSCHEMBLY_COMPILER_CLI ?= $(CARGO_WEBSCHEMBLY_COMPILER_CLI)
 
-bin/runtime.wasm: $(WEBSCHEMBLY_RUNTIME)
-	ln -sf $$(realpath $<) $@
 
 .PHONY: $(LOCAL_WEBSCHEMBLY_RUNTIME)
 $(LOCAL_WEBSCHEMBLY_RUNTIME):
 	$(MAKE) -C ../webschembly-runtime
 
-%.wasms: %.scm bin/cli
+.PHONY: $(WEBSCHEMBLY_COMPILER_CLI)
+$(WEBSCHEMBLY_COMPILER_CLI):
+	cd ../ && cargo build --bin webschembly-compiler-cli
+
+%.wasms: %.scm $(WEBSCHEMBLY_COMPILER_CLI)
 	mkdir -p $@
 	rm -f $@/*.wasm
-	bin/cli $< -o $@/o.wasm
+	$(WEBSCHEMBLY_COMPILER_CLI) $< -o $@/o.wasm
 
-%.wasm: %.wasms bin/runtime.wasm
-	wasm-merge -o $@ bin/runtime.wasm runtime $(foreach f, $(wildcard $</*.wasm), $(f) dummy_input) --enable-reference-types --enable-multimemory
+%.wasm: %.wasms $(WEBSCHEMBLY_RUNTIME)
+	wasm-merge -o $@ $(WEBSCHEMBLY_RUNTIME) runtime $(foreach f, $(wildcard $</*.wasm), $(f) dummy_input) --enable-reference-types --enable-multimemory
 
 # TODO:
 # wasm-objdumpはGC proposalに対応していないのでそれを含むwasmファイルを与えるとエラーになる
@@ -36,10 +36,10 @@ $(LOCAL_WEBSCHEMBLY_RUNTIME):
 %.objdump: %.wasm
 	wasm-objdump -hxd $< > $@
 
-%.result: %.scm bin/runtime.wasm
+%.result: %.scm $(WEBSCHEMBLY_RUNTIME)
 	mkdir -p $@
 	rm -f $@/*
-	node run.js $< > $@/stdout 2> $@/stderr; echo $$? > $@/exitcode
+	WEBSCHEMBLY_RUNTIME=$(WEBSCHEMBLY_RUNTIME) node run.js $< > $@/stdout 2> $@/stderr; echo $$? > $@/exitcode
 
 %.wat: %.wasm
 	wasm-dis $< -o $@
