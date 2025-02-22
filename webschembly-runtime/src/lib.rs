@@ -136,7 +136,6 @@ extern "C" {
 pub extern "C" fn init() {
     log::set_logger(&logger::WasmLogger).unwrap();
     log::set_max_level(log::LevelFilter::Debug);
-    log::info!("Runtime initialized");
 }
 
 struct GlobalManager {

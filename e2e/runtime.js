@@ -17,8 +17,6 @@ function getRuntime(srcName) {
     logFile = fs.openSync(path.join(logDir, logBasename + ".log"), "a");
   }
   let instantiateCount = 0;
-  // TODO: 一旦大きめに確保、今後growする機能を追加
-  const table = new WebAssembly.Table({ initial: 10000, element: "anyfunc" });
 
   const runtimeImportObjects = {
     instantiate: (bufPtr, bufSize) => {
@@ -57,7 +55,6 @@ function getRuntime(srcName) {
       env: runtimeImportObjects,
     }
   );
-  runtimeInstance.exports.init();
 
   function valueToString(x) {
     const dataView = new DataView(runtimeInstance.exports.memory.buffer);
@@ -102,7 +99,6 @@ function getRuntime(srcName) {
   const importObject = {
     runtime: {
       ...runtimeInstance.exports,
-      table,
       dump: (x) => {
         console.log(valueToString(x));
       },

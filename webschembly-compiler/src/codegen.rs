@@ -152,7 +152,7 @@ impl ModuleGenerator {
 
         self.imports.import(
             "runtime",
-            "table",
+            "funcs",
             TableType {
                 element_type: RefType::FUNCREF,
                 minimum: 1,
