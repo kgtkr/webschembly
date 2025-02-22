@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use crate::ast;
 
 use super::ir;
+use crate::error;
 use std::borrow::Cow;
 use strum::IntoEnumIterator;
 use wasm_encoder::{
@@ -51,7 +52,7 @@ impl Codegen {
         Self { element_offset: 0 }
     }
 
-    pub fn gen(&mut self, ir: &ir::Ir) -> anyhow::Result<Vec<u8>> {
+    pub fn gen(&mut self, ir: &ir::Ir) -> error::Result<Vec<u8>> {
         let mut module_gen = ModuleGenerator::new(self.element_offset);
         let module = module_gen.gen(&ir);
         self.element_offset += module_gen.element_funcs.len();

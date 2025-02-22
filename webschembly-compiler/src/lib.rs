@@ -6,13 +6,15 @@ pub mod sexpr;
 pub mod ast;
 pub mod codegen;
 pub mod compiler;
+#[macro_use]
+pub mod error;
 pub mod ir;
 pub mod sexpr_parser;
 pub mod stdlib;
 pub mod token;
 pub mod x;
 
-pub fn compile(input: &str) -> anyhow::Result<Vec<u8>> {
+pub fn compile(input: &str) -> crate::error::Result<Vec<u8>> {
     let mut compiler = compiler::Compiler::new();
     compiler.compile(input, false)
 }

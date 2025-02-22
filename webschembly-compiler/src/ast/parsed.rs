@@ -1,8 +1,8 @@
 use super::ast::*;
+use crate::compiler_error;
+use crate::error::Result;
 use crate::sexpr::{Cons, SExpr};
 use crate::x::FamilyX;
-use anyhow::Result;
-
 #[derive(Debug, Clone)]
 pub enum Parsed {}
 
@@ -57,7 +57,7 @@ impl Expr<Parsed> {
                 cdr,
             }) => match cdr {
                 list_pattern![sexpr] => Ok(Expr::Literal((), Literal::Quote(sexpr))),
-                _ => Err(anyhow::anyhow!("Invalid quote expression")),
+                _ => Err(compiler_error!("Invalid quote expression")),
             },
             SExpr::Cons(box Cons {
                 car: SExpr::Symbol("define"),
@@ -75,7 +75,7 @@ impl Expr<Parsed> {
                     name,
                     list![SExpr::Symbol("lambda".to_string()), args, ..expr]
                 ]),
-                _ => Err(anyhow::anyhow!("Invalid define expression")),
+                _ => Err(compiler_error!("Invalid define expression")),
             },
             SExpr::Cons(box Cons {
                 car: SExpr::Symbol("lambda"),
@@ -84,24 +84,24 @@ impl Expr<Parsed> {
                 list_pattern![args, ..sexprs] => {
                     let args = args
                         .to_vec()
-                        .ok_or_else(|| anyhow::anyhow!("Expected a list of symbols"))?;
+                        .ok_or_else(|| compiler_error!("Expected a list of symbols"))?;
                     let args = args
                         .into_iter()
                         .map(|arg| match arg {
                             SExpr::Symbol(s) => Ok(s),
-                            _ => Err(anyhow::anyhow!("Expected a symbol")),
+                            _ => Err(compiler_error!("Expected a symbol")),
                         })
                         .collect::<Result<Vec<String>>>()?;
                     let sexprs = sexprs
                         .to_vec()
-                        .ok_or_else(|| anyhow::anyhow!("Expected a list of expressions"))?;
+                        .ok_or_else(|| compiler_error!("Expected a list of expressions"))?;
                     let exprs = sexprs
                         .into_iter()
                         .map(Expr::from_sexpr)
                         .collect::<Result<Vec<_>>>()?;
                     Ok(Expr::Lambda((), Lambda { args, body: exprs }))
                 }
-                _ => Err(anyhow::anyhow!("Invalid lambda expression")),
+                _ => Err(compiler_error!("Invalid lambda expression")),
             },
             SExpr::Cons(box Cons {
                 car: SExpr::Symbol("if"),
@@ -120,7 +120,7 @@ impl Expr<Parsed> {
                         },
                     ))
                 }
-                _ => Err(anyhow::anyhow!("Invalid if expression",)),
+                _ => Err(compiler_error!("Invalid if expression",)),
             },
             SExpr::Cons(box Cons {
                 car: SExpr::Symbol("let"),
@@ -130,12 +130,12 @@ impl Expr<Parsed> {
                 list_pattern![bindings, ..body_sexprs] => {
                     let bindings = bindings
                         .to_vec()
-                        .ok_or_else(|| anyhow::anyhow!("Expected a list of bindings"))?;
+                        .ok_or_else(|| compiler_error!("Expected a list of bindings"))?;
                     let bindings = bindings
                         .into_iter()
                         .map(|binding| match binding {
                             list_pattern![name, value] => Ok((name, value)),
-                            _ => Err(anyhow::anyhow!("Invalid binding")),
+                            _ => Err(compiler_error!("Invalid binding")),
                         })
                         .collect::<Result<Vec<(SExpr, SExpr)>>>()?;
 
@@ -156,7 +156,7 @@ impl Expr<Parsed> {
                     let result = list![lambda, ..exprs];
                     Expr::from_sexpr(result)
                 }
-                _ => Err(anyhow::anyhow!("Invalid let expression")),
+                _ => Err(compiler_error!("Invalid let expression")),
             },
             SExpr::Cons(box Cons {
                 car: SExpr::Symbol("begin"),
@@ -164,7 +164,7 @@ impl Expr<Parsed> {
             }) => {
                 let exprs = cdr
                     .to_vec()
-                    .ok_or_else(|| anyhow::anyhow!("Invalid begin expression"))?;
+                    .ok_or_else(|| compiler_error!("Invalid begin expression"))?;
                 let exprs = exprs
                     .into_iter()
                     .map(Expr::from_sexpr)
@@ -185,7 +185,7 @@ impl Expr<Parsed> {
                         },
                     ))
                 }
-                _ => Err(anyhow::anyhow!("Invalid set! expression")),
+                _ => Err(compiler_error!("Invalid set! expression")),
             },
             SExpr::Cons(box Cons {
                 car: func,
@@ -194,7 +194,7 @@ impl Expr<Parsed> {
                 let func = Expr::from_sexpr(func)?;
                 let args = args
                     .to_vec()
-                    .ok_or_else(|| anyhow::anyhow!("Expected a list of arguments"))?;
+                    .ok_or_else(|| compiler_error!("Expected a list of arguments"))?;
                 let args = args
                     .into_iter()
                     .map(Expr::from_sexpr)

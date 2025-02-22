@@ -7,8 +7,8 @@ pub use defined::*;
 pub use parsed::*;
 pub use used::*;
 
+use crate::error::Result;
 use crate::sexpr::SExpr;
-use anyhow::Result;
 
 pub type Final = Used;
 

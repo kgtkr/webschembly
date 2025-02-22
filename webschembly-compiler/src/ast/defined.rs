@@ -1,7 +1,8 @@
 use super::ast::*;
 use super::parsed::*;
+use crate::compiler_error;
+use crate::error::Result;
 use crate::x::FamilyX;
-use anyhow::Result;
 
 // 変数の巻き上げを行うためにラムダ式で定義されている変数の名前リストを作成する
 // また、変数の重複チェックと、defineできない場所でdefineが行われていないかも確認する
@@ -86,7 +87,7 @@ impl Expr<Defined> {
                     DefineContext::Global => {}
                     DefineContext::LocalDefinable => {
                         if names.contains(&def.name) {
-                            return Err(anyhow::anyhow!(
+                            return Err(compiler_error!(
                                 "Variable {} is already defined",
                                 def.name
                             ));
@@ -95,7 +96,7 @@ impl Expr<Defined> {
                         }
                     }
                     DefineContext::LocalUndefinable => {
-                        return Err(anyhow::anyhow!(
+                        return Err(compiler_error!(
                             "Define is not allowed in this context: {}",
                             def.name
                         ))

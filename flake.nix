@@ -33,13 +33,15 @@
           packageFun = import ./Cargo.nix;
           target = "wasm32-unknown-unknown";
         };
+        cli = (rustPkgs.workspace.webschembly-compiler-cli { }).bin;
+        runtime-rust = (wasmRustPkgs.workspace.webschembly-runtime { }).out;
+        runtime-wat = pkgs.callPackage ./runtime-wat {};
       in
       {
         packages = {
-          cli = (rustPkgs.workspace.webschembly-compiler-cli { }).bin;
-          runtime = (wasmRustPkgs.workspace.webschembly-runtime { }).out;
+          inherit cli runtime-rust runtime-wat;
         };
-        defaultPackage = self.packages.${system}.cli;
+        defaultPackage = cli;
         devShell = rustPkgs.workspaceShell {
           nativeBuildInputs = [
             cargo2nix.packages.${system}.cargo2nix

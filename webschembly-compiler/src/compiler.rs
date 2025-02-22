@@ -1,5 +1,6 @@
 use crate::ast;
 use crate::codegen;
+use crate::compiler_error;
 use crate::ir;
 use crate::lexer;
 use crate::sexpr_parser;
@@ -17,10 +18,10 @@ impl Compiler {
         }
     }
 
-    pub fn compile(&mut self, input: &str, is_stdlib: bool) -> anyhow::Result<Vec<u8>> {
-        let tokens = lexer::lex(&input).map_err(|e| anyhow::anyhow!("{}", e))?;
+    pub fn compile(&mut self, input: &str, is_stdlib: bool) -> crate::error::Result<Vec<u8>> {
+        let tokens = lexer::lex(&input).map_err(|e| compiler_error!("{}", e))?;
         let sexprs =
-            sexpr_parser::parse(tokens.as_slice()).map_err(|e| anyhow::anyhow!("{}", e))?;
+            sexpr_parser::parse(tokens.as_slice()).map_err(|e| compiler_error!("{}", e))?;
         let ast = self.ast_gen.gen_ast(sexprs)?;
         let ir = ir::Ir::from_ast(
             &ast,
