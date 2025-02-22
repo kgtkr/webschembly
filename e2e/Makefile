@@ -26,9 +26,7 @@ bin/runtime.wasm:
 	bin/cli $< -o $@/o.wasm
 
 %.wasm: %.wasms bin/runtime.wasm
-	false
-	# TODO: メモリもマージすることを考えるとmulti memoryなどが必要
-	# wasm-merge -o $@ bin/runtime.wasm runtime $(wildcard $</*.wasm)
+	wasm-merge -o $@ bin/runtime.wasm runtime $(foreach f, $(wildcard $</*.wasm), $(f) dummy_input) --enable-reference-types --enable-multimemory
 
 # TODO:
 # wasm-objdumpはGC proposalに対応していないのでそれを含むwasmファイルを与えるとエラーになる
