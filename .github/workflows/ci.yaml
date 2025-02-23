@@ -53,7 +53,7 @@ jobs:
           nix build .#webschembly-compiler-cli --out-link result-cli
       - name: Build runtime
         run: |
-          nix build .#webschembly-compiler-runtime --out-link result-runtime
+          nix build .#webschembly-runtime --out-link result-runtime
       - uses: actions/upload-artifact@v4
         with:
           name: cli
