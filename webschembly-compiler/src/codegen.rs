@@ -68,7 +68,7 @@ struct ModuleGenerator {
     global_count: u32,
     // runtime functions
     malloc_func: u32,
-    dump_func: u32,
+    display_func: u32,
     string_to_symbol_func: u32,
     get_global_func: u32,
     get_builtin_func: u32,
@@ -95,7 +95,7 @@ impl ModuleGenerator {
             func_count: 0,
             global_count: 0,
             malloc_func: 0,
-            dump_func: 0,
+            display_func: 0,
             string_to_symbol_func: 0,
             get_global_func: 0,
             get_builtin_func: 0,
@@ -170,8 +170,8 @@ impl ModuleGenerator {
                 results: vec![ValType::I32],
             },
         );
-        self.dump_func = self.add_runtime_function(
-            "dump",
+        self.display_func = self.add_runtime_function(
+            "display",
             WasmFuncType {
                 params: vec![ValType::I64],
                 results: vec![],
@@ -647,7 +647,7 @@ impl ModuleGenerator {
     fn gen_builtin(&self, builtin: ast::Builtin, function: &mut Function) {
         match builtin {
             ast::Builtin::Display => {
-                function.instruction(&Instruction::Call(self.dump_func));
+                function.instruction(&Instruction::Call(self.display_func));
                 function.instruction(&Instruction::I32Const(0));
             }
             ast::Builtin::Add => {
