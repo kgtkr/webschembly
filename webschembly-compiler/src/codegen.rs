@@ -75,9 +75,9 @@ struct ModuleGenerator {
     global_table: u32,
     builtin_table: u32,
     // const
-    nil_global: u32,
-    true_global: u32,
-    false_global: u32,
+    nil_global: Option<u32>,
+    true_global: Option<u32>,
+    false_global: Option<u32>,
 }
 
 impl ModuleGenerator {
@@ -111,9 +111,9 @@ impl ModuleGenerator {
             closure_type_fields: Vec::new(),
             global_table: 0,
             builtin_table: 0,
-            nil_global: 0,
-            true_global: 0,
-            false_global: 0,
+            nil_global: None,
+            true_global: None,
+            false_global: None,
             table_count: 0,
         }
     }
@@ -323,7 +323,7 @@ impl ModuleGenerator {
             },
         ]);
 
-        self.nil_global = self.global_count;
+        self.nil_global = Some(self.global_count);
         self.imports.import(
             "runtime",
             "nil",
@@ -338,7 +338,7 @@ impl ModuleGenerator {
         );
         self.global_count += 1;
 
-        self.true_global = self.global_count;
+        self.true_global = Some(self.global_count);
         self.imports.import(
             "runtime",
             "true",
@@ -353,7 +353,7 @@ impl ModuleGenerator {
         );
         self.global_count += 1;
 
-        self.false_global = self.global_count;
+        self.false_global = Some(self.global_count);
         self.imports.import(
             "runtime",
             "false",
@@ -420,6 +420,12 @@ impl ModuleGenerator {
         for (i, func) in ir.funcs.iter().enumerate() {
             let type_idx = self.func_type_from_ir(func.func_type());
 
+            let func_idx = self.func_count;
+            self.func_count += 1;
+
+            let boxed_func_idx = self.func_count;
+            self.func_count += 1;
+
             let mut function = Function::new(
                 func.locals
                     .iter()
@@ -443,15 +449,25 @@ impl ModuleGenerator {
             function.instruction(&Instruction::Return);
             function.instruction(&Instruction::End);
 
-            let func_idx = FuncIndex {
-                func_idx: self.func_count,
-                boxed_func_idx: 0, // TODO:
-            };
-            self.func_indices.insert(i, func_idx);
+            self.func_indices.insert(
+                i,
+                FuncIndex {
+                    func_idx,
+                    boxed_func_idx,
+                },
+            );
 
             self.functions.function(type_idx);
             self.code.function(&function);
-            self.func_count += 1;
+
+            // TODO: boxed_func
+            self.functions.function(self.boxed_func_type);
+            self.code.function(&{
+                let mut function = Function::new(Vec::new());
+                function.instruction(&Instruction::Unreachable);
+                function.instruction(&Instruction::End);
+                function
+            });
         }
 
         let start = StartSection {
@@ -646,9 +662,9 @@ impl ModuleGenerator {
                             heap_type: HeapType::Concrete(self.bool_type),
                         },
                     ))));
-                    function.instruction(&Instruction::GlobalGet(self.true_global));
+                    function.instruction(&Instruction::GlobalGet(self.true_global.unwrap()));
                     function.instruction(&Instruction::Else);
-                    function.instruction(&Instruction::GlobalGet(self.false_global));
+                    function.instruction(&Instruction::GlobalGet(self.false_global.unwrap()));
                     function.instruction(&Instruction::End);
                 }
                 ir::ValType::Int => {
@@ -662,7 +678,7 @@ impl ModuleGenerator {
                     function.instruction(&Instruction::LocalGet(*val as u32));
                 }
                 ir::ValType::Nil => {
-                    function.instruction(&Instruction::GlobalGet(self.nil_global));
+                    function.instruction(&Instruction::GlobalGet(self.nil_global.unwrap()));
                 }
                 ir::ValType::Cons => {
                     function.instruction(&Instruction::LocalGet(*val as u32));
@@ -722,11 +738,11 @@ impl ModuleGenerator {
                 function.instruction(&Instruction::I32Const(*n as i32));
                 function.instruction(&Instruction::I32LtU);
                 function.instruction(&Instruction::If(BlockType::Empty));
-                function.instruction(&Instruction::TableSize(self.global_table));
                 function.instruction(&Instruction::RefNull(HeapType::Abstract {
                     shared: false,
                     ty: AbstractHeapType::Eq,
                 }));
+                function.instruction(&Instruction::TableSize(self.global_table));
                 function.instruction(&Instruction::TableGrow(self.global_table));
                 function.instruction(&Instruction::I32Const(-1));
                 function.instruction(&Instruction::I32Eq);
@@ -734,18 +750,18 @@ impl ModuleGenerator {
                 function.instruction(&Instruction::Unreachable);
                 function.instruction(&Instruction::End);
                 function.instruction(&Instruction::End);
-                function.instruction(&Instruction::GlobalGet(self.nil_global));
+                function.instruction(&Instruction::GlobalGet(self.nil_global.unwrap()));
             }
             ir::Expr::InitBuiltins(n) => {
                 function.instruction(&Instruction::TableSize(self.builtin_table));
                 function.instruction(&Instruction::I32Const(*n as i32));
                 function.instruction(&Instruction::I32LtU);
                 function.instruction(&Instruction::If(BlockType::Empty));
-                function.instruction(&Instruction::TableSize(self.builtin_table));
                 function.instruction(&Instruction::RefNull(HeapType::Abstract {
                     shared: false,
                     ty: AbstractHeapType::Eq,
                 }));
+                function.instruction(&Instruction::TableSize(self.builtin_table));
                 function.instruction(&Instruction::TableGrow(self.builtin_table));
                 function.instruction(&Instruction::I32Const(-1));
                 function.instruction(&Instruction::I32Eq);
@@ -753,7 +769,7 @@ impl ModuleGenerator {
                 function.instruction(&Instruction::Unreachable);
                 function.instruction(&Instruction::End);
                 function.instruction(&Instruction::End);
-                function.instruction(&Instruction::GlobalGet(self.nil_global));
+                function.instruction(&Instruction::GlobalGet(self.nil_global.unwrap()));
             }
         }
     }
@@ -793,7 +809,7 @@ impl ModuleGenerator {
         match builtin {
             ast::Builtin::Display => {
                 function.instruction(&Instruction::Call(self.display_func));
-                function.instruction(&Instruction::GlobalGet(self.nil_global));
+                function.instruction(&Instruction::I32Const(0));
             }
             ast::Builtin::Add => {
                 function.instruction(&Instruction::I64Add);

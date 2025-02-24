@@ -23,7 +23,7 @@ thread_local!(
 );
 
 #[unsafe(no_mangle)]
-pub extern "C" fn string_to_symbol(string: i32) -> i32 {
+pub extern "C" fn _string_to_symbol(string: i32) -> i32 {
     let string = unsafe { read_string(string) };
     SYMBOL_MANAGER.with(|symbol_manager| symbol_manager.borrow_mut().string_to_symbol(string))
 }
@@ -138,61 +138,12 @@ pub extern "C" fn init() {
     log::set_max_level(log::LevelFilter::Debug);
 }
 
-struct GlobalManager {
-    // global id -> ptr
-    globals: HashMap<i32, i32>,
-    builtins: HashMap<i32, i32>,
-}
-
-impl GlobalManager {
-    fn new() -> Self {
-        Self {
-            globals: HashMap::new(),
-            builtins: HashMap::new(),
-        }
-    }
-
-    fn get_global(&mut self, id: i32) -> i32 {
-        if let Some(ptr) = self.globals.get(&id) {
-            *ptr
-        } else {
-            let ptr = malloc(8);
-            self.globals.insert(id, ptr);
-            ptr
-        }
-    }
-
-    fn get_builtin(&mut self, id: i32) -> i32 {
-        if let Some(ptr) = self.builtins.get(&id) {
-            *ptr
-        } else {
-            let ptr = malloc(8);
-            self.builtins.insert(id, ptr);
-            ptr
-        }
-    }
-}
-
-thread_local!(
-    static GLOBAL_MANAGER: RefCell<GlobalManager> = RefCell::new(GlobalManager::new());
-);
-
-#[unsafe(no_mangle)]
-pub extern "C" fn get_global(global_id: i32) -> i32 {
-    GLOBAL_MANAGER.with(|global_manager| global_manager.borrow_mut().get_global(global_id))
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn get_builtin(builtin_id: i32) -> i32 {
-    GLOBAL_MANAGER.with(|global_manager| global_manager.borrow_mut().get_builtin(builtin_id))
-}
-
 extern "C" {
     fn println(buf_ptr: i32, buf_len: i32);
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn display(x: i64) {
+pub extern "C" fn _display(x: i64) {
     fn boxed_to_string(x: u64, s: &mut String) {
         let type_mask = ((1 << 4) - 1) << 48;
         let value_mask = (1 << 48) - 1;
