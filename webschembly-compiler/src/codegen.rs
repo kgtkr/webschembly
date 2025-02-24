@@ -20,23 +20,6 @@ pub struct WasmFuncType {
     pub results: Vec<ValType>,
 }
 
-impl WasmFuncType {
-    pub fn from_ir(ir_func_type: ir::FuncType) -> Self {
-        Self {
-            params: ir_func_type
-                .args
-                .into_iter()
-                .map(ModuleGenerator::convert_type)
-                .collect(),
-            results: ir_func_type
-                .rets
-                .into_iter()
-                .map(ModuleGenerator::convert_type)
-                .collect(),
-        }
-    }
-}
-
 #[derive(Debug, Clone, Copy)]
 
 struct FuncIndex {
@@ -64,7 +47,6 @@ impl Codegen {
 
 #[derive(Debug)]
 struct ModuleGenerator {
-    func_to_type_index: HashMap<WasmFuncType, u32>, // TODO: ref typeを実装したら削除
     type_count: u32,
     func_count: u32,
     global_count: u32,
@@ -105,7 +87,6 @@ struct ModuleGenerator {
 impl ModuleGenerator {
     fn new(element_offset: usize) -> Self {
         Self {
-            func_to_type_index: HashMap::new(),
             type_count: 0,
             func_count: 0,
             global_count: 0,
@@ -142,7 +123,7 @@ impl ModuleGenerator {
     }
 
     fn add_runtime_function(&mut self, name: &str, func_type: WasmFuncType) -> u32 {
-        let type_index = self.func_type(&func_type);
+        let type_index = self.add_func_type(func_type);
         self.imports
             .import("runtime", name, EntityType::Function(type_index));
         let func_index = self.func_count;
@@ -150,26 +131,33 @@ impl ModuleGenerator {
         func_index
     }
 
-    fn func_type(&mut self, func_type: &WasmFuncType) -> u32 {
-        if let Some(type_index) = self.func_to_type_index.get(&func_type) {
+    fn add_func_type(&mut self, func_type: WasmFuncType) -> u32 {
+        if let Some(type_index) = self.func_types.get(&func_type) {
             *type_index
         } else {
             self.types
                 .ty()
                 .function(func_type.params.clone(), func_type.results.clone());
             let type_index = self.type_count;
-            self.func_to_type_index
-                .insert(func_type.clone(), type_index);
+            self.func_types.insert(func_type, type_index);
             self.type_count += 1;
             type_index
         }
     }
 
-    fn add_type(&mut self, f: impl FnOnce(&mut Self) -> ()) -> u32 {
-        let id = self.type_count;
-        self.type_count += 1;
-        f(self);
-        id
+    fn add_func_type_from_ir(&mut self, ir_func_type: ir::FuncType) -> u32 {
+        self.add_func_type(WasmFuncType {
+            params: ir_func_type
+                .args
+                .into_iter()
+                .map(ModuleGenerator::convert_type)
+                .collect(),
+            results: ir_func_type
+                .rets
+                .into_iter()
+                .map(ModuleGenerator::convert_type)
+                .collect(),
+        })
     }
 
     const BOXED_TYPE: ValType = ValType::Ref(RefType::EQREF);
@@ -389,7 +377,7 @@ impl ModuleGenerator {
         }
 
         for (i, func) in ir.funcs.iter().enumerate() {
-            let type_index = self.func_type(&WasmFuncType::from_ir(func.func_type()));
+            let type_index = self.add_func_type_from_ir(func.func_type());
 
             let mut function = Function::new(
                 func.locals
@@ -625,10 +613,10 @@ impl ModuleGenerator {
                 }));
 
                 function.instruction(&Instruction::CallIndirect {
-                    type_index: self.func_type(&WasmFuncType::from_ir(ir::FuncType {
+                    type_index: self.add_func_type_from_ir(ir::FuncType {
                         args: args.iter().map(|arg| locals[*arg]).collect(),
                         rets: vec![ir::Type::Boxed],
-                    })),
+                    }),
                     table_index: 0,
                 });
             }
