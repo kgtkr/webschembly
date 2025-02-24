@@ -79,7 +79,7 @@ struct ModuleGenerator {
     symbol_type: u32,
     variable_params_type: u32,
     boxed_func_type: u32,
-    base_closure_type: u32,
+    closure_type: u32,
     closure_types: HashMap<usize, u32>, // ir func id -> type id
     func_types: HashMap<WasmFuncType, u32>,
 }
@@ -116,7 +116,7 @@ impl ModuleGenerator {
             symbol_type: 0,
             variable_params_type: 0,
             boxed_func_type: 0,
-            base_closure_type: 0,
+            closure_type: 0,
             closure_types: HashMap::new(),
             func_types: HashMap::new(),
         }
@@ -150,17 +150,25 @@ impl ModuleGenerator {
             params: ir_func_type
                 .args
                 .into_iter()
-                .map(ModuleGenerator::convert_type)
+                .map(|ty| self.convert_type(ty))
                 .collect(),
             results: ir_func_type
                 .rets
                 .into_iter()
-                .map(ModuleGenerator::convert_type)
+                .map(|ty| self.convert_type(ty))
                 .collect(),
         })
     }
 
     const BOXED_TYPE: ValType = ValType::Ref(RefType::EQREF);
+    const MUT_CELL_VALUE_FIELD: u32 = 0;
+    const BOOL_VALUE_FIELD: u32 = 0;
+    const INT_VALUE_FIELD: u32 = 0;
+    const CONS_CAR_FIELD: u32 = 0;
+    const CONS_CDR_FIELD: u32 = 1;
+    const SYMBOL_STRING_FIELD: u32 = 0;
+    const CLOSURE_FUNC_FIELD: u32 = 0;
+    const CLOSURE_BOXED_FUNC_FIELD: u32 = 1;
 
     pub fn gen(&mut self, ir: &ir::Ir) -> Module {
         self.imports.import(
@@ -247,7 +255,7 @@ impl ModuleGenerator {
 
         self.boxed_func_type = self.type_count;
         self.type_count += 1;
-        self.base_closure_type = self.type_count;
+        self.closure_type = self.type_count;
         self.type_count += 1;
         self.types.ty().rec(vec![
             SubType {
@@ -259,7 +267,7 @@ impl ModuleGenerator {
                         [
                             ValType::Ref(RefType {
                                 nullable: false,
-                                heap_type: HeapType::Concrete(self.base_closure_type),
+                                heap_type: HeapType::Concrete(self.closure_type),
                             }),
                             ValType::Ref(RefType {
                                 nullable: false,
@@ -384,7 +392,7 @@ impl ModuleGenerator {
                     .iter()
                     .skip(func.args)
                     .map(|ty| {
-                        let ty = Self::convert_type(*ty);
+                        let ty = self.convert_type(*ty);
                         (1, ty)
                     })
                     .collect::<Vec<_>>(),
@@ -525,25 +533,26 @@ impl ModuleGenerator {
                 function.instruction(&Instruction::GlobalGet(self.malloc_tmp_global));
             }
             ir::Expr::CreateMutCell => {
-                self.gen_malloc(function, 8);
-                function.instruction(&Instruction::GlobalGet(self.malloc_tmp_global));
+                function.instruction(&Instruction::RefNull(HeapType::Abstract {
+                    shared: false,
+                    ty: AbstractHeapType::Eq,
+                }));
+                function.instruction(&Instruction::StructNew(self.mut_cell_type));
             }
             ir::Expr::DerefMutCell(cell) => {
                 function.instruction(&Instruction::LocalGet(*cell as u32));
-                function.instruction(&Instruction::I64Load(MemArg {
-                    align: 2,
-                    offset: 0,
-                    memory_index: 0,
-                }));
+                function.instruction(&Instruction::StructGet {
+                    struct_type_index: self.mut_cell_type,
+                    field_index: Self::MUT_CELL_VALUE_FIELD,
+                });
             }
             ir::Expr::SetMutCell(cell, val) => {
                 function.instruction(&Instruction::LocalGet(*cell as u32));
                 function.instruction(&Instruction::LocalGet(*val as u32));
-                function.instruction(&Instruction::I64Store(MemArg {
-                    align: 2,
-                    offset: 0,
-                    memory_index: 0,
-                }));
+                function.instruction(&Instruction::StructSet {
+                    struct_type_index: self.mut_cell_type,
+                    field_index: Self::MUT_CELL_VALUE_FIELD,
+                });
                 function.instruction(&Instruction::LocalGet(*val as u32));
             }
             ir::Expr::Closure(envs, func) => {
@@ -765,10 +774,13 @@ impl ModuleGenerator {
         (((1 << 12) - 1) << 52) | (type_id as i64) << 48
     }
 
-    fn convert_type(ty: ir::Type) -> ValType {
+    fn convert_type(&self, ty: ir::Type) -> ValType {
         match ty {
             ir::Type::Boxed => ValType::I64,
-            ir::Type::MutCell => ValType::I32,
+            ir::Type::MutCell => ValType::Ref(RefType {
+                nullable: false,
+                heap_type: HeapType::Concrete(self.mut_cell_type),
+            }),
             ir::Type::Val(_) => ValType::I32,
         }
     }
