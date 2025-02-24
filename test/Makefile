@@ -25,6 +25,12 @@ $(WEBSCHEMBLY_COMPILER_CLI):
 	rm -f $@/*.wasm
 	$(WEBSCHEMBLY_COMPILER_CLI) $< -o $@/o.wasm
 
+%.wats: %.wasms
+	mkdir -p $@
+	rm -f $@/*.wat
+	$(foreach f, $(wildcard $</*.wasm), wasm-dis $(f) -o $@/$(notdir $(f:.wasm=.wat));)
+
+
 %.wasm: %.wasms $(WEBSCHEMBLY_RUNTIME)
 	wasm-merge -o $@ $(WEBSCHEMBLY_RUNTIME) runtime $(foreach f, $(wildcard $</*.wasm), $(f) dummy_input) --enable-reference-types --enable-multimemory
 

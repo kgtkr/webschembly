@@ -7,9 +7,11 @@ use crate::error;
 use std::borrow::Cow;
 use strum::IntoEnumIterator;
 use wasm_encoder::{
-    BlockType, CodeSection, ConstExpr, ElementSection, Elements, EntityType, Function,
-    FunctionSection, GlobalSection, GlobalType, ImportSection, Instruction, MemArg, MemoryType,
-    Module, RefType, StartSection, TableSection, TableType, TypeSection, ValType,
+    AbstractHeapType, BlockType, CodeSection, CompositeInnerType, CompositeType, ConstExpr,
+    CoreTypeEncoder, ElementSection, Elements, EntityType, FieldType, FuncType, Function,
+    FunctionSection, GlobalSection, GlobalType, HeapType, ImportSection, Instruction, MemArg,
+    MemoryType, Module, RefType, StartSection, StorageType, StructType, SubType, TableSection,
+    TableType, TypeSection, ValType,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -62,7 +64,7 @@ impl Codegen {
 
 #[derive(Debug)]
 struct ModuleGenerator {
-    func_to_type_index: HashMap<WasmFuncType, u32>,
+    func_to_type_index: HashMap<WasmFuncType, u32>, // TODO: ref typeを実装したら削除
     type_count: u32,
     func_count: u32,
     global_count: u32,
@@ -85,6 +87,19 @@ struct ModuleGenerator {
     global_to_index: HashMap<usize, u32>,
     builtin_to_global: HashMap<ast::Builtin, u32>,
     element_offset: usize,
+    // types
+    mut_cell_type: u32,
+    nil_type: u32,
+    bool_type: u32,
+    int_type: u32,
+    cons_type: u32,
+    string_type: u32,
+    symbol_type: u32,
+    variable_params_type: u32,
+    boxed_func_type: u32,
+    base_closure_type: u32,
+    closure_types: HashMap<usize, u32>, // ir func id -> type id
+    func_types: HashMap<WasmFuncType, u32>,
 }
 
 impl ModuleGenerator {
@@ -111,6 +126,18 @@ impl ModuleGenerator {
             global_to_index: HashMap::new(),
             builtin_to_global: HashMap::new(),
             element_offset,
+            mut_cell_type: 0,
+            nil_type: 0,
+            bool_type: 0,
+            int_type: 0,
+            cons_type: 0,
+            string_type: 0,
+            symbol_type: 0,
+            variable_params_type: 0,
+            boxed_func_type: 0,
+            base_closure_type: 0,
+            closure_types: HashMap::new(),
+            func_types: HashMap::new(),
         }
     }
 
@@ -138,6 +165,15 @@ impl ModuleGenerator {
         }
     }
 
+    fn add_type(&mut self, f: impl FnOnce(&mut Self) -> ()) -> u32 {
+        let id = self.type_count;
+        self.type_count += 1;
+        f(self);
+        id
+    }
+
+    const BOXED_TYPE: ValType = ValType::Ref(RefType::EQREF);
+
     pub fn gen(&mut self, ir: &ir::Ir) -> Module {
         self.imports.import(
             "runtime",
@@ -162,6 +198,119 @@ impl ModuleGenerator {
                 shared: false,
             },
         );
+
+        self.mut_cell_type = self.type_count;
+        self.type_count += 1;
+        self.types.ty().struct_(vec![FieldType {
+            element_type: StorageType::Val(Self::BOXED_TYPE),
+            mutable: true,
+        }]);
+
+        self.nil_type = self.type_count;
+        self.type_count += 1;
+        self.types.ty().struct_(vec![]);
+
+        self.bool_type = self.type_count;
+        self.type_count += 1;
+        self.types.ty().struct_(vec![FieldType {
+            element_type: StorageType::I8,
+            mutable: false,
+        }]);
+
+        self.int_type = self.type_count;
+        self.type_count += 1;
+        self.types.ty().struct_(vec![FieldType {
+            element_type: StorageType::Val(ValType::I64),
+            mutable: false,
+        }]);
+
+        self.cons_type = self.type_count;
+        self.type_count += 1;
+        self.types.ty().struct_(vec![
+            FieldType {
+                element_type: StorageType::Val(Self::BOXED_TYPE),
+                mutable: true,
+            },
+            FieldType {
+                element_type: StorageType::Val(Self::BOXED_TYPE),
+                mutable: true,
+            },
+        ]);
+
+        self.string_type = self.type_count;
+        self.type_count += 1;
+        self.types.ty().array(&StorageType::I8, false);
+
+        self.symbol_type = self.type_count;
+        self.type_count += 1;
+        self.types.ty().struct_(vec![FieldType {
+            element_type: StorageType::Val(ValType::Ref(RefType {
+                nullable: false,
+                heap_type: HeapType::Concrete(self.string_type),
+            })),
+            mutable: false,
+        }]);
+
+        self.variable_params_type = self.type_count;
+        self.type_count += 1;
+        self.types
+            .ty()
+            .array(&StorageType::Val(Self::BOXED_TYPE), false);
+
+        self.boxed_func_type = self.type_count;
+        self.type_count += 1;
+        self.base_closure_type = self.type_count;
+        self.type_count += 1;
+        self.types.ty().rec(vec![
+            SubType {
+                is_final: true,
+                supertype_idx: None,
+                composite_type: CompositeType {
+                    shared: false,
+                    inner: CompositeInnerType::Func(FuncType::new(
+                        [
+                            ValType::Ref(RefType {
+                                nullable: false,
+                                heap_type: HeapType::Concrete(self.base_closure_type),
+                            }),
+                            ValType::Ref(RefType {
+                                nullable: false,
+                                heap_type: HeapType::Concrete(self.variable_params_type),
+                            }),
+                        ],
+                        [Self::BOXED_TYPE],
+                    )),
+                },
+            },
+            SubType {
+                is_final: false,
+                supertype_idx: None,
+                composite_type: CompositeType {
+                    shared: false,
+                    inner: CompositeInnerType::Struct(StructType {
+                        fields: Box::new([
+                            FieldType {
+                                element_type: StorageType::Val(ValType::Ref(RefType {
+                                    nullable: false,
+                                    heap_type: HeapType::Abstract {
+                                        shared: false,
+                                        ty: AbstractHeapType::Func,
+                                    },
+                                })),
+                                mutable: false,
+                            },
+                            FieldType {
+                                element_type: StorageType::Val(ValType::Ref(RefType {
+                                    nullable: false,
+                                    heap_type: HeapType::Concrete(self.boxed_func_type),
+                                })),
+                                mutable: false,
+                            },
+                        ]),
+                    }),
+                },
+            },
+        ]);
 
         self.malloc_func = self.add_runtime_function(
             "malloc",
