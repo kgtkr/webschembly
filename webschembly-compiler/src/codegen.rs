@@ -1,4 +1,4 @@
-use std::{collections::HashMap, env, ops::Sub};
+use std::collections::HashMap;
 
 use crate::ast;
 
@@ -8,10 +8,10 @@ use std::borrow::Cow;
 use strum::IntoEnumIterator;
 use wasm_encoder::{
     AbstractHeapType, BlockType, CodeSection, CompositeInnerType, CompositeType, ConstExpr,
-    CoreTypeEncoder, ElementSection, Elements, EntityType, FieldType, FuncType, Function,
-    FunctionSection, GlobalSection, GlobalType, HeapType, ImportSection, Instruction, MemArg,
-    MemoryType, Module, RefType, StartSection, StorageType, StructType, SubType, TableSection,
-    TableType, TypeSection, ValType,
+    ElementSection, Elements, EntityType, FieldType, FuncType, Function, FunctionSection,
+    GlobalSection, GlobalType, HeapType, ImportSection, Instruction, MemArg, MemoryType, Module,
+    RefType, StartSection, StorageType, StructType, SubType, TableSection, TableType, TypeSection,
+    ValType,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
