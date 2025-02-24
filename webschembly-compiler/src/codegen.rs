@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, env, ops::Sub};
 
 use crate::ast;
 
@@ -24,6 +24,10 @@ pub struct WasmFuncType {
 
 struct FuncIndex {
     func_idx: u32,
+    boxed_func_idx: u32,
+    // TODO: いらないかも
+    type_idx: u32,
+    // TODO: 削除
     elem_idx: u32,
 }
 
@@ -80,8 +84,9 @@ struct ModuleGenerator {
     variable_params_type: u32,
     boxed_func_type: u32,
     closure_type: u32,
-    closure_types: HashMap<usize, u32>, // ir func id -> type id
+    closure_types: HashMap<Vec<ValType>, u32>, // env types -> type index
     func_types: HashMap<WasmFuncType, u32>,
+    closure_type_fields: Vec<FieldType>,
 }
 
 impl ModuleGenerator {
@@ -119,11 +124,12 @@ impl ModuleGenerator {
             closure_type: 0,
             closure_types: HashMap::new(),
             func_types: HashMap::new(),
+            closure_type_fields: Vec::new(),
         }
     }
 
     fn add_runtime_function(&mut self, name: &str, func_type: WasmFuncType) -> u32 {
-        let type_index = self.add_func_type(func_type);
+        let type_index = self.func_type(func_type);
         self.imports
             .import("runtime", name, EntityType::Function(type_index));
         let func_index = self.func_count;
@@ -131,7 +137,7 @@ impl ModuleGenerator {
         func_index
     }
 
-    fn add_func_type(&mut self, func_type: WasmFuncType) -> u32 {
+    fn func_type(&mut self, func_type: WasmFuncType) -> u32 {
         if let Some(type_index) = self.func_types.get(&func_type) {
             *type_index
         } else {
@@ -145,8 +151,8 @@ impl ModuleGenerator {
         }
     }
 
-    fn add_func_type_from_ir(&mut self, ir_func_type: ir::FuncType) -> u32 {
-        self.add_func_type(WasmFuncType {
+    fn func_type_from_ir(&mut self, ir_func_type: ir::FuncType) -> u32 {
+        self.func_type(WasmFuncType {
             params: ir_func_type
                 .args
                 .into_iter()
@@ -160,6 +166,47 @@ impl ModuleGenerator {
         })
     }
 
+    fn closure_type(&mut self, env_types: Vec<ValType>) -> u32 {
+        if let Some(type_index) = self.closure_types.get(&env_types) {
+            *type_index
+        } else {
+            let type_index = self.type_count;
+            self.type_count += 1;
+
+            self.closure_types.insert(env_types.clone(), type_index);
+
+            let mut fields = self.closure_type_fields.clone();
+            for ty in env_types {
+                fields.push(FieldType {
+                    element_type: StorageType::Val(ty),
+                    mutable: false,
+                });
+            }
+
+            self.types.ty().subtype(&SubType {
+                is_final: true,
+                supertype_idx: Some(self.closure_type),
+                composite_type: CompositeType {
+                    shared: false,
+                    inner: CompositeInnerType::Struct(StructType {
+                        fields: fields.into_boxed_slice(),
+                    }),
+                },
+            });
+
+            type_index
+        }
+    }
+
+    fn closure_type_from_ir(&mut self, env_types: Vec<ir::Type>) -> u32 {
+        self.closure_type(
+            env_types
+                .into_iter()
+                .map(|ty| self.convert_type(ty))
+                .collect(),
+        )
+    }
+
     const BOXED_TYPE: ValType = ValType::Ref(RefType::EQREF);
     const MUT_CELL_VALUE_FIELD: u32 = 0;
     const BOOL_VALUE_FIELD: u32 = 0;
@@ -169,6 +216,7 @@ impl ModuleGenerator {
     const SYMBOL_STRING_FIELD: u32 = 0;
     const CLOSURE_FUNC_FIELD: u32 = 0;
     const CLOSURE_BOXED_FUNC_FIELD: u32 = 1;
+    const CLOSURE_ENVS_FIELD_OFFSET: u32 = 2;
 
     pub fn gen(&mut self, ir: &ir::Ir) -> Module {
         self.imports.import(
@@ -257,6 +305,25 @@ impl ModuleGenerator {
         self.type_count += 1;
         self.closure_type = self.type_count;
         self.type_count += 1;
+        self.closure_type_fields = vec![
+            FieldType {
+                element_type: StorageType::Val(ValType::Ref(RefType {
+                    nullable: false,
+                    heap_type: HeapType::Abstract {
+                        shared: false,
+                        ty: AbstractHeapType::Func,
+                    },
+                })),
+                mutable: false,
+            },
+            FieldType {
+                element_type: StorageType::Val(ValType::Ref(RefType {
+                    nullable: false,
+                    heap_type: HeapType::Concrete(self.boxed_func_type),
+                })),
+                mutable: false,
+            },
+        ];
         self.types.ty().rec(vec![
             SubType {
                 is_final: true,
@@ -284,25 +351,7 @@ impl ModuleGenerator {
                 composite_type: CompositeType {
                     shared: false,
                     inner: CompositeInnerType::Struct(StructType {
-                        fields: Box::new([
-                            FieldType {
-                                element_type: StorageType::Val(ValType::Ref(RefType {
-                                    nullable: false,
-                                    heap_type: HeapType::Abstract {
-                                        shared: false,
-                                        ty: AbstractHeapType::Func,
-                                    },
-                                })),
-                                mutable: false,
-                            },
-                            FieldType {
-                                element_type: StorageType::Val(ValType::Ref(RefType {
-                                    nullable: false,
-                                    heap_type: HeapType::Concrete(self.boxed_func_type),
-                                })),
-                                mutable: false,
-                            },
-                        ]),
+                        fields: self.closure_type_fields.clone().into_boxed_slice(),
                     }),
                 },
             },
@@ -385,7 +434,7 @@ impl ModuleGenerator {
         }
 
         for (i, func) in ir.funcs.iter().enumerate() {
-            let type_index = self.add_func_type_from_ir(func.func_type());
+            let type_idx = self.func_type_from_ir(func.func_type());
 
             let mut function = Function::new(
                 func.locals
@@ -413,10 +462,12 @@ impl ModuleGenerator {
             let func_idx = FuncIndex {
                 func_idx: self.func_count,
                 elem_idx: self.element_funcs.len() as u32 + self.element_offset as u32,
+                type_idx,
+                boxed_func_idx: 0, // TODO:
             };
             self.func_indices.insert(i, func_idx);
 
-            self.functions.function(type_index);
+            self.functions.function(type_idx);
             self.code.function(&function);
             self.element_funcs.push(self.func_count);
             self.func_count += 1;
@@ -556,78 +607,35 @@ impl ModuleGenerator {
                 function.instruction(&Instruction::LocalGet(*val as u32));
             }
             ir::Expr::Closure(envs, func) => {
-                let sizes = envs
-                    .iter()
-                    .map(|env| Self::type_size(locals[*env]))
-                    .collect::<Vec<_>>();
-                let env_offsets = sizes
-                    .iter()
-                    .scan(0, |sum, size| {
-                        let offset = *sum;
-                        *sum += size;
-                        Some(offset)
-                    })
-                    .collect::<Vec<_>>();
-                let envs_size = sizes.iter().sum::<u32>();
+                let func_idx = self.func_indices[func];
 
-                self.gen_malloc(function, 4 + envs_size);
-
-                function.instruction(&Instruction::GlobalGet(self.malloc_tmp_global));
-                function.instruction(&Instruction::I32Const(
-                    self.func_indices[func].elem_idx as i32,
-                ));
-                function.instruction(&Instruction::I32Store(MemArg {
-                    align: 2,
-                    offset: 0,
-                    memory_index: 0,
-                }));
-
-                for (i, env) in envs.iter().enumerate() {
-                    function.instruction(&Instruction::GlobalGet(self.malloc_tmp_global));
+                function.instruction(&Instruction::RefFunc(func_idx.func_idx));
+                function.instruction(&Instruction::RefFunc(func_idx.boxed_func_idx));
+                for env in envs.iter() {
                     function.instruction(&Instruction::LocalGet(*env as u32));
-                    match sizes[i] {
-                        // TODO: ref typeなどに対応
-                        4 => {
-                            function.instruction(&Instruction::I32Store(MemArg {
-                                align: 2,
-                                offset: 4 + env_offsets[i] as u64,
-                                memory_index: 0,
-                            }));
-                        }
-                        8 => {
-                            function.instruction(&Instruction::I64Store(MemArg {
-                                align: 2,
-                                offset: 4 + env_offsets[i] as u64,
-                                memory_index: 0,
-                            }));
-                        }
-                        _ => {
-                            panic!("unsupported size");
-                        }
-                    }
                 }
 
-                function.instruction(&Instruction::GlobalGet(self.malloc_tmp_global));
+                function.instruction(&Instruction::StructNew(
+                    self.closure_type_from_ir(envs.iter().map(|env| locals[*env]).collect()),
+                ));
             }
             ir::Expr::CallClosure(closure, args) => {
+                let func_type = self.func_type_from_ir(ir::FuncType {
+                    args: args.iter().map(|arg| locals[*arg]).collect(),
+                    rets: vec![ir::Type::Boxed],
+                });
+
                 for arg in args {
                     function.instruction(&Instruction::LocalGet(*arg as u32));
                 }
 
                 function.instruction(&Instruction::LocalGet(*closure as u32));
-                function.instruction(&Instruction::I32Load(MemArg {
-                    align: 2,
-                    offset: 0,
-                    memory_index: 0,
-                }));
-
-                function.instruction(&Instruction::CallIndirect {
-                    type_index: self.add_func_type_from_ir(ir::FuncType {
-                        args: args.iter().map(|arg| locals[*arg]).collect(),
-                        rets: vec![ir::Type::Boxed],
-                    }),
-                    table_index: 0,
+                function.instruction(&Instruction::StructGet {
+                    struct_type_index: self.closure_type,
+                    field_index: Self::CLOSURE_FUNC_FIELD,
                 });
+                function.instruction(&Instruction::RefCastNonNull(HeapType::Concrete(func_type))); // TODO: 必要？
+                function.instruction(&Instruction::CallRef(func_type));
             }
             ir::Expr::Move(val) => {
                 function.instruction(&Instruction::LocalGet(*val as u32));
@@ -643,40 +651,16 @@ impl ModuleGenerator {
                 function.instruction(&Instruction::I64Or);
             }
             ir::Expr::ClosureEnv(env_types, closure, env_index) => {
-                let env_sizes = env_types
-                    .iter()
-                    .map(|ty| Self::type_size(*ty))
-                    .collect::<Vec<_>>();
-                let env_offsets = env_sizes
-                    .iter()
-                    .scan(0, |sum, size| {
-                        let offset = *sum;
-                        *sum += size;
-                        Some(offset)
-                    })
-                    .collect::<Vec<_>>();
-
+                let closure_type = self.closure_type_from_ir(env_types.clone());
                 function.instruction(&Instruction::LocalGet(*closure as u32));
-                match env_sizes[*env_index] {
-                    // TODO: ref typeなどに対応
-                    4 => {
-                        function.instruction(&Instruction::I32Load(MemArg {
-                            align: 2,
-                            offset: 4 + env_offsets[*env_index] as u64,
-                            memory_index: 0,
-                        }));
-                    }
-                    8 => {
-                        function.instruction(&Instruction::I64Load(MemArg {
-                            align: 2,
-                            offset: 4 + env_offsets[*env_index] as u64,
-                            memory_index: 0,
-                        }));
-                    }
-                    _ => {
-                        panic!("unsupported size");
-                    }
-                }
+                // TODO: irでキャストしたほうがパフォーマンスがいい
+                function.instruction(&Instruction::RefCastNonNull(HeapType::Concrete(
+                    closure_type,
+                )));
+                function.instruction(&Instruction::StructGet {
+                    struct_type_index: closure_type,
+                    field_index: Self::CLOSURE_ENVS_FIELD_OFFSET + *env_index as u32,
+                });
             }
             ir::Expr::GlobalGet(global) => {
                 function.instruction(&Instruction::GlobalGet(
@@ -776,20 +760,24 @@ impl ModuleGenerator {
 
     fn convert_type(&self, ty: ir::Type) -> ValType {
         match ty {
-            ir::Type::Boxed => ValType::I64,
+            ir::Type::Boxed => Self::BOXED_TYPE,
             ir::Type::MutCell => ValType::Ref(RefType {
                 nullable: false,
                 heap_type: HeapType::Concrete(self.mut_cell_type),
             }),
-            ir::Type::Val(_) => ValType::I32,
-        }
-    }
-
-    fn type_size(ty: ir::Type) -> u32 {
-        match ty {
-            ir::Type::Boxed => 8,
-            ir::Type::MutCell => 4,
-            ir::Type::Val(_) => 4,
+            // TODO: unboxed型はi64とかを使うべき
+            ir::Type::Val(val) => ValType::Ref(RefType {
+                nullable: false,
+                heap_type: HeapType::Concrete(match val {
+                    ir::ValType::Bool => self.bool_type,
+                    ir::ValType::Int => self.int_type,
+                    ir::ValType::String => self.string_type,
+                    ir::ValType::Symbol => self.symbol_type,
+                    ir::ValType::Nil => self.nil_type,
+                    ir::ValType::Cons => self.cons_type,
+                    ir::ValType::Closure => self.closure_type,
+                }),
+            }),
         }
     }
 
