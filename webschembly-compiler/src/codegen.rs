@@ -25,26 +25,19 @@ pub struct WasmFuncType {
 struct FuncIndex {
     func_idx: u32,
     boxed_func_idx: u32,
-    // TODO: いらないかも
-    type_idx: u32,
-    // TODO: 削除
-    elem_idx: u32,
 }
 
 #[derive(Debug)]
-pub struct Codegen {
-    element_offset: usize,
-}
+pub struct Codegen {}
 
 impl Codegen {
     pub fn new() -> Self {
-        Self { element_offset: 0 }
+        Self {}
     }
 
     pub fn gen(&mut self, ir: &ir::Ir) -> error::Result<Vec<u8>> {
-        let mut module_gen = ModuleGenerator::new(self.element_offset);
+        let mut module_gen = ModuleGenerator::new();
         let module = module_gen.gen(&ir);
-        self.element_offset += module_gen.element_funcs.len();
         Ok(module.finish())
     }
 }
@@ -68,11 +61,9 @@ struct ModuleGenerator {
     code: CodeSection,
     globals: GlobalSection,
     malloc_tmp_global: u32,
-    element_funcs: Vec<u32>,
     func_indices: HashMap<usize, FuncIndex>,
     global_to_index: HashMap<usize, u32>,
     builtin_to_global: HashMap<ast::Builtin, u32>,
-    element_offset: usize,
     // types
     mut_cell_type: u32,
     nil_type: u32,
@@ -90,7 +81,7 @@ struct ModuleGenerator {
 }
 
 impl ModuleGenerator {
-    fn new(element_offset: usize) -> Self {
+    fn new() -> Self {
         Self {
             type_count: 0,
             func_count: 0,
@@ -107,11 +98,9 @@ impl ModuleGenerator {
             tables: TableSection::new(),
             code: CodeSection::new(),
             globals: GlobalSection::new(),
-            element_funcs: Vec::new(),
             func_indices: HashMap::new(),
             global_to_index: HashMap::new(),
             builtin_to_global: HashMap::new(),
-            element_offset,
             mut_cell_type: 0,
             nil_type: 0,
             bool_type: 0,
@@ -461,24 +450,14 @@ impl ModuleGenerator {
 
             let func_idx = FuncIndex {
                 func_idx: self.func_count,
-                elem_idx: self.element_funcs.len() as u32 + self.element_offset as u32,
-                type_idx,
                 boxed_func_idx: 0, // TODO:
             };
             self.func_indices.insert(i, func_idx);
 
             self.functions.function(type_idx);
             self.code.function(&function);
-            self.element_funcs.push(self.func_count);
             self.func_count += 1;
         }
-
-        let mut elements = ElementSection::new();
-        elements.active(
-            Some(0),
-            &ConstExpr::i32_const(self.element_offset as i32),
-            Elements::Functions(Cow::Borrowed(&self.element_funcs)),
-        );
 
         let start = StartSection {
             function_index: self.func_indices[&ir.entry].func_idx,
@@ -492,7 +471,6 @@ impl ModuleGenerator {
             .section(&self.tables)
             .section(&self.globals)
             .section(&start)
-            .section(&elements)
             .section(&self.code);
 
         module
