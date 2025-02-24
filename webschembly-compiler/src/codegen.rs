@@ -765,19 +765,27 @@ impl ModuleGenerator {
                 nullable: false,
                 heap_type: HeapType::Concrete(self.mut_cell_type),
             }),
-            // TODO: unboxed型はi64とかを使うべき
-            ir::Type::Val(val) => ValType::Ref(RefType {
-                nullable: false,
-                heap_type: HeapType::Concrete(match val {
-                    ir::ValType::Bool => self.bool_type,
-                    ir::ValType::Int => self.int_type,
-                    ir::ValType::String => self.string_type,
-                    ir::ValType::Symbol => self.symbol_type,
-                    ir::ValType::Nil => self.nil_type,
-                    ir::ValType::Cons => self.cons_type,
-                    ir::ValType::Closure => self.closure_type,
+            ir::Type::Val(val) => match val {
+                ir::ValType::Bool => ValType::I32,
+                ir::ValType::Int => ValType::I64,
+                ir::ValType::String => ValType::Ref(RefType {
+                    nullable: false,
+                    heap_type: HeapType::Concrete(self.string_type),
                 }),
-            }),
+                ir::ValType::Symbol => ValType::Ref(RefType {
+                    nullable: false,
+                    heap_type: HeapType::Concrete(self.symbol_type),
+                }),
+                ir::ValType::Nil => ValType::I32,
+                ir::ValType::Cons => ValType::Ref(RefType {
+                    nullable: false,
+                    heap_type: HeapType::Concrete(self.cons_type),
+                }),
+                ir::ValType::Closure => ValType::Ref(RefType {
+                    nullable: false,
+                    heap_type: HeapType::Concrete(self.closure_type),
+                }),
+            },
         }
     }
 
