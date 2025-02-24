@@ -63,7 +63,7 @@
             pkgs.nodejs_22
             pkgs.nixpkgs-fmt
             pkgs.binaryen
-            pkgs.wabt
+            pkgs.wasm-tools
           ];
         };
       }

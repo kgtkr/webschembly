@@ -4,14 +4,11 @@ use crate::ast;
 
 use super::ir;
 use crate::error;
-use std::borrow::Cow;
-use strum::IntoEnumIterator;
 use wasm_encoder::{
     AbstractHeapType, BlockType, CodeSection, CompositeInnerType, CompositeType, ConstExpr,
-    ElementSection, Elements, EntityType, FieldType, FuncType, Function, FunctionSection,
-    GlobalSection, GlobalType, HeapType, ImportSection, Instruction, MemArg, MemoryType, Module,
-    RefType, StartSection, StorageType, StructType, SubType, TableSection, TableType, TypeSection,
-    ValType,
+    DataSection, EntityType, FieldType, FuncType, Function, FunctionSection, GlobalSection,
+    GlobalType, HeapType, ImportSection, Instruction, Module, RefType, StartSection, StorageType,
+    StructType, SubType, TableSection, TableType, TypeSection, ValType,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -47,12 +44,10 @@ struct ModuleGenerator {
     type_count: u32,
     func_count: u32,
     global_count: u32,
+    table_count: u32,
     // runtime functions
-    malloc_func: u32,
     display_func: u32,
     string_to_symbol_func: u32,
-    get_global_func: u32,
-    get_builtin_func: u32,
     // wasm section
     imports: ImportSection,
     types: TypeSection,
@@ -60,10 +55,8 @@ struct ModuleGenerator {
     tables: TableSection,
     code: CodeSection,
     globals: GlobalSection,
-    malloc_tmp_global: u32,
+    datas: DataSection,
     func_indices: HashMap<usize, FuncIndex>,
-    global_to_index: HashMap<usize, u32>,
-    builtin_to_global: HashMap<ast::Builtin, u32>,
     // types
     mut_cell_type: u32,
     nil_type: u32,
@@ -78,6 +71,13 @@ struct ModuleGenerator {
     closure_types: HashMap<Vec<ValType>, u32>, // env types -> type index
     func_types: HashMap<WasmFuncType, u32>,
     closure_type_fields: Vec<FieldType>,
+    // table
+    global_table: u32,
+    builtin_table: u32,
+    // const
+    nil_global: u32,
+    true_global: u32,
+    false_global: u32,
 }
 
 impl ModuleGenerator {
@@ -86,12 +86,8 @@ impl ModuleGenerator {
             type_count: 0,
             func_count: 0,
             global_count: 0,
-            malloc_func: 0,
             display_func: 0,
             string_to_symbol_func: 0,
-            get_global_func: 0,
-            get_builtin_func: 0,
-            malloc_tmp_global: 0,
             imports: ImportSection::new(),
             types: TypeSection::new(),
             functions: FunctionSection::new(),
@@ -99,8 +95,7 @@ impl ModuleGenerator {
             code: CodeSection::new(),
             globals: GlobalSection::new(),
             func_indices: HashMap::new(),
-            global_to_index: HashMap::new(),
-            builtin_to_global: HashMap::new(),
+            datas: DataSection::new(),
             mut_cell_type: 0,
             nil_type: 0,
             bool_type: 0,
@@ -114,6 +109,12 @@ impl ModuleGenerator {
             closure_types: HashMap::new(),
             func_types: HashMap::new(),
             closure_type_fields: Vec::new(),
+            global_table: 0,
+            builtin_table: 0,
+            nil_global: 0,
+            true_global: 0,
+            false_global: 0,
+            table_count: 0,
         }
     }
 
@@ -208,30 +209,6 @@ impl ModuleGenerator {
     const CLOSURE_ENVS_FIELD_OFFSET: u32 = 2;
 
     pub fn gen(&mut self, ir: &ir::Ir) -> Module {
-        self.imports.import(
-            "runtime",
-            "memory",
-            MemoryType {
-                minimum: 1,
-                maximum: None,
-                memory64: false,
-                shared: false,
-                page_size_log2: None,
-            },
-        );
-
-        self.imports.import(
-            "runtime",
-            "funcs",
-            TableType {
-                element_type: RefType::FUNCREF,
-                minimum: 1,
-                maximum: None,
-                table64: false,
-                shared: false,
-            },
-        );
-
         self.mut_cell_type = self.type_count;
         self.type_count += 1;
         self.types.ty().struct_(vec![FieldType {
@@ -346,81 +323,99 @@ impl ModuleGenerator {
             },
         ]);
 
-        self.malloc_func = self.add_runtime_function(
-            "malloc",
-            WasmFuncType {
-                params: vec![ValType::I32],
-                results: vec![ValType::I32],
-            },
+        self.nil_global = self.global_count;
+        self.imports.import(
+            "runtime",
+            "nil",
+            EntityType::Global(GlobalType {
+                val_type: ValType::Ref(RefType {
+                    nullable: false,
+                    heap_type: HeapType::Concrete(self.nil_type),
+                }),
+                mutable: false,
+                shared: false,
+            }),
         );
+        self.global_count += 1;
+
+        self.true_global = self.global_count;
+        self.imports.import(
+            "runtime",
+            "true",
+            EntityType::Global(GlobalType {
+                val_type: ValType::Ref(RefType {
+                    nullable: false,
+                    heap_type: HeapType::Concrete(self.bool_type),
+                }),
+                mutable: false,
+                shared: false,
+            }),
+        );
+        self.global_count += 1;
+
+        self.false_global = self.global_count;
+        self.imports.import(
+            "runtime",
+            "false",
+            EntityType::Global(GlobalType {
+                val_type: ValType::Ref(RefType {
+                    nullable: false,
+                    heap_type: HeapType::Concrete(self.bool_type),
+                }),
+                mutable: false,
+                shared: false,
+            }),
+        );
+        self.global_count += 1;
+
+        self.global_table = self.table_count;
+        self.table_count += 1;
+        self.imports.import(
+            "runtime",
+            "globals",
+            EntityType::Table(TableType {
+                element_type: RefType::EQREF,
+                table64: false,
+                minimum: 0,
+                maximum: None,
+                shared: false,
+            }),
+        );
+
+        self.builtin_table = self.table_count;
+        self.table_count += 1;
+        self.imports.import(
+            "runtime",
+            "builtins",
+            EntityType::Table(TableType {
+                element_type: RefType::EQREF,
+                table64: false,
+                minimum: 0,
+                maximum: None,
+                shared: false,
+            }),
+        );
+
         self.display_func = self.add_runtime_function(
             "display",
             WasmFuncType {
-                params: vec![ValType::I64],
+                params: vec![Self::BOXED_TYPE],
                 results: vec![],
             },
         );
         self.string_to_symbol_func = self.add_runtime_function(
             "string_to_symbol",
             WasmFuncType {
-                params: vec![ValType::I32],
-                results: vec![ValType::I32],
+                params: vec![ValType::Ref(RefType {
+                    nullable: false,
+                    heap_type: HeapType::Concrete(self.string_type),
+                })],
+                results: vec![ValType::Ref(RefType {
+                    nullable: false,
+                    heap_type: HeapType::Concrete(self.symbol_type),
+                })],
             },
         );
-        self.get_global_func = self.add_runtime_function(
-            "get_global",
-            WasmFuncType {
-                params: vec![ValType::I32],
-                results: vec![ValType::I32],
-            },
-        );
-        self.get_builtin_func = self.add_runtime_function(
-            "get_builtin",
-            WasmFuncType {
-                params: vec![ValType::I32],
-                results: vec![ValType::I32],
-            },
-        );
-
-        self.malloc_tmp_global = self.global_count;
-        self.globals.global(
-            GlobalType {
-                val_type: ValType::I32,
-                mutable: true,
-                shared: false,
-            },
-            &ConstExpr::i32_const(0),
-        );
-        self.global_count += 1;
-
-        for global in 0..ir.global_count {
-            let global_index = self.global_count;
-            self.globals.global(
-                GlobalType {
-                    val_type: ValType::I32,
-                    mutable: true,
-                    shared: false,
-                },
-                // TODO: nilか0で初期化
-                &ConstExpr::i32_const(0),
-            );
-            self.global_count += 1;
-            self.global_to_index.insert(global, global_index);
-        }
-
-        for builtin in ast::Builtin::iter() {
-            let global_index = self.global_count;
-            self.globals.global(
-                GlobalType {
-                    val_type: ValType::I32,
-                    mutable: true,
-                    shared: false,
-                },
-                &ConstExpr::i32_const(0),
-            );
-            self.global_count += 1;
-            self.builtin_to_global.insert(builtin, global_index);
-        }
 
         for (i, func) in ir.funcs.iter().enumerate() {
             let type_idx = self.func_type_from_ir(func.func_type());
@@ -471,7 +466,8 @@ impl ModuleGenerator {
             .section(&self.tables)
             .section(&self.globals)
             .section(&start)
-            .section(&self.code);
+            .section(&self.code)
+            .section(&self.datas);
 
         module
     }
@@ -510,28 +506,17 @@ impl ModuleGenerator {
                 function.instruction(&Instruction::I64Const(*i));
             }
             ir::Expr::String(s) => {
+                // TODO: 重複リテラルを共有
                 let bs = s.as_bytes();
+                let data_index = self.datas.len();
+                self.datas.passive(bs.iter().copied());
 
-                self.gen_malloc(function, 4 + bs.len() as u32);
-                function.instruction(&Instruction::GlobalGet(self.malloc_tmp_global));
-                function.instruction(&Instruction::I32Const(bs.len() as i32));
-                function.instruction(&Instruction::I32Store(MemArg {
-                    align: 2,
-                    offset: 0,
-                    memory_index: 0,
-                }));
-
-                for (i, b) in bs.iter().enumerate() {
-                    function.instruction(&Instruction::GlobalGet(self.malloc_tmp_global));
-                    function.instruction(&Instruction::I32Const(*b as i32));
-                    function.instruction(&Instruction::I32Store8(MemArg {
-                        align: 0,
-                        offset: 4 + i as u64,
-                        memory_index: 0,
-                    }));
-                }
-
-                function.instruction(&Instruction::GlobalGet(self.malloc_tmp_global));
+                function.instruction(&Instruction::I32Const(0)); // offset
+                function.instruction(&Instruction::I32Const(bs.len() as i32)); // size
+                function.instruction(&Instruction::ArrayNewData {
+                    array_type_index: self.string_type,
+                    array_data_index: data_index,
+                });
             }
             ir::Expr::StringToSymbol(s) => {
                 function.instruction(&Instruction::LocalGet(*s as u32));
@@ -541,25 +526,9 @@ impl ModuleGenerator {
                 function.instruction(&Instruction::I32Const(0));
             }
             ir::Expr::Cons(car, cdr) => {
-                self.gen_malloc(function, 16);
-
-                function.instruction(&Instruction::GlobalGet(self.malloc_tmp_global));
                 function.instruction(&Instruction::LocalGet(*car as u32));
-                function.instruction(&Instruction::I64Store(MemArg {
-                    align: 2,
-                    offset: 0,
-                    memory_index: 0,
-                }));
-
-                function.instruction(&Instruction::GlobalGet(self.malloc_tmp_global));
                 function.instruction(&Instruction::LocalGet(*cdr as u32));
-                function.instruction(&Instruction::I64Store(MemArg {
-                    align: 2,
-                    offset: 8,
-                    memory_index: 0,
-                }));
-
-                function.instruction(&Instruction::GlobalGet(self.malloc_tmp_global));
+                function.instruction(&Instruction::StructNew(self.cons_type));
             }
             ir::Expr::CreateMutCell => {
                 function.instruction(&Instruction::RefNull(HeapType::Abstract {
@@ -618,20 +587,94 @@ impl ModuleGenerator {
             ir::Expr::Move(val) => {
                 function.instruction(&Instruction::LocalGet(*val as u32));
             }
-            ir::Expr::Unbox(_typ, val) => {
-                function.instruction(&Instruction::LocalGet(*val as u32));
-                function.instruction(&Instruction::I32WrapI64);
-            }
-            ir::Expr::Box(typ, val) => {
-                function.instruction(&Instruction::LocalGet(*val as u32));
-                function.instruction(&Instruction::I64ExtendI32U);
-                function.instruction(&Instruction::I64Const(Self::valtype_to_bit_pattern(*typ)));
-                function.instruction(&Instruction::I64Or);
-            }
+            ir::Expr::Unbox(typ, val) => match typ {
+                ir::ValType::Bool => {
+                    function.instruction(&Instruction::LocalGet(*val as u32));
+                    function.instruction(&Instruction::RefCastNonNull(HeapType::Concrete(
+                        self.bool_type,
+                    )));
+                    function.instruction(&Instruction::StructGet {
+                        struct_type_index: self.bool_type,
+                        field_index: Self::BOOL_VALUE_FIELD,
+                    });
+                }
+                ir::ValType::Int => {
+                    function.instruction(&Instruction::LocalGet(*val as u32));
+                    function.instruction(&Instruction::RefCastNonNull(HeapType::Concrete(
+                        self.int_type,
+                    )));
+                    function.instruction(&Instruction::StructGet {
+                        struct_type_index: self.int_type,
+                        field_index: Self::INT_VALUE_FIELD,
+                    });
+                }
+                ir::ValType::String => {
+                    function.instruction(&Instruction::LocalGet(*val as u32));
+                    function.instruction(&Instruction::RefCastNonNull(HeapType::Concrete(
+                        self.string_type,
+                    )));
+                }
+                ir::ValType::Symbol => {
+                    function.instruction(&Instruction::LocalGet(*val as u32));
+                    function.instruction(&Instruction::RefCastNonNull(HeapType::Concrete(
+                        self.symbol_type,
+                    )));
+                }
+                ir::ValType::Nil => {
+                    // TODO: 型チェックするべき
+                    function.instruction(&Instruction::I32Const(0));
+                }
+                ir::ValType::Cons => {
+                    function.instruction(&Instruction::LocalGet(*val as u32));
+                    function.instruction(&Instruction::RefCastNonNull(HeapType::Concrete(
+                        self.cons_type,
+                    )));
+                }
+                ir::ValType::Closure => {
+                    function.instruction(&Instruction::LocalGet(*val as u32));
+                    function.instruction(&Instruction::RefCastNonNull(HeapType::Concrete(
+                        self.closure_type,
+                    )));
+                }
+            },
+            ir::Expr::Box(typ, val) => match typ {
+                ir::ValType::Bool => {
+                    function.instruction(&Instruction::LocalGet(*val as u32));
+                    function.instruction(&Instruction::If(BlockType::Result(ValType::Ref(
+                        RefType {
+                            nullable: false,
+                            heap_type: HeapType::Concrete(self.bool_type),
+                        },
+                    ))));
+                    function.instruction(&Instruction::GlobalGet(self.true_global));
+                    function.instruction(&Instruction::Else);
+                    function.instruction(&Instruction::GlobalGet(self.false_global));
+                    function.instruction(&Instruction::End);
+                }
+                ir::ValType::Int => {
+                    function.instruction(&Instruction::LocalGet(*val as u32));
+                    function.instruction(&Instruction::StructNew(self.int_type));
+                }
+                ir::ValType::String => {
+                    function.instruction(&Instruction::LocalGet(*val as u32));
+                }
+                ir::ValType::Symbol => {
+                    function.instruction(&Instruction::LocalGet(*val as u32));
+                }
+                ir::ValType::Nil => {
+                    function.instruction(&Instruction::GlobalGet(self.nil_global));
+                }
+                ir::ValType::Cons => {
+                    function.instruction(&Instruction::LocalGet(*val as u32));
+                }
+                ir::ValType::Closure => {
+                    function.instruction(&Instruction::LocalGet(*val as u32));
+                }
+            },
             ir::Expr::ClosureEnv(env_types, closure, env_index) => {
                 let closure_type = self.closure_type_from_ir(env_types.clone());
                 function.instruction(&Instruction::LocalGet(*closure as u32));
-                // TODO: irでキャストしたほうがパフォーマンスがいい
+                // TODO: irでキャストするべき
                 function.instruction(&Instruction::RefCastNonNull(HeapType::Concrete(
                     closure_type,
                 )));
@@ -641,30 +684,22 @@ impl ModuleGenerator {
                 });
             }
             ir::Expr::GlobalGet(global) => {
-                function.instruction(&Instruction::GlobalGet(
-                    *self.global_to_index.get(global).unwrap(),
-                ));
-                function.instruction(&Instruction::I64Load(MemArg {
-                    align: 2,
-                    offset: 0,
-                    memory_index: 0,
-                }));
+                function.instruction(&Instruction::I32Const(*global as i32));
+                function.instruction(&Instruction::TableGet(self.global_table));
             }
             ir::Expr::GlobalSet(global, val) => {
-                function.instruction(&Instruction::GlobalGet(
-                    *self.global_to_index.get(global).unwrap(),
-                ));
+                function.instruction(&Instruction::I32Const(*global as i32));
                 function.instruction(&Instruction::LocalGet(*val as u32));
-                function.instruction(&Instruction::I64Store(MemArg {
-                    align: 2,
-                    offset: 0,
-                    memory_index: 0,
-                }));
+                function.instruction(&Instruction::TableSet(self.global_table));
                 function.instruction(&Instruction::LocalGet(*val as u32));
             }
             ir::Expr::Error(_) => {
                 function.instruction(&Instruction::Unreachable);
-                function.instruction(&Instruction::I32Const(0)); // TODO: これなくても型エラーにならない気がする
+                // TODO: 多分いらない
+                function.instruction(&Instruction::RefNull(HeapType::Abstract {
+                    shared: false,
+                    ty: AbstractHeapType::Eq,
+                }));
             }
             ir::Expr::Builtin(builtin, args) => {
                 for arg in args {
@@ -673,67 +708,54 @@ impl ModuleGenerator {
                 self.gen_builtin(*builtin, function);
             }
             ir::Expr::GetBuiltin(builtin) => {
-                function.instruction(&Instruction::GlobalGet(
-                    *self.builtin_to_global.get(builtin).unwrap(),
-                ));
-                function.instruction(&Instruction::I64Load(MemArg {
-                    align: 2,
-                    offset: 0,
-                    memory_index: 0,
-                }));
+                function.instruction(&Instruction::I32Const(builtin.id()));
+                function.instruction(&Instruction::TableGet(self.builtin_table));
             }
             ir::Expr::SetBuiltin(builtin, val) => {
-                function.instruction(&Instruction::GlobalGet(
-                    *self.builtin_to_global.get(builtin).unwrap(),
-                ));
-                function.instruction(&Instruction::LocalGet(*val as u32));
-                function.instruction(&Instruction::I64Store(MemArg {
-                    align: 2,
-                    offset: 0,
-                    memory_index: 0,
-                }));
-                function.instruction(&Instruction::LocalGet(*val as u32));
-            }
-            ir::Expr::InitGlobal(global_id) => {
-                function.instruction(&Instruction::I32Const(*global_id as i32));
-                function.instruction(&Instruction::Call(self.get_global_func));
-                function.instruction(&Instruction::GlobalSet(
-                    *self.global_to_index.get(global_id).unwrap(),
-                ));
-                function.instruction(&Instruction::I32Const(0));
-            }
-            ir::Expr::InitBuiltin(builtin) => {
                 function.instruction(&Instruction::I32Const(builtin.id()));
-                function.instruction(&Instruction::Call(self.get_builtin_func));
-                function.instruction(&Instruction::GlobalSet(
-                    *self.builtin_to_global.get(builtin).unwrap(),
-                ));
-                function.instruction(&Instruction::I32Const(0));
+                function.instruction(&Instruction::LocalGet(*val as u32));
+                function.instruction(&Instruction::TableSet(self.builtin_table));
+                function.instruction(&Instruction::LocalGet(*val as u32));
+            }
+            ir::Expr::InitGlobals(n) => {
+                function.instruction(&Instruction::TableSize(self.global_table));
+                function.instruction(&Instruction::I32Const(*n as i32));
+                function.instruction(&Instruction::I32LtU);
+                function.instruction(&Instruction::If(BlockType::Empty));
+                function.instruction(&Instruction::TableSize(self.global_table));
+                function.instruction(&Instruction::RefNull(HeapType::Abstract {
+                    shared: false,
+                    ty: AbstractHeapType::Eq,
+                }));
+                function.instruction(&Instruction::TableGrow(self.global_table));
+                function.instruction(&Instruction::I32Const(-1));
+                function.instruction(&Instruction::I32Eq);
+                function.instruction(&Instruction::If(BlockType::Empty));
+                function.instruction(&Instruction::Unreachable);
+                function.instruction(&Instruction::End);
+                function.instruction(&Instruction::End);
+                function.instruction(&Instruction::GlobalGet(self.nil_global));
+            }
+            ir::Expr::InitBuiltins(n) => {
+                function.instruction(&Instruction::TableSize(self.builtin_table));
+                function.instruction(&Instruction::I32Const(*n as i32));
+                function.instruction(&Instruction::I32LtU);
+                function.instruction(&Instruction::If(BlockType::Empty));
+                function.instruction(&Instruction::TableSize(self.builtin_table));
+                function.instruction(&Instruction::RefNull(HeapType::Abstract {
+                    shared: false,
+                    ty: AbstractHeapType::Eq,
+                }));
+                function.instruction(&Instruction::TableGrow(self.builtin_table));
+                function.instruction(&Instruction::I32Const(-1));
+                function.instruction(&Instruction::I32Eq);
+                function.instruction(&Instruction::If(BlockType::Empty));
+                function.instruction(&Instruction::Unreachable);
+                function.instruction(&Instruction::End);
+                function.instruction(&Instruction::End);
+                function.instruction(&Instruction::GlobalGet(self.nil_global));
             }
         }
-    }
-
-    fn gen_malloc(&mut self, function: &mut Function, size: u32) {
-        function.instruction(&Instruction::I32Const(size as i32));
-        function.instruction(&Instruction::Call(self.malloc_func));
-        function.instruction(&Instruction::GlobalSet(self.malloc_tmp_global));
-    }
-
-    fn valtype_to_type_id(typ: ir::ValType) -> u8 {
-        match typ {
-            ir::ValType::Bool => 0b0010,
-            ir::ValType::Int => 0b0011,
-            ir::ValType::String => 0b0101,
-            ir::ValType::Symbol => 0b0111,
-            ir::ValType::Nil => 0b0001,
-            ir::ValType::Cons => 0b0100,
-            ir::ValType::Closure => 0b0110,
-        }
-    }
-
-    fn valtype_to_bit_pattern(typ: ir::ValType) -> i64 {
-        let type_id = Self::valtype_to_type_id(typ);
-        (((1 << 12) - 1) << 52) | (type_id as i64) << 48
     }
 
     fn convert_type(&self, ty: ir::Type) -> ValType {
@@ -771,10 +793,10 @@ impl ModuleGenerator {
         match builtin {
             ast::Builtin::Display => {
                 function.instruction(&Instruction::Call(self.display_func));
-                function.instruction(&Instruction::I32Const(0));
+                function.instruction(&Instruction::GlobalGet(self.nil_global));
             }
             ast::Builtin::Add => {
-                function.instruction(&Instruction::I32Add);
+                function.instruction(&Instruction::I64Add);
             }
         }
     }

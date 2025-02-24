@@ -1,8 +1,8 @@
+BINARYEN_ARGS := $(shell cat ../binaryen-args.txt)
 SCM := $(wildcard src/*.scm)
 LIST := $(patsubst %.scm,%,$(SCM))
 WASM := $(patsubst %.scm,%.wasm,$(SCM))
 WASMS := $(patsubst %.scm,%.wasms,$(SCM))
-OBJDUMP := $(patsubst %.scm,%.objdump,$(SCM))
 WAT := $(patsubst %.scm,%.wat,$(SCM))
 
 LOCAL_WEBSCHEMBLY_RUNTIME := ../webschembly-runtime/webschembly_runtime.wasm
@@ -28,17 +28,15 @@ $(WEBSCHEMBLY_COMPILER_CLI):
 %.wats: %.wasms
 	mkdir -p $@
 	rm -f $@/*.wat
-	$(foreach f, $(wildcard $</*.wasm), wasm-dis $(f) -o $@/$(notdir $(f:.wasm=.wat));)
+	# wasm-toolsのwasm -> watはバリデーションを行わないのでデバッグしやすい
+	$(foreach f, $(wildcard $</*.wasm), wasm-tools print $(f) -o $@/$(notdir $(f:.wasm=.wat));)
+	# watに変換してバリデーションしたほうが分かりやすいため
+	$(foreach f, $(wildcard $</*.wasm), wasm-as $(BINARYEN_ARGS) $@/$(notdir $(f:.wasm=.wat));)
 
 
 %.wasm: %.wasms $(WEBSCHEMBLY_RUNTIME)
-	wasm-merge -o $@ $(WEBSCHEMBLY_RUNTIME) runtime $(foreach f, $(wildcard $</*.wasm), $(f) dummy_input) --enable-reference-types --enable-multimemory
+	wasm-merge -o $@ $(WEBSCHEMBLY_RUNTIME) runtime $(foreach f, $(wildcard $</*.wasm), $(f) dummy_input) $(BINARYEN_ARGS)
 
-# TODO:
-# wasm-objdumpはGC proposalに対応していないのでそれを含むwasmファイルを与えるとエラーになる
-# しかし、wasm-dis は型エラーがあるwasmファイルを与えるとエラーになるのでデバッグには使いにくい
-%.objdump: %.wasm
-	wasm-objdump -hxd $< > $@
 
 %.wat: %.wasm
 	wasm-dis $< -o $@
@@ -57,8 +55,8 @@ run: $(WEBSCHEMBLY_RUNTIME)
 
 .PHONY: clean
 clean:
-	rm -f $(WASM) $(OBJDUMP) $(WAT)
-	rm -rf $(WASMS)
+	rm -f $(WASM) $(WAT)
+	rm -rf $(WASMS) $(WATS)
 
 .PHONY: all
-all: $(WASM) $(OBJDUMP) $(WAT)
+all: $(WASM) $(WAT)

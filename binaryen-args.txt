@@ -1,0 +1,1 @@
+--enable-gc --enable-reference-types --enable-multimemory --enable-bulk-memory

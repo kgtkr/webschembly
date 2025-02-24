@@ -51,8 +51,8 @@ pub enum Expr {
     GetBuiltin(ast::Builtin),
     SetBuiltin(ast::Builtin, usize),
     Error(String),
-    InitGlobal(usize),
-    InitBuiltin(ast::Builtin),
+    InitGlobals(usize),  // global count
+    InitBuiltins(usize), // builtin count
 }
 
 #[derive(Debug, Clone)]
@@ -97,7 +97,6 @@ pub struct FuncType {
 #[derive(Debug, Clone)]
 pub struct Ir {
     pub funcs: Vec<Func>,
-    pub global_count: usize,
     pub entry: usize,
 }
 
@@ -141,7 +140,6 @@ impl IrGenerator {
         Ir {
             funcs: self.funcs,
             entry: func_id,
-            global_count: self.global_ids.len(),
         }
     }
 
@@ -186,16 +184,22 @@ impl<'a> FuncGenerator<'a> {
     fn entry_gen(mut self, ast: &ast::Ast<ast::Final>) -> Func {
         let body = {
             let mut block_gen = BlockGenerator::new(&mut self);
-            for global in &ast.x.global_vars {
-                block_gen
-                    .stats
-                    .push(Stat::Expr(None, Expr::InitGlobal(global.0)));
-            }
-            for builtin in ast::Builtin::iter() {
-                block_gen
-                    .stats
-                    .push(Stat::Expr(None, Expr::InitBuiltin(builtin)));
-            }
+            block_gen.stats.push(Stat::Expr(
+                None,
+                Expr::InitGlobals(
+                    ast.x
+                        .global_vars
+                        .iter()
+                        .map(|x| x.0)
+                        .max()
+                        .map(|n| n + 1)
+                        .unwrap_or(0),
+                ),
+            ));
+            block_gen.stats.push(Stat::Expr(
+                None,
+                Expr::InitBuiltins(ast::Builtin::iter().len()),
+            ));
             block_gen.gen_stats(None, &ast.exprs);
             block_gen.stats
         };
