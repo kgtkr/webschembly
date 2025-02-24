@@ -507,7 +507,7 @@ impl ModuleGenerator {
                 function.instruction(&Instruction::I32Const(if *b { 1 } else { 0 }));
             }
             ir::Expr::Int(i) => {
-                function.instruction(&Instruction::I32Const(*i));
+                function.instruction(&Instruction::I64Const(*i));
             }
             ir::Expr::String(s) => {
                 let bs = s.as_bytes();

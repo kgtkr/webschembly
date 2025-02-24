@@ -1,7 +1,7 @@
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum SExpr {
     Bool(bool),
-    Int(i32),
+    Int(i64),
     String(String),
     Symbol(String),
     Cons(Box<Cons>),

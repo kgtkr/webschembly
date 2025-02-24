@@ -26,7 +26,7 @@ pub enum ValType {
 #[derive(Debug, Clone)]
 pub enum Expr {
     Bool(bool),
-    Int(i32),
+    Int(i64),
     String(String),
     StringToSymbol(usize),
     Nil,

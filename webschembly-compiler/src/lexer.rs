@@ -19,7 +19,7 @@ fn identifier(input: &str) -> IResult<&str, Token> {
 
 fn int(input: &str) -> IResult<&str, Token> {
     let (input, int) = map_res(take_while(|c: char| c.is_ascii_digit()), |s: &str| {
-        s.parse::<i32>()
+        s.parse::<i64>()
     })(input)?;
     Ok((input, Token::Int(int)))
 }

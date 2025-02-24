@@ -59,7 +59,7 @@ where
 #[derive(Debug, Clone)]
 pub enum Literal {
     Bool(bool),
-    Int(i32),
+    Int(i64),
     String(String),
     Nil,
     Quote(SExpr),
