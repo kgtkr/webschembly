@@ -9,7 +9,7 @@ webschembly_runtime.wasm: webschembly_runtime_wat.wasm $(WEBSCHEMBLY_RUNTIME_RUS
 	wasm-merge -o $@ $(foreach f, $^, $(f) runtime) $(BINARYEN_ARGS)
 
 webschembly_runtime_wat.wasm: lib.wat
-	wasm-as -o $@ $<
+	wasm-as $(BINARYEN_ARGS) -o $@ $<
 
 .PHONY: $(CARGO_WEBSCHEMBLY_RUNTIME_RUST)
 $(CARGO_WEBSCHEMBLY_RUNTIME_RUST):

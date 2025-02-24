@@ -1,14 +1,14 @@
-use std::collections::HashMap;
+use std::{borrow::Cow, collections::HashMap};
 
 use crate::ast;
 
 use super::ir;
 use crate::error;
 use wasm_encoder::{
-    AbstractHeapType, BlockType, CodeSection, CompositeInnerType, CompositeType, ConstExpr,
-    DataSection, EntityType, FieldType, FuncType, Function, FunctionSection, GlobalSection,
-    GlobalType, HeapType, ImportSection, Instruction, Module, RefType, StartSection, StorageType,
-    StructType, SubType, TableSection, TableType, TypeSection, ValType,
+    AbstractHeapType, BlockType, CodeSection, CompositeInnerType, CompositeType, DataSection,
+    ElementSection, Elements, EntityType, FieldType, FuncType, Function, FunctionSection,
+    GlobalSection, GlobalType, HeapType, ImportSection, Instruction, Module, RefType, StartSection,
+    StorageType, StructType, SubType, TableSection, TableType, TypeSection, ValType,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -56,6 +56,7 @@ struct ModuleGenerator {
     code: CodeSection,
     globals: GlobalSection,
     datas: DataSection,
+    elements: ElementSection,
     func_indices: HashMap<usize, FuncIndex>,
     // types
     mut_cell_type: u32,
@@ -94,6 +95,7 @@ impl ModuleGenerator {
             tables: TableSection::new(),
             code: CodeSection::new(),
             globals: GlobalSection::new(),
+            elements: ElementSection::new(),
             func_indices: HashMap::new(),
             datas: DataSection::new(),
             mut_cell_type: 0,
@@ -456,6 +458,11 @@ impl ModuleGenerator {
                     boxed_func_idx,
                 },
             );
+            self.elements
+                .declared(Elements::Functions(Cow::Borrowed(&vec![
+                    func_idx,
+                    boxed_func_idx,
+                ])));
 
             self.functions.function(type_idx);
             self.code.function(&function);
@@ -482,6 +489,7 @@ impl ModuleGenerator {
             .section(&self.tables)
             .section(&self.globals)
             .section(&start)
+            .section(&self.elements)
             .section(&self.code)
             .section(&self.datas);
 
@@ -734,10 +742,13 @@ impl ModuleGenerator {
                 function.instruction(&Instruction::LocalGet(*val as u32));
             }
             ir::Expr::InitGlobals(n) => {
+                // 必要なサイズになるまで2倍に拡張
+                function.instruction(&Instruction::Block(BlockType::Empty));
+                function.instruction(&Instruction::Loop(BlockType::Empty));
                 function.instruction(&Instruction::TableSize(self.global_table));
                 function.instruction(&Instruction::I32Const(*n as i32));
-                function.instruction(&Instruction::I32LtU);
-                function.instruction(&Instruction::If(BlockType::Empty));
+                function.instruction(&Instruction::I32GeU);
+                function.instruction(&Instruction::BrIf(1));
                 function.instruction(&Instruction::RefNull(HeapType::Abstract {
                     shared: false,
                     ty: AbstractHeapType::Eq,
@@ -749,14 +760,20 @@ impl ModuleGenerator {
                 function.instruction(&Instruction::If(BlockType::Empty));
                 function.instruction(&Instruction::Unreachable);
                 function.instruction(&Instruction::End);
+                function.instruction(&Instruction::Br(0));
                 function.instruction(&Instruction::End);
+                function.instruction(&Instruction::End);
+
                 function.instruction(&Instruction::GlobalGet(self.nil_global.unwrap()));
             }
             ir::Expr::InitBuiltins(n) => {
+                // 必要なサイズになるまで2倍に拡張
+                function.instruction(&Instruction::Block(BlockType::Empty));
+                function.instruction(&Instruction::Loop(BlockType::Empty));
                 function.instruction(&Instruction::TableSize(self.builtin_table));
                 function.instruction(&Instruction::I32Const(*n as i32));
-                function.instruction(&Instruction::I32LtU);
-                function.instruction(&Instruction::If(BlockType::Empty));
+                function.instruction(&Instruction::I32GeU);
+                function.instruction(&Instruction::BrIf(1));
                 function.instruction(&Instruction::RefNull(HeapType::Abstract {
                     shared: false,
                     ty: AbstractHeapType::Eq,
@@ -768,7 +785,10 @@ impl ModuleGenerator {
                 function.instruction(&Instruction::If(BlockType::Empty));
                 function.instruction(&Instruction::Unreachable);
                 function.instruction(&Instruction::End);
+                function.instruction(&Instruction::Br(0));
                 function.instruction(&Instruction::End);
+                function.instruction(&Instruction::End);
+
                 function.instruction(&Instruction::GlobalGet(self.nil_global.unwrap()));
             }
         }
