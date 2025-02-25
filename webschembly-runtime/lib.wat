@@ -31,6 +31,7 @@
 
   (func $display (export "display") (param $value eqref))
   (func $string_to_symbol (export "string_to_symbol") (param $s (ref $String)) (result (ref $Symbol))
+    ;; TODO: r5rsのstringは可変らしいのでコピーが必要
     (local $s_ptr i32)
     (local $s_len i32)
     (local $symbol_index i32)
