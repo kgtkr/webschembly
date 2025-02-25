@@ -606,8 +606,10 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
             }
             self.gen_stat(result, last);
         } else {
-            // goshと同じようにbeginの中身が空の場合は0を返す
-            self.stats.push(Stat::Expr(result, Expr::Int(0)));
+            let unboxed = self.func_gen.local(Type::Val(ValType::Nil));
+            self.stats.push(Stat::Expr(Some(unboxed), Expr::Nil));
+            self.stats
+                .push(Stat::Expr(result, Expr::Box(ValType::Nil, unboxed)));
         }
     }
 }
