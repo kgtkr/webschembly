@@ -1,6 +1,7 @@
 #![feature(ptr_as_ref_unchecked, allocator_api, slice_ptr_get)]
 use core::cell::RefCell;
 use std::collections::HashMap;
+use std::vec;
 use webschembly_compiler;
 mod logger;
 use std::alloc::{Allocator, Global, Layout};
@@ -41,9 +42,12 @@ thread_local!(
 );
 
 #[unsafe(no_mangle)]
-pub extern "C" fn _string_to_symbol(string: i32) -> i32 {
-    let string = unsafe { read_string(string) };
-    SYMBOL_MANAGER.with(|symbol_manager| symbol_manager.borrow_mut().string_to_symbol(string))
+pub extern "C" fn _string_to_symbol(s_ptr: i32, s_buf: i32) -> i32 {
+    let mut s = vec![0u8; s_buf as usize];
+    unsafe {
+        std::ptr::copy_nonoverlapping(s_ptr as *const u8, s.as_mut_ptr(), s_buf as usize);
+    }
+    SYMBOL_MANAGER.with(|symbol_manager| symbol_manager.borrow_mut().string_to_symbol(s))
 }
 
 unsafe fn read_string(string: i32) -> Vec<u8> {
