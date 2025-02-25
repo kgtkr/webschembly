@@ -39,7 +39,7 @@ jobs:
       - name: Clippy
         run: |
           cargo clippy
-      - name: crate2nix
+      - name: cargo2nix
         run: |
           cargo2nix -o
           git diff --exit-code
