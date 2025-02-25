@@ -140,12 +140,12 @@ impl ModuleGenerator {
         if let Some(type_index) = self.func_types.get(&func_type) {
             *type_index
         } else {
+            let type_index = self.type_count;
+            self.type_count += 1;
             self.types
                 .ty()
                 .function(func_type.params.clone(), func_type.results.clone());
-            let type_index = self.type_count;
             self.func_types.insert(func_type, type_index);
-            self.type_count += 1;
             type_index
         }
     }
@@ -169,18 +169,16 @@ impl ModuleGenerator {
         if let Some(type_index) = self.closure_types.get(&env_types) {
             *type_index
         } else {
-            let type_index = self.type_count;
-            self.type_count += 1;
-
-            self.closure_types.insert(env_types.clone(), type_index);
-
             let mut fields = self.closure_type_fields.clone();
-            for ty in env_types {
+            for ty in env_types.iter() {
                 fields.push(FieldType {
-                    element_type: StorageType::Val(ty),
+                    element_type: StorageType::Val(ty.clone()),
                     mutable: false,
                 });
             }
+
+            let type_index = self.type_count;
+            self.type_count += 1;
 
             self.types.ty().subtype(&SubType {
                 is_final: true,
@@ -192,6 +190,8 @@ impl ModuleGenerator {
                     }),
                 },
             });
+
+            self.closure_types.insert(env_types, type_index);
 
             type_index
         }
