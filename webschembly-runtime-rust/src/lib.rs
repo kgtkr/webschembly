@@ -50,19 +50,6 @@ pub extern "C" fn _string_to_symbol(s_ptr: i32, s_buf: i32) -> i32 {
     SYMBOL_MANAGER.with(|symbol_manager| symbol_manager.borrow_mut().string_to_symbol(s))
 }
 
-unsafe fn read_string(string: i32) -> Vec<u8> {
-    let len_ptr = string as *const [u8; 4];
-    let buf_ptr = (string + 4) as *const u8;
-
-    let len = i32::from_le_bytes(*len_ptr);
-    let mut bytes = Vec::with_capacity(len as usize);
-    for i in 0..len {
-        bytes.push(*buf_ptr.offset(i as isize));
-    }
-
-    bytes
-}
-
 struct SymbolManager {
     symbol_to_bytes: HashMap<usize, Vec<u8>>,
     bytes_to_symbol: HashMap<Vec<u8>, usize>,
@@ -135,94 +122,6 @@ extern "C" {
 pub extern "C" fn init() {
     log::set_logger(&logger::WasmLogger).unwrap();
     log::set_max_level(log::LevelFilter::Debug);
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn _display(x: i64) {
-    fn boxed_to_string(x: u64, s: &mut String) {
-        let type_mask = ((1 << 4) - 1) << 48;
-        let value_mask = (1 << 48) - 1;
-
-        let type_id = (x & type_mask) >> 48;
-        let value = (x & value_mask) as u32;
-
-        match type_id {
-            1 => s.push_str("()"),
-            2 => s.push_str(if value == 0 { "#f" } else { "#t" }),
-            3 => s.push_str(
-                &i32::from_le_bytes({
-                    let mut bytes = [0; 4];
-                    bytes.copy_from_slice(&value.to_le_bytes()[..]);
-                    bytes
-                })
-                .to_string(),
-            ),
-            4 => {
-                let car = u64::from_le_bytes(unsafe {
-                    let ptr = value as *const [u8; 8];
-
-                    let mut bytes = [0; 8];
-                    bytes.copy_from_slice(&(*ptr));
-                    bytes
-                });
-                let cdr = u64::from_le_bytes(unsafe {
-                    let ptr = (value + 8) as *const [u8; 8];
-
-                    let mut bytes = [0; 8];
-                    bytes.copy_from_slice(&(*ptr));
-                    bytes
-                });
-                s.push('(');
-                boxed_to_string(car, s);
-                s.push_str(" . ");
-                boxed_to_string(cdr, s);
-                s.push(')');
-            }
-            5 => {
-                let string = unsafe { read_string(value as i32) };
-                let string = String::from_utf8_lossy(&string);
-                s.push('"');
-                s.push_str(&string);
-                s.push('"');
-            }
-            6 => {
-                s.push_str("<closure#");
-                s.push_str(
-                    &u32::from_le_bytes(unsafe {
-                        let ptr = value as *const [u8; 4];
-
-                        let mut bytes = [0; 4];
-                        bytes.copy_from_slice(&(*ptr));
-                        bytes
-                    })
-                    .to_string(),
-                );
-                s.push('>');
-            }
-            7 => {
-                s.push_str("<symbol#");
-                s.push_str(&value.to_string());
-                s.push('>');
-            }
-            _ => {
-                s.push_str("<unknown_type_id: ");
-                s.push_str(&type_id.to_string());
-                s.push_str(" ,");
-                s.push_str(&value.to_string());
-                s.push('>');
-            }
-        }
-    }
-
-    let mut s = String::new();
-    boxed_to_string(x as u64, &mut s);
-
-    let ptr = s.as_ptr();
-    let len = s.len() as i32;
-    /*unsafe {
-        println(ptr as i32, len);
-    }
-    drop(s);*/
 }
 
 extern "C" {
