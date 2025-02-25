@@ -38,9 +38,12 @@ fn char(input: &str) -> IResult<&str, Token> {
         let (input, rest) = take_while(|c: char| c.is_alphanumeric())(input)?;
         if !rest.is_empty() {
             let cname = format!("{}{}", first, rest);
-            match cname.as_str() {
+            match cname.as_str().to_lowercase().as_str() {
                 "space" => Ok((input, Token::Char(' '))),
                 "newline" => Ok((input, Token::Char('\n'))),
+                // r5rsにもgoshにもないがこれがないと括弧の対応が分かりにくくて書きにくいので
+                "openparen" => Ok((input, Token::Char('('))),
+                "closeparen" => Ok((input, Token::Char(')'))),
                 _ => Err(nom::Err::Error(nom::error::Error::new(
                     input,
                     nom::error::ErrorKind::Char,

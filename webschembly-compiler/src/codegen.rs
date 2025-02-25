@@ -5,10 +5,11 @@ use crate::ast;
 use super::ir;
 use crate::error;
 use wasm_encoder::{
-    AbstractHeapType, BlockType, CodeSection, CompositeInnerType, CompositeType, DataSection,
-    ElementSection, Elements, EntityType, FieldType, FuncType, Function, FunctionSection,
-    GlobalSection, GlobalType, HeapType, ImportSection, Instruction, Module, RefType, StartSection,
-    StorageType, StructType, SubType, TableSection, TableType, TypeSection, ValType,
+    AbstractHeapType, BlockType, CodeSection, CompositeInnerType, CompositeType, DataCountSection,
+    DataSection, ElementSection, Elements, EntityType, FieldType, FuncType, Function,
+    FunctionSection, GlobalSection, GlobalType, HeapType, ImportSection, Instruction, Module,
+    RefType, StartSection, StorageType, StructType, SubType, TableSection, TableType, TypeSection,
+    ValType,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -510,6 +511,9 @@ impl ModuleGenerator {
             .section(&self.globals)
             .section(&start)
             .section(&self.elements)
+            .section(&DataCountSection {
+                count: self.datas.len(),
+            })
             .section(&self.code)
             .section(&self.datas);
 
@@ -640,7 +644,7 @@ impl ModuleGenerator {
                     function.instruction(&Instruction::RefCastNonNull(HeapType::Concrete(
                         self.bool_type,
                     )));
-                    function.instruction(&Instruction::StructGet {
+                    function.instruction(&Instruction::StructGetU {
                         struct_type_index: self.bool_type,
                         field_index: Self::BOOL_VALUE_FIELD,
                     });
