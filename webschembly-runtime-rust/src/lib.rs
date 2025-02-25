@@ -137,10 +137,6 @@ pub extern "C" fn init() {
     log::set_max_level(log::LevelFilter::Debug);
 }
 
-extern "C" {
-    fn println(buf_ptr: i32, buf_len: i32);
-}
-
 #[unsafe(no_mangle)]
 pub extern "C" fn _display(x: i64) {
     fn boxed_to_string(x: u64, s: &mut String) {
@@ -223,10 +219,10 @@ pub extern "C" fn _display(x: i64) {
 
     let ptr = s.as_ptr();
     let len = s.len() as i32;
-    unsafe {
+    /*unsafe {
         println(ptr as i32, len);
     }
-    drop(s);
+    drop(s);*/
 }
 
 extern "C" {

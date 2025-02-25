@@ -6,8 +6,8 @@ export function createRuntime({
   exit = process.exit,
   logDir = process.env.LOG_DIR || null,
   runtimeBuf = fs.readFileSync(process.env["WEBSCHEMBLY_RUNTIME"]),
-  println = console.log,
   eprintln = console.error,
+  writeBuf = process.stdout.write.bind(process.stdout),
 }) {
   const logBasename = path.basename(runtimeName) + "-" + Date.now();
   let logFile = null;
@@ -53,11 +53,13 @@ export function createRuntime({
         fs.writeSync(logFile, s + "\n");
       }
     },
-    println: (bufPtr, bufLen) => {
-      const s = new TextDecoder().decode(
-        new Uint8Array(runtimeInstance.exports.memory.buffer, bufPtr, bufLen)
+    write_buf: (bufPtr, bufLen) => {
+      const buf = new Uint8Array(
+        runtimeInstance.exports.memory.buffer,
+        bufPtr,
+        bufLen
       );
-      println(s);
+      writeBuf(buf);
     },
   };
 

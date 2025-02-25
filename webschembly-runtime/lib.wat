@@ -28,7 +28,6 @@
   (table $builtins (export "builtins") 1 eqref)
   (table $symbols 1 (ref null $Symbol))
 
-
   (func $display (export "display") (param $value eqref))
   (func $string_to_symbol (export "string_to_symbol") (param $s (ref $String)) (result (ref $Symbol))
     ;; TODO: r5rsのstringは可変らしいのでコピーが必要
@@ -79,5 +78,6 @@
       (local.get $new_symbol)
     ))
   )
+
   (start $init)
 )
