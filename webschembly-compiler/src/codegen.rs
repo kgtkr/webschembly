@@ -1,15 +1,15 @@
-use std::collections::HashMap;
+use std::{borrow::Cow, collections::HashMap};
 
 use crate::ast;
 
 use super::ir;
 use crate::error;
-use std::borrow::Cow;
-use strum::IntoEnumIterator;
 use wasm_encoder::{
-    BlockType, CodeSection, ConstExpr, ElementSection, Elements, EntityType, Function,
-    FunctionSection, GlobalSection, GlobalType, ImportSection, Instruction, MemArg, MemoryType,
-    Module, RefType, StartSection, TableSection, TableType, TypeSection, ValType,
+    AbstractHeapType, BlockType, CodeSection, CompositeInnerType, CompositeType, DataCountSection,
+    DataSection, ElementSection, Elements, EntityType, FieldType, FuncType, Function,
+    FunctionSection, GlobalSection, GlobalType, HeapType, ImportSection, Instruction, Module,
+    RefType, StartSection, StorageType, StructType, SubType, TableSection, TableType, TypeSection,
+    ValType,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -18,60 +18,39 @@ pub struct WasmFuncType {
     pub results: Vec<ValType>,
 }
 
-impl WasmFuncType {
-    pub fn from_ir(ir_func_type: ir::FuncType) -> Self {
-        Self {
-            params: ir_func_type
-                .args
-                .into_iter()
-                .map(ModuleGenerator::convert_type)
-                .collect(),
-            results: ir_func_type
-                .rets
-                .into_iter()
-                .map(ModuleGenerator::convert_type)
-                .collect(),
-        }
-    }
-}
-
 #[derive(Debug, Clone, Copy)]
 
 struct FuncIndex {
     func_idx: u32,
-    elem_idx: u32,
+    boxed_func_idx: u32,
 }
 
 #[derive(Debug)]
-pub struct Codegen {
-    element_offset: usize,
-}
+pub struct Codegen {}
 
 impl Codegen {
     pub fn new() -> Self {
-        Self { element_offset: 0 }
+        Self {}
     }
 
     pub fn gen(&mut self, ir: &ir::Ir) -> error::Result<Vec<u8>> {
-        let mut module_gen = ModuleGenerator::new(self.element_offset);
+        let mut module_gen = ModuleGenerator::new();
         let module = module_gen.gen(&ir);
-        self.element_offset += module_gen.element_funcs.len();
         Ok(module.finish())
     }
 }
 
 #[derive(Debug)]
 struct ModuleGenerator {
-    func_to_type_index: HashMap<WasmFuncType, u32>,
     type_count: u32,
     func_count: u32,
     global_count: u32,
+    table_count: u32,
     // runtime functions
-    malloc_func: u32,
     display_func: u32,
     string_to_symbol_func: u32,
-    get_global_func: u32,
-    get_builtin_func: u32,
+    write_char_func: u32,
+    int_to_string_func: u32,
     // wasm section
     imports: ImportSection,
     types: TypeSection,
@@ -79,43 +58,77 @@ struct ModuleGenerator {
     tables: TableSection,
     code: CodeSection,
     globals: GlobalSection,
-    malloc_tmp_global: u32,
-    element_funcs: Vec<u32>,
+    datas: DataSection,
+    elements: ElementSection,
     func_indices: HashMap<usize, FuncIndex>,
-    global_to_index: HashMap<usize, u32>,
-    builtin_to_global: HashMap<ast::Builtin, u32>,
-    element_offset: usize,
+    // types
+    mut_cell_type: u32,
+    nil_type: u32,
+    bool_type: u32,
+    int_type: u32,
+    char_type: u32,
+    cons_type: u32,
+    string_type: u32,
+    symbol_type: u32,
+    variable_params_type: u32,
+    boxed_func_type: u32,
+    closure_type: u32,
+    closure_types: HashMap<Vec<ValType>, u32>, // env types -> type index
+    func_types: HashMap<WasmFuncType, u32>,
+    closure_type_fields: Vec<FieldType>,
+    // table
+    global_table: u32,
+    builtin_table: u32,
+    // const
+    nil_global: Option<u32>,
+    true_global: Option<u32>,
+    false_global: Option<u32>,
 }
 
 impl ModuleGenerator {
-    fn new(element_offset: usize) -> Self {
+    fn new() -> Self {
         Self {
-            func_to_type_index: HashMap::new(),
             type_count: 0,
             func_count: 0,
             global_count: 0,
-            malloc_func: 0,
             display_func: 0,
             string_to_symbol_func: 0,
-            get_global_func: 0,
-            get_builtin_func: 0,
-            malloc_tmp_global: 0,
+            write_char_func: 0,
+            int_to_string_func: 0,
             imports: ImportSection::new(),
             types: TypeSection::new(),
             functions: FunctionSection::new(),
             tables: TableSection::new(),
             code: CodeSection::new(),
             globals: GlobalSection::new(),
-            element_funcs: Vec::new(),
+            elements: ElementSection::new(),
             func_indices: HashMap::new(),
-            global_to_index: HashMap::new(),
-            builtin_to_global: HashMap::new(),
-            element_offset,
+            datas: DataSection::new(),
+            mut_cell_type: 0,
+            nil_type: 0,
+            bool_type: 0,
+            int_type: 0,
+            char_type: 0,
+            cons_type: 0,
+            string_type: 0,
+            symbol_type: 0,
+            variable_params_type: 0,
+            boxed_func_type: 0,
+            closure_type: 0,
+            closure_types: HashMap::new(),
+            func_types: HashMap::new(),
+            closure_type_fields: Vec::new(),
+            global_table: 0,
+            builtin_table: 0,
+            nil_global: None,
+            true_global: None,
+            false_global: None,
+            table_count: 0,
         }
     }
 
     fn add_runtime_function(&mut self, name: &str, func_type: WasmFuncType) -> u32 {
-        let type_index = self.func_type(&func_type);
+        let type_index = self.func_type(func_type);
         self.imports
             .import("runtime", name, EntityType::Function(type_index));
         let func_index = self.func_count;
@@ -123,131 +136,340 @@ impl ModuleGenerator {
         func_index
     }
 
-    fn func_type(&mut self, func_type: &WasmFuncType) -> u32 {
-        if let Some(type_index) = self.func_to_type_index.get(&func_type) {
+    fn func_type(&mut self, func_type: WasmFuncType) -> u32 {
+        if let Some(type_index) = self.func_types.get(&func_type) {
             *type_index
         } else {
+            let type_index = self.type_count;
+            self.type_count += 1;
             self.types
                 .ty()
                 .function(func_type.params.clone(), func_type.results.clone());
-            let type_index = self.type_count;
-            self.func_to_type_index
-                .insert(func_type.clone(), type_index);
-            self.type_count += 1;
+            self.func_types.insert(func_type, type_index);
             type_index
         }
     }
 
+    fn func_type_from_ir(&mut self, ir_func_type: ir::FuncType) -> u32 {
+        self.func_type(WasmFuncType {
+            params: ir_func_type
+                .args
+                .into_iter()
+                .map(|ty| self.convert_type(ty))
+                .collect(),
+            results: ir_func_type
+                .rets
+                .into_iter()
+                .map(|ty| self.convert_type(ty))
+                .collect(),
+        })
+    }
+
+    fn closure_type(&mut self, env_types: Vec<ValType>) -> u32 {
+        if let Some(type_index) = self.closure_types.get(&env_types) {
+            *type_index
+        } else {
+            let mut fields = self.closure_type_fields.clone();
+            for ty in env_types.iter() {
+                fields.push(FieldType {
+                    element_type: StorageType::Val(ty.clone()),
+                    mutable: false,
+                });
+            }
+
+            let type_index = self.type_count;
+            self.type_count += 1;
+
+            self.types.ty().subtype(&SubType {
+                is_final: true,
+                supertype_idx: Some(self.closure_type),
+                composite_type: CompositeType {
+                    shared: false,
+                    inner: CompositeInnerType::Struct(StructType {
+                        fields: fields.into_boxed_slice(),
+                    }),
+                },
+            });
+
+            self.closure_types.insert(env_types, type_index);
+
+            type_index
+        }
+    }
+
+    fn closure_type_from_ir(&mut self, env_types: Vec<ir::Type>) -> u32 {
+        self.closure_type(
+            env_types
+                .into_iter()
+                .map(|ty| self.convert_type(ty))
+                .collect(),
+        )
+    }
+
+    const BOXED_TYPE: ValType = ValType::Ref(RefType::EQREF);
+    const MUT_CELL_VALUE_FIELD: u32 = 0;
+    const BOOL_VALUE_FIELD: u32 = 0;
+    const INT_VALUE_FIELD: u32 = 0;
+    const CHAR_VALUE_FIELD: u32 = 0;
+    const CONS_CAR_FIELD: u32 = 0;
+    const CONS_CDR_FIELD: u32 = 1;
+    const SYMBOL_STRING_FIELD: u32 = 0;
+    const CLOSURE_FUNC_FIELD: u32 = 0;
+    const CLOSURE_BOXED_FUNC_FIELD: u32 = 1;
+    const CLOSURE_ENVS_FIELD_OFFSET: u32 = 2;
+
     pub fn gen(&mut self, ir: &ir::Ir) -> Module {
-        self.imports.import(
-            "runtime",
-            "memory",
-            MemoryType {
-                minimum: 1,
-                maximum: None,
-                memory64: false,
-                shared: false,
-                page_size_log2: None,
-            },
-        );
+        self.mut_cell_type = self.type_count;
+        self.type_count += 1;
+        self.types.ty().struct_(vec![FieldType {
+            element_type: StorageType::Val(Self::BOXED_TYPE),
+            mutable: true,
+        }]);
 
+        self.nil_type = self.type_count;
+        self.type_count += 1;
+        self.types.ty().struct_(vec![]);
+
+        self.bool_type = self.type_count;
+        self.type_count += 1;
+        self.types.ty().struct_(vec![FieldType {
+            element_type: StorageType::I8,
+            mutable: false,
+        }]);
+
+        self.int_type = self.type_count;
+        self.type_count += 1;
+        self.types.ty().struct_(vec![FieldType {
+            element_type: StorageType::Val(ValType::I64),
+            mutable: false,
+        }]);
+
+        self.char_type = self.type_count;
+        self.type_count += 1;
+        self.types.ty().struct_(vec![FieldType {
+            element_type: StorageType::Val(ValType::I32),
+            mutable: false,
+        }]);
+
+        self.cons_type = self.type_count;
+        self.type_count += 1;
+        self.types.ty().struct_(vec![
+            FieldType {
+                element_type: StorageType::Val(Self::BOXED_TYPE),
+                mutable: true,
+            },
+            FieldType {
+                element_type: StorageType::Val(Self::BOXED_TYPE),
+                mutable: true,
+            },
+        ]);
+
+        self.string_type = self.type_count;
+        self.type_count += 1;
+        self.types.ty().array(&StorageType::I8, true);
+
+        self.symbol_type = self.type_count;
+        self.type_count += 1;
+        self.types.ty().struct_(vec![FieldType {
+            element_type: StorageType::Val(ValType::Ref(RefType {
+                nullable: false,
+                heap_type: HeapType::Concrete(self.string_type),
+            })),
+            mutable: false,
+        }]);
+
+        self.variable_params_type = self.type_count;
+        self.type_count += 1;
+        self.types
+            .ty()
+            .array(&StorageType::Val(Self::BOXED_TYPE), false);
+
+        self.boxed_func_type = self.type_count;
+        self.type_count += 1;
+        self.closure_type = self.type_count;
+        self.type_count += 1;
+        self.closure_type_fields = vec![
+            FieldType {
+                element_type: StorageType::Val(ValType::Ref(RefType {
+                    nullable: false,
+                    heap_type: HeapType::Abstract {
+                        shared: false,
+                        ty: AbstractHeapType::Func,
+                    },
+                })),
+                mutable: false,
+            },
+            FieldType {
+                element_type: StorageType::Val(ValType::Ref(RefType {
+                    nullable: false,
+                    heap_type: HeapType::Concrete(self.boxed_func_type),
+                })),
+                mutable: false,
+            },
+        ];
+        self.types.ty().rec(vec![
+            SubType {
+                is_final: true,
+                supertype_idx: None,
+                composite_type: CompositeType {
+                    shared: false,
+                    inner: CompositeInnerType::Func(FuncType::new(
+                        [
+                            ValType::Ref(RefType {
+                                nullable: false,
+                                heap_type: HeapType::Concrete(self.closure_type),
+                            }),
+                            ValType::Ref(RefType {
+                                nullable: false,
+                                heap_type: HeapType::Concrete(self.variable_params_type),
+                            }),
+                        ],
+                        [Self::BOXED_TYPE],
+                    )),
+                },
+            },
+            SubType {
+                is_final: false,
+                supertype_idx: None,
+                composite_type: CompositeType {
+                    shared: false,
+                    inner: CompositeInnerType::Struct(StructType {
+                        fields: self.closure_type_fields.clone().into_boxed_slice(),
+                    }),
+                },
+            },
+        ]);
+
+        self.nil_global = Some(self.global_count);
         self.imports.import(
             "runtime",
-            "funcs",
-            TableType {
-                element_type: RefType::FUNCREF,
-                minimum: 1,
-                maximum: None,
+            "nil",
+            EntityType::Global(GlobalType {
+                val_type: ValType::Ref(RefType {
+                    nullable: false,
+                    heap_type: HeapType::Concrete(self.nil_type),
+                }),
+                mutable: false,
+                shared: false,
+            }),
+        );
+        self.global_count += 1;
+
+        self.true_global = Some(self.global_count);
+        self.imports.import(
+            "runtime",
+            "true",
+            EntityType::Global(GlobalType {
+                val_type: ValType::Ref(RefType {
+                    nullable: false,
+                    heap_type: HeapType::Concrete(self.bool_type),
+                }),
+                mutable: false,
+                shared: false,
+            }),
+        );
+        self.global_count += 1;
+
+        self.false_global = Some(self.global_count);
+        self.imports.import(
+            "runtime",
+            "false",
+            EntityType::Global(GlobalType {
+                val_type: ValType::Ref(RefType {
+                    nullable: false,
+                    heap_type: HeapType::Concrete(self.bool_type),
+                }),
+                mutable: false,
+                shared: false,
+            }),
+        );
+        self.global_count += 1;
+
+        self.global_table = self.table_count;
+        self.table_count += 1;
+        self.imports.import(
+            "runtime",
+            "globals",
+            EntityType::Table(TableType {
+                element_type: RefType::EQREF,
                 table64: false,
+                minimum: 0,
+                maximum: None,
                 shared: false,
-            },
+            }),
         );
 
-        self.malloc_func = self.add_runtime_function(
-            "malloc",
-            WasmFuncType {
-                params: vec![ValType::I32],
-                results: vec![ValType::I32],
-            },
+        self.builtin_table = self.table_count;
+        self.table_count += 1;
+        self.imports.import(
+            "runtime",
+            "builtins",
+            EntityType::Table(TableType {
+                element_type: RefType::EQREF,
+                table64: false,
+                minimum: 0,
+                maximum: None,
+                shared: false,
+            }),
         );
+
         self.display_func = self.add_runtime_function(
             "display",
             WasmFuncType {
-                params: vec![ValType::I64],
+                params: vec![ValType::Ref(RefType {
+                    nullable: false,
+                    heap_type: HeapType::Concrete(self.string_type),
+                })],
                 results: vec![],
             },
         );
         self.string_to_symbol_func = self.add_runtime_function(
             "string_to_symbol",
             WasmFuncType {
-                params: vec![ValType::I32],
-                results: vec![ValType::I32],
+                params: vec![ValType::Ref(RefType {
+                    nullable: false,
+                    heap_type: HeapType::Concrete(self.string_type),
+                })],
+                results: vec![ValType::Ref(RefType {
+                    nullable: false,
+                    heap_type: HeapType::Concrete(self.symbol_type),
+                })],
             },
         );
-        self.get_global_func = self.add_runtime_function(
-            "get_global",
+
+        self.write_char_func = self.add_runtime_function(
+            "write_char",
             WasmFuncType {
                 params: vec![ValType::I32],
-                results: vec![ValType::I32],
+                results: vec![],
             },
         );
-        self.get_builtin_func = self.add_runtime_function(
-            "get_builtin",
+        self.int_to_string_func = self.add_runtime_function(
+            "int_to_string",
             WasmFuncType {
-                params: vec![ValType::I32],
-                results: vec![ValType::I32],
+                params: vec![ValType::I64],
+                results: vec![ValType::Ref(RefType {
+                    nullable: false,
+                    heap_type: HeapType::Concrete(self.string_type),
+                })],
             },
         );
-
-        self.malloc_tmp_global = self.global_count;
-        self.globals.global(
-            GlobalType {
-                val_type: ValType::I32,
-                mutable: true,
-                shared: false,
-            },
-            &ConstExpr::i32_const(0),
-        );
-        self.global_count += 1;
-
-        for global in 0..ir.global_count {
-            let global_index = self.global_count;
-            self.globals.global(
-                GlobalType {
-                    val_type: ValType::I32,
-                    mutable: true,
-                    shared: false,
-                },
-                // TODO: nilか0で初期化
-                &ConstExpr::i32_const(0),
-            );
-            self.global_count += 1;
-            self.global_to_index.insert(global, global_index);
-        }
-
-        for builtin in ast::Builtin::iter() {
-            let global_index = self.global_count;
-            self.globals.global(
-                GlobalType {
-                    val_type: ValType::I32,
-                    mutable: true,
-                    shared: false,
-                },
-                &ConstExpr::i32_const(0),
-            );
-            self.global_count += 1;
-            self.builtin_to_global.insert(builtin, global_index);
-        }
 
         for (i, func) in ir.funcs.iter().enumerate() {
-            let type_index = self.func_type(&WasmFuncType::from_ir(func.func_type()));
+            let type_idx = self.func_type_from_ir(func.func_type());
+
+            let func_idx = self.func_count;
+            self.func_count += 1;
+
+            let boxed_func_idx = self.func_count;
+            self.func_count += 1;
 
             let mut function = Function::new(
                 func.locals
                     .iter()
                     .skip(func.args)
                     .map(|ty| {
-                        let ty = Self::convert_type(*ty);
+                        let ty = self.convert_type(*ty);
                         (1, ty)
                     })
                     .collect::<Vec<_>>(),
@@ -265,24 +487,31 @@ impl ModuleGenerator {
             function.instruction(&Instruction::Return);
             function.instruction(&Instruction::End);
 
-            let func_idx = FuncIndex {
-                func_idx: self.func_count,
-                elem_idx: self.element_funcs.len() as u32 + self.element_offset as u32,
-            };
-            self.func_indices.insert(i, func_idx);
+            self.func_indices.insert(
+                i,
+                FuncIndex {
+                    func_idx,
+                    boxed_func_idx,
+                },
+            );
+            self.elements
+                .declared(Elements::Functions(Cow::Borrowed(&vec![
+                    func_idx,
+                    boxed_func_idx,
+                ])));
 
-            self.functions.function(type_index);
+            self.functions.function(type_idx);
             self.code.function(&function);
-            self.element_funcs.push(self.func_count);
-            self.func_count += 1;
-        }
 
-        let mut elements = ElementSection::new();
-        elements.active(
-            Some(0),
-            &ConstExpr::i32_const(self.element_offset as i32),
-            Elements::Functions(Cow::Borrowed(&self.element_funcs)),
-        );
+            // TODO: boxed_func
+            self.functions.function(self.boxed_func_type);
+            self.code.function(&{
+                let mut function = Function::new(Vec::new());
+                function.instruction(&Instruction::Unreachable);
+                function.instruction(&Instruction::End);
+                function
+            });
+        }
 
         let start = StartSection {
             function_index: self.func_indices[&ir.entry].func_idx,
@@ -296,8 +525,12 @@ impl ModuleGenerator {
             .section(&self.tables)
             .section(&self.globals)
             .section(&start)
-            .section(&elements)
-            .section(&self.code);
+            .section(&self.elements)
+            .section(&DataCountSection {
+                count: self.datas.len(),
+            })
+            .section(&self.code)
+            .section(&self.datas);
 
         module
     }
@@ -333,31 +566,23 @@ impl ModuleGenerator {
                 function.instruction(&Instruction::I32Const(if *b { 1 } else { 0 }));
             }
             ir::Expr::Int(i) => {
-                function.instruction(&Instruction::I32Const(*i));
+                function.instruction(&Instruction::I64Const(*i));
+            }
+            ir::Expr::Char(c) => {
+                function.instruction(&Instruction::I32Const(*c as i32));
             }
             ir::Expr::String(s) => {
+                // TODO: 重複リテラルを共有
                 let bs = s.as_bytes();
+                let data_index = self.datas.len();
+                self.datas.passive(bs.iter().copied());
 
-                self.gen_malloc(function, 4 + bs.len() as u32);
-                function.instruction(&Instruction::GlobalGet(self.malloc_tmp_global));
-                function.instruction(&Instruction::I32Const(bs.len() as i32));
-                function.instruction(&Instruction::I32Store(MemArg {
-                    align: 2,
-                    offset: 0,
-                    memory_index: 0,
-                }));
-
-                for (i, b) in bs.iter().enumerate() {
-                    function.instruction(&Instruction::GlobalGet(self.malloc_tmp_global));
-                    function.instruction(&Instruction::I32Const(*b as i32));
-                    function.instruction(&Instruction::I32Store8(MemArg {
-                        align: 0,
-                        offset: 4 + i as u64,
-                        memory_index: 0,
-                    }));
-                }
-
-                function.instruction(&Instruction::GlobalGet(self.malloc_tmp_global));
+                function.instruction(&Instruction::I32Const(0)); // offset
+                function.instruction(&Instruction::I32Const(bs.len() as i32)); // size
+                function.instruction(&Instruction::ArrayNewData {
+                    array_type_index: self.string_type,
+                    array_data_index: data_index,
+                });
             }
             ir::Expr::StringToSymbol(s) => {
                 function.instruction(&Instruction::LocalGet(*s as u32));
@@ -367,196 +592,194 @@ impl ModuleGenerator {
                 function.instruction(&Instruction::I32Const(0));
             }
             ir::Expr::Cons(car, cdr) => {
-                self.gen_malloc(function, 16);
-
-                function.instruction(&Instruction::GlobalGet(self.malloc_tmp_global));
                 function.instruction(&Instruction::LocalGet(*car as u32));
-                function.instruction(&Instruction::I64Store(MemArg {
-                    align: 2,
-                    offset: 0,
-                    memory_index: 0,
-                }));
-
-                function.instruction(&Instruction::GlobalGet(self.malloc_tmp_global));
                 function.instruction(&Instruction::LocalGet(*cdr as u32));
-                function.instruction(&Instruction::I64Store(MemArg {
-                    align: 2,
-                    offset: 8,
-                    memory_index: 0,
-                }));
-
-                function.instruction(&Instruction::GlobalGet(self.malloc_tmp_global));
+                function.instruction(&Instruction::StructNew(self.cons_type));
             }
             ir::Expr::CreateMutCell => {
-                self.gen_malloc(function, 8);
-                function.instruction(&Instruction::GlobalGet(self.malloc_tmp_global));
+                function.instruction(&Instruction::RefNull(HeapType::Abstract {
+                    shared: false,
+                    ty: AbstractHeapType::Eq,
+                }));
+                function.instruction(&Instruction::StructNew(self.mut_cell_type));
             }
             ir::Expr::DerefMutCell(cell) => {
                 function.instruction(&Instruction::LocalGet(*cell as u32));
-                function.instruction(&Instruction::I64Load(MemArg {
-                    align: 2,
-                    offset: 0,
-                    memory_index: 0,
-                }));
+                function.instruction(&Instruction::StructGet {
+                    struct_type_index: self.mut_cell_type,
+                    field_index: Self::MUT_CELL_VALUE_FIELD,
+                });
             }
             ir::Expr::SetMutCell(cell, val) => {
                 function.instruction(&Instruction::LocalGet(*cell as u32));
                 function.instruction(&Instruction::LocalGet(*val as u32));
-                function.instruction(&Instruction::I64Store(MemArg {
-                    align: 2,
-                    offset: 0,
-                    memory_index: 0,
-                }));
+                function.instruction(&Instruction::StructSet {
+                    struct_type_index: self.mut_cell_type,
+                    field_index: Self::MUT_CELL_VALUE_FIELD,
+                });
                 function.instruction(&Instruction::LocalGet(*val as u32));
             }
             ir::Expr::Closure(envs, func) => {
-                let sizes = envs
-                    .iter()
-                    .map(|env| Self::type_size(locals[*env]))
-                    .collect::<Vec<_>>();
-                let env_offsets = sizes
-                    .iter()
-                    .scan(0, |sum, size| {
-                        let offset = *sum;
-                        *sum += size;
-                        Some(offset)
-                    })
-                    .collect::<Vec<_>>();
-                let envs_size = sizes.iter().sum::<u32>();
+                let func_idx = self.func_indices[func];
 
-                self.gen_malloc(function, 4 + envs_size);
-
-                function.instruction(&Instruction::GlobalGet(self.malloc_tmp_global));
-                function.instruction(&Instruction::I32Const(
-                    self.func_indices[func].elem_idx as i32,
-                ));
-                function.instruction(&Instruction::I32Store(MemArg {
-                    align: 2,
-                    offset: 0,
-                    memory_index: 0,
-                }));
-
-                for (i, env) in envs.iter().enumerate() {
-                    function.instruction(&Instruction::GlobalGet(self.malloc_tmp_global));
+                function.instruction(&Instruction::RefFunc(func_idx.func_idx));
+                function.instruction(&Instruction::RefFunc(func_idx.boxed_func_idx));
+                for env in envs.iter() {
                     function.instruction(&Instruction::LocalGet(*env as u32));
-                    match sizes[i] {
-                        // TODO: ref typeなどに対応
-                        4 => {
-                            function.instruction(&Instruction::I32Store(MemArg {
-                                align: 2,
-                                offset: 4 + env_offsets[i] as u64,
-                                memory_index: 0,
-                            }));
-                        }
-                        8 => {
-                            function.instruction(&Instruction::I64Store(MemArg {
-                                align: 2,
-                                offset: 4 + env_offsets[i] as u64,
-                                memory_index: 0,
-                            }));
-                        }
-                        _ => {
-                            panic!("unsupported size");
-                        }
-                    }
                 }
 
-                function.instruction(&Instruction::GlobalGet(self.malloc_tmp_global));
+                function.instruction(&Instruction::StructNew(
+                    self.closure_type_from_ir(envs.iter().map(|env| locals[*env]).collect()),
+                ));
             }
             ir::Expr::CallClosure(closure, args) => {
+                let func_type = self.func_type_from_ir(ir::FuncType {
+                    args: args.iter().map(|arg| locals[*arg]).collect(),
+                    rets: vec![ir::Type::Boxed],
+                });
+
                 for arg in args {
                     function.instruction(&Instruction::LocalGet(*arg as u32));
                 }
 
                 function.instruction(&Instruction::LocalGet(*closure as u32));
-                function.instruction(&Instruction::I32Load(MemArg {
-                    align: 2,
-                    offset: 0,
-                    memory_index: 0,
-                }));
-
-                function.instruction(&Instruction::CallIndirect {
-                    type_index: self.func_type(&WasmFuncType::from_ir(ir::FuncType {
-                        args: args.iter().map(|arg| locals[*arg]).collect(),
-                        rets: vec![ir::Type::Boxed],
-                    })),
-                    table_index: 0,
+                function.instruction(&Instruction::StructGet {
+                    struct_type_index: self.closure_type,
+                    field_index: Self::CLOSURE_FUNC_FIELD,
                 });
+                function.instruction(&Instruction::RefCastNonNull(HeapType::Concrete(func_type)));
+                function.instruction(&Instruction::CallRef(func_type));
             }
             ir::Expr::Move(val) => {
                 function.instruction(&Instruction::LocalGet(*val as u32));
             }
-            ir::Expr::Unbox(_typ, val) => {
-                function.instruction(&Instruction::LocalGet(*val as u32));
-                function.instruction(&Instruction::I32WrapI64);
-            }
-            ir::Expr::Box(typ, val) => {
-                function.instruction(&Instruction::LocalGet(*val as u32));
-                function.instruction(&Instruction::I64ExtendI32U);
-                function.instruction(&Instruction::I64Const(Self::valtype_to_bit_pattern(*typ)));
-                function.instruction(&Instruction::I64Or);
-            }
-            ir::Expr::ClosureEnv(env_types, closure, env_index) => {
-                let env_sizes = env_types
-                    .iter()
-                    .map(|ty| Self::type_size(*ty))
-                    .collect::<Vec<_>>();
-                let env_offsets = env_sizes
-                    .iter()
-                    .scan(0, |sum, size| {
-                        let offset = *sum;
-                        *sum += size;
-                        Some(offset)
-                    })
-                    .collect::<Vec<_>>();
-
-                function.instruction(&Instruction::LocalGet(*closure as u32));
-                match env_sizes[*env_index] {
-                    // TODO: ref typeなどに対応
-                    4 => {
-                        function.instruction(&Instruction::I32Load(MemArg {
-                            align: 2,
-                            offset: 4 + env_offsets[*env_index] as u64,
-                            memory_index: 0,
-                        }));
-                    }
-                    8 => {
-                        function.instruction(&Instruction::I64Load(MemArg {
-                            align: 2,
-                            offset: 4 + env_offsets[*env_index] as u64,
-                            memory_index: 0,
-                        }));
-                    }
-                    _ => {
-                        panic!("unsupported size");
-                    }
+            ir::Expr::Unbox(typ, val) => match typ {
+                ir::ValType::Bool => {
+                    function.instruction(&Instruction::LocalGet(*val as u32));
+                    function.instruction(&Instruction::RefCastNonNull(HeapType::Concrete(
+                        self.bool_type,
+                    )));
+                    function.instruction(&Instruction::StructGetU {
+                        struct_type_index: self.bool_type,
+                        field_index: Self::BOOL_VALUE_FIELD,
+                    });
                 }
+                ir::ValType::Int => {
+                    function.instruction(&Instruction::LocalGet(*val as u32));
+                    function.instruction(&Instruction::RefCastNonNull(HeapType::Concrete(
+                        self.int_type,
+                    )));
+                    function.instruction(&Instruction::StructGet {
+                        struct_type_index: self.int_type,
+                        field_index: Self::INT_VALUE_FIELD,
+                    });
+                }
+                ir::ValType::Char => {
+                    function.instruction(&Instruction::LocalGet(*val as u32));
+                    function.instruction(&Instruction::RefCastNonNull(HeapType::Concrete(
+                        self.char_type,
+                    )));
+                    function.instruction(&Instruction::StructGet {
+                        struct_type_index: self.char_type,
+                        field_index: Self::CHAR_VALUE_FIELD,
+                    });
+                }
+                ir::ValType::String => {
+                    function.instruction(&Instruction::LocalGet(*val as u32));
+                    function.instruction(&Instruction::RefCastNonNull(HeapType::Concrete(
+                        self.string_type,
+                    )));
+                }
+                ir::ValType::Symbol => {
+                    function.instruction(&Instruction::LocalGet(*val as u32));
+                    function.instruction(&Instruction::RefCastNonNull(HeapType::Concrete(
+                        self.symbol_type,
+                    )));
+                }
+                ir::ValType::Nil => {
+                    // TODO: 型チェックするべき
+                    function.instruction(&Instruction::I32Const(0));
+                }
+                ir::ValType::Cons => {
+                    function.instruction(&Instruction::LocalGet(*val as u32));
+                    function.instruction(&Instruction::RefCastNonNull(HeapType::Concrete(
+                        self.cons_type,
+                    )));
+                }
+                ir::ValType::Closure => {
+                    function.instruction(&Instruction::LocalGet(*val as u32));
+                    function.instruction(&Instruction::RefCastNonNull(HeapType::Concrete(
+                        self.closure_type,
+                    )));
+                }
+            },
+            ir::Expr::Box(typ, val) => match typ {
+                ir::ValType::Bool => {
+                    function.instruction(&Instruction::LocalGet(*val as u32));
+                    function.instruction(&Instruction::If(BlockType::Result(ValType::Ref(
+                        RefType {
+                            nullable: false,
+                            heap_type: HeapType::Concrete(self.bool_type),
+                        },
+                    ))));
+                    function.instruction(&Instruction::GlobalGet(self.true_global.unwrap()));
+                    function.instruction(&Instruction::Else);
+                    function.instruction(&Instruction::GlobalGet(self.false_global.unwrap()));
+                    function.instruction(&Instruction::End);
+                }
+                ir::ValType::Int => {
+                    function.instruction(&Instruction::LocalGet(*val as u32));
+                    function.instruction(&Instruction::StructNew(self.int_type));
+                }
+                ir::ValType::Char => {
+                    function.instruction(&Instruction::LocalGet(*val as u32));
+                    function.instruction(&Instruction::StructNew(self.char_type));
+                }
+                ir::ValType::String => {
+                    function.instruction(&Instruction::LocalGet(*val as u32));
+                }
+                ir::ValType::Symbol => {
+                    function.instruction(&Instruction::LocalGet(*val as u32));
+                }
+                ir::ValType::Nil => {
+                    function.instruction(&Instruction::GlobalGet(self.nil_global.unwrap()));
+                }
+                ir::ValType::Cons => {
+                    function.instruction(&Instruction::LocalGet(*val as u32));
+                }
+                ir::ValType::Closure => {
+                    function.instruction(&Instruction::LocalGet(*val as u32));
+                }
+            },
+            ir::Expr::ClosureEnv(env_types, closure, env_index) => {
+                let closure_type = self.closure_type_from_ir(env_types.clone());
+                function.instruction(&Instruction::LocalGet(*closure as u32));
+                // TODO: irでキャストするべき
+                function.instruction(&Instruction::RefCastNonNull(HeapType::Concrete(
+                    closure_type,
+                )));
+                function.instruction(&Instruction::StructGet {
+                    struct_type_index: closure_type,
+                    field_index: Self::CLOSURE_ENVS_FIELD_OFFSET + *env_index as u32,
+                });
             }
             ir::Expr::GlobalGet(global) => {
-                function.instruction(&Instruction::GlobalGet(
-                    *self.global_to_index.get(global).unwrap(),
-                ));
-                function.instruction(&Instruction::I64Load(MemArg {
-                    align: 2,
-                    offset: 0,
-                    memory_index: 0,
-                }));
+                function.instruction(&Instruction::I32Const(*global as i32));
+                function.instruction(&Instruction::TableGet(self.global_table));
             }
             ir::Expr::GlobalSet(global, val) => {
-                function.instruction(&Instruction::GlobalGet(
-                    *self.global_to_index.get(global).unwrap(),
-                ));
+                function.instruction(&Instruction::I32Const(*global as i32));
                 function.instruction(&Instruction::LocalGet(*val as u32));
-                function.instruction(&Instruction::I64Store(MemArg {
-                    align: 2,
-                    offset: 0,
-                    memory_index: 0,
-                }));
+                function.instruction(&Instruction::TableSet(self.global_table));
                 function.instruction(&Instruction::LocalGet(*val as u32));
             }
             ir::Expr::Error(_) => {
                 function.instruction(&Instruction::Unreachable);
-                function.instruction(&Instruction::I32Const(0)); // TODO: これなくても型エラーにならない気がする
+                // TODO: 多分いらない
+                function.instruction(&Instruction::RefNull(HeapType::Abstract {
+                    shared: false,
+                    ty: AbstractHeapType::Eq,
+                }));
             }
             ir::Expr::Builtin(builtin, args) => {
                 for arg in args {
@@ -565,82 +788,97 @@ impl ModuleGenerator {
                 self.gen_builtin(*builtin, function);
             }
             ir::Expr::GetBuiltin(builtin) => {
-                function.instruction(&Instruction::GlobalGet(
-                    *self.builtin_to_global.get(builtin).unwrap(),
-                ));
-                function.instruction(&Instruction::I64Load(MemArg {
-                    align: 2,
-                    offset: 0,
-                    memory_index: 0,
-                }));
+                function.instruction(&Instruction::I32Const(builtin.id()));
+                function.instruction(&Instruction::TableGet(self.builtin_table));
             }
             ir::Expr::SetBuiltin(builtin, val) => {
-                function.instruction(&Instruction::GlobalGet(
-                    *self.builtin_to_global.get(builtin).unwrap(),
-                ));
-                function.instruction(&Instruction::LocalGet(*val as u32));
-                function.instruction(&Instruction::I64Store(MemArg {
-                    align: 2,
-                    offset: 0,
-                    memory_index: 0,
-                }));
-                function.instruction(&Instruction::LocalGet(*val as u32));
-            }
-            ir::Expr::InitGlobal(global_id) => {
-                function.instruction(&Instruction::I32Const(*global_id as i32));
-                function.instruction(&Instruction::Call(self.get_global_func));
-                function.instruction(&Instruction::GlobalSet(
-                    *self.global_to_index.get(global_id).unwrap(),
-                ));
-                function.instruction(&Instruction::I32Const(0));
-            }
-            ir::Expr::InitBuiltin(builtin) => {
                 function.instruction(&Instruction::I32Const(builtin.id()));
-                function.instruction(&Instruction::Call(self.get_builtin_func));
-                function.instruction(&Instruction::GlobalSet(
-                    *self.builtin_to_global.get(builtin).unwrap(),
-                ));
-                function.instruction(&Instruction::I32Const(0));
+                function.instruction(&Instruction::LocalGet(*val as u32));
+                function.instruction(&Instruction::TableSet(self.builtin_table));
+                function.instruction(&Instruction::LocalGet(*val as u32));
+            }
+            ir::Expr::InitGlobals(n) => {
+                // 必要なサイズになるまで2倍に拡張
+                function.instruction(&Instruction::Block(BlockType::Empty));
+                function.instruction(&Instruction::Loop(BlockType::Empty));
+                function.instruction(&Instruction::TableSize(self.global_table));
+                function.instruction(&Instruction::I32Const(*n as i32));
+                function.instruction(&Instruction::I32GeU);
+                function.instruction(&Instruction::BrIf(1));
+                function.instruction(&Instruction::RefNull(HeapType::Abstract {
+                    shared: false,
+                    ty: AbstractHeapType::Eq,
+                }));
+                function.instruction(&Instruction::TableSize(self.global_table));
+                function.instruction(&Instruction::TableGrow(self.global_table));
+                function.instruction(&Instruction::I32Const(-1));
+                function.instruction(&Instruction::I32Eq);
+                function.instruction(&Instruction::If(BlockType::Empty));
+                function.instruction(&Instruction::Unreachable);
+                function.instruction(&Instruction::End);
+                function.instruction(&Instruction::Br(0));
+                function.instruction(&Instruction::End);
+                function.instruction(&Instruction::End);
+
+                function.instruction(&Instruction::GlobalGet(self.nil_global.unwrap()));
+            }
+            ir::Expr::InitBuiltins(n) => {
+                // 必要なサイズになるまで2倍に拡張
+                function.instruction(&Instruction::Block(BlockType::Empty));
+                function.instruction(&Instruction::Loop(BlockType::Empty));
+                function.instruction(&Instruction::TableSize(self.builtin_table));
+                function.instruction(&Instruction::I32Const(*n as i32));
+                function.instruction(&Instruction::I32GeU);
+                function.instruction(&Instruction::BrIf(1));
+                function.instruction(&Instruction::RefNull(HeapType::Abstract {
+                    shared: false,
+                    ty: AbstractHeapType::Eq,
+                }));
+                function.instruction(&Instruction::TableSize(self.builtin_table));
+                function.instruction(&Instruction::TableGrow(self.builtin_table));
+                function.instruction(&Instruction::I32Const(-1));
+                function.instruction(&Instruction::I32Eq);
+                function.instruction(&Instruction::If(BlockType::Empty));
+                function.instruction(&Instruction::Unreachable);
+                function.instruction(&Instruction::End);
+                function.instruction(&Instruction::Br(0));
+                function.instruction(&Instruction::End);
+                function.instruction(&Instruction::End);
+
+                function.instruction(&Instruction::GlobalGet(self.nil_global.unwrap()));
             }
         }
     }
 
-    fn gen_malloc(&mut self, function: &mut Function, size: u32) {
-        function.instruction(&Instruction::I32Const(size as i32));
-        function.instruction(&Instruction::Call(self.malloc_func));
-        function.instruction(&Instruction::GlobalSet(self.malloc_tmp_global));
-    }
-
-    fn valtype_to_type_id(typ: ir::ValType) -> u8 {
-        match typ {
-            ir::ValType::Bool => 0b0010,
-            ir::ValType::Int => 0b0011,
-            ir::ValType::String => 0b0101,
-            ir::ValType::Symbol => 0b0111,
-            ir::ValType::Nil => 0b0001,
-            ir::ValType::Cons => 0b0100,
-            ir::ValType::Closure => 0b0110,
-        }
-    }
-
-    fn valtype_to_bit_pattern(typ: ir::ValType) -> i64 {
-        let type_id = Self::valtype_to_type_id(typ);
-        (((1 << 12) - 1) << 52) | (type_id as i64) << 48
-    }
-
-    fn convert_type(ty: ir::Type) -> ValType {
+    fn convert_type(&self, ty: ir::Type) -> ValType {
         match ty {
-            ir::Type::Boxed => ValType::I64,
-            ir::Type::MutCell => ValType::I32,
-            ir::Type::Val(_) => ValType::I32,
-        }
-    }
-
-    fn type_size(ty: ir::Type) -> u32 {
-        match ty {
-            ir::Type::Boxed => 8,
-            ir::Type::MutCell => 4,
-            ir::Type::Val(_) => 4,
+            ir::Type::Boxed => Self::BOXED_TYPE,
+            ir::Type::MutCell => ValType::Ref(RefType {
+                nullable: false,
+                heap_type: HeapType::Concrete(self.mut_cell_type),
+            }),
+            ir::Type::Val(val) => match val {
+                ir::ValType::Bool => ValType::I32,
+                ir::ValType::Int => ValType::I64,
+                ir::ValType::Char => ValType::I32,
+                ir::ValType::String => ValType::Ref(RefType {
+                    nullable: false,
+                    heap_type: HeapType::Concrete(self.string_type),
+                }),
+                ir::ValType::Symbol => ValType::Ref(RefType {
+                    nullable: false,
+                    heap_type: HeapType::Concrete(self.symbol_type),
+                }),
+                ir::ValType::Nil => ValType::I32,
+                ir::ValType::Cons => ValType::Ref(RefType {
+                    nullable: false,
+                    heap_type: HeapType::Concrete(self.cons_type),
+                }),
+                ir::ValType::Closure => ValType::Ref(RefType {
+                    nullable: false,
+                    heap_type: HeapType::Concrete(self.closure_type),
+                }),
+            },
         }
     }
 
@@ -651,7 +889,72 @@ impl ModuleGenerator {
                 function.instruction(&Instruction::I32Const(0));
             }
             ast::Builtin::Add => {
-                function.instruction(&Instruction::I32Add);
+                function.instruction(&Instruction::I64Add);
+            }
+            ast::Builtin::WriteChar => {
+                function.instruction(&Instruction::Call(self.write_char_func));
+                function.instruction(&Instruction::I32Const(0));
+            }
+            ast::Builtin::IsPair => {
+                function.instruction(&Instruction::RefTestNonNull(HeapType::Concrete(
+                    self.cons_type,
+                )));
+            }
+            ast::Builtin::IsSymbol => {
+                function.instruction(&Instruction::RefTestNonNull(HeapType::Concrete(
+                    self.symbol_type,
+                )));
+            }
+            ast::Builtin::IsString => {
+                function.instruction(&Instruction::RefTestNonNull(HeapType::Concrete(
+                    self.string_type,
+                )));
+            }
+            ast::Builtin::IsChar => {
+                function.instruction(&Instruction::RefTestNonNull(HeapType::Concrete(
+                    self.char_type,
+                )));
+            }
+            ast::Builtin::IsNumber => {
+                // TODO: 一般のnumberかを判定
+                function.instruction(&Instruction::RefTestNonNull(HeapType::Concrete(
+                    self.int_type,
+                )));
+            }
+            ast::Builtin::IsBoolean => {
+                function.instruction(&Instruction::RefTestNonNull(HeapType::Concrete(
+                    self.bool_type,
+                )));
+            }
+            ast::Builtin::IsProcedure => {
+                function.instruction(&Instruction::RefTestNonNull(HeapType::Concrete(
+                    self.closure_type,
+                )));
+            }
+            ast::Builtin::Eq => {
+                function.instruction(&Instruction::RefEq);
+            }
+            ast::Builtin::Car => {
+                function.instruction(&Instruction::StructGet {
+                    struct_type_index: self.cons_type,
+                    field_index: Self::CONS_CAR_FIELD,
+                });
+            }
+            ast::Builtin::Cdr => {
+                function.instruction(&Instruction::StructGet {
+                    struct_type_index: self.cons_type,
+                    field_index: Self::CONS_CDR_FIELD,
+                });
+            }
+            ast::Builtin::SymbolToString => {
+                function.instruction(&Instruction::StructGet {
+                    struct_type_index: self.symbol_type,
+                    field_index: Self::SYMBOL_STRING_FIELD,
+                });
+            }
+            ast::Builtin::NumberToString => {
+                // TODO: 一般のnumberに対応
+                function.instruction(&Instruction::Call(self.int_to_string_func));
             }
         }
     }

@@ -2,7 +2,7 @@ use super::token::Token;
 use nom::{
     branch::alt,
     bytes::complete::{tag, take_while, take_while1},
-    character::complete::satisfy,
+    character::complete::{anychar, satisfy},
     combinator::{eof, map, map_res},
     multi::many0,
     IResult, Parser,
@@ -19,7 +19,7 @@ fn identifier(input: &str) -> IResult<&str, Token> {
 
 fn int(input: &str) -> IResult<&str, Token> {
     let (input, int) = map_res(take_while(|c: char| c.is_ascii_digit()), |s: &str| {
-        s.parse::<i32>()
+        s.parse::<i64>()
     })(input)?;
     Ok((input, Token::Int(int)))
 }
@@ -30,6 +30,33 @@ fn string(input: &str) -> IResult<&str, Token> {
     let (input, _) = tag("\"")(input)?;
     Ok((input, Token::String(string.to_string())))
 }
+
+fn char(input: &str) -> IResult<&str, Token> {
+    let (input, _) = tag("#\\")(input)?;
+    let (input, first) = anychar(input)?;
+    if first.is_ascii_alphabetic() {
+        let (input, rest) = take_while(|c: char| c.is_alphanumeric())(input)?;
+        if !rest.is_empty() {
+            let cname = format!("{}{}", first, rest);
+            match cname.as_str().to_lowercase().as_str() {
+                "space" => Ok((input, Token::Char(' '))),
+                "newline" => Ok((input, Token::Char('\n'))),
+                // r5rsにもgoshにもないがこれがないと括弧の対応が分かりにくくて書きにくいので
+                "openparen" => Ok((input, Token::Char('('))),
+                "closeparen" => Ok((input, Token::Char(')'))),
+                _ => Err(nom::Err::Error(nom::error::Error::new(
+                    input,
+                    nom::error::ErrorKind::Char,
+                ))),
+            }
+        } else {
+            Ok((input, Token::Char(first)))
+        }
+    } else {
+        Ok((input, Token::Char(first)))
+    }
+}
+
 fn token(input: &str) -> IResult<&str, Token> {
     let (input, token) = alt((
         identifier,
@@ -37,6 +64,7 @@ fn token(input: &str) -> IResult<&str, Token> {
         tag(")").map(|_| Token::CloseParen),
         int,
         string,
+        char,
         tag("#t").map(|_| Token::Bool(true)),
         tag("#f").map(|_| Token::Bool(false)),
         tag("'").map(|_| Token::Quote),

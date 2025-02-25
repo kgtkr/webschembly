@@ -39,6 +39,14 @@ fn symbol(input: &[Token]) -> IResult<&[Token], SExpr> {
     .parse(input)
 }
 
+fn char(input: &[Token]) -> IResult<&[Token], SExpr> {
+    satisfy_map_opt(|t| match t {
+        Token::Char(c) => Some(SExpr::Char(*c)),
+        _ => None,
+    })
+    .parse(input)
+}
+
 fn nil(input: &[Token]) -> IResult<&[Token], SExpr> {
     let (input, _) = satisfy(|t| *t == Token::CloseParen).parse(input)?;
     Ok((input, SExpr::Nil))
@@ -81,7 +89,16 @@ fn quote(input: &[Token]) -> IResult<&[Token], SExpr> {
 }
 
 fn sexpr(input: &[Token]) -> IResult<&[Token], SExpr> {
-    alt((bool, int, string, symbol, nil_or_list_or_dotted_list, quote)).parse(input)
+    alt((
+        bool,
+        int,
+        string,
+        symbol,
+        char,
+        nil_or_list_or_dotted_list,
+        quote,
+    ))
+    .parse(input)
 }
 
 fn sexprs(input: &[Token]) -> IResult<&[Token], Vec<SExpr>> {

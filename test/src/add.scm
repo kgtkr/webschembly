@@ -1,1 +1,1 @@
-(display (+ 1 2))
+(write (+ 1 2))(newline)

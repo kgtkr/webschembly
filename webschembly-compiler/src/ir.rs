@@ -21,15 +21,17 @@ pub enum ValType {
     Nil,
     Cons,
     Closure,
+    Char,
 }
 
 #[derive(Debug, Clone)]
 pub enum Expr {
     Bool(bool),
-    Int(i32),
+    Int(i64),
     String(String),
     StringToSymbol(usize),
     Nil,
+    Char(char),
     Cons(usize, usize),
     CreateMutCell,
     DerefMutCell(usize),
@@ -51,8 +53,8 @@ pub enum Expr {
     GetBuiltin(ast::Builtin),
     SetBuiltin(ast::Builtin, usize),
     Error(String),
-    InitGlobal(usize),
-    InitBuiltin(ast::Builtin),
+    InitGlobals(usize),  // global count
+    InitBuiltins(usize), // builtin count
 }
 
 #[derive(Debug, Clone)]
@@ -97,7 +99,6 @@ pub struct FuncType {
 #[derive(Debug, Clone)]
 pub struct Ir {
     pub funcs: Vec<Func>,
-    pub global_count: usize,
     pub entry: usize,
 }
 
@@ -117,7 +118,6 @@ pub struct Config {
 #[derive(Debug)]
 struct IrGenerator {
     funcs: Vec<Func>,
-    global_ids: HashMap<ast::GlobalVarId, usize>,
     box_vars: HashSet<ast::LocalVarId>,
     config: Config,
 }
@@ -126,7 +126,6 @@ impl IrGenerator {
     fn new(config: Config) -> Self {
         Self {
             funcs: Vec::new(),
-            global_ids: HashMap::new(),
             box_vars: HashSet::new(),
             config,
         }
@@ -141,7 +140,6 @@ impl IrGenerator {
         Ir {
             funcs: self.funcs,
             entry: func_id,
-            global_count: self.global_ids.len(),
         }
     }
 
@@ -154,16 +152,6 @@ impl IrGenerator {
         let func_id = self.funcs.len();
         self.funcs.push(func);
         func_id
-    }
-
-    fn global_id(&mut self, id: ast::GlobalVarId) -> usize {
-        if let Some(&global_id) = self.global_ids.get(&id) {
-            global_id
-        } else {
-            let global_id = self.global_ids.len();
-            self.global_ids.insert(id, global_id);
-            global_id
-        }
     }
 }
 
@@ -186,16 +174,22 @@ impl<'a> FuncGenerator<'a> {
     fn entry_gen(mut self, ast: &ast::Ast<ast::Final>) -> Func {
         let body = {
             let mut block_gen = BlockGenerator::new(&mut self);
-            for global in &ast.x.global_vars {
-                block_gen
-                    .stats
-                    .push(Stat::Expr(None, Expr::InitGlobal(global.0)));
-            }
-            for builtin in ast::Builtin::iter() {
-                block_gen
-                    .stats
-                    .push(Stat::Expr(None, Expr::InitBuiltin(builtin)));
-            }
+            block_gen.stats.push(Stat::Expr(
+                None,
+                Expr::InitGlobals(
+                    ast.x
+                        .global_vars
+                        .iter()
+                        .map(|x| x.0)
+                        .max()
+                        .map(|n| n + 1)
+                        .unwrap_or(0),
+                ),
+            ));
+            block_gen.stats.push(Stat::Expr(
+                None,
+                Expr::InitBuiltins(ast::Builtin::iter().len()),
+            ));
             block_gen.gen_stats(None, &ast.exprs);
             block_gen.stats
         };
@@ -322,6 +316,12 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                     self.stats.push(Stat::Expr(Some(unboxed), Expr::Nil));
                     self.stats
                         .push(Stat::Expr(result, Expr::Box(ValType::Nil, unboxed)));
+                }
+                ast::Literal::Char(c) => {
+                    let unboxed = self.func_gen.local(Type::Val(ValType::Char));
+                    self.stats.push(Stat::Expr(Some(unboxed), Expr::Char(*c)));
+                    self.stats
+                        .push(Stat::Expr(result, Expr::Box(ValType::Char, unboxed)));
                 }
                 ast::Literal::Quote(sexpr) => {
                     self.quote(result, sexpr);
@@ -473,9 +473,7 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                     }
                 }
                 ast::VarId::Global(id) => {
-                    let global_id = self.func_gen.ir_generator.global_id(id);
-                    self.stats
-                        .push(Stat::Expr(result, Expr::GlobalGet(global_id)));
+                    self.stats.push(Stat::Expr(result, Expr::GlobalGet(id.0)));
                 }
                 ast::VarId::Builtin(builtin) => {
                     self.stats
@@ -505,10 +503,8 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                 ast::VarId::Global(id) => {
                     let local = self.func_gen.local(Type::Boxed);
                     self.gen_stat(Some(local), expr);
-                    self.stats.push(Stat::Expr(
-                        None,
-                        Expr::GlobalSet(self.func_gen.ir_generator.global_id(id), local),
-                    ));
+                    self.stats
+                        .push(Stat::Expr(None, Expr::GlobalSet(id.0, local)));
                     self.stats.push(Stat::Expr(result, Expr::Move(local)));
                 }
                 ast::VarId::Builtin(builtin) => {
@@ -566,6 +562,12 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                 self.stats
                     .push(Stat::Expr(result, Expr::Box(ValType::Nil, unboxed)));
             }
+            sexpr::SExpr::Char(c) => {
+                let unboxed = self.func_gen.local(Type::Val(ValType::Char));
+                self.stats.push(Stat::Expr(Some(unboxed), Expr::Char(*c)));
+                self.stats
+                    .push(Stat::Expr(result, Expr::Box(ValType::Char, unboxed)));
+            }
             sexpr::SExpr::Cons(cons) => {
                 let car_local = self.func_gen.local(Type::Boxed);
                 self.quote(Some(car_local), &cons.car);
@@ -588,8 +590,10 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
             }
             self.gen_stat(result, last);
         } else {
-            // goshと同じようにbeginの中身が空の場合は0を返す
-            self.stats.push(Stat::Expr(result, Expr::Int(0)));
+            let unboxed = self.func_gen.local(Type::Val(ValType::Nil));
+            self.stats.push(Stat::Expr(Some(unboxed), Expr::Nil));
+            self.stats
+                .push(Stat::Expr(result, Expr::Box(ValType::Nil, unboxed)));
         }
     }
 }
@@ -597,12 +601,64 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
 pub fn builtin_func_type(builtin: ast::Builtin) -> FuncType {
     match builtin {
         ast::Builtin::Display => FuncType {
-            args: vec![Type::Boxed],
+            args: vec![Type::Val(ValType::String)], // TODO: 一旦Stringのみ
             rets: vec![Type::Val(ValType::Nil)],
         },
         ast::Builtin::Add => FuncType {
             args: vec![Type::Val(ValType::Int), Type::Val(ValType::Int)],
             rets: vec![Type::Val(ValType::Int)],
+        },
+        ast::Builtin::WriteChar => FuncType {
+            args: vec![Type::Val(ValType::Char)],
+            rets: vec![Type::Val(ValType::Nil)],
+        },
+        ast::Builtin::IsPair => FuncType {
+            args: vec![Type::Boxed],
+            rets: vec![Type::Val(ValType::Bool)],
+        },
+        ast::Builtin::IsSymbol => FuncType {
+            args: vec![Type::Boxed],
+            rets: vec![Type::Val(ValType::Bool)],
+        },
+        ast::Builtin::IsString => FuncType {
+            args: vec![Type::Boxed],
+            rets: vec![Type::Val(ValType::Bool)],
+        },
+        ast::Builtin::IsNumber => FuncType {
+            args: vec![Type::Boxed],
+            rets: vec![Type::Val(ValType::Bool)],
+        },
+        ast::Builtin::IsBoolean => FuncType {
+            args: vec![Type::Boxed],
+            rets: vec![Type::Val(ValType::Bool)],
+        },
+        ast::Builtin::IsProcedure => FuncType {
+            args: vec![Type::Boxed],
+            rets: vec![Type::Val(ValType::Bool)],
+        },
+        ast::Builtin::IsChar => FuncType {
+            args: vec![Type::Boxed],
+            rets: vec![Type::Val(ValType::Bool)],
+        },
+        ast::Builtin::Eq => FuncType {
+            args: vec![Type::Boxed, Type::Boxed],
+            rets: vec![Type::Val(ValType::Bool)],
+        },
+        ast::Builtin::Car => FuncType {
+            args: vec![Type::Val(ValType::Cons)],
+            rets: vec![Type::Boxed],
+        },
+        ast::Builtin::Cdr => FuncType {
+            args: vec![Type::Val(ValType::Cons)],
+            rets: vec![Type::Boxed],
+        },
+        ast::Builtin::SymbolToString => FuncType {
+            args: vec![Type::Val(ValType::Symbol)],
+            rets: vec![Type::Val(ValType::String)],
+        },
+        ast::Builtin::NumberToString => FuncType {
+            args: vec![Type::Val(ValType::Int)], // TODO: 一般のnumberに使えるように
+            rets: vec![Type::Val(ValType::String)],
         },
     }
 }

@@ -1,2 +1,2 @@
 (define add +)
-(display (add 1 2))
+(write (add 1 2))(newline)

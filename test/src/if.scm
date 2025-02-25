@@ -1,10 +1,10 @@
 (begin
     (if #t
-        (display "True1")
-        (display "False1")
+        (begin (write "True1")(newline))
+        (begin (write "False1")(newline))
     )
     (if #f
-        (display "True2")
-        (display "False2")
+        (begin (write "True2")(newline))
+        (begin (write "False2")(newline))
     )
 )
