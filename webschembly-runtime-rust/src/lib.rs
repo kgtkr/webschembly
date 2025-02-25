@@ -9,10 +9,6 @@ use std::ptr::NonNull;
 
 #[no_mangle]
 pub unsafe extern "C" fn malloc(size: i32) -> i32 {
-    if size <= 0 {
-        return std::ptr::null_mut::<u8>() as i32;
-    }
-
     let total_size = size as usize + std::mem::size_of::<usize>();
     let layout = Layout::from_size_align(total_size, std::mem::align_of::<usize>()).unwrap();
     let ptr = Global.allocate(layout).unwrap();
@@ -24,10 +20,6 @@ pub unsafe extern "C" fn malloc(size: i32) -> i32 {
 #[no_mangle]
 pub unsafe extern "C" fn free(ptr: i32) {
     let ptr = ptr as *mut u8;
-    if ptr.is_null() {
-        return;
-    }
-
     let size_ptr = (ptr as *mut usize).offset(-1);
     let size = *size_ptr;
     let layout = Layout::from_size_align(
