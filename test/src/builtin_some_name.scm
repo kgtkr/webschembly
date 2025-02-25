@@ -1,6 +1,6 @@
 (define (f)
   (define (+ a b) 30)
-  (display (+ 2 4))
+  (write (+ 2 4))(newline)
 )
 (f)
-(display (+ 1 2))
+(write (+ 1 2))(newline)

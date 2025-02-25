@@ -1,7 +1,6 @@
 use crate::sexpr::SExpr;
 use crate::x::{FamilyX, RunX};
-use strum::IntoEnumIterator;
-use strum_macros::EnumIter;
+use strum_macros::{EnumIter, EnumString, FromRepr, IntoStaticStr};
 
 pub enum AstX {}
 pub enum LiteralX {}
@@ -120,35 +119,54 @@ where
     pub expr: Box<Expr<X>>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumIter)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, EnumIter, FromRepr, EnumString, IntoStaticStr,
+)]
 pub enum Builtin {
-    Display,
+    #[strum(serialize = "display")]
+    Display, // TODO: 将来的には組み込み関数ではなくしたい
+    #[strum(serialize = "+")]
     Add,
+    #[strum(serialize = "write-char")]
     WriteChar,
+    #[strum(serialize = "pair?")]
+    IsPair,
+    #[strum(serialize = "symbol?")]
+    IsSymbol,
+    #[strum(serialize = "string?")]
+    IsString,
+    #[strum(serialize = "number?")]
+    IsNumber,
+    #[strum(serialize = "boolean?")]
+    IsBoolean,
+    #[strum(serialize = "procedure?")]
+    IsProcedure,
+    #[strum(serialize = "eq?")]
+    Eq,
+    #[strum(serialize = "car")]
+    Car,
+    #[strum(serialize = "cdr")]
+    Cdr,
+    #[strum(serialize = "symbol->string")]
+    SymbolToString,
+    #[strum(serialize = "number->string")]
+    NumberToString,
 }
 
 impl Builtin {
     pub fn name(self) -> &'static str {
-        match self {
-            Builtin::Display => "display",
-            Builtin::Add => "+",
-            Builtin::WriteChar => "write-char",
-        }
+        self.into()
     }
 
     pub fn from_name(name: &str) -> Option<Self> {
-        Builtin::iter().find(|&builtin| builtin.name() == name)
+        Self::try_from(name).ok()
     }
 
     pub fn id(self) -> i32 {
-        match self {
-            Builtin::Display => 0,
-            Builtin::Add => 1,
-            Builtin::WriteChar => 2,
-        }
+        self as usize as i32
     }
 
     pub fn from_id(id: i32) -> Option<Self> {
-        Builtin::iter().find(|&builtin| builtin.id() == id)
+        Self::from_repr(id as usize)
     }
 }

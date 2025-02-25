@@ -1,4 +1,4 @@
 (begin
     (define f (lambda (x) x))
-    (display (f 42))
+    (write (f 42))(newline)
 )

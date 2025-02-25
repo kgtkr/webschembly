@@ -50,6 +50,7 @@ struct ModuleGenerator {
     display_func: u32,
     string_to_symbol_func: u32,
     write_char_func: u32,
+    int_to_string_func: u32,
     // wasm section
     imports: ImportSection,
     types: TypeSection,
@@ -93,6 +94,7 @@ impl ModuleGenerator {
             display_func: 0,
             string_to_symbol_func: 0,
             write_char_func: 0,
+            int_to_string_func: 0,
             imports: ImportSection::new(),
             types: TypeSection::new(),
             functions: FunctionSection::new(),
@@ -264,7 +266,7 @@ impl ModuleGenerator {
 
         self.string_type = self.type_count;
         self.type_count += 1;
-        self.types.ty().array(&StorageType::I8, false);
+        self.types.ty().array(&StorageType::I8, true);
 
         self.symbol_type = self.type_count;
         self.type_count += 1;
@@ -414,7 +416,10 @@ impl ModuleGenerator {
         self.display_func = self.add_runtime_function(
             "display",
             WasmFuncType {
-                params: vec![Self::BOXED_TYPE],
+                params: vec![ValType::Ref(RefType {
+                    nullable: false,
+                    heap_type: HeapType::Concrete(self.string_type),
+                })],
                 results: vec![],
             },
         );
@@ -437,6 +442,16 @@ impl ModuleGenerator {
             WasmFuncType {
                 params: vec![ValType::I32],
                 results: vec![],
+            },
+        );
+        self.int_to_string_func = self.add_runtime_function(
+            "int_to_string",
+            WasmFuncType {
+                params: vec![ValType::I64],
+                results: vec![ValType::Ref(RefType {
+                    nullable: false,
+                    heap_type: HeapType::Concrete(self.string_type),
+                })],
             },
         );
 
@@ -870,6 +885,7 @@ impl ModuleGenerator {
     fn gen_builtin(&self, builtin: ast::Builtin, function: &mut Function) {
         match builtin {
             ast::Builtin::Display => {
+                // TODO:
                 function.instruction(&Instruction::Call(self.display_func));
                 function.instruction(&Instruction::I32Const(0));
             }
@@ -879,6 +895,62 @@ impl ModuleGenerator {
             ast::Builtin::WriteChar => {
                 function.instruction(&Instruction::Call(self.write_char_func));
                 function.instruction(&Instruction::I32Const(0));
+            }
+            ast::Builtin::IsPair => {
+                function.instruction(&Instruction::RefTestNonNull(HeapType::Concrete(
+                    self.cons_type,
+                )));
+            }
+            ast::Builtin::IsSymbol => {
+                function.instruction(&Instruction::RefTestNonNull(HeapType::Concrete(
+                    self.symbol_type,
+                )));
+            }
+            ast::Builtin::IsString => {
+                function.instruction(&Instruction::RefTestNonNull(HeapType::Concrete(
+                    self.string_type,
+                )));
+            }
+            ast::Builtin::IsNumber => {
+                // TODO: 一般のnumberかを判定
+                function.instruction(&Instruction::RefTestNonNull(HeapType::Concrete(
+                    self.int_type,
+                )));
+            }
+            ast::Builtin::IsBoolean => {
+                function.instruction(&Instruction::RefTestNonNull(HeapType::Concrete(
+                    self.bool_type,
+                )));
+            }
+            ast::Builtin::IsProcedure => {
+                function.instruction(&Instruction::RefTestNonNull(HeapType::Concrete(
+                    self.closure_type,
+                )));
+            }
+            ast::Builtin::Eq => {
+                function.instruction(&Instruction::RefEq);
+            }
+            ast::Builtin::Car => {
+                function.instruction(&Instruction::StructGet {
+                    struct_type_index: self.cons_type,
+                    field_index: Self::CONS_CAR_FIELD,
+                });
+            }
+            ast::Builtin::Cdr => {
+                function.instruction(&Instruction::StructGet {
+                    struct_type_index: self.cons_type,
+                    field_index: Self::CONS_CDR_FIELD,
+                });
+            }
+            ast::Builtin::SymbolToString => {
+                function.instruction(&Instruction::StructGet {
+                    struct_type_index: self.symbol_type,
+                    field_index: Self::SYMBOL_STRING_FIELD,
+                });
+            }
+            ast::Builtin::NumberToString => {
+                // TODO: 一般のnumberに対応
+                function.instruction(&Instruction::Call(self.int_to_string_func));
             }
         }
     }

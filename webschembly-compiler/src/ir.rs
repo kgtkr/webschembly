@@ -615,7 +615,7 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
 pub fn builtin_func_type(builtin: ast::Builtin) -> FuncType {
     match builtin {
         ast::Builtin::Display => FuncType {
-            args: vec![Type::Boxed],
+            args: vec![Type::Val(ValType::String)], // TODO: 一旦Stringのみ
             rets: vec![Type::Val(ValType::Nil)],
         },
         ast::Builtin::Add => FuncType {
@@ -625,6 +625,50 @@ pub fn builtin_func_type(builtin: ast::Builtin) -> FuncType {
         ast::Builtin::WriteChar => FuncType {
             args: vec![Type::Val(ValType::Char)],
             rets: vec![Type::Val(ValType::Nil)],
+        },
+        ast::Builtin::IsPair => FuncType {
+            args: vec![Type::Boxed],
+            rets: vec![Type::Val(ValType::Bool)],
+        },
+        ast::Builtin::IsSymbol => FuncType {
+            args: vec![Type::Boxed],
+            rets: vec![Type::Val(ValType::Bool)],
+        },
+        ast::Builtin::IsString => FuncType {
+            args: vec![Type::Boxed],
+            rets: vec![Type::Val(ValType::Bool)],
+        },
+        ast::Builtin::IsNumber => FuncType {
+            args: vec![Type::Boxed],
+            rets: vec![Type::Val(ValType::Bool)],
+        },
+        ast::Builtin::IsBoolean => FuncType {
+            args: vec![Type::Boxed],
+            rets: vec![Type::Val(ValType::Bool)],
+        },
+        ast::Builtin::IsProcedure => FuncType {
+            args: vec![Type::Boxed],
+            rets: vec![Type::Val(ValType::Bool)],
+        },
+        ast::Builtin::Eq => FuncType {
+            args: vec![Type::Boxed, Type::Boxed],
+            rets: vec![Type::Val(ValType::Bool)],
+        },
+        ast::Builtin::Car => FuncType {
+            args: vec![Type::Val(ValType::Cons)],
+            rets: vec![Type::Boxed],
+        },
+        ast::Builtin::Cdr => FuncType {
+            args: vec![Type::Val(ValType::Cons)],
+            rets: vec![Type::Boxed],
+        },
+        ast::Builtin::SymbolToString => FuncType {
+            args: vec![Type::Val(ValType::Symbol)],
+            rets: vec![Type::Val(ValType::String)],
+        },
+        ast::Builtin::NumberToString => FuncType {
+            args: vec![Type::Val(ValType::Int)], // TODO: 一般のnumberに使えるように
+            rets: vec![Type::Val(ValType::String)],
         },
     }
 }

@@ -252,6 +252,15 @@ impl WasmWriter {
         }
     }
 
+    fn write_buf(&mut self, buf: &[u8]) {
+        self.buf.extend_from_slice(buf);
+        if buf.iter().any(|&c| c == b'\n') {
+            self.flush();
+        } else {
+            self.flush_if_needed();
+        }
+    }
+
     fn flush(&mut self) {
         let ptr = self.buf.as_ptr();
         let len = self.buf.len() as i32;
@@ -275,4 +284,31 @@ thread_local!(
 #[unsafe(no_mangle)]
 pub extern "C" fn write_char(c: i32) {
     WRITER.with(|writer| writer.borrow_mut().write_char(c));
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn write_buf_(buf_ptr: i32, buf_len: i32) {
+    let buf_ptr = buf_ptr as *const u8;
+    let buf = unsafe { std::slice::from_raw_parts(buf_ptr, buf_len as usize) };
+    WRITER.with(|writer| writer.borrow_mut().write_buf(buf));
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn _int_to_string(i: i64) -> i64 {
+    let s = i.to_string();
+    let s = s.as_bytes();
+    let s_ptr = unsafe { malloc(s.len() as i32) };
+    unsafe {
+        std::ptr::copy_nonoverlapping(s.as_ptr(), s_ptr as *mut u8, s.len());
+    }
+
+    // rustではmultivalueが使えないので、(i32, i32) を i64 として返す
+    let s_ptr = s_ptr as i32;
+    let s_len = s.len() as i32;
+    let s_ptr = s_ptr.to_le_bytes();
+    let s_len = s_len.to_le_bytes();
+    let mut buf = [0; 8];
+    buf[..4].copy_from_slice(&s_ptr);
+    buf[4..].copy_from_slice(&s_len);
+    i64::from_le_bytes(buf)
 }
