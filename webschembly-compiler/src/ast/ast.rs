@@ -124,6 +124,7 @@ where
 pub enum Builtin {
     Display,
     Add,
+    WriteChar,
 }
 
 impl Builtin {
@@ -131,6 +132,7 @@ impl Builtin {
         match self {
             Builtin::Display => "display",
             Builtin::Add => "+",
+            Builtin::WriteChar => "write-char",
         }
     }
 
@@ -142,6 +144,7 @@ impl Builtin {
         match self {
             Builtin::Display => 0,
             Builtin::Add => 1,
+            Builtin::WriteChar => 2,
         }
     }
 

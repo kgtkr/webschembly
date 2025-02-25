@@ -48,6 +48,7 @@ struct ModuleGenerator {
     // runtime functions
     display_func: u32,
     string_to_symbol_func: u32,
+    write_char_func: u32,
     // wasm section
     imports: ImportSection,
     types: TypeSection,
@@ -90,6 +91,7 @@ impl ModuleGenerator {
             global_count: 0,
             display_func: 0,
             string_to_symbol_func: 0,
+            write_char_func: 0,
             imports: ImportSection::new(),
             types: TypeSection::new(),
             functions: FunctionSection::new(),
@@ -426,6 +428,14 @@ impl ModuleGenerator {
                     nullable: false,
                     heap_type: HeapType::Concrete(self.symbol_type),
                 })],
+            },
+        );
+
+        self.write_char_func = self.add_runtime_function(
+            "write_char",
+            WasmFuncType {
+                params: vec![ValType::I32],
+                results: vec![],
             },
         );
 
@@ -861,6 +871,10 @@ impl ModuleGenerator {
             }
             ast::Builtin::Add => {
                 function.instruction(&Instruction::I64Add);
+            }
+            ast::Builtin::WriteChar => {
+                function.instruction(&Instruction::Call(self.write_char_func));
+                function.instruction(&Instruction::I32Const(0));
             }
         }
     }

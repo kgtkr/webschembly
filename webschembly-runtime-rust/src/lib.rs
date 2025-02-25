@@ -228,3 +228,55 @@ pub extern "C" fn _display(x: i64) {
     }
     drop(s);
 }
+
+extern "C" {
+    fn write_buf(buf_ptr: i32, buf_len: i32);
+}
+
+#[derive(Debug)]
+struct WasmWriter {
+    buf: Vec<u8>,
+}
+
+impl WasmWriter {
+    fn new() -> Self {
+        Self { buf: Vec::new() }
+    }
+
+    fn write_char(&mut self, c: i32) {
+        let c = char::from_u32(u32::from_le_bytes(c.to_le_bytes())).unwrap_or('?');
+        let len = c.len_utf8();
+        let mut bytes = [0; 4];
+        c.encode_utf8(&mut bytes);
+        self.buf.extend_from_slice(&bytes[..len]);
+        if c == '\n' {
+            self.flush();
+        } else {
+            self.flush_if_needed();
+        }
+    }
+
+    fn flush(&mut self) {
+        let ptr = self.buf.as_ptr();
+        let len = self.buf.len() as i32;
+        unsafe {
+            write_buf(ptr as i32, len);
+        }
+        self.buf.clear();
+    }
+
+    fn flush_if_needed(&mut self) {
+        if self.buf.len() > 1024 {
+            self.flush();
+        }
+    }
+}
+
+thread_local!(
+    static WRITER: RefCell<WasmWriter> = RefCell::new(WasmWriter::new());
+);
+
+#[unsafe(no_mangle)]
+pub extern "C" fn write_char(c: i32) {
+    WRITER.with(|writer| writer.borrow_mut().write_char(c));
+}

@@ -622,5 +622,9 @@ pub fn builtin_func_type(builtin: ast::Builtin) -> FuncType {
             args: vec![Type::Val(ValType::Int), Type::Val(ValType::Int)],
             rets: vec![Type::Val(ValType::Int)],
         },
+        ast::Builtin::WriteChar => FuncType {
+            args: vec![Type::Val(ValType::Char)],
+            rets: vec![Type::Val(ValType::Nil)],
+        },
     }
 }
