@@ -1,23 +1,41 @@
-#![feature(ptr_as_ref_unchecked)]
+#![feature(ptr_as_ref_unchecked, allocator_api, slice_ptr_get)]
 use core::cell::RefCell;
 use std::collections::HashMap;
 use webschembly_compiler;
 mod logger;
+use std::alloc::{Allocator, Global, Layout};
+use std::ptr::NonNull;
 
-thread_local!(
-    static HEAP_MANAGER: RefCell<HeapManager> = RefCell::new(HeapManager::new());
-);
-
-#[unsafe(no_mangle)]
-pub extern "C" fn malloc(size: i32) -> i32 {
-    unsafe {
-        HEAP_MANAGER.with(|heap_manager| {
-            let mut heap_manager = heap_manager.borrow_mut();
-            heap_manager.malloc(size) as i32
-        })
+#[no_mangle]
+pub unsafe extern "C" fn malloc(size: i32) -> i32 {
+    if size <= 0 {
+        return std::ptr::null_mut::<u8>() as i32;
     }
+
+    let total_size = size as usize + std::mem::size_of::<usize>();
+    let layout = Layout::from_size_align(total_size, std::mem::align_of::<usize>()).unwrap();
+    let ptr = Global.allocate(layout).unwrap();
+    let raw_ptr = ptr.as_mut_ptr() as *mut usize;
+    *raw_ptr = size as usize;
+    raw_ptr.add(1) as *mut u8 as i32
 }
 
+#[no_mangle]
+pub unsafe extern "C" fn free(ptr: i32) {
+    let ptr = ptr as *mut u8;
+    if ptr.is_null() {
+        return;
+    }
+
+    let size_ptr = (ptr as *mut usize).offset(-1);
+    let size = *size_ptr;
+    let layout = Layout::from_size_align(
+        size + std::mem::size_of::<usize>(),
+        std::mem::align_of::<usize>(),
+    )
+    .unwrap();
+    Global.deallocate(NonNull::new_unchecked(size_ptr as *mut u8), layout);
+}
 thread_local!(
     static SYMBOL_MANAGER: RefCell<SymbolManager> = RefCell::new(SymbolManager::new());
 );
@@ -68,29 +86,6 @@ impl SymbolManager {
         self.symbol_id += 1;
 
         symbol_id as i32
-    }
-}
-
-const HEAP_SIZE: usize = 1024 * 8;
-
-struct HeapManager {
-    heap: [u8; HEAP_SIZE],
-    offset: usize,
-}
-
-impl HeapManager {
-    fn new() -> Self {
-        Self {
-            heap: [0; HEAP_SIZE],
-            offset: 0,
-        }
-    }
-
-    unsafe fn malloc(&mut self, size: i32) -> *const u8 {
-        let offset = self.offset;
-        self.offset += size as usize;
-
-        self.heap[offset as usize..].as_ptr()
     }
 }
 
