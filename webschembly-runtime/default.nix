@@ -4,7 +4,7 @@ stdenv.mkDerivation {
   src = ./.;
   buildInputs = [ binaryen webschembly-runtime-rust gnumake ];
   buildPhase = ''
-    make WEBSCHEMBLY_RUNTIME_RUST=${webschembly-runtime-rust}/lib/webschembly_runtime_rust.wasm BINARYEN_ARGS="${BINARYEN_ARGS}"
+    make WEBSCHEMBLY_RUNTIME_RUST="${webschembly-runtime-rust}/lib/webschembly_runtime_rust.wasm" BINARYEN_ARGS="${BINARYEN_ARGS}"
   '';
   installPhase = ''
     mkdir -p $out/lib
