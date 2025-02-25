@@ -55,7 +55,7 @@
     (block $break
       (loop $loop
         (br_if $break
-          (i32.ge_u (table.size $symbols) (local.get $symbol_index))
+          (i32.gt_u (table.size $symbols) (local.get $symbol_index))
         )
         (if (i32.eq (i32.const -1) (table.grow $symbols (ref.null $Symbol) (table.size $symbols)))
           (then
