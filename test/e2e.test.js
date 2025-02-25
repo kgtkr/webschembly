@@ -34,7 +34,7 @@ describe("E2E test", () => {
           stderr += s + "\n";
         },
         writeBuf: (buf) => {
-          stdoutBufs.push(buf);
+          stdoutBufs.push(new Uint8Array(buf));
         },
         runtimeBuf,
       });

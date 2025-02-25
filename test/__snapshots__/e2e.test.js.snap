@@ -51,7 +51,7 @@ exports[`E2E test > display.scm > snapshot test 1`] = `
 {
   "exitCode": 0,
   "stderr": "",
-  "stdout": "(2 . (() . ("hello" . ((1 . (2 . ())) . (<symbol#0> . (<symbol#1> . (<symbol#0> . ())))))))
+  "stdout": "(2 . (() . ("hello" . ((1 . (2 . ())) . (abc . (efg . (abc . ())))))))
 ",
 }
 `;
