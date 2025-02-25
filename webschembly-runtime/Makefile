@@ -1,4 +1,4 @@
-BINARYEN_ARGS := $(shell cat ../binaryen-args.txt)
+BINARYEN_ARGS ?= $(shell cat ../binaryen-args.txt)
 CARGO_WEBSCHEMBLY_RUNTIME_RUST := ../target/wasm32-unknown-unknown/debug/webschembly_runtime_rust.wasm
 WEBSCHEMBLY_RUNTIME_RUST ?= $(CARGO_WEBSCHEMBLY_RUNTIME_RUST)
 

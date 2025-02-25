@@ -1,4 +1,4 @@
-BINARYEN_ARGS := $(shell cat ../binaryen-args.txt)
+BINARYEN_ARGS ?= $(shell cat ../binaryen-args.txt)
 SCM := $(wildcard src/*.scm)
 LIST := $(patsubst %.scm,%,$(SCM))
 WASM := $(patsubst %.scm,%.wasm,$(SCM))
