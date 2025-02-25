@@ -13,8 +13,3 @@ pub mod sexpr_parser;
 pub mod stdlib;
 pub mod token;
 pub mod x;
-
-pub fn compile(input: &str) -> crate::error::Result<Vec<u8>> {
-    let mut compiler = compiler::Compiler::new();
-    compiler.compile(input, false)
-}
