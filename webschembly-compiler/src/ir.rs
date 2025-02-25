@@ -118,7 +118,6 @@ pub struct Config {
 #[derive(Debug)]
 struct IrGenerator {
     funcs: Vec<Func>,
-    global_ids: HashMap<ast::GlobalVarId, usize>,
     box_vars: HashSet<ast::LocalVarId>,
     config: Config,
 }
@@ -127,7 +126,6 @@ impl IrGenerator {
     fn new(config: Config) -> Self {
         Self {
             funcs: Vec::new(),
-            global_ids: HashMap::new(),
             box_vars: HashSet::new(),
             config,
         }
@@ -154,16 +152,6 @@ impl IrGenerator {
         let func_id = self.funcs.len();
         self.funcs.push(func);
         func_id
-    }
-
-    fn global_id(&mut self, id: ast::GlobalVarId) -> usize {
-        if let Some(&global_id) = self.global_ids.get(&id) {
-            global_id
-        } else {
-            let global_id = self.global_ids.len();
-            self.global_ids.insert(id, global_id);
-            global_id
-        }
     }
 }
 
@@ -485,9 +473,7 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                     }
                 }
                 ast::VarId::Global(id) => {
-                    let global_id = self.func_gen.ir_generator.global_id(id);
-                    self.stats
-                        .push(Stat::Expr(result, Expr::GlobalGet(global_id)));
+                    self.stats.push(Stat::Expr(result, Expr::GlobalGet(id.0)));
                 }
                 ast::VarId::Builtin(builtin) => {
                     self.stats
@@ -517,10 +503,8 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                 ast::VarId::Global(id) => {
                     let local = self.func_gen.local(Type::Boxed);
                     self.gen_stat(Some(local), expr);
-                    self.stats.push(Stat::Expr(
-                        None,
-                        Expr::GlobalSet(self.func_gen.ir_generator.global_id(id), local),
-                    ));
+                    self.stats
+                        .push(Stat::Expr(None, Expr::GlobalSet(id.0, local)));
                     self.stats.push(Stat::Expr(result, Expr::Move(local)));
                 }
                 ast::VarId::Builtin(builtin) => {
