@@ -910,6 +910,11 @@ impl ModuleGenerator {
                     self.string_type,
                 )));
             }
+            ast::Builtin::IsChar => {
+                function.instruction(&Instruction::RefTestNonNull(HeapType::Concrete(
+                    self.char_type,
+                )));
+            }
             ast::Builtin::IsNumber => {
                 // TODO: 一般のnumberかを判定
                 function.instruction(&Instruction::RefTestNonNull(HeapType::Concrete(

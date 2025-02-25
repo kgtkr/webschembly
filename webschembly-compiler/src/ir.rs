@@ -652,6 +652,10 @@ pub fn builtin_func_type(builtin: ast::Builtin) -> FuncType {
             args: vec![Type::Boxed],
             rets: vec![Type::Val(ValType::Bool)],
         },
+        ast::Builtin::IsChar => FuncType {
+            args: vec![Type::Boxed],
+            rets: vec![Type::Val(ValType::Bool)],
+        },
         ast::Builtin::Eq => FuncType {
             args: vec![Type::Boxed, Type::Boxed],
             rets: vec![Type::Val(ValType::Bool)],

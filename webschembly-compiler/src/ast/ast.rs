@@ -141,6 +141,8 @@ pub enum Builtin {
     IsBoolean,
     #[strum(serialize = "procedure?")]
     IsProcedure,
+    #[strum(serialize = "char?")]
+    IsChar,
     #[strum(serialize = "eq?")]
     Eq,
     #[strum(serialize = "car")]
