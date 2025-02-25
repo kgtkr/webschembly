@@ -9,4 +9,5 @@ pub enum Token {
     Quote,
     Dot,
     Eof,
+    Char(char),
 }

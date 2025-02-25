@@ -21,6 +21,7 @@ pub enum ValType {
     Nil,
     Cons,
     Closure,
+    Char,
 }
 
 #[derive(Debug, Clone)]
@@ -30,6 +31,7 @@ pub enum Expr {
     String(String),
     StringToSymbol(usize),
     Nil,
+    Char(char),
     Cons(usize, usize),
     CreateMutCell,
     DerefMutCell(usize),
@@ -327,6 +329,12 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                     self.stats
                         .push(Stat::Expr(result, Expr::Box(ValType::Nil, unboxed)));
                 }
+                ast::Literal::Char(c) => {
+                    let unboxed = self.func_gen.local(Type::Val(ValType::Char));
+                    self.stats.push(Stat::Expr(Some(unboxed), Expr::Char(*c)));
+                    self.stats
+                        .push(Stat::Expr(result, Expr::Box(ValType::Char, unboxed)));
+                }
                 ast::Literal::Quote(sexpr) => {
                     self.quote(result, sexpr);
                 }
@@ -569,6 +577,12 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                 self.stats.push(Stat::Expr(Some(unboxed), Expr::Nil));
                 self.stats
                     .push(Stat::Expr(result, Expr::Box(ValType::Nil, unboxed)));
+            }
+            sexpr::SExpr::Char(c) => {
+                let unboxed = self.func_gen.local(Type::Val(ValType::Char));
+                self.stats.push(Stat::Expr(Some(unboxed), Expr::Char(*c)));
+                self.stats
+                    .push(Stat::Expr(result, Expr::Box(ValType::Char, unboxed)));
             }
             sexpr::SExpr::Cons(cons) => {
                 let car_local = self.func_gen.local(Type::Boxed);

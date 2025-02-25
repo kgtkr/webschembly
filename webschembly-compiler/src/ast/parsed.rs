@@ -52,6 +52,7 @@ impl Expr<Parsed> {
             SExpr::String(s) => Ok(Expr::Literal((), Literal::String(s))),
             SExpr::Symbol(s) => Ok(Expr::Var((), s)),
             SExpr::Nil => Ok(Expr::Literal((), Literal::Nil)),
+            SExpr::Char(c) => Ok(Expr::Literal((), Literal::Char(c))),
             SExpr::Cons(box Cons {
                 car: SExpr::Symbol("quote"),
                 cdr,

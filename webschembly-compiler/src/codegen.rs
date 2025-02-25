@@ -63,6 +63,7 @@ struct ModuleGenerator {
     nil_type: u32,
     bool_type: u32,
     int_type: u32,
+    char_type: u32,
     cons_type: u32,
     string_type: u32,
     symbol_type: u32,
@@ -102,6 +103,7 @@ impl ModuleGenerator {
             nil_type: 0,
             bool_type: 0,
             int_type: 0,
+            char_type: 0,
             cons_type: 0,
             string_type: 0,
             symbol_type: 0,
@@ -203,6 +205,7 @@ impl ModuleGenerator {
     const MUT_CELL_VALUE_FIELD: u32 = 0;
     const BOOL_VALUE_FIELD: u32 = 0;
     const INT_VALUE_FIELD: u32 = 0;
+    const CHAR_VALUE_FIELD: u32 = 0;
     const CONS_CAR_FIELD: u32 = 0;
     const CONS_CDR_FIELD: u32 = 1;
     const SYMBOL_STRING_FIELD: u32 = 0;
@@ -233,6 +236,13 @@ impl ModuleGenerator {
         self.type_count += 1;
         self.types.ty().struct_(vec![FieldType {
             element_type: StorageType::Val(ValType::I64),
+            mutable: false,
+        }]);
+
+        self.char_type = self.type_count;
+        self.type_count += 1;
+        self.types.ty().struct_(vec![FieldType {
+            element_type: StorageType::Val(ValType::I32),
             mutable: false,
         }]);
 
@@ -529,6 +539,9 @@ impl ModuleGenerator {
             ir::Expr::Int(i) => {
                 function.instruction(&Instruction::I64Const(*i));
             }
+            ir::Expr::Char(c) => {
+                function.instruction(&Instruction::I32Const(*c as i32));
+            }
             ir::Expr::String(s) => {
                 // TODO: 重複リテラルを共有
                 let bs = s.as_bytes();
@@ -632,6 +645,16 @@ impl ModuleGenerator {
                         field_index: Self::INT_VALUE_FIELD,
                     });
                 }
+                ir::ValType::Char => {
+                    function.instruction(&Instruction::LocalGet(*val as u32));
+                    function.instruction(&Instruction::RefCastNonNull(HeapType::Concrete(
+                        self.char_type,
+                    )));
+                    function.instruction(&Instruction::StructGet {
+                        struct_type_index: self.char_type,
+                        field_index: Self::CHAR_VALUE_FIELD,
+                    });
+                }
                 ir::ValType::String => {
                     function.instruction(&Instruction::LocalGet(*val as u32));
                     function.instruction(&Instruction::RefCastNonNull(HeapType::Concrete(
@@ -678,6 +701,10 @@ impl ModuleGenerator {
                 ir::ValType::Int => {
                     function.instruction(&Instruction::LocalGet(*val as u32));
                     function.instruction(&Instruction::StructNew(self.int_type));
+                }
+                ir::ValType::Char => {
+                    function.instruction(&Instruction::LocalGet(*val as u32));
+                    function.instruction(&Instruction::StructNew(self.char_type));
                 }
                 ir::ValType::String => {
                     function.instruction(&Instruction::LocalGet(*val as u32));
@@ -804,6 +831,7 @@ impl ModuleGenerator {
             ir::Type::Val(val) => match val {
                 ir::ValType::Bool => ValType::I32,
                 ir::ValType::Int => ValType::I64,
+                ir::ValType::Char => ValType::I32,
                 ir::ValType::String => ValType::Ref(RefType {
                     nullable: false,
                     heap_type: HeapType::Concrete(self.string_type),

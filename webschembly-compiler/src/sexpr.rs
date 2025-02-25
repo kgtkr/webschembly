@@ -3,6 +3,7 @@ pub enum SExpr {
     Bool(bool),
     Int(i64),
     String(String),
+    Char(char),
     Symbol(String),
     Cons(Box<Cons>),
     Nil,

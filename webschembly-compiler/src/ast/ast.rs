@@ -63,6 +63,7 @@ pub enum Literal {
     String(String),
     Nil,
     Quote(SExpr),
+    Char(char),
 }
 
 #[derive(Debug, Clone)]

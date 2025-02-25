@@ -2,7 +2,7 @@ use super::token::Token;
 use nom::{
     branch::alt,
     bytes::complete::{tag, take_while, take_while1},
-    character::complete::satisfy,
+    character::complete::{anychar, satisfy},
     combinator::{eof, map, map_res},
     multi::many0,
     IResult, Parser,
@@ -30,6 +30,30 @@ fn string(input: &str) -> IResult<&str, Token> {
     let (input, _) = tag("\"")(input)?;
     Ok((input, Token::String(string.to_string())))
 }
+
+fn char(input: &str) -> IResult<&str, Token> {
+    let (input, _) = tag("#\\")(input)?;
+    let (input, first) = anychar(input)?;
+    if first.is_ascii_alphabetic() {
+        let (input, rest) = take_while(|c: char| c.is_alphanumeric())(input)?;
+        if !rest.is_empty() {
+            let cname = format!("{}{}", first, rest);
+            match cname.as_str() {
+                "space" => Ok((input, Token::Char(' '))),
+                "newline" => Ok((input, Token::Char('\n'))),
+                _ => Err(nom::Err::Error(nom::error::Error::new(
+                    input,
+                    nom::error::ErrorKind::Char,
+                ))),
+            }
+        } else {
+            Ok((input, Token::Char(first)))
+        }
+    } else {
+        Ok((input, Token::Char(first)))
+    }
+}
+
 fn token(input: &str) -> IResult<&str, Token> {
     let (input, token) = alt((
         identifier,
@@ -37,6 +61,7 @@ fn token(input: &str) -> IResult<&str, Token> {
         tag(")").map(|_| Token::CloseParen),
         int,
         string,
+        char,
         tag("#t").map(|_| Token::Bool(true)),
         tag("#f").map(|_| Token::Bool(false)),
         tag("'").map(|_| Token::Quote),
