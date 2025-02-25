@@ -647,7 +647,7 @@ impl ModuleGenerator {
                     struct_type_index: self.closure_type,
                     field_index: Self::CLOSURE_FUNC_FIELD,
                 });
-                function.instruction(&Instruction::RefCastNonNull(HeapType::Concrete(func_type))); // TODO: 必要？
+                function.instruction(&Instruction::RefCastNonNull(HeapType::Concrete(func_type)));
                 function.instruction(&Instruction::CallRef(func_type));
             }
             ir::Expr::Move(val) => {
@@ -885,7 +885,6 @@ impl ModuleGenerator {
     fn gen_builtin(&self, builtin: ast::Builtin, function: &mut Function) {
         match builtin {
             ast::Builtin::Display => {
-                // TODO:
                 function.instruction(&Instruction::Call(self.display_func));
                 function.instruction(&Instruction::I32Const(0));
             }

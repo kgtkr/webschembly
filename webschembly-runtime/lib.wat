@@ -111,8 +111,8 @@
       )
     )
 
-    (local.get $s_ptr)
     (local.get $s_len)
+    (local.get $s_ptr)
   )
 
   (func $string_from_rust (param $s_ptr i32) (param $s_len i32) (result (ref $String))
