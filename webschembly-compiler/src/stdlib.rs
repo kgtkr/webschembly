@@ -7,6 +7,7 @@ pub fn generate_stdlib() -> String {
     for builtin in Builtin::iter() {
         result.push_str(&generate_builtin(builtin));
     }
+    result.push_str(include_str!("stdlib.scm"));
     result
 }
 
@@ -21,7 +22,7 @@ fn generate_builtin(builtin: Builtin) -> String {
         .collect::<Vec<_>>()
         .join(" ");
     format!(
-        "(define ({} {}) ({} {}))",
+        "(define ({} {}) ({} {}))\n",
         builtin.name(),
         args,
         builtin.name(),
