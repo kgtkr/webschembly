@@ -101,7 +101,6 @@ pub extern "C" fn load_src(buf_ptr: i32, buf_len: i32) {
             bytes.push(*buf_ptr.offset(i as isize));
         }
     }
-    // TODO: free buf_ptr
     let src = String::from_utf8(bytes).unwrap();
     load_src_inner(src, false);
 }

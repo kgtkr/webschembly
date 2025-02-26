@@ -103,6 +103,7 @@ export function createRuntime({
         srcBufPtr
       );
       runtimeInstance.exports.load_src(srcBufPtr, srcBuf.length);
+      runtimeInstance.exports.free(srcBufPtr);
     }),
     flushAll: () => {
       runtimeInstance.exports.flush_all();
