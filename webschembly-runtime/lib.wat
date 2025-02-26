@@ -31,6 +31,7 @@
   (table $globals (export "globals") 1 eqref)
   (table $builtins (export "builtins") 1 eqref)
   (table $symbols 1 (ref null $Symbol))
+  (tag $WEBSCHEMBLY_EXCEPTION (export "WEBSCHEMBLY_EXCEPTION"))
 
   (func $display_fd (export "display_fd") (param $fd i32) (param $s (ref $String))
     (local $s_ptr i32)
