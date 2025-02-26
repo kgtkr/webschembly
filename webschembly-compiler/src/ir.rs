@@ -52,7 +52,7 @@ pub enum Expr {
     Builtin(ast::Builtin, Vec<usize>),
     GetBuiltin(ast::Builtin),
     SetBuiltin(ast::Builtin, usize),
-    Error(String),
+    Error(usize),
     InitGlobals(usize),  // global count
     InitBuiltins(usize), // builtin count
 }
@@ -379,10 +379,12 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                         debug_assert!(builtin_typ.rets.len() == 1);
                         let ret_type = builtin_typ.rets[0];
                         if builtin_typ.args.len() != args.len() {
+                            let msg = self.func_gen.local(Type::Val(ValType::String));
                             self.stats.push(Stat::Expr(
-                                result,
-                                Expr::Error("builtin args count mismatch".to_string()),
+                                Some(msg),
+                                Expr::String("builtin args count mismatch\n".to_string()),
                             ));
+                            self.stats.push(Stat::Expr(result, Expr::Error(msg)));
                         } else {
                             let mut arg_locals = Vec::new();
                             for (typ, arg) in builtin_typ.args.iter().zip(args) {
@@ -515,10 +517,12 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                             .push(Stat::Expr(None, Expr::SetBuiltin(builtin, local)));
                         self.stats.push(Stat::Expr(result, Expr::Move(local)));
                     } else {
+                        let msg = self.func_gen.local(Type::Val(ValType::String));
                         self.stats.push(Stat::Expr(
-                            result,
-                            Expr::Error("set! builtin is not allowed".to_string()),
+                            Some(msg),
+                            Expr::String("set! builtin is not allowed\n".to_string()),
                         ));
+                        self.stats.push(Stat::Expr(result, Expr::Error(msg)));
                     }
                 }
             },

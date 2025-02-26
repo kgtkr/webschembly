@@ -47,6 +47,7 @@ struct ModuleGenerator {
     table_count: u32,
     // runtime functions
     display_func: u32,
+    display_fd_func: u32,
     string_to_symbol_func: u32,
     write_char_func: u32,
     int_to_string_func: u32,
@@ -94,6 +95,7 @@ impl ModuleGenerator {
             func_count: 0,
             global_count: 0,
             display_func: 0,
+            display_fd_func: 0,
             string_to_symbol_func: 0,
             write_char_func: 0,
             int_to_string_func: 0,
@@ -481,6 +483,19 @@ impl ModuleGenerator {
                 results: vec![],
             },
         );
+        self.display_fd_func = self.add_runtime_function(
+            "display_fd",
+            WasmFuncType {
+                params: vec![
+                    ValType::I32,
+                    ValType::Ref(RefType {
+                        nullable: false,
+                        heap_type: HeapType::Concrete(self.string_type),
+                    }),
+                ],
+                results: vec![],
+            },
+        );
         self.string_to_symbol_func = self.add_runtime_function(
             "string_to_symbol",
             WasmFuncType {
@@ -847,7 +862,10 @@ impl ModuleGenerator {
                 function.instruction(&Instruction::TableSet(self.global_table));
                 function.instruction(&Instruction::LocalGet(*val as u32));
             }
-            ir::Expr::Error(_) => {
+            ir::Expr::Error(msg) => {
+                function.instruction(&Instruction::I32Const(2));
+                function.instruction(&Instruction::LocalGet(*msg as u32));
+                function.instruction(&Instruction::Call(self.display_fd_func));
                 function.instruction(&Instruction::Unreachable);
                 // TODO: 多分いらない
                 function.instruction(&Instruction::RefNull(HeapType::Abstract {
