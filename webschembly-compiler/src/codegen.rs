@@ -5,11 +5,11 @@ use crate::ast;
 use super::ir;
 use crate::error;
 use wasm_encoder::{
-    AbstractHeapType, BlockType, CodeSection, CompositeInnerType, CompositeType, DataCountSection,
-    DataSection, ElementSection, Elements, EntityType, FieldType, FuncType, Function,
-    FunctionSection, GlobalSection, GlobalType, HeapType, ImportSection, Instruction, Module,
-    RefType, StartSection, StorageType, StructType, SubType, TableSection, TableType, TypeSection,
-    ValType,
+    AbstractHeapType, BlockType, CodeSection, CompositeInnerType, CompositeType, ConstExpr,
+    DataCountSection, DataSection, ElementSection, Elements, EntityType, FieldType, FuncType,
+    Function, FunctionSection, GlobalSection, GlobalType, HeapType, ImportSection, Instruction,
+    MemoryType, Module, RefType, StartSection, StorageType, StructType, SubType, TableSection,
+    TableType, TypeSection, ValType,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -42,6 +42,7 @@ impl Codegen {
 
 #[derive(Debug)]
 struct ModuleGenerator {
+    malloc_global: u32,
     type_count: u32,
     func_count: u32,
     global_count: u32,
@@ -51,6 +52,7 @@ struct ModuleGenerator {
     string_to_symbol_func: u32,
     write_char_func: u32,
     int_to_string_func: u32,
+    malloc_func: u32,
     // wasm section
     imports: ImportSection,
     types: TypeSection,
@@ -68,6 +70,7 @@ struct ModuleGenerator {
     int_type: u32,
     char_type: u32,
     cons_type: u32,
+    string_buf_type: u32,
     string_type: u32,
     symbol_type: u32,
     variable_params_type: u32,
@@ -88,6 +91,7 @@ struct ModuleGenerator {
 impl ModuleGenerator {
     fn new() -> Self {
         Self {
+            malloc_global: 0,
             type_count: 0,
             func_count: 0,
             global_count: 0,
@@ -95,6 +99,7 @@ impl ModuleGenerator {
             string_to_symbol_func: 0,
             write_char_func: 0,
             int_to_string_func: 0,
+            malloc_func: 0,
             imports: ImportSection::new(),
             types: TypeSection::new(),
             functions: FunctionSection::new(),
@@ -110,6 +115,7 @@ impl ModuleGenerator {
             int_type: 0,
             char_type: 0,
             cons_type: 0,
+            string_buf_type: 0,
             string_type: 0,
             symbol_type: 0,
             variable_params_type: 0,
@@ -217,6 +223,11 @@ impl ModuleGenerator {
     const CLOSURE_FUNC_FIELD: u32 = 0;
     const CLOSURE_BOXED_FUNC_FIELD: u32 = 1;
     const CLOSURE_ENVS_FIELD_OFFSET: u32 = 2;
+    const STRING_BUF_PTR_FIELD: u32 = 0;
+    const STRING_BUF_SHARED_FIELD: u32 = 1;
+    const STRING_BUF_FIELD: u32 = 0;
+    const STRING_LEN_FIELD: u32 = 1;
+    const STRING_OFFSET_FIELD: u32 = 2;
 
     pub fn gen(&mut self, ir: &ir::Ir) -> Module {
         self.mut_cell_type = self.type_count;
@@ -264,9 +275,38 @@ impl ModuleGenerator {
             },
         ]);
 
+        self.string_buf_type = self.type_count;
+        self.type_count += 1;
+        self.types.ty().struct_(vec![
+            FieldType {
+                element_type: StorageType::Val(ValType::I32),
+                mutable: false,
+            },
+            FieldType {
+                element_type: StorageType::I8,
+                mutable: true,
+            },
+        ]);
+
         self.string_type = self.type_count;
         self.type_count += 1;
-        self.types.ty().array(&StorageType::I8, true);
+        self.types.ty().struct_(vec![
+            FieldType {
+                element_type: StorageType::Val(ValType::Ref(RefType {
+                    nullable: false,
+                    heap_type: HeapType::Concrete(self.string_buf_type),
+                })),
+                mutable: true,
+            },
+            FieldType {
+                element_type: StorageType::Val(ValType::I32),
+                mutable: false,
+            },
+            FieldType {
+                element_type: StorageType::Val(ValType::I32),
+                mutable: false,
+            },
+        ]);
 
         self.symbol_type = self.type_count;
         self.type_count += 1;
@@ -340,6 +380,18 @@ impl ModuleGenerator {
             },
         ]);
 
+        self.imports.import(
+            "runtime",
+            "memory",
+            EntityType::Memory(MemoryType {
+                minimum: 1,
+                maximum: None,
+                shared: false,
+                memory64: false,
+                page_size_log2: None,
+            }),
+        );
+
         self.nil_global = Some(self.global_count);
         self.imports.import(
             "runtime",
@@ -384,6 +436,17 @@ impl ModuleGenerator {
             }),
         );
         self.global_count += 1;
+
+        self.malloc_global = self.global_count;
+        self.global_count += 1;
+        self.globals.global(
+            GlobalType {
+                val_type: ValType::I32,
+                mutable: true,
+                shared: false,
+            },
+            &ConstExpr::i32_const(0),
+        );
 
         self.global_table = self.table_count;
         self.table_count += 1;
@@ -452,6 +515,13 @@ impl ModuleGenerator {
                     nullable: false,
                     heap_type: HeapType::Concrete(self.string_type),
                 })],
+            },
+        );
+        self.malloc_func = self.add_runtime_function(
+            "malloc",
+            WasmFuncType {
+                params: vec![ValType::I32],
+                results: vec![ValType::I32],
             },
         );
 
@@ -577,12 +647,22 @@ impl ModuleGenerator {
                 let data_index = self.datas.len();
                 self.datas.passive(bs.iter().copied());
 
+                function.instruction(&Instruction::I32Const(bs.len() as i32));
+                function.instruction(&Instruction::Call(self.malloc_func));
+                function.instruction(&Instruction::GlobalSet(self.malloc_global));
+
+                function.instruction(&Instruction::GlobalGet(self.malloc_global));
+                function.instruction(&Instruction::I32Const(0));
+                function.instruction(&Instruction::I32Const(bs.len() as i32));
+                function.instruction(&Instruction::MemoryInit { mem: 0, data_index });
+
+                function.instruction(&Instruction::GlobalGet(self.malloc_global)); // ptr
+                function.instruction(&Instruction::I32Const(0)); // shared
+                function.instruction(&Instruction::StructNew(self.string_buf_type));
+                // TODO: add FinalizationRegistry
+                function.instruction(&Instruction::I32Const(bs.len() as i32)); // len
                 function.instruction(&Instruction::I32Const(0)); // offset
-                function.instruction(&Instruction::I32Const(bs.len() as i32)); // size
-                function.instruction(&Instruction::ArrayNewData {
-                    array_type_index: self.string_type,
-                    array_data_index: data_index,
-                });
+                function.instruction(&Instruction::StructNew(self.string_type));
             }
             ir::Expr::StringToSymbol(s) => {
                 function.instruction(&Instruction::LocalGet(*s as u32));
