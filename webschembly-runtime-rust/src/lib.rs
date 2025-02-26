@@ -78,13 +78,30 @@ thread_local!(
         RefCell::new(webschembly_compiler::compiler::Compiler::new());
 );
 
+const STDIN_FD: i32 = 0;
+const STDOUT_FD: i32 = 1;
+const STDERR_FD: i32 = 2;
+
 fn load_src_inner(src: String, is_stdlib: bool) {
-    COMPILER.with(|compiler| {
+    let err = COMPILER.with(|compiler| {
         let mut compiler = compiler.borrow_mut();
-        let wasm = compiler.compile(&src, is_stdlib).unwrap();
-        unsafe { env::js_instantiate(wasm.as_ptr() as i32, wasm.len() as i32) };
-        drop(wasm);
+        let wasm = compiler.compile(&src, is_stdlib);
+        match wasm {
+            Ok(wasm) => {
+                unsafe { env::js_instantiate(wasm.as_ptr() as i32, wasm.len() as i32) };
+                drop(wasm);
+                None
+            }
+            Err(err) => Some(err),
+        }
     });
+
+    if let Some(err) = err {
+        let err = format!("{}\n", err);
+        WRITERS.with(|writers| {
+            get_writer(&mut *writers.borrow_mut(), STDERR_FD).write_buf(err.as_bytes())
+        });
+    }
 }
 
 #[unsafe(no_mangle)]
@@ -180,7 +197,7 @@ pub extern "C" fn write_char_fd(fd: i32, c: i32) {
 // TODO: Rustのコード生成の都合で一旦
 #[unsafe(no_mangle)]
 pub extern "C" fn write_char(c: i32) {
-    write_char_fd(1, c);
+    write_char_fd(STDOUT_FD, c);
 }
 
 #[unsafe(no_mangle)]
