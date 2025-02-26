@@ -3,8 +3,10 @@ import { createRuntime } from "./runtime.js";
 const runtime = createRuntime({
   runtimeName: "repl.scm",
   exitWhenException: false,
+  printEvalResult: true,
 });
 
+process.stdout.write("=> <eval stdlib>\n");
 runtime.loadStdlib();
 
 (async () => {

@@ -18,6 +18,9 @@
           (field $func (ref func))
           (field $boxed_func (ref $BoxedFunc)))))
   )
+  ;; TODO: いらなくなったら削除
+  (type $Func1 (func (param (ref $Closure)) (param eqref) (result eqref)))
+  ;;
   (import "runtime" "init" (func $init))
   (import "runtime" "malloc" (func $malloc (param i32) (result i32)))
   (import "runtime" "free" (func $free (param i32)))
@@ -25,6 +28,7 @@
   (import "runtime" "_string_to_symbol" (func $_string_to_symbol (param i32) (param i32) (result i32)))
   (import "runtime" "_int_to_string" (func $_int_to_string (param i64) (result i64)))
   (import "runtime" "write_buf" (func $write_buf (param i32) (param i32) (param i32)))
+  (import "runtime" "write_char" (func $write_char (param i32)))
   (global $nil (export "nil") (ref $Nil) (struct.new $Nil))
   (global $true (export "true") (ref $Bool) (struct.new $Bool (i32.const 1)))
   (global $false (export "false") (ref $Bool) (struct.new $Bool (i32.const 0)))
@@ -173,4 +177,16 @@
   )
 
   (start $init)
+
+  (func $print_for_repl (export "print_for_repl") (param $x eqref)
+    ;; TODO: もっと汎用的な方法でJSからschemeのグローバル変数を参照できるようにする
+    (local $write_closure (ref $Closure))
+    (local $write (ref $Func1))
+    ;; writeは今のところ1番目に入っているはず(壊れやすいコードなので要修正)
+    (local.set $write_closure (ref.cast (ref $Closure) (table.get $globals (i32.const 1))))
+    (local.set $write (ref.cast (ref $Func1) (struct.get $Closure $func (local.get $write_closure))))
+    (call_ref $Func1 (local.get $write_closure) (local.get $x) (local.get $write))
+    (drop)
+    (call $write_char (i32.const 10))
+  )
 )

@@ -19,6 +19,7 @@ export function createRuntime({
         throw new Error(`Unsupported file descriptor: ${fd}`);
     }
   },
+  printEvalResult = false,
 }) {
   const logBasename = path.basename(runtimeName) + "-" + Date.now();
   let logFile = null;
@@ -55,7 +56,10 @@ export function createRuntime({
         importObject
       );
 
-      instance.exports.start();
+      const result = instance.exports.start();
+      if (printEvalResult) {
+        runtimeInstance.exports.print_for_repl(result);
+      }
     },
     js_webschembly_log: (bufPtr, bufLen) => {
       const s = new TextDecoder().decode(
