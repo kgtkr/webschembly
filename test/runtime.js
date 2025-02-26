@@ -6,7 +6,6 @@ export function createRuntime({
   exit = process.exit,
   logDir = process.env.LOG_DIR || null,
   runtimeBuf = fs.readFileSync(process.env["WEBSCHEMBLY_RUNTIME"]),
-  eprintln = console.error,
   writeBuf = (fd, buf) => {
     switch (fd) {
       case 1:
@@ -92,11 +91,12 @@ export function createRuntime({
       try {
         f(...args);
       } catch (e) {
-        if (e instanceof WebAssembly.RuntimeError) {
-          // エラーログに絶対パスなどが入るとsnapshot testに支障が出るため
-          // TODO: 言語としてエラーメッセージを整備する
-          eprintln(`${e.name}: ${e.message}`);
-          exit(1);
+        if (e instanceof WebAssembly.Exception) {
+          if (e.is(runtimeInstance.exports.WEBSCHEMBLY_EXCEPTION)) {
+            exit(1);
+          } else {
+            throw e;
+          }
         } else {
           throw e;
         }

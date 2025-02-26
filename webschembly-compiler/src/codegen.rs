@@ -51,6 +51,7 @@ struct ModuleGenerator {
     string_to_symbol_func: u32,
     write_char_func: u32,
     int_to_string_func: u32,
+    throw_webassembly_exception: u32,
     // wasm section
     imports: ImportSection,
     types: TypeSection,
@@ -99,6 +100,7 @@ impl ModuleGenerator {
             string_to_symbol_func: 0,
             write_char_func: 0,
             int_to_string_func: 0,
+            throw_webassembly_exception: 0,
             imports: ImportSection::new(),
             types: TypeSection::new(),
             functions: FunctionSection::new(),
@@ -528,6 +530,14 @@ impl ModuleGenerator {
             },
         );
 
+        self.throw_webassembly_exception = self.add_runtime_function(
+            "throw_webassembly_exception",
+            WasmFuncType {
+                params: vec![],
+                results: vec![],
+            },
+        );
+
         for (i, func) in ir.funcs.iter().enumerate() {
             let type_idx = self.func_type_from_ir(func.func_type());
 
@@ -866,8 +876,8 @@ impl ModuleGenerator {
                 function.instruction(&Instruction::I32Const(2));
                 function.instruction(&Instruction::LocalGet(*msg as u32));
                 function.instruction(&Instruction::Call(self.display_fd_func));
-                function.instruction(&Instruction::Unreachable);
-                // TODO: 多分いらない
+                function.instruction(&Instruction::Call(self.throw_webassembly_exception));
+                // これがないとこの後のdropでコンパイルエラーになる
                 function.instruction(&Instruction::RefNull(HeapType::Abstract {
                     shared: false,
                     ty: AbstractHeapType::Eq,

@@ -168,5 +168,9 @@
     (return (struct.new $String (local.get $s_buf) (struct.get $String $len (local.get $s)) (struct.get $String $offset (local.get $s))))
   )
 
+  (func $throw_webassembly_exception (export "throw_webassembly_exception")
+    (throw $WEBSCHEMBLY_EXCEPTION)
+  )
+
   (start $init)
 )

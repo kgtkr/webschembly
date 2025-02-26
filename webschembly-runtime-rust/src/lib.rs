@@ -7,6 +7,7 @@ mod logger;
 use std::alloc::{Allocator, Global, Layout};
 use std::ptr::NonNull;
 mod env;
+mod runtime;
 
 #[no_mangle]
 pub unsafe extern "C" fn malloc(size: i32) -> i32 {
@@ -101,7 +102,9 @@ fn load_src_inner(src: String, is_stdlib: bool) {
         WRITERS.with(|writers| {
             get_writer(&mut *writers.borrow_mut(), STDERR_FD).write_buf(err.as_bytes())
         });
-        // TODO: 例外は投げるべき
+        unsafe {
+            runtime::throw_webassembly_exception();
+        }
     }
 }
 

@@ -4,6 +4,17 @@ import { beforeAll, describe, expect, test } from "vitest";
 import * as path from "path";
 import { createRuntime } from "./runtime.js";
 
+function concatBufs(bufs) {
+  const bufLen = bufs.map((buf) => buf.length).reduce((a, b) => a + b, 0);
+  const resultBuf = new Uint8Array(bufLen);
+  let offset = 0;
+  for (const buf of bufs) {
+    resultBuf.set(buf, offset);
+    offset += buf.length;
+  }
+  return resultBuf;
+}
+
 const sourceDir = "src";
 const filenames = fsLegacy
   .readdirSync(sourceDir)
@@ -23,15 +34,12 @@ describe("E2E test", () => {
 
     test("snapshot test", async () => {
       let exitCode = 0;
-      let stderr = "";
       const stdoutBufs = [];
+      const stderrBufs = [];
       const runtime = createRuntime({
         runtimeName: filename,
         exit: (code) => {
           exitCode = code;
-        },
-        eprintln: (s) => {
-          stderr += s + "\n";
         },
         writeBuf: (fd, buf) => {
           switch (fd) {
@@ -39,7 +47,7 @@ describe("E2E test", () => {
               stdoutBufs.push(new Uint8Array(buf));
               break;
             case 2:
-              stderr += new TextDecoder().decode(buf);
+              stderrBufs.push(new Uint8Array(buf));
               break;
             default:
               throw new Error(`Unsupported file descriptor: ${fd}`);
@@ -51,16 +59,9 @@ describe("E2E test", () => {
       runtime.loadStdlib();
       runtime.loadSrc(srcBuf);
       runtime.cleanup();
-      const stdoutBufLen = stdoutBufs
-        .map((buf) => buf.length)
-        .reduce((a, b) => a + b, 0);
-      const stdoutBuf = new Uint8Array(stdoutBufLen);
-      let offset = 0;
-      for (const buf of stdoutBufs) {
-        stdoutBuf.set(buf, offset);
-        offset += buf.length;
-      }
-      const stdout = new TextDecoder().decode(stdoutBuf);
+
+      const stdout = new TextDecoder().decode(concatBufs(stdoutBufs));
+      const stderr = new TextDecoder().decode(concatBufs(stderrBufs));
 
       expect({ exitCode, stdout, stderr }).toMatchSnapshot();
     });
