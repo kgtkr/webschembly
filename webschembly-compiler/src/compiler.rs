@@ -29,7 +29,7 @@ impl Compiler {
                 allow_set_builtin: is_stdlib,
             },
         );
-        let code = self.codegen.gen(&ir)?;
+        let code = self.codegen.gen(&ir);
         Ok(code)
     }
 }

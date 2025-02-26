@@ -3,7 +3,6 @@ use std::{borrow::Cow, collections::HashMap};
 use crate::ast;
 
 use super::ir;
-use crate::error;
 use wasm_encoder::{
     AbstractHeapType, BlockType, CodeSection, CompositeInnerType, CompositeType, DataCountSection,
     DataSection, ElementSection, Elements, EntityType, ExportKind, ExportSection, FieldType,
@@ -33,10 +32,10 @@ impl Codegen {
         Self {}
     }
 
-    pub fn gen(&mut self, ir: &ir::Ir) -> error::Result<Vec<u8>> {
+    pub fn gen(&mut self, ir: &ir::Ir) -> Vec<u8> {
         let mut module_gen = ModuleGenerator::new();
         let module = module_gen.gen(&ir);
-        Ok(module.finish())
+        module.finish()
     }
 }
 
