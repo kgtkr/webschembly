@@ -22,9 +22,6 @@ export function createRuntime({
 
     logFile = fs.openSync(path.join(logDir, logBasename + ".log"), "a");
   }
-  const stringBufFinalizationRegistry = new FinalizationRegistry((ptr) => {
-    runtimeInstance.exports.free(ptr);
-  });
   let instantiateCount = 0;
 
   const runtimeImportObjects = {
@@ -63,9 +60,6 @@ export function createRuntime({
         bufLen
       );
       writeBuf(buf);
-    },
-    _register_string_buf: (buf, ptr) => {
-      stringBufFinalizationRegistry.register(buf, ptr);
     },
   };
 

@@ -6,8 +6,8 @@
   (type $Int (sub final (struct (field i64))))
   (type $Float (sub final (struct (field f64))))
   (type $Cons (sub final (struct (field $car (mut eqref)) (field $cdr (mut eqref)))))
-  ;; Rustとのやり取りの関係でWasmGCの配列ではなくメモリに配置する。TODO: FinalizationRegistryを使ってGC
-  (type $StringBuf (sub final (struct (field $ptr i32) (field $shared (mut i8)))))
+  (type $Buf (array (mut i8)))
+  (type $StringBuf (sub final (struct (field $buf (ref $Buf)) (field $shared (mut i8)))))
   (type $String (sub final (struct (field $buf (mut (ref $StringBuf))) (field $len i32) (field $offset i32))))
   (type $Symbol (sub final (struct (field $name (ref $String)))))
   (type $Vector (array (mut eqref)))
@@ -25,7 +25,6 @@
   (import "runtime" "_string_to_symbol" (func $_string_to_symbol (param i32) (param i32) (result i32)))
   (import "runtime" "_int_to_string" (func $_int_to_string (param i64) (result i64)))
   (import "runtime" "write_buf_" (func $write_buf_ (param i32) (param i32)))
-  (import "env" "_register_string_buf" (func $_register_string_buf (param (ref $StringBuf)) (param i32)))
   (global $nil (export "nil") (ref $Nil) (struct.new $Nil))
   (global $true (export "true") (ref $Bool) (struct.new $Bool (i32.const 1)))
   (global $false (export "false") (ref $Bool) (struct.new $Bool (i32.const 0)))
@@ -36,8 +35,9 @@
   (func $display (export "display") (param $s (ref $String))
     (local $s_ptr i32)
     (local $s_len i32)
-    (call $string_to_rust (local.get $s)) (local.set $s_ptr) (local.set $s_len)
+    (call $string_to_memory (local.get $s)) (local.set $s_ptr) (local.set $s_len)
     (call $write_buf_ (local.get $s_ptr) (local.get $s_len))
+    (call $free (local.get $s_ptr))
   )
   (func $string_to_symbol (export "string_to_symbol") (param $s (ref $String)) (result (ref $Symbol))
     (local $s_ptr i32)
@@ -48,8 +48,9 @@
     (local.set $s (call $copy_string (local.get $s)))
     
     ;; string -> symbol_index
-    (call $string_to_rust (local.get $s)) (local.set $s_ptr) (local.set $s_len)
+    (call $string_to_memory (local.get $s)) (local.set $s_ptr) (local.set $s_len)
     (local.set $symbol_index (call $_string_to_symbol (local.get $s_ptr) (local.get $s_len)))
+    (call $free (local.get $s_ptr))
 
     ;; grow symbol table
     (block $break
@@ -79,7 +80,8 @@
     (local $s_len i32)
     (local $s (ref $String))
     (call $uncos_tuple_i32 (call $_int_to_string (local.get $x))) (local.set $s_ptr) (local.set $s_len)
-    (local.set $s (call $string_from_rust (local.get $s_ptr) (local.get $s_len)))
+    (local.set $s (call $memory_to_string (local.get $s_ptr) (local.get $s_len)))
+    (call $free (local.get $s_ptr))
     (local.get $s)
   )
 
@@ -89,31 +91,69 @@
     (i32.wrap_i64 (local.get $x))
   )
 
-  (func $string_to_rust (param $s (ref $String)) (result i32) (result i32)
+  (func $string_to_memory (param $s (ref $String)) (result i32) (result i32)
+    (local $ptr i32)
     (local $s_buf (ref $StringBuf))
-    (local $s_ptr i32)
-    (local $s_len i32)
+    (local $len i32)
+    
 
     (local.set $s_buf (struct.get $String $buf (local.get $s)))
-    (local.set $s_len (struct.get $String $len (local.get $s)))
-    (local.set $s_ptr (i32.add (struct.get $StringBuf $ptr (local.get $s_buf)) (struct.get $String $offset (local.get $s))))
+    (local.set $len (struct.get $String $len (local.get $s)))
 
-    (local.get $s_len)
-    (local.get $s_ptr)
+    (local.set $ptr (call $buf_to_memory (struct.get $StringBuf $buf (local.get $s_buf)) (local.get $len) (struct.get $String $offset (local.get $s))))
+
+    (local.get $len)
+    (local.get $ptr)
   )
 
-  (func $string_from_rust (param $s_ptr i32) (param $s_len i32) (result (ref $String))
+  (func $memory_to_string (param $ptr i32) (param $len i32) (result (ref $String))
+    (local $buf (ref $Buf))
     (local $s_buf (ref $StringBuf))
-
-    (local.set $s_buf (struct.new $StringBuf (local.get $s_ptr) (i32.const 0)))
-    (call $register_string_buf (local.get $s_buf)) (drop)
-    (struct.new $String (local.get $s_buf) (local.get $s_len) (i32.const 0))
+    
+    (local.set $buf (call $memory_to_buf (local.get $ptr) (local.get $len)))
+    (local.set $s_buf (struct.new $StringBuf (local.get $buf) (i32.const 0)))
+    (struct.new $String (local.get $s_buf) (local.get $len) (i32.const 0))
   )
 
-  (func $register_string_buf (export "register_string_buf") (param $s_buf (ref $StringBuf)) (result (ref $StringBuf))
-    (call $_register_string_buf (local.get $s_buf) (struct.get $StringBuf $ptr (local.get $s_buf)))
-    ;; TODO: コード生成がめんどくさいので一旦引数を返す
-    (local.get $s_buf)
+  (func $buf_to_memory (param $buf (ref $Buf)) (param $len i32) (param $offset i32) (result i32)
+    (local $ptr i32)
+    (local $i i32)
+
+    (local.set $ptr (call $malloc (local.get $len)))
+
+    ;; array copy to memory
+    ;; 今のところループを回すしかなさそう: https://github.com/WebAssembly/gc/issues/395
+    (block $break
+      (loop $loop
+        (br_if $break
+          (i32.ge_u (local.get $i) (local.get $len))
+        )
+        (i32.store8 (i32.add (local.get $ptr) (local.get $i)) (array.get_u $Buf (local.get $buf) (i32.add (local.get $offset) (local.get $i))))
+        (local.set $i (i32.add (local.get $i) (i32.const 1)))
+        (br $loop)
+      )
+    )
+
+    (local.get $ptr)
+  )
+
+  (func $memory_to_buf (param $ptr i32) (param $len i32) (result (ref $Buf))
+    (local $i i32)
+    (local $buf (ref $Buf))
+
+    (local.set $buf (array.new $Buf (i32.const 0) (local.get $len)))
+    (block $break
+      (loop $loop
+        (br_if $break
+          (i32.ge_u (local.get $i) (local.get $len))
+        )
+        (array.set $Buf (local.get $buf) (local.get $i) (i32.load8_u (i32.add (local.get $ptr) (local.get $i))))
+        (local.set $i (i32.add (local.get $i) (i32.const 1)))
+        (br $loop)
+      )
+    )
+
+    (local.get $buf)
   )
 
   (func $copy_string (export "copy_string") (param $s (ref $String)) (result (ref $String))
