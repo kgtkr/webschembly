@@ -36,7 +36,7 @@ export function createRuntime({
   let instantiateCount = 0;
 
   const runtimeImportObjects = {
-    instantiate: (bufPtr, bufSize) => {
+    js_instantiate: (bufPtr, bufSize) => {
       const buf = new Uint8Array(
         runtimeInstance.exports.memory.buffer,
         bufPtr,
@@ -57,7 +57,7 @@ export function createRuntime({
 
       instance.exports.start();
     },
-    webschembly_log: (bufPtr, bufLen) => {
+    js_webschembly_log: (bufPtr, bufLen) => {
       const s = new TextDecoder().decode(
         new Uint8Array(runtimeInstance.exports.memory.buffer, bufPtr, bufLen)
       );
@@ -65,7 +65,7 @@ export function createRuntime({
         fs.writeSync(logFile, s + "\n");
       }
     },
-    write_buf: (fd, bufPtr, bufLen) => {
+    js_write_buf: (fd, bufPtr, bufLen) => {
       const buf = new Uint8Array(
         runtimeInstance.exports.memory.buffer,
         bufPtr,

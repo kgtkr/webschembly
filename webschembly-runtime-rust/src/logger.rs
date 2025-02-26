@@ -1,3 +1,4 @@
+use crate::env;
 use log::{Log, Metadata, Record};
 
 // https://gitlab.com/limira-rs/wasm-logger
@@ -27,13 +28,9 @@ impl Log for WasmLogger {
     fn flush(&self) {}
 }
 
-extern "C" {
-    fn webschembly_log(buf_ptr: i32, buf_len: i32);
-}
-
 fn str_log(s: &str) {
     let buf = s.as_bytes();
     unsafe {
-        webschembly_log(buf.as_ptr() as i32, buf.len() as i32);
+        env::js_webschembly_log(buf.as_ptr() as i32, buf.len() as i32);
     }
 }

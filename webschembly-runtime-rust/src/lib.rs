@@ -6,6 +6,7 @@ use webschembly_compiler;
 mod logger;
 use std::alloc::{Allocator, Global, Layout};
 use std::ptr::NonNull;
+mod env;
 
 #[no_mangle]
 pub unsafe extern "C" fn malloc(size: i32) -> i32 {
@@ -81,7 +82,7 @@ fn load_src_inner(src: String, is_stdlib: bool) {
     COMPILER.with(|compiler| {
         let mut compiler = compiler.borrow_mut();
         let wasm = compiler.compile(&src, is_stdlib).unwrap();
-        unsafe { instantiate(wasm.as_ptr() as i32, wasm.len() as i32) };
+        unsafe { env::js_instantiate(wasm.as_ptr() as i32, wasm.len() as i32) };
         drop(wasm);
     });
 }
@@ -105,18 +106,10 @@ pub extern "C" fn load_src(buf_ptr: i32, buf_len: i32) {
     load_src_inner(src, false);
 }
 
-extern "C" {
-    fn instantiate(buf_ptr: i32, buf_size: i32);
-}
-
 #[unsafe(no_mangle)]
 pub extern "C" fn init() {
     log::set_logger(&logger::WasmLogger).unwrap();
     log::set_max_level(log::LevelFilter::Debug);
-}
-
-extern "C" {
-    fn write_buf(fd: i32, buf_ptr: i32, buf_len: i32);
 }
 
 #[derive(Debug)]
@@ -159,7 +152,7 @@ impl WasmWriter {
         let ptr = self.buf.as_ptr();
         let len = self.buf.len() as i32;
         unsafe {
-            write_buf(self.fd, ptr as i32, len);
+            env::js_write_buf(self.fd, ptr as i32, len);
         }
         self.buf.clear();
     }
@@ -181,7 +174,7 @@ pub extern "C" fn write_char(c: i32) {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn write_buf_(buf_ptr: i32, buf_len: i32) {
+pub extern "C" fn write_buf(buf_ptr: i32, buf_len: i32) {
     let buf_ptr = buf_ptr as *const u8;
     let buf = unsafe { std::slice::from_raw_parts(buf_ptr, buf_len as usize) };
     WRITER.with(|writer| writer.borrow_mut().write_buf(buf));
