@@ -1,6 +1,9 @@
 import { createRuntime } from "./runtime.js";
 
-const runtime = createRuntime({ runtimeName: "repl.scm" });
+const runtime = createRuntime({
+  runtimeName: "repl.scm",
+  exitWhenException: false,
+});
 
 runtime.loadStdlib();
 

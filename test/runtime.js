@@ -4,6 +4,7 @@ import * as path from "path";
 export function createRuntime({
   runtimeName = "untitled",
   exit = process.exit,
+  exitWhenException = true,
   logDir = process.env.LOG_DIR || null,
   runtimeBuf = fs.readFileSync(process.env["WEBSCHEMBLY_RUNTIME"]),
   writeBuf = (fd, buf) => {
@@ -93,7 +94,9 @@ export function createRuntime({
       } catch (e) {
         if (e instanceof WebAssembly.Exception) {
           if (e.is(runtimeInstance.exports.WEBSCHEMBLY_EXCEPTION)) {
-            exit(1);
+            if (exitWhenException) {
+              exit(1);
+            }
           } else {
             throw e;
           }
