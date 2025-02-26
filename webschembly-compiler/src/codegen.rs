@@ -42,7 +42,9 @@ impl Codegen {
 
 #[derive(Debug)]
 struct ModuleGenerator {
+    // ローカル変数をirにないものも定義できるようにして削除
     malloc_global: u32,
+
     type_count: u32,
     func_count: u32,
     global_count: u32,
@@ -53,6 +55,7 @@ struct ModuleGenerator {
     write_char_func: u32,
     int_to_string_func: u32,
     malloc_func: u32,
+    register_string_buf_func: u32,
     // wasm section
     imports: ImportSection,
     types: TypeSection,
@@ -100,6 +103,7 @@ impl ModuleGenerator {
             write_char_func: 0,
             int_to_string_func: 0,
             malloc_func: 0,
+            register_string_buf_func: 0,
             imports: ImportSection::new(),
             types: TypeSection::new(),
             functions: FunctionSection::new(),
@@ -524,6 +528,19 @@ impl ModuleGenerator {
                 results: vec![ValType::I32],
             },
         );
+        self.register_string_buf_func = self.add_runtime_function(
+            "register_string_buf",
+            WasmFuncType {
+                params: vec![ValType::Ref(RefType {
+                    nullable: false,
+                    heap_type: HeapType::Concrete(self.string_buf_type),
+                })],
+                results: vec![ValType::Ref(RefType {
+                    nullable: false,
+                    heap_type: HeapType::Concrete(self.string_buf_type),
+                })],
+            },
+        );
 
         for (i, func) in ir.funcs.iter().enumerate() {
             let type_idx = self.func_type_from_ir(func.func_type());
@@ -659,7 +676,8 @@ impl ModuleGenerator {
                 function.instruction(&Instruction::GlobalGet(self.malloc_global)); // ptr
                 function.instruction(&Instruction::I32Const(0)); // shared
                 function.instruction(&Instruction::StructNew(self.string_buf_type));
-                // TODO: add FinalizationRegistry
+                function.instruction(&Instruction::Call(self.register_string_buf_func));
+
                 function.instruction(&Instruction::I32Const(bs.len() as i32)); // len
                 function.instruction(&Instruction::I32Const(0)); // offset
                 function.instruction(&Instruction::StructNew(self.string_type));

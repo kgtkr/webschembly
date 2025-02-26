@@ -25,6 +25,7 @@
   (import "runtime" "_string_to_symbol" (func $_string_to_symbol (param i32) (param i32) (result i32)))
   (import "runtime" "_int_to_string" (func $_int_to_string (param i64) (result i64)))
   (import "runtime" "write_buf_" (func $write_buf_ (param i32) (param i32)))
+  (import "env" "_register_string_buf" (func $_register_string_buf (param (ref $StringBuf)) (param i32)))
   (global $nil (export "nil") (ref $Nil) (struct.new $Nil))
   (global $true (export "true") (ref $Bool) (struct.new $Bool (i32.const 1)))
   (global $false (export "false") (ref $Bool) (struct.new $Bool (i32.const 0)))
@@ -104,8 +105,14 @@
     (local $s_buf (ref $StringBuf))
 
     (local.set $s_buf (struct.new $StringBuf (local.get $s_ptr) (i32.const 0)))
-    ;; TODO: add FinalizationRegistry
+    (call $register_string_buf (local.get $s_buf)) (drop)
     (struct.new $String (local.get $s_buf) (local.get $s_len) (i32.const 0))
+  )
+
+  (func $register_string_buf (export "register_string_buf") (param $s_buf (ref $StringBuf)) (result (ref $StringBuf))
+    (call $_register_string_buf (local.get $s_buf) (struct.get $StringBuf $ptr (local.get $s_buf)))
+    ;; TODO: コード生成がめんどくさいので一旦引数を返す
+    (local.get $s_buf)
   )
 
   (start $init)
