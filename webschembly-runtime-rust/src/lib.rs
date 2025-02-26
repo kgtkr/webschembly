@@ -185,6 +185,16 @@ pub extern "C" fn write_buf_(buf_ptr: i32, buf_len: i32) {
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn flush_all() {
+    WRITER.with(|writer| writer.borrow_mut().flush());
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn cleanup() {
+    flush_all();
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn _int_to_string(i: i64) -> i64 {
     let s = i.to_string();
     let s = s.as_bytes();

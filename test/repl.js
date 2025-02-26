@@ -7,5 +7,6 @@ runtime.loadStdlib();
 (async () => {
   for await (const chunk of process.stdin) {
     runtime.loadSrc(new Uint8Array(chunk));
+    runtime.flushAll();
   }
 })();

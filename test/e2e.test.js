@@ -41,6 +41,7 @@ describe("E2E test", () => {
 
       runtime.loadStdlib();
       runtime.loadSrc(srcBuf);
+      runtime.cleanup();
       const stdoutBufLen = stdoutBufs
         .map((buf) => buf.length)
         .reduce((a, b) => a + b, 0);

@@ -12,3 +12,4 @@ const srcBuf = new Uint8Array(fs.readFileSync(srcName));
 
 runtime.loadStdlib();
 runtime.loadSrc(srcBuf);
+runtime.cleanup();

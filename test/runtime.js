@@ -104,5 +104,11 @@ export function createRuntime({
       );
       runtimeInstance.exports.load_src(srcBufPtr, srcBuf.length);
     }),
+    flushAll: () => {
+      runtimeInstance.exports.flush_all();
+    },
+    cleanup: () => {
+      runtimeInstance.exports.cleanup();
+    },
   };
 }
