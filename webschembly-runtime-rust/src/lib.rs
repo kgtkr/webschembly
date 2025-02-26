@@ -203,13 +203,17 @@ pub extern "C" fn _int_to_string(i: i64) -> i64 {
         std::ptr::copy_nonoverlapping(s.as_ptr(), s_ptr as *mut u8, s.len());
     }
 
-    // rustではmultivalueが使えないので、(i32, i32) を i64 として返す
     let s_ptr = s_ptr as i32;
     let s_len = s.len() as i32;
-    let s_ptr = s_ptr.to_le_bytes();
-    let s_len = s_len.to_le_bytes();
+    cons_tuple_i32(s_ptr, s_len)
+}
+
+fn cons_tuple_i32(a: i32, b: i32) -> i64 {
+    // rustではmultivalueが使えないので、(i32, i32) を i64 として表す
+    let a = a.to_le_bytes();
+    let b = b.to_le_bytes();
     let mut buf = [0; 8];
-    buf[..4].copy_from_slice(&s_ptr);
-    buf[4..].copy_from_slice(&s_len);
+    buf[..4].copy_from_slice(&a);
+    buf[4..].copy_from_slice(&b);
     i64::from_le_bytes(buf)
 }
