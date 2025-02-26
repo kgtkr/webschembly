@@ -165,24 +165,38 @@ impl WasmWriter {
 }
 
 thread_local!(
-    static WRITER: RefCell<WasmWriter> = RefCell::new(WasmWriter::new(1));
+    static WRITERS: RefCell<HashMap<i32, WasmWriter>> = RefCell::new(HashMap::new());
 );
 
-#[unsafe(no_mangle)]
-pub extern "C" fn write_char(c: i32) {
-    WRITER.with(|writer| writer.borrow_mut().write_char(c));
+fn get_writer(writers: &mut HashMap<i32, WasmWriter>, fd: i32) -> &mut WasmWriter {
+    writers.entry(fd).or_insert_with(|| WasmWriter::new(fd))
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn write_buf(buf_ptr: i32, buf_len: i32) {
-    let buf_ptr = buf_ptr as *const u8;
+pub extern "C" fn write_char_fd(fd: i32, c: i32) {
+    WRITERS.with(|writers| get_writer(&mut *writers.borrow_mut(), fd).write_char(c));
+}
+
+// TODO: Rustのコード生成の都合で一旦
+#[unsafe(no_mangle)]
+pub extern "C" fn write_char(c: i32) {
+    write_char_fd(1, c);
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn write_buf(fd: i32, buf_ptr: i32, buf_len: i32) {
+    let buf_ptr: *const u8 = buf_ptr as *const u8;
     let buf = unsafe { std::slice::from_raw_parts(buf_ptr, buf_len as usize) };
-    WRITER.with(|writer| writer.borrow_mut().write_buf(buf));
+    WRITERS.with(|writers| get_writer(&mut *writers.borrow_mut(), fd).write_buf(buf));
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn flush_all() {
-    WRITER.with(|writer| writer.borrow_mut().flush());
+    WRITERS.with(|writers| {
+        for writer in writers.borrow_mut().values_mut() {
+            writer.flush();
+        }
+    });
 }
 
 #[unsafe(no_mangle)]
