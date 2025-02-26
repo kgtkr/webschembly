@@ -172,6 +172,7 @@ impl<'a> FuncGenerator<'a> {
     }
 
     fn entry_gen(mut self, ast: &ast::Ast<ast::Final>) -> Func {
+        let boxed_local = self.local(Type::Boxed);
         let body = {
             let mut block_gen = BlockGenerator::new(&mut self);
             block_gen.stats.push(Stat::Expr(
@@ -190,12 +191,12 @@ impl<'a> FuncGenerator<'a> {
                 None,
                 Expr::InitBuiltins(ast::Builtin::iter().len()),
             ));
-            block_gen.gen_stats(None, &ast.exprs);
+            block_gen.gen_stats(Some(boxed_local), &ast.exprs);
             block_gen.stats
         };
         Func {
             args: 0,
-            rets: vec![],
+            rets: vec![boxed_local],
             locals: self.locals,
             body,
         }
