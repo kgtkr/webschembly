@@ -5,10 +5,10 @@ use crate::ast;
 use super::ir;
 use crate::error;
 use wasm_encoder::{
-    AbstractHeapType, BlockType, CodeSection, CompositeInnerType, CompositeType, ConstExpr,
-    DataCountSection, DataSection, ElementSection, Elements, EntityType, FieldType, FuncType,
-    Function, FunctionSection, GlobalSection, GlobalType, HeapType, ImportSection, Instruction,
-    MemoryType, Module, RefType, StartSection, StorageType, StructType, SubType, TableSection,
+    AbstractHeapType, BlockType, CodeSection, CompositeInnerType, CompositeType, DataCountSection,
+    DataSection, ElementSection, Elements, EntityType, ExportKind, ExportSection, FieldType,
+    FuncType, Function, FunctionSection, GlobalSection, GlobalType, HeapType, ImportSection,
+    Instruction, MemoryType, Module, RefType, StorageType, StructType, SubType, TableSection,
     TableType, TypeSection, ValType,
 };
 
@@ -61,6 +61,7 @@ struct ModuleGenerator {
     datas: DataSection,
     elements: ElementSection,
     func_indices: HashMap<usize, FuncIndex>,
+    exports: ExportSection,
     // types
     mut_cell_type: u32,
     nil_type: u32,
@@ -106,6 +107,7 @@ impl ModuleGenerator {
             elements: ElementSection::new(),
             func_indices: HashMap::new(),
             datas: DataSection::new(),
+            exports: ExportSection::new(),
             mut_cell_type: 0,
             nil_type: 0,
             bool_type: 0,
@@ -570,9 +572,11 @@ impl ModuleGenerator {
             });
         }
 
-        let start = StartSection {
-            function_index: self.func_indices[&ir.entry].func_idx,
-        };
+        self.exports.export(
+            "start",
+            ExportKind::Func,
+            self.func_indices[&ir.entry].func_idx,
+        );
 
         let mut module = Module::new();
         module
@@ -581,7 +585,7 @@ impl ModuleGenerator {
             .section(&self.functions)
             .section(&self.tables)
             .section(&self.globals)
-            .section(&start)
+            .section(&self.exports)
             .section(&self.elements)
             .section(&DataCountSection {
                 count: self.datas.len(),

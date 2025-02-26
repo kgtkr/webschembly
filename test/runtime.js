@@ -39,11 +39,12 @@ export function createRuntime({
       }
       instantiateCount++;
 
-      // TODO: free memory
-      return new WebAssembly.Instance(
+      const instance = new WebAssembly.Instance(
         new WebAssembly.Module(buf),
         importObject
       );
+
+      instance.exports.start();
     },
     webschembly_log: (bufPtr, bufLen) => {
       const s = new TextDecoder().decode(
