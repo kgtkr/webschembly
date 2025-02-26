@@ -8,8 +8,10 @@ const runtime = createRuntime({
 runtime.loadStdlib();
 
 (async () => {
+  process.stdout.write("=> ");
   for await (const chunk of process.stdin) {
     runtime.loadSrc(new Uint8Array(chunk));
     runtime.flushAll();
+    process.stdout.write("=> ");
   }
 })();
