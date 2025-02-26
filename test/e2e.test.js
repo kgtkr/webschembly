@@ -33,8 +33,17 @@ describe("E2E test", () => {
         eprintln: (s) => {
           stderr += s + "\n";
         },
-        writeBuf: (buf) => {
-          stdoutBufs.push(new Uint8Array(buf));
+        writeBuf: (fd, buf) => {
+          switch (fd) {
+            case 1:
+              stdoutBufs.push(new Uint8Array(buf));
+              break;
+            case 2:
+              stderr += new TextDecoder().decode(buf);
+              break;
+            default:
+              throw new Error(`Unsupported file descriptor: ${fd}`);
+          }
         },
         runtimeBuf,
       });

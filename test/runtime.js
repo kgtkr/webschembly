@@ -7,7 +7,18 @@ export function createRuntime({
   logDir = process.env.LOG_DIR || null,
   runtimeBuf = fs.readFileSync(process.env["WEBSCHEMBLY_RUNTIME"]),
   eprintln = console.error,
-  writeBuf = process.stdout.write.bind(process.stdout),
+  writeBuf = (fd, buf) => {
+    switch (fd) {
+      case 1:
+        process.stdout.write(buf);
+        break;
+      case 2:
+        process.stderr.write(buf);
+        break;
+      default:
+        throw new Error(`Unsupported file descriptor: ${fd}`);
+    }
+  },
 }) {
   const logBasename = path.basename(runtimeName) + "-" + Date.now();
   let logFile = null;
@@ -54,13 +65,13 @@ export function createRuntime({
         fs.writeSync(logFile, s + "\n");
       }
     },
-    write_buf: (bufPtr, bufLen) => {
+    write_buf: (fd, bufPtr, bufLen) => {
       const buf = new Uint8Array(
         runtimeInstance.exports.memory.buffer,
         bufPtr,
         bufLen
       );
-      writeBuf(buf);
+      writeBuf(1, buf);
     },
   };
 

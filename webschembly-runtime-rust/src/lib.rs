@@ -116,17 +116,21 @@ pub extern "C" fn init() {
 }
 
 extern "C" {
-    fn write_buf(buf_ptr: i32, buf_len: i32);
+    fn write_buf(fd: i32, buf_ptr: i32, buf_len: i32);
 }
 
 #[derive(Debug)]
 struct WasmWriter {
+    fd: i32,
     buf: Vec<u8>,
 }
 
 impl WasmWriter {
-    fn new() -> Self {
-        Self { buf: Vec::new() }
+    fn new(fd: i32) -> Self {
+        Self {
+            fd,
+            buf: Vec::new(),
+        }
     }
 
     fn write_char(&mut self, c: i32) {
@@ -155,7 +159,7 @@ impl WasmWriter {
         let ptr = self.buf.as_ptr();
         let len = self.buf.len() as i32;
         unsafe {
-            write_buf(ptr as i32, len);
+            write_buf(self.fd, ptr as i32, len);
         }
         self.buf.clear();
     }
@@ -168,7 +172,7 @@ impl WasmWriter {
 }
 
 thread_local!(
-    static WRITER: RefCell<WasmWriter> = RefCell::new(WasmWriter::new());
+    static WRITER: RefCell<WasmWriter> = RefCell::new(WasmWriter::new(1));
 );
 
 #[unsafe(no_mangle)]
