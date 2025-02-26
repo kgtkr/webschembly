@@ -40,11 +40,12 @@
     (call $write_buf_ (local.get $s_ptr) (local.get $s_len))
   )
   (func $string_to_symbol (export "string_to_symbol") (param $s (ref $String)) (result (ref $Symbol))
-    ;; TODO: r5rsのstringは可変らしいのでコピーが必要
     (local $s_ptr i32)
     (local $s_len i32)
     (local $symbol_index i32)
     (local $new_symbol (ref $Symbol))
+
+    (local.set $s (call $copy_string (local.get $s)))
     
     ;; string -> symbol_index
     (call $string_to_rust (local.get $s)) (local.set $s_ptr) (local.set $s_len)
@@ -113,6 +114,14 @@
     (call $_register_string_buf (local.get $s_buf) (struct.get $StringBuf $ptr (local.get $s_buf)))
     ;; TODO: コード生成がめんどくさいので一旦引数を返す
     (local.get $s_buf)
+  )
+
+  (func $copy_string (export "copy_string") (param $s (ref $String)) (result (ref $String))
+    (local $s_buf (ref $StringBuf))
+    (local.set $s_buf (struct.get $String $buf (local.get $s)))
+    (struct.set $StringBuf $shared (local.get $s_buf) (i32.const 1))
+
+    (return (struct.new $String (local.get $s_buf) (struct.get $String $len (local.get $s)) (struct.get $String $offset (local.get $s))))
   )
 
   (start $init)
