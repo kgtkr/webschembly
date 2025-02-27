@@ -68,20 +68,13 @@ fn char(input: Tokens) -> IResult<Tokens, SExpr> {
 fn list(input: Tokens) -> IResult<Tokens, SExpr> {
     let (input, open_token) = satisfy(|t: &Token| t.kind == TokenKind::OpenParen).parse(input)?;
     let (input, elements) = many0(sexpr)(input)?;
-    let (input, tail) = if elements.len() != 0 {
-        /*
-        dotted listではドットの前に最低1つの要素が必要
-        (a . b) は正しいが (. a) は不正
-         */
-        opt(preceded(
-            satisfy(|t: &Token| t.kind == TokenKind::Dot),
-            sexpr,
-        ))(input)?
-    } else {
-        (input, None)
-    };
+    let (input, tail) = opt(preceded(
+        satisfy(|t: &Token| t.kind == TokenKind::Dot),
+        sexpr,
+    ))(input)?;
     let (input, close_token) = satisfy(|t: &Token| t.kind == TokenKind::CloseParen).parse(input)?;
-
+    let is_dotted = tail.is_some();
+    let elements_is_empty = elements.is_empty();
     let tail = tail.unwrap_or_else(|| SExpr {
         kind: SExprKind::Nil,
         span: close_token.span,
@@ -95,12 +88,24 @@ fn list(input: Tokens) -> IResult<Tokens, SExpr> {
         }
     });
 
-    Ok((input, {
-        // 一番外側のCons / Nilのspanを開き括弧から閉じ括弧までに拡張する
-        let mut list = list;
-        list.span = open_token.span.merge(close_token.span);
-        list
-    }))
+    Ok((
+        input,
+        if is_dotted && elements_is_empty {
+            /*
+            (. 1) のようにdotted listだがドットの前に要素がない場合はspanを拡張しない
+            そもそもこのようなリストはgoshだとエラーだが、エラーにする理由はあまりないので認めることにする
+
+            (. sexpr) は sexpr と同じ意味で、他言語の (expr) と似たようなものであるためspanは拡張するべきではないという理由
+            */
+
+            list
+        } else {
+            // 一番外側のCons / Nilのspanを開き括弧から閉じ括弧までに拡張する
+            let mut list = list;
+            list.span = open_token.span.merge(close_token.span);
+            list
+        },
+    ))
 }
 
 fn quote(input: Tokens) -> IResult<Tokens, SExpr> {
