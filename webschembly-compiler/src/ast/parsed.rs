@@ -75,7 +75,7 @@ impl Expr<Parsed> {
                 },
                 ..cdr
             ] => match cdr {
-                list_pattern![sexpr] => Ok(Expr::Literal((), Literal::Quote(sexpr))),
+                list_pattern![sexpr,] => Ok(Expr::Literal((), Literal::Quote(sexpr))),
                 _ => Err(compiler_error!("Invalid quote expression")),
             },
             list_pattern![
@@ -88,7 +88,7 @@ impl Expr<Parsed> {
                     SExpr {
                         kind: SExprKind::Symbol(name)
                     },
-                    expr
+                    expr,
                 ] => Ok(Expr::Define(
                     (),
                     Define {
@@ -128,7 +128,7 @@ impl Expr<Parsed> {
                 },
                 ..cdr
             ] => match cdr {
-                list_pattern![cond, then, els] => {
+                list_pattern![cond, then, els,] => {
                     let cond = Expr::from_sexpr(cond)?;
                     let then = Expr::from_sexpr(then)?;
                     let els = Expr::from_sexpr(els)?;
@@ -160,7 +160,7 @@ impl Expr<Parsed> {
                                 SExpr {
                                     kind: SExprKind::String(name)
                                 },
-                                expr
+                                expr,
                             ] => Ok((name, Expr::from_sexpr(expr)?)),
                             _ => Err(compiler_error!("Invalid binding")),
                         })
@@ -200,7 +200,7 @@ impl Expr<Parsed> {
                     SExpr {
                         kind: SExprKind::Symbol(name)
                     },
-                    expr
+                    expr,
                 ] => {
                     let expr = Expr::from_sexpr(expr)?;
                     Ok(Expr::Set(

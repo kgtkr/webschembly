@@ -113,7 +113,7 @@ fn quote(input: Tokens) -> IResult<Tokens, SExpr> {
             SExpr {
                 kind: SExprKind::Symbol("quote".to_string())
             },
-            expr
+            expr,
         ],
     ))
 }
