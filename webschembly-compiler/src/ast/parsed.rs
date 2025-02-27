@@ -80,18 +80,16 @@ impl Expr<Parsed> {
                 list_pattern![args, ..sexprs] => {
                     let args = args
                         .to_vec()
-                        .ok_or_else(|| compiler_error!("Expected a list of symbols"))?;
-                    let args = args
+                        .ok_or_else(|| compiler_error!("Expected a list of symbols"))?
                         .into_iter()
                         .map(|arg| match arg {
                             SExpr::Symbol(s) => Ok(s),
                             _ => Err(compiler_error!("Expected a symbol")),
                         })
                         .collect::<Result<Vec<String>>>()?;
-                    let sexprs = sexprs
-                        .to_vec()
-                        .ok_or_else(|| compiler_error!("Expected a list of expressions"))?;
                     let exprs = sexprs
+                        .to_vec()
+                        .ok_or_else(|| compiler_error!("Expected a list of expressions"))?
                         .into_iter()
                         .map(Expr::from_sexpr)
                         .collect::<Result<Vec<_>>>()?;
@@ -140,11 +138,10 @@ impl Expr<Parsed> {
                 }
                 _ => Err(compiler_error!("Invalid let expression")),
             },
-            list_pattern![SExpr::Symbol("begin"), ..cdr] => {
-                let exprs = cdr
-                    .to_vec()
-                    .ok_or_else(|| compiler_error!("Invalid begin expression"))?;
+            list_pattern![SExpr::Symbol("begin"), ..exprs] => {
                 let exprs = exprs
+                    .to_vec()
+                    .ok_or_else(|| compiler_error!("Invalid begin expression"))?
                     .into_iter()
                     .map(Expr::from_sexpr)
                     .collect::<Result<Vec<_>>>()?;
@@ -167,8 +164,7 @@ impl Expr<Parsed> {
                 let func = Expr::from_sexpr(func)?;
                 let args = args
                     .to_vec()
-                    .ok_or_else(|| compiler_error!("Expected a list of arguments"))?;
-                let args = args
+                    .ok_or_else(|| compiler_error!("Expected a list of arguments"))?
                     .into_iter()
                     .map(Expr::from_sexpr)
                     .collect::<Result<Vec<_>>>()?;
