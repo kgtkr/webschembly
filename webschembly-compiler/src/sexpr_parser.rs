@@ -5,7 +5,8 @@ use super::sexpr::SExpr;
 use super::token::Token;
 
 use super::parser_combinator::{satisfy, satisfy_map_opt};
-use nom::sequence::tuple;
+use nom::combinator::opt;
+use nom::sequence::{preceded, tuple};
 use nom::{branch::alt, multi::many0, IResult, Parser};
 
 type Tokens<'a> = &'a [Token];
@@ -52,22 +53,19 @@ fn char(input: Tokens) -> IResult<Tokens, SExpr> {
 
 fn list(input: Tokens) -> IResult<Tokens, SExpr> {
     let (input, _) = satisfy(|t: &Token| t.kind == TokenKind::OpenParen).parse(input)?;
-    let (input, cons) = list_rec(input)?;
-    Ok((input, cons))
-}
+    let (input, elements) = many0(sexpr)(input)?;
+    let (input, tail) = opt(preceded(
+        satisfy(|t: &Token| t.kind == TokenKind::Dot),
+        sexpr,
+    ))(input)?;
+    let tail = tail.unwrap_or_else(|| SExpr::Nil);
+    let (input, _) = satisfy(|t: &Token| t.kind == TokenKind::CloseParen).parse(input)?;
 
-fn list_rec(input: Tokens) -> IResult<Tokens, SExpr> {
-    alt((
-        satisfy(|t: &Token| t.kind == TokenKind::CloseParen).map(|_| SExpr::Nil),
-        tuple((
-            satisfy(|t: &Token| t.kind == TokenKind::Dot),
-            sexpr,
-            satisfy(|t: &Token| t.kind == TokenKind::CloseParen),
-        ))
-        .map(|(_, sexpr, _)| sexpr),
-        tuple((sexpr, list_rec)).map(|(sexpr, cdr)| SExpr::Cons(Box::new(Cons::new(sexpr, cdr)))),
-    ))
-    .parse(input)
+    let list = elements
+        .into_iter()
+        .rfold(tail, |cdr, car| SExpr::Cons(Box::new(Cons::new(car, cdr))));
+
+    Ok((input, list))
 }
 
 fn quote(input: Tokens) -> IResult<Tokens, SExpr> {
