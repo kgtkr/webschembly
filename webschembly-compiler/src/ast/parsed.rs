@@ -117,34 +117,26 @@ impl Expr<Parsed> {
             },
             list_pattern![SExpr::Symbol("let"), ..cdr] => match cdr {
                 // TODO: 効率が悪いが一旦ラムダ式に変換
-                list_pattern![bindings, ..body_sexprs] => {
+                list_pattern![bindings, ..body] => {
                     let bindings = bindings
                         .to_vec()
-                        .ok_or_else(|| compiler_error!("Expected a list of bindings"))?;
-                    let bindings = bindings
+                        .ok_or_else(|| compiler_error!("Expected a list of bindings"))?
                         .into_iter()
                         .map(|binding| match binding {
-                            list_pattern![name, value] => Ok((name, value)),
+                            list_pattern![SExpr::String(name), expr] => {
+                                Ok((name, Expr::from_sexpr(expr)?))
+                            }
                             _ => Err(compiler_error!("Invalid binding")),
                         })
-                        .collect::<Result<Vec<(SExpr, SExpr)>>>()?;
+                        .collect::<Result<Vec<(_, _)>>>()?;
+                    let body = body
+                        .to_vec()
+                        .ok_or_else(|| compiler_error!("Expected a list of expressions"))?
+                        .into_iter()
+                        .map(Expr::from_sexpr)
+                        .collect::<Result<Vec<_>>>()?;
 
-                    let mut names = Vec::new();
-                    let mut exprs = Vec::new();
-                    for (name, value) in bindings {
-                        names.push(name);
-                        exprs.push(value);
-                    }
-                    let lambda = list![
-                        SExpr::Symbol("lambda".to_string()),
-                        SExpr::from_vec(names),
-                        ..body_sexprs
-                    ];
-
-                    let exprs = SExpr::from_vec(exprs);
-
-                    let result = list![lambda, ..exprs];
-                    Expr::from_sexpr(result)
+                    Ok(Expr::Let((), Let { bindings, body }))
                 }
                 _ => Err(compiler_error!("Invalid let expression")),
             },

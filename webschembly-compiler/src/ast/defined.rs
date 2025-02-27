@@ -1,5 +1,4 @@
 use super::ast::*;
-use super::desugared::*;
 use super::Desugared;
 use crate::compiler_error;
 use crate::error::Result;

@@ -17,17 +17,6 @@ impl SExpr {
             _ => None,
         }
     }
-
-    pub fn from_vec(mut list: Vec<SExpr>) -> Self {
-        if list.is_empty() {
-            SExpr::Nil
-        } else {
-            let first = list.remove(0);
-            SExpr::Cons(Box::new(Cons::from_non_empty_list(NonEmptyList::List(
-                first, list,
-            ))))
-        }
-    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -41,7 +30,7 @@ impl Cons {
         Self { car, cdr }
     }
 
-    pub fn to_vec_and_cdr(self) -> (Vec<SExpr>, SExpr) {
+    fn to_vec_and_cdr(self) -> (Vec<SExpr>, SExpr) {
         let mut list = vec![self.car];
         let mut cdr = self.cdr;
         while let SExpr::Cons(cons) = cdr {
@@ -51,17 +40,13 @@ impl Cons {
         (list, cdr)
     }
 
-    pub fn to_vec(self) -> Option<Vec<SExpr>> {
+    fn to_vec(self) -> Option<Vec<SExpr>> {
         let (list, cdr) = self.to_vec_and_cdr();
         if cdr == SExpr::Nil {
             Some(list)
         } else {
             None
         }
-    }
-
-    pub fn to_non_empty_list(self) -> NonEmptyList {
-        NonEmptyList::new(self.car, vec![], self.cdr)
     }
 
     pub fn from_non_empty_list(list: NonEmptyList) -> Self {
