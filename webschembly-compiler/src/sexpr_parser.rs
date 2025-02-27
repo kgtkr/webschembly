@@ -68,10 +68,18 @@ fn char(input: Tokens) -> IResult<Tokens, SExpr> {
 fn list(input: Tokens) -> IResult<Tokens, SExpr> {
     let (input, open_token) = satisfy(|t: &Token| t.kind == TokenKind::OpenParen).parse(input)?;
     let (input, elements) = many0(sexpr)(input)?;
-    let (input, tail) = opt(preceded(
-        satisfy(|t: &Token| t.kind == TokenKind::Dot),
-        sexpr,
-    ))(input)?;
+    let (input, tail) = if elements.len() != 0 {
+        /*
+        dotted listではドットの前に最低1つの要素が必要
+        (a . b) は正しいが (. a) は不正
+         */
+        opt(preceded(
+            satisfy(|t: &Token| t.kind == TokenKind::Dot),
+            sexpr,
+        ))(input)?
+    } else {
+        (input, None)
+    };
     let (input, close_token) = satisfy(|t: &Token| t.kind == TokenKind::CloseParen).parse(input)?;
 
     let tail = tail.unwrap_or_else(|| SExpr {
@@ -88,9 +96,9 @@ fn list(input: Tokens) -> IResult<Tokens, SExpr> {
     });
 
     Ok((input, {
-        // 一番外側のCons / Nilのspanを開き括弧にまで広げる
+        // 一番外側のCons / Nilのspanを開き括弧から閉じ括弧までに拡張する
         let mut list = list;
-        list.span = open_token.span.merge(list.span);
+        list.span = open_token.span.merge(close_token.span);
         list
     }))
 }
