@@ -96,19 +96,21 @@ impl Expr<Parsed> {
                         expr: Box::new(Expr::from_sexpr(expr)?),
                     },
                 )),
-                list_pattern![list_pattern![name, ..args], ..expr] => Expr::from_sexpr(list![
-                    SExpr {
-                        kind: SExprKind::Symbol("define".to_string())
-                    },
-                    name,
-                    list![
+                list_pattern![
+                    list_pattern![
                         SExpr {
-                            kind: SExprKind::Symbol("lambda".to_string())
+                            kind: SExprKind::Symbol(name)
                         },
-                        args,
-                        ..expr
-                    ]
-                ]),
+                        ..args
+                    ],
+                    ..exprs
+                ] => Ok(Expr::Define(
+                    (),
+                    Define {
+                        name,
+                        expr: Box::new(Self::parse_lambda(args, exprs)?),
+                    },
+                )),
                 _ => Err(compiler_error!("Invalid define expression")),
             },
             list_pattern![
@@ -117,26 +119,7 @@ impl Expr<Parsed> {
                 },
                 ..cdr
             ] => match cdr {
-                list_pattern![args, ..sexprs] => {
-                    let args = args
-                        .to_vec()
-                        .ok_or_else(|| compiler_error!("Expected a list of symbols"))?
-                        .into_iter()
-                        .map(|arg| match arg {
-                            SExpr {
-                                kind: SExprKind::Symbol(s),
-                            } => Ok(s),
-                            _ => Err(compiler_error!("Expected a symbol")),
-                        })
-                        .collect::<Result<Vec<String>>>()?;
-                    let exprs = sexprs
-                        .to_vec()
-                        .ok_or_else(|| compiler_error!("Expected a list of expressions"))?
-                        .into_iter()
-                        .map(Expr::from_sexpr)
-                        .collect::<Result<Vec<_>>>()?;
-                    Ok(Expr::Lambda((), Lambda { args, body: exprs }))
-                }
+                list_pattern![args, ..exprs] => Self::parse_lambda(args, exprs),
                 _ => Err(compiler_error!("Invalid lambda expression")),
             },
             list_pattern![
@@ -247,5 +230,26 @@ impl Expr<Parsed> {
                 ))
             }
         }
+    }
+
+    fn parse_lambda(args: SExpr, exprs: SExpr) -> Result<Self> {
+        let args = args
+            .to_vec()
+            .ok_or_else(|| compiler_error!("Expected a list of symbols"))?
+            .into_iter()
+            .map(|arg| match arg {
+                SExpr {
+                    kind: SExprKind::Symbol(s),
+                } => Ok(s),
+                _ => Err(compiler_error!("Expected a symbol")),
+            })
+            .collect::<Result<Vec<String>>>()?;
+        let exprs = exprs
+            .to_vec()
+            .ok_or_else(|| compiler_error!("Expected a list of expressions"))?
+            .into_iter()
+            .map(Expr::from_sexpr)
+            .collect::<Result<Vec<_>>>()?;
+        Ok(Expr::Lambda((), Lambda { args, body: exprs }))
     }
 }
