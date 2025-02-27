@@ -17,5 +17,7 @@ pub enum TokenKind {
 #[derive(Debug, Clone)]
 pub struct Token<'a> {
     pub kind: TokenKind,
+    // このトークンの前に無視されたスペースやコメント
+    pub ignore_pos: Span<'a>,
     pub pos: Span<'a>,
 }

@@ -1,15 +1,14 @@
-use crate::{span::Span, token::TokenKind};
+use crate::{parser_combinator::many_until, span::Span, token::TokenKind};
 
 use super::token::Token;
 use nom::{
     branch::alt,
     bytes::complete::{tag, take_while, take_while1},
     character::complete::{anychar, satisfy},
-    combinator::{consumed, eof as nom_eof, map, map_res},
+    combinator::{consumed, eof, map, map_res},
     multi::many0,
     IResult, Parser,
 };
-use nom_locate::position;
 
 fn identifier(input: Span) -> IResult<Span, TokenKind> {
     const SYMBOLS: &str = "!$%&*+-/:<=>?^_~";
@@ -60,8 +59,8 @@ fn char(input: Span) -> IResult<Span, TokenKind> {
     }
 }
 
-fn token(input: Span) -> IResult<Span, Token> {
-    let (input, (pos, kind)) = consumed(alt((
+fn token_kind(input: Span) -> IResult<Span, TokenKind> {
+    alt((
         tag("(").map(|_| TokenKind::OpenParen),
         tag(")").map(|_| TokenKind::CloseParen),
         tag("#t").map(|_| TokenKind::Bool(true)),
@@ -72,9 +71,9 @@ fn token(input: Span) -> IResult<Span, Token> {
         int,
         string,
         char,
-    )))
-    .parse(input)?;
-    Ok((input, Token { kind, pos }))
+        eof.map(|_| TokenKind::Eof),
+    ))
+    .parse(input)
 }
 
 fn space(input: Span) -> IResult<Span, ()> {
@@ -92,38 +91,27 @@ fn ignore(input: Span) -> IResult<Span, ()> {
     Ok((input, ()))
 }
 
-fn token_and_ignore(input: Span) -> IResult<Span, Token> {
-    let (input, token) = token(input)?;
-    let (input, _) = ignore(input)?;
-    Ok((input, token))
-}
-
-fn eof(input: Span) -> IResult<Span, Token> {
-    let (input, pos) = position(input)?;
-    let (input, _) = nom_eof(input)?;
+fn token(input: Span) -> IResult<Span, Token> {
+    let (input, (ignore_pos, _)) = consumed(ignore)(input)?;
+    let (input, (pos, kind)) = consumed(token_kind)(input)?;
     Ok((
         input,
         Token {
-            kind: TokenKind::Eof,
+            kind,
+            ignore_pos,
             pos,
         },
     ))
 }
 
 fn tokens(input: Span) -> IResult<Span, Vec<Token>> {
-    let (input, _) = ignore(input)?;
-    let (input, tokens) = many0(token_and_ignore)(input)?;
-    let (input, eof) = eof(input)?;
-    Ok((input, {
-        let mut tokens = tokens;
-        tokens.push(eof);
-        tokens
-    }))
+    let (input, tokens) = many_until(token, |token| token.kind == TokenKind::Eof)(input)?;
+    Ok((input, tokens))
 }
 
 pub fn lex(input: &str) -> Result<Vec<Token>, nom::Err<nom::error::Error<Span>>> {
     let input = Span::new(input);
     let (input, tokens) = tokens(input)?;
-    let (_, _) = eof(input)?;
+    debug_assert!(input.len() == 0);
     Ok(tokens)
 }
