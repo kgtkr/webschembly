@@ -80,6 +80,10 @@ impl FamilyX<Used> for SetX {
     type R = UsedSetR;
 }
 
+impl FamilyX<Used> for LetX {
+    type R = <Self as FamilyX<Prev>>::R;
+}
+
 #[derive(Debug, Clone)]
 enum Context {
     Global,
@@ -364,6 +368,7 @@ impl Expr<Used> {
                     },
                 )
             }
+            Expr::Let(x, _) => x,
         }
     }
 }

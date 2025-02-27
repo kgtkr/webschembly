@@ -527,6 +527,7 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                     }
                 }
             },
+            ast::Expr::Let(x, _) => *x,
         }
     }
 

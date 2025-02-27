@@ -1,5 +1,6 @@
 use super::ast::*;
-use super::parsed::*;
+use super::desugared::*;
+use super::Desugared;
 use crate::compiler_error;
 use crate::error::Result;
 use crate::x::FamilyX;
@@ -10,7 +11,7 @@ use crate::x::FamilyX;
 #[derive(Debug, Clone)]
 pub enum Defined {}
 
-type Prev = Parsed;
+type Prev = Desugared;
 
 #[derive(Debug, Clone)]
 pub struct DefinedLambdaR {
@@ -42,6 +43,10 @@ impl FamilyX<Defined> for BeginX {
     type R = <Self as FamilyX<Prev>>::R;
 }
 impl FamilyX<Defined> for SetX {
+    type R = <Self as FamilyX<Prev>>::R;
+}
+
+impl FamilyX<Defined> for LetX {
     type R = <Self as FamilyX<Prev>>::R;
 }
 
@@ -196,6 +201,7 @@ impl Expr<Defined> {
                     ),
                 ))
             }
+            Expr::Let(x, _) => x,
         }
     }
 

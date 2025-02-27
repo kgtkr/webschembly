@@ -1,7 +1,7 @@
 use super::ast::*;
 use crate::compiler_error;
 use crate::error::Result;
-use crate::sexpr::{Cons, SExpr};
+use crate::sexpr::SExpr;
 use crate::x::FamilyX;
 #[derive(Debug, Clone)]
 pub enum Parsed {}
@@ -31,6 +31,10 @@ impl FamilyX<Parsed> for BeginX {
     type R = ();
 }
 impl FamilyX<Parsed> for SetX {
+    type R = ();
+}
+
+impl FamilyX<Parsed> for LetX {
     type R = ();
 }
 
