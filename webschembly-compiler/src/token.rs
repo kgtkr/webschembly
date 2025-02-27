@@ -1,7 +1,7 @@
 use crate::span::Span;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TokenPayload {
+pub enum TokenKind {
     Identifier(String),
     OpenParen,
     CloseParen,
@@ -16,6 +16,6 @@ pub enum TokenPayload {
 
 #[derive(Debug, Clone)]
 pub struct Token<'a> {
-    pub payload: TokenPayload,
+    pub kind: TokenKind,
     pub pos: Span<'a>,
 }

@@ -1,4 +1,4 @@
-use crate::{span::Span, token::TokenPayload};
+use crate::{span::Span, token::TokenKind};
 
 use super::token::Token;
 use nom::{
@@ -11,33 +11,30 @@ use nom::{
 };
 use nom_locate::position;
 
-fn identifier(input: Span) -> IResult<Span, TokenPayload> {
+fn identifier(input: Span) -> IResult<Span, TokenKind> {
     const SYMBOLS: &str = "!$%&*+-/:<=>?^_~";
 
     let (input, first) = satisfy(|c: char| c.is_ascii_alphabetic() || SYMBOLS.contains(c))(input)?;
     let (input, rest) =
         take_while(|c: char| c.is_ascii_alphanumeric() || SYMBOLS.contains(c))(input)?;
-    Ok((
-        input,
-        TokenPayload::Identifier(format!("{}{}", first, rest)),
-    ))
+    Ok((input, TokenKind::Identifier(format!("{}{}", first, rest))))
 }
 
-fn int(input: Span) -> IResult<Span, TokenPayload> {
+fn int(input: Span) -> IResult<Span, TokenKind> {
     let (input, int) = map_res(take_while(|c: char| c.is_ascii_digit()), |s: Span| {
         s.parse::<i64>()
     })(input)?;
-    Ok((input, TokenPayload::Int(int)))
+    Ok((input, TokenKind::Int(int)))
 }
 
-fn string(input: Span) -> IResult<Span, TokenPayload> {
+fn string(input: Span) -> IResult<Span, TokenKind> {
     let (input, _) = tag("\"")(input)?;
     let (input, string) = take_while(|c: char| c != '"')(input)?;
     let (input, _) = tag("\"")(input)?;
-    Ok((input, TokenPayload::String(string.to_string())))
+    Ok((input, TokenKind::String(string.to_string())))
 }
 
-fn char(input: Span) -> IResult<Span, TokenPayload> {
+fn char(input: Span) -> IResult<Span, TokenKind> {
     let (input, _) = tag("#\\")(input)?;
     let (input, first) = anychar(input)?;
     if first.is_ascii_alphabetic() {
@@ -45,39 +42,39 @@ fn char(input: Span) -> IResult<Span, TokenPayload> {
         if !rest.is_empty() {
             let cname = format!("{}{}", first, rest);
             match cname.as_str().to_lowercase().as_str() {
-                "space" => Ok((input, TokenPayload::Char(' '))),
-                "newline" => Ok((input, TokenPayload::Char('\n'))),
+                "space" => Ok((input, TokenKind::Char(' '))),
+                "newline" => Ok((input, TokenKind::Char('\n'))),
                 // r5rsにもgoshにもないがこれがないと括弧の対応が分かりにくくて書きにくいので
-                "openparen" => Ok((input, TokenPayload::Char('('))),
-                "closeparen" => Ok((input, TokenPayload::Char(')'))),
+                "openparen" => Ok((input, TokenKind::Char('('))),
+                "closeparen" => Ok((input, TokenKind::Char(')'))),
                 _ => Err(nom::Err::Error(nom::error::Error::new(
                     input,
                     nom::error::ErrorKind::Char,
                 ))),
             }
         } else {
-            Ok((input, TokenPayload::Char(first)))
+            Ok((input, TokenKind::Char(first)))
         }
     } else {
-        Ok((input, TokenPayload::Char(first)))
+        Ok((input, TokenKind::Char(first)))
     }
 }
 
 fn token(input: Span) -> IResult<Span, Token> {
-    let (input, (pos, payload)) = consumed(alt((
-        tag("(").map(|_| TokenPayload::OpenParen),
-        tag(")").map(|_| TokenPayload::CloseParen),
-        tag("#t").map(|_| TokenPayload::Bool(true)),
-        tag("#f").map(|_| TokenPayload::Bool(false)),
-        tag("'").map(|_| TokenPayload::Quote),
-        tag(".").map(|_| TokenPayload::Dot),
+    let (input, (pos, kind)) = consumed(alt((
+        tag("(").map(|_| TokenKind::OpenParen),
+        tag(")").map(|_| TokenKind::CloseParen),
+        tag("#t").map(|_| TokenKind::Bool(true)),
+        tag("#f").map(|_| TokenKind::Bool(false)),
+        tag("'").map(|_| TokenKind::Quote),
+        tag(".").map(|_| TokenKind::Dot),
         identifier,
         int,
         string,
         char,
     )))
     .parse(input)?;
-    Ok((input, Token { payload, pos }))
+    Ok((input, Token { kind, pos }))
 }
 
 fn space(input: Span) -> IResult<Span, ()> {
@@ -107,7 +104,7 @@ fn eof(input: Span) -> IResult<Span, Token> {
     Ok((
         input,
         Token {
-            payload: TokenPayload::Eof,
+            kind: TokenKind::Eof,
             pos,
         },
     ))
