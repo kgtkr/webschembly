@@ -10,6 +10,7 @@ pub mod compiler;
 pub mod error;
 pub mod ir;
 pub mod sexpr_parser;
+pub mod span;
 pub mod stdlib;
 pub mod token;
 pub mod x;

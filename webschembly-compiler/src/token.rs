@@ -1,5 +1,7 @@
+use crate::span::Span;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Token {
+pub enum TokenPayload {
     Identifier(String),
     OpenParen,
     CloseParen,
@@ -10,4 +12,10 @@ pub enum Token {
     Dot,
     Eof,
     Char(char),
+}
+
+#[derive(Debug, Clone)]
+pub struct Token<'a> {
+    pub payload: TokenPayload,
+    pub pos: Span<'a>,
 }
