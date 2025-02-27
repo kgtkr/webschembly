@@ -5,11 +5,10 @@ use super::sexpr::SExpr;
 use super::token::Token;
 
 use super::parser_combinator::{satisfy, satisfy_map_opt};
+use crate::tokens::Tokens;
 use nom::combinator::opt;
 use nom::sequence::preceded;
 use nom::{branch::alt, multi::many0, IResult, Parser};
-
-type Tokens<'a> = &'a [Token];
 
 fn bool(input: Tokens) -> IResult<Tokens, SExpr> {
     satisfy_map_opt(|t: &Token| match &t.kind {
@@ -142,7 +141,8 @@ fn sexprs(input: Tokens) -> IResult<Tokens, Vec<SExpr>> {
     Ok((input, sexprs))
 }
 
-pub fn parse(input: Tokens) -> Result<Vec<SExpr>, nom::Err<nom::error::Error<Tokens>>> {
+pub fn parse(input: &[Token]) -> Result<Vec<SExpr>, nom::Err<nom::error::Error<Tokens>>> {
+    let input = Tokens::new(input);
     let (input, sexprs) = sexprs(input)?;
     let (_, _) = satisfy(|t: &Token| t.kind == TokenKind::Eof).parse(input)?;
     Ok(sexprs)

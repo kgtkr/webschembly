@@ -1,25 +1,29 @@
 use nom::{
     error::{ErrorKind, ParseError},
-    Err, IResult, Parser,
+    Err, IResult, InputIter, Parser, Slice,
 };
+use std::ops::RangeFrom;
 
-pub fn satisfy_map_opt<'a, T: 'a, R, E: ParseError<&'a [T]>>(
-    f: impl Fn(&'a T) -> Option<R>,
-) -> impl Parser<&'a [T], R, E> {
-    move |input: &'a [T]| match input.split_first() {
-        Some((x, xs)) => match f(x) {
-            Some(r) => Ok((xs, r)),
+pub fn satisfy_map_opt<I: Slice<RangeFrom<usize>> + InputIter, R, E: ParseError<I>>(
+    f: impl Fn(I::Item) -> Option<R>,
+) -> impl Parser<I, R, E> {
+    move |input: I| match input.iter_elements().next() {
+        Some(x) => match f(x) {
+            Some(r) => Ok((input.slice(1..), r)),
             None => Err(Err::Error(E::from_error_kind(input, ErrorKind::MapOpt))),
         },
         None => Err(Err::Error(E::from_error_kind(input, ErrorKind::Eof))),
     }
 }
 
-pub fn satisfy<'a, T: 'a, F, E: ParseError<&'a [T]>>(f: F) -> impl Parser<&'a [T], &'a T, E>
+pub fn satisfy<I: Slice<RangeFrom<usize>> + InputIter, F, E: ParseError<I>>(
+    f: F,
+) -> impl Parser<I, I::Item, E>
 where
-    F: Fn(&T) -> bool,
+    F: Fn(I::Item) -> bool,
+    I::Item: Copy,
 {
-    move |input: &'a [T]| satisfy_map_opt(|x| if f(x) { Some(x) } else { None }).parse(input)
+    move |input: I| satisfy_map_opt(|x| if f(x) { Some(x) } else { None }).parse(input)
 }
 
 // パース結果がcondを満たすまでパースを続ける
