@@ -48,40 +48,6 @@ impl Cons {
             None
         }
     }
-
-    pub fn from_non_empty_list(list: NonEmptyList) -> Self {
-        let (car, mut list, mut cdr) = match list {
-            NonEmptyList::List(car, list) => (car, list, SExpr::Nil),
-            NonEmptyList::DottedList(car, list, cdr) => (car, list, cdr),
-        };
-
-        while let Some(car) = list.pop() {
-            cdr = SExpr::Cons(Box::new(Cons::new(car, cdr)));
-        }
-        Cons::new(car, cdr)
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum NonEmptyList {
-    List(SExpr, Vec<SExpr>),
-    // cdr is not a cons or nil
-    DottedList(SExpr, Vec<SExpr>, SExpr),
-}
-
-impl NonEmptyList {
-    pub fn new(first: SExpr, middle: Vec<SExpr>, last: SExpr) -> Self {
-        match last {
-            SExpr::Cons(cons) => {
-                let (middle2, cdr) = cons.to_vec_and_cdr();
-                let mut middle = middle;
-                middle.extend(middle2);
-                NonEmptyList::new(first, middle, cdr)
-            }
-            SExpr::Nil => NonEmptyList::List(first, middle),
-            last => NonEmptyList::DottedList(first, middle, last),
-        }
-    }
 }
 
 #[macro_export]

@@ -1,10 +1,11 @@
-use crate::sexpr::{Cons, NonEmptyList};
+use crate::sexpr::Cons;
 use crate::token::TokenKind;
 
 use super::sexpr::SExpr;
 use super::token::Token;
 
 use super::parser_combinator::{satisfy, satisfy_map_opt};
+use nom::sequence::tuple;
 use nom::{branch::alt, multi::many0, IResult, Parser};
 
 type Tokens<'a> = &'a [Token];
@@ -49,39 +50,24 @@ fn char(input: Tokens) -> IResult<Tokens, SExpr> {
     .parse(input)
 }
 
-fn nil(input: Tokens) -> IResult<Tokens, SExpr> {
-    let (input, _) = satisfy(|t: &Token| t.kind == TokenKind::CloseParen).parse(input)?;
-    Ok((input, SExpr::Nil))
-}
-
-fn list_or_dotted_list(input: Tokens) -> IResult<Tokens, SExpr> {
-    let (input, first) = sexpr(input)?;
-    let (input, middle) = many0(sexpr).parse(input)?;
-    let (input, last) = alt((list, dotted_list)).parse(input)?;
-
-    Ok((
-        input,
-        SExpr::Cons(Box::new(Cons::from_non_empty_list(NonEmptyList::new(
-            first, middle, last,
-        )))),
-    ))
-}
-
 fn list(input: Tokens) -> IResult<Tokens, SExpr> {
-    let (input, _) = satisfy(|t: &Token| t.kind == TokenKind::CloseParen).parse(input)?;
-    Ok((input, SExpr::Nil))
-}
-
-fn dotted_list(input: Tokens) -> IResult<Tokens, SExpr> {
-    let (input, _) = satisfy(|t: &Token| t.kind == TokenKind::Dot).parse(input)?;
-    let (input, cdr) = sexpr(input)?;
-    let (input, _) = satisfy(|t: &Token| t.kind == TokenKind::CloseParen).parse(input)?;
-    Ok((input, cdr))
-}
-
-fn nil_or_list_or_dotted_list(input: Tokens) -> IResult<Tokens, SExpr> {
     let (input, _) = satisfy(|t: &Token| t.kind == TokenKind::OpenParen).parse(input)?;
-    alt((nil, list_or_dotted_list)).parse(input)
+    let (input, cons) = list_rec(input)?;
+    Ok((input, cons))
+}
+
+fn list_rec(input: Tokens) -> IResult<Tokens, SExpr> {
+    alt((
+        satisfy(|t: &Token| t.kind == TokenKind::CloseParen).map(|_| SExpr::Nil),
+        tuple((
+            satisfy(|t: &Token| t.kind == TokenKind::Dot),
+            sexpr,
+            satisfy(|t: &Token| t.kind == TokenKind::CloseParen),
+        ))
+        .map(|(_, sexpr, _)| sexpr),
+        tuple((sexpr, list_rec)).map(|(sexpr, cdr)| SExpr::Cons(Box::new(Cons::new(sexpr, cdr)))),
+    ))
+    .parse(input)
 }
 
 fn quote(input: Tokens) -> IResult<Tokens, SExpr> {
@@ -91,16 +77,7 @@ fn quote(input: Tokens) -> IResult<Tokens, SExpr> {
 }
 
 fn sexpr(input: Tokens) -> IResult<Tokens, SExpr> {
-    alt((
-        bool,
-        int,
-        string,
-        symbol,
-        char,
-        nil_or_list_or_dotted_list,
-        quote,
-    ))
-    .parse(input)
+    alt((bool, int, string, symbol, char, list, quote)).parse(input)
 }
 
 fn sexprs(input: Tokens) -> IResult<Tokens, Vec<SExpr>> {

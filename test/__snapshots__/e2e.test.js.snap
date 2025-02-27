@@ -98,6 +98,18 @@ exports[`E2E test > lambda.scm > snapshot test 1`] = `
 }
 `;
 
+exports[`E2E test > list_syntax.scm > snapshot test 1`] = `
+{
+  "exitCode": 0,
+  "stderr": "",
+  "stdout": "()
+(1 . (2 . (3 . (4 . ()))))
+(1 . (2 . (3 . (4 . 5))))
+(1 . (2 . (3 . (4 . ()))))
+",
+}
+`;
+
 exports[`E2E test > local_duplication.scm > snapshot test 1`] = `
 {
   "exitCode": 0,
