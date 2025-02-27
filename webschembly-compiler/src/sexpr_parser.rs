@@ -15,6 +15,7 @@ fn bool(input: Tokens) -> IResult<Tokens, SExpr> {
     satisfy_map_opt(|t: &Token| match &t.kind {
         TokenKind::Bool(b) => Some(SExpr {
             kind: SExprKind::Bool(*b),
+            span: t.span,
         }),
         _ => None,
     })
@@ -25,6 +26,7 @@ fn int(input: Tokens) -> IResult<Tokens, SExpr> {
     satisfy_map_opt(|t: &Token| match &t.kind {
         TokenKind::Int(i) => Some(SExpr {
             kind: SExprKind::Int(*i),
+            span: t.span,
         }),
         _ => None,
     })
@@ -35,6 +37,7 @@ fn string(input: Tokens) -> IResult<Tokens, SExpr> {
     satisfy_map_opt(|t: &Token| match &t.kind {
         TokenKind::String(s) => Some(SExpr {
             kind: SExprKind::String(s.clone()),
+            span: t.span,
         }),
         _ => None,
     })
@@ -45,6 +48,7 @@ fn symbol(input: Tokens) -> IResult<Tokens, SExpr> {
     satisfy_map_opt(|t: &Token| match &t.kind {
         TokenKind::Identifier(s) => Some(SExpr {
             kind: SExprKind::Symbol(s.clone()),
+            span: t.span,
         }),
         _ => None,
     })
@@ -55,6 +59,7 @@ fn char(input: Tokens) -> IResult<Tokens, SExpr> {
     satisfy_map_opt(|t: &Token| match &t.kind {
         TokenKind::Char(c) => Some(SExpr {
             kind: SExprKind::Char(*c),
+            span: t.span,
         }),
         _ => None,
     })
@@ -92,28 +97,38 @@ fn list(input: Tokens) -> IResult<Tokens, SExpr> {
         satisfy(|t: &Token| t.kind == TokenKind::Dot),
         sexpr,
     ))(input)?;
+    let (input, close_token) = satisfy(|t: &Token| t.kind == TokenKind::CloseParen).parse(input)?;
+
     let tail = tail.unwrap_or_else(|| SExpr {
         kind: SExprKind::Nil,
+        span: close_token.span,
     });
-    let (input, _) = satisfy(|t: &Token| t.kind == TokenKind::CloseParen).parse(input)?;
 
-    let list = elements.into_iter().rfold(tail, |cdr, car| SExpr {
-        kind: SExprKind::Cons(Box::new(Cons::new(car, cdr))),
+    let list = elements.into_iter().rfold(tail, |cdr, car| {
+        let span = car.span.merge(cdr.span);
+        SExpr {
+            kind: SExprKind::Cons(Box::new(Cons::new(car, cdr))),
+            span,
+        }
     });
 
     Ok((input, list))
 }
 
 fn quote(input: Tokens) -> IResult<Tokens, SExpr> {
-    let (input, _) = satisfy(|t: &Token| t.kind == TokenKind::Quote).parse(input)?;
+    let (input, quote) = satisfy(|t: &Token| t.kind == TokenKind::Quote).parse(input)?;
     let (input, expr) = sexpr(input)?;
+    let span = quote.span.merge(expr.span);
+
     Ok((
         input,
         list![
             SExpr {
-                kind: SExprKind::Symbol("quote".to_string())
-            },
-            expr,
+                kind: SExprKind::Symbol("quote".to_string()),
+                span: quote.span,
+            } => span,
+            expr => span,
+            => span
         ],
     ))
 }

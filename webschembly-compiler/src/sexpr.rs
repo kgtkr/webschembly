@@ -1,3 +1,5 @@
+use crate::span::Span;
+
 #[derive(Debug, Clone)]
 pub enum SExprKind {
     Bool(bool),
@@ -12,6 +14,7 @@ pub enum SExprKind {
 #[derive(Debug, Clone)]
 pub struct SExpr {
     pub kind: SExprKind,
+    pub span: Span,
 }
 
 impl SExpr {
@@ -57,14 +60,14 @@ impl Cons {
 
 #[macro_export]
 macro_rules! list {
-    () => {
-        $crate::sexpr::SExpr {kind: $crate::sexpr::SExprKind::Nil}
+    (=> $span:expr) => {
+        $crate::sexpr::SExpr {kind: $crate::sexpr::SExprKind::Nil, span: $span}
     };
     (..$cdr:expr) => {
         $cdr
     };
-    ($car:expr, $($t:tt)*) => {
-        $crate::sexpr::SExpr {kind: $crate::sexpr::SExprKind::Cons(Box::new($crate::sexpr::Cons::new($car, list!($($t)*))))}
+    ($car:expr => $span:expr, $($t:tt)*) => {
+        $crate::sexpr::SExpr {kind: $crate::sexpr::SExprKind::Cons(Box::new($crate::sexpr::Cons::new($car, list!($($t)*)))), span: $span}
     };
 }
 
@@ -77,6 +80,6 @@ macro_rules! list_pattern {
         $cdr
     };
     ($car:pat, $($t:tt)*) => {
-        $crate::sexpr::SExpr {kind: $crate::sexpr::SExprKind::Cons(box $crate::sexpr::Cons{car: $car, cdr: list_pattern!($($t)*)})}
+        $crate::sexpr::SExpr {kind: $crate::sexpr::SExprKind::Cons(box $crate::sexpr::Cons{car: $car, cdr: list_pattern!($($t)*)}), ..}
     };
 }

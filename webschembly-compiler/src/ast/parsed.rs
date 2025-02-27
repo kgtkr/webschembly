@@ -53,25 +53,32 @@ impl Expr<Parsed> {
         match sexpr {
             SExpr {
                 kind: SExprKind::Bool(b),
+                ..
             } => Ok(Expr::Literal((), Literal::Bool(b))),
             SExpr {
                 kind: SExprKind::Int(i),
+                ..
             } => Ok(Expr::Literal((), Literal::Int(i))),
             SExpr {
                 kind: SExprKind::String(s),
+                ..
             } => Ok(Expr::Literal((), Literal::String(s))),
             SExpr {
                 kind: SExprKind::Symbol(s),
+                ..
             } => Ok(Expr::Var((), s)),
             SExpr {
                 kind: SExprKind::Nil,
+                ..
             } => Ok(Expr::Literal((), Literal::Nil)),
             SExpr {
                 kind: SExprKind::Char(c),
+                ..
             } => Ok(Expr::Literal((), Literal::Char(c))),
             list_pattern![
                 SExpr {
-                    kind: SExprKind::Symbol("quote")
+                    kind: SExprKind::Symbol("quote"),
+                    ..
                 },
                 ..cdr
             ] => match cdr {
@@ -80,13 +87,15 @@ impl Expr<Parsed> {
             },
             list_pattern![
                 SExpr {
-                    kind: SExprKind::Symbol("define")
+                    kind: SExprKind::Symbol("define"),
+                    ..
                 },
                 ..cdr
             ] => match cdr {
                 list_pattern![
                     SExpr {
-                        kind: SExprKind::Symbol(name)
+                        kind: SExprKind::Symbol(name),
+                        ..
                     },
                     expr,
                 ] => Ok(Expr::Define(
@@ -99,7 +108,8 @@ impl Expr<Parsed> {
                 list_pattern![
                     list_pattern![
                         SExpr {
-                            kind: SExprKind::Symbol(name)
+                            kind: SExprKind::Symbol(name),
+                            ..
                         },
                         ..args
                     ],
@@ -115,7 +125,8 @@ impl Expr<Parsed> {
             },
             list_pattern![
                 SExpr {
-                    kind: SExprKind::Symbol("lambda")
+                    kind: SExprKind::Symbol("lambda"),
+                    ..
                 },
                 ..cdr
             ] => match cdr {
@@ -124,7 +135,8 @@ impl Expr<Parsed> {
             },
             list_pattern![
                 SExpr {
-                    kind: SExprKind::Symbol("if")
+                    kind: SExprKind::Symbol("if"),
+                    ..
                 },
                 ..cdr
             ] => match cdr {
@@ -145,7 +157,8 @@ impl Expr<Parsed> {
             },
             list_pattern![
                 SExpr {
-                    kind: SExprKind::Symbol("let")
+                    kind: SExprKind::Symbol("let"),
+                    ..
                 },
                 ..cdr
             ] => match cdr {
@@ -158,7 +171,8 @@ impl Expr<Parsed> {
                         .map(|binding| match binding {
                             list_pattern![
                                 SExpr {
-                                    kind: SExprKind::String(name)
+                                    kind: SExprKind::String(name),
+                                    ..
                                 },
                                 expr,
                             ] => Ok((name, Expr::from_sexpr(expr)?)),
@@ -178,7 +192,8 @@ impl Expr<Parsed> {
             },
             list_pattern![
                 SExpr {
-                    kind: SExprKind::Symbol("begin")
+                    kind: SExprKind::Symbol("begin"),
+                    ..
                 },
                 ..exprs
             ] => {
@@ -192,13 +207,15 @@ impl Expr<Parsed> {
             }
             list_pattern![
                 SExpr {
-                    kind: SExprKind::Symbol("set!")
+                    kind: SExprKind::Symbol("set!"),
+                    ..
                 },
                 ..cdr
             ] => match cdr {
                 list_pattern![
                     SExpr {
-                        kind: SExprKind::Symbol(name)
+                        kind: SExprKind::Symbol(name),
+                        ..
                     },
                     expr,
                 ] => {
@@ -237,10 +254,8 @@ impl Expr<Parsed> {
             .to_vec()
             .ok_or_else(|| compiler_error!("Expected a list of symbols"))?
             .into_iter()
-            .map(|arg| match arg {
-                SExpr {
-                    kind: SExprKind::Symbol(s),
-                } => Ok(s),
+            .map(|arg| match arg.kind {
+                SExprKind::Symbol(s) => Ok(s),
                 _ => Err(compiler_error!("Expected a symbol")),
             })
             .collect::<Result<Vec<String>>>()?;

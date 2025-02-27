@@ -4,7 +4,7 @@ use nom::{
 };
 
 pub fn satisfy_map_opt<'a, T: 'a, R, E: ParseError<&'a [T]>>(
-    f: impl Fn(&T) -> Option<R>,
+    f: impl Fn(&'a T) -> Option<R>,
 ) -> impl Parser<&'a [T], R, E> {
     move |input: &'a [T]| match input.split_first() {
         Some((x, xs)) => match f(x) {
@@ -15,11 +15,11 @@ pub fn satisfy_map_opt<'a, T: 'a, R, E: ParseError<&'a [T]>>(
     }
 }
 
-pub fn satisfy<'a, T: 'a, F, E: ParseError<&'a [T]>>(f: F) -> impl Parser<&'a [T], (), E>
+pub fn satisfy<'a, T: 'a, F, E: ParseError<&'a [T]>>(f: F) -> impl Parser<&'a [T], &'a T, E>
 where
     F: Fn(&T) -> bool,
 {
-    move |input: &'a [T]| satisfy_map_opt(|x| if f(x) { Some(()) } else { None }).parse(input)
+    move |input: &'a [T]| satisfy_map_opt(|x| if f(x) { Some(x) } else { None }).parse(input)
 }
 
 // パース結果がcondを満たすまでパースを続ける
