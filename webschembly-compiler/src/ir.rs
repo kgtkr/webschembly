@@ -532,27 +532,27 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
     }
 
     fn quote(&mut self, result: Option<usize>, sexpr: &sexpr::SExpr) {
-        match sexpr {
-            sexpr::SExpr::Bool(b) => {
+        match &sexpr.kind {
+            sexpr::SExprKind::Bool(b) => {
                 let unboxed = self.func_gen.local(Type::Val(ValType::Bool));
                 self.stats.push(Stat::Expr(Some(unboxed), Expr::Bool(*b)));
                 self.stats
                     .push(Stat::Expr(result, Expr::Box(ValType::Bool, unboxed)));
             }
-            sexpr::SExpr::Int(i) => {
+            sexpr::SExprKind::Int(i) => {
                 let unboxed = self.func_gen.local(Type::Val(ValType::Int));
                 self.stats.push(Stat::Expr(Some(unboxed), Expr::Int(*i)));
                 self.stats
                     .push(Stat::Expr(result, Expr::Box(ValType::Int, unboxed)));
             }
-            sexpr::SExpr::String(s) => {
+            sexpr::SExprKind::String(s) => {
                 let unboxed = self.func_gen.local(Type::Val(ValType::String));
                 self.stats
                     .push(Stat::Expr(Some(unboxed), Expr::String(s.clone())));
                 self.stats
                     .push(Stat::Expr(result, Expr::Box(ValType::String, unboxed)));
             }
-            sexpr::SExpr::Symbol(s) => {
+            sexpr::SExprKind::Symbol(s) => {
                 let string = self.func_gen.local(Type::Val(ValType::String));
                 let unboxed = self.func_gen.local(Type::Val(ValType::Symbol));
                 self.stats
@@ -562,19 +562,19 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                 self.stats
                     .push(Stat::Expr(result, Expr::Box(ValType::Symbol, unboxed)));
             }
-            sexpr::SExpr::Nil => {
+            sexpr::SExprKind::Nil => {
                 let unboxed = self.func_gen.local(Type::Val(ValType::Nil));
                 self.stats.push(Stat::Expr(Some(unboxed), Expr::Nil));
                 self.stats
                     .push(Stat::Expr(result, Expr::Box(ValType::Nil, unboxed)));
             }
-            sexpr::SExpr::Char(c) => {
+            sexpr::SExprKind::Char(c) => {
                 let unboxed = self.func_gen.local(Type::Val(ValType::Char));
                 self.stats.push(Stat::Expr(Some(unboxed), Expr::Char(*c)));
                 self.stats
                     .push(Stat::Expr(result, Expr::Box(ValType::Char, unboxed)));
             }
-            sexpr::SExpr::Cons(cons) => {
+            sexpr::SExprKind::Cons(cons) => {
                 let car_local = self.func_gen.local(Type::Boxed);
                 self.quote(Some(car_local), &cons.car);
                 let cdr_local = self.func_gen.local(Type::Boxed);

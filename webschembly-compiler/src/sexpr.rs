@@ -1,5 +1,5 @@
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub enum SExpr {
+#[derive(Debug, Clone)]
+pub enum SExprKind {
     Bool(bool),
     Int(i64),
     String(String),
@@ -9,17 +9,22 @@ pub enum SExpr {
     Nil,
 }
 
+#[derive(Debug, Clone)]
+pub struct SExpr {
+    pub kind: SExprKind,
+}
+
 impl SExpr {
     pub fn to_vec(self) -> Option<Vec<SExpr>> {
-        match self {
-            SExpr::Cons(cons) => cons.to_vec(),
-            SExpr::Nil => Some(vec![]),
+        match self.kind {
+            SExprKind::Cons(cons) => cons.to_vec(),
+            SExprKind::Nil => Some(vec![]),
             _ => None,
         }
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Cons {
     pub car: SExpr,
     pub cdr: SExpr,
@@ -33,7 +38,7 @@ impl Cons {
     fn to_vec_and_cdr(self) -> (Vec<SExpr>, SExpr) {
         let mut list = vec![self.car];
         let mut cdr = self.cdr;
-        while let SExpr::Cons(cons) = cdr {
+        while let SExprKind::Cons(cons) = cdr.kind {
             list.push(cons.car);
             cdr = cons.cdr;
         }
@@ -42,7 +47,7 @@ impl Cons {
 
     fn to_vec(self) -> Option<Vec<SExpr>> {
         let (list, cdr) = self.to_vec_and_cdr();
-        if cdr == SExpr::Nil {
+        if let SExprKind::Nil = cdr.kind {
             Some(list)
         } else {
             None
@@ -53,31 +58,31 @@ impl Cons {
 #[macro_export]
 macro_rules! list {
     () => {
-        $crate::sexpr::SExpr::Nil
+        $crate::sexpr::SExpr {kind: $crate::sexpr::SExprKind::Nil}
     };
     (..$cdr:expr) => {
         $cdr
     };
     ($car:expr) => {
-        $crate::sexpr::SExpr::Cons(Box::new($crate::sexpr::Cons::new($car, $crate::sexpr::SExpr::Nil)))
+        $crate::sexpr::SExpr {kind: $crate::sexpr::SExprKind::Cons(Box::new($crate::sexpr::Cons::new($car, list!())))}
     };
     ($car:expr, $($t:tt)*) => {
-        $crate::sexpr::SExpr::Cons(Box::new($crate::sexpr::Cons::new($car, list!($($t)*))))
+        $crate::sexpr::SExpr {kind: $crate::sexpr::SExprKind::Cons(Box::new($crate::sexpr::Cons::new($car, list!($($t)*))))}
     };
 }
 
 #[macro_export]
 macro_rules! list_pattern {
     () => {
-        $crate::sexpr::SExpr::Nil
+        $crate::sexpr::SExpr {kind: $crate::sexpr::SExprKind::Nil, ..}
     };
     (..$cdr:pat) => {
         $cdr
     };
     ($car:pat) => {
-        $crate::sexpr::SExpr::Cons(box $crate::sexpr::Cons{car: $car, cdr: $crate::sexpr::SExpr::Nil})
+        $crate::sexpr::SExpr {kind: $crate::sexpr::SExprKind::Cons(box $crate::sexpr::Cons{car: $car, cdr: list_pattern!()})}
     };
     ($car:pat, $($t:tt)*) => {
-        $crate::sexpr::SExpr::Cons(box $crate::sexpr::Cons{car: $car, cdr: list_pattern!($($t)*)})
+        $crate::sexpr::SExpr {kind: $crate::sexpr::SExprKind::Cons(box $crate::sexpr::Cons{car: $car, cdr: list_pattern!($($t)*)})}
     };
 }

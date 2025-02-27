@@ -1,4 +1,4 @@
-use crate::sexpr::Cons;
+use crate::sexpr::{Cons, SExprKind};
 use crate::token::TokenKind;
 
 use super::sexpr::SExpr;
@@ -6,14 +6,16 @@ use super::token::Token;
 
 use super::parser_combinator::{satisfy, satisfy_map_opt};
 use nom::combinator::opt;
-use nom::sequence::{preceded, tuple};
+use nom::sequence::preceded;
 use nom::{branch::alt, multi::many0, IResult, Parser};
 
 type Tokens<'a> = &'a [Token];
 
 fn bool(input: Tokens) -> IResult<Tokens, SExpr> {
     satisfy_map_opt(|t: &Token| match &t.kind {
-        TokenKind::Bool(b) => Some(SExpr::Bool(*b)),
+        TokenKind::Bool(b) => Some(SExpr {
+            kind: SExprKind::Bool(*b),
+        }),
         _ => None,
     })
     .parse(input)
@@ -21,7 +23,9 @@ fn bool(input: Tokens) -> IResult<Tokens, SExpr> {
 
 fn int(input: Tokens) -> IResult<Tokens, SExpr> {
     satisfy_map_opt(|t: &Token| match &t.kind {
-        TokenKind::Int(i) => Some(SExpr::Int(*i)),
+        TokenKind::Int(i) => Some(SExpr {
+            kind: SExprKind::Int(*i),
+        }),
         _ => None,
     })
     .parse(input)
@@ -29,7 +33,9 @@ fn int(input: Tokens) -> IResult<Tokens, SExpr> {
 
 fn string(input: Tokens) -> IResult<Tokens, SExpr> {
     satisfy_map_opt(|t: &Token| match &t.kind {
-        TokenKind::String(s) => Some(SExpr::String(s.clone())),
+        TokenKind::String(s) => Some(SExpr {
+            kind: SExprKind::String(s.clone()),
+        }),
         _ => None,
     })
     .parse(input)
@@ -37,7 +43,9 @@ fn string(input: Tokens) -> IResult<Tokens, SExpr> {
 
 fn symbol(input: Tokens) -> IResult<Tokens, SExpr> {
     satisfy_map_opt(|t: &Token| match &t.kind {
-        TokenKind::Identifier(s) => Some(SExpr::Symbol(s.clone())),
+        TokenKind::Identifier(s) => Some(SExpr {
+            kind: SExprKind::Symbol(s.clone()),
+        }),
         _ => None,
     })
     .parse(input)
@@ -45,7 +53,9 @@ fn symbol(input: Tokens) -> IResult<Tokens, SExpr> {
 
 fn char(input: Tokens) -> IResult<Tokens, SExpr> {
     satisfy_map_opt(|t: &Token| match &t.kind {
-        TokenKind::Char(c) => Some(SExpr::Char(*c)),
+        TokenKind::Char(c) => Some(SExpr {
+            kind: SExprKind::Char(*c),
+        }),
         _ => None,
     })
     .parse(input)
@@ -82,12 +92,14 @@ fn list(input: Tokens) -> IResult<Tokens, SExpr> {
         satisfy(|t: &Token| t.kind == TokenKind::Dot),
         sexpr,
     ))(input)?;
-    let tail = tail.unwrap_or_else(|| SExpr::Nil);
+    let tail = tail.unwrap_or_else(|| SExpr {
+        kind: SExprKind::Nil,
+    });
     let (input, _) = satisfy(|t: &Token| t.kind == TokenKind::CloseParen).parse(input)?;
 
-    let list = elements
-        .into_iter()
-        .rfold(tail, |cdr, car| SExpr::Cons(Box::new(Cons::new(car, cdr))));
+    let list = elements.into_iter().rfold(tail, |cdr, car| SExpr {
+        kind: SExprKind::Cons(Box::new(Cons::new(car, cdr))),
+    });
 
     Ok((input, list))
 }
@@ -95,7 +107,15 @@ fn list(input: Tokens) -> IResult<Tokens, SExpr> {
 fn quote(input: Tokens) -> IResult<Tokens, SExpr> {
     let (input, _) = satisfy(|t: &Token| t.kind == TokenKind::Quote).parse(input)?;
     let (input, expr) = sexpr(input)?;
-    Ok((input, list![SExpr::Symbol("quote".to_string()), expr]))
+    Ok((
+        input,
+        list![
+            SExpr {
+                kind: SExprKind::Symbol("quote".to_string())
+            },
+            expr
+        ],
+    ))
 }
 
 fn sexpr(input: Tokens) -> IResult<Tokens, SExpr> {

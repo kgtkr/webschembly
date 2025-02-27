@@ -1,7 +1,7 @@
 use super::ast::*;
 use crate::compiler_error;
 use crate::error::Result;
-use crate::sexpr::SExpr;
+use crate::sexpr::{SExpr, SExprKind};
 use crate::x::FamilyX;
 #[derive(Debug, Clone)]
 pub enum Parsed {}
@@ -51,18 +51,45 @@ impl Ast<Parsed> {
 impl Expr<Parsed> {
     fn from_sexpr(sexpr: SExpr) -> Result<Self> {
         match sexpr {
-            SExpr::Bool(b) => Ok(Expr::Literal((), Literal::Bool(b))),
-            SExpr::Int(i) => Ok(Expr::Literal((), Literal::Int(i))),
-            SExpr::String(s) => Ok(Expr::Literal((), Literal::String(s))),
-            SExpr::Symbol(s) => Ok(Expr::Var((), s)),
-            SExpr::Nil => Ok(Expr::Literal((), Literal::Nil)),
-            SExpr::Char(c) => Ok(Expr::Literal((), Literal::Char(c))),
-            list_pattern![SExpr::Symbol("quote"), ..cdr] => match cdr {
+            SExpr {
+                kind: SExprKind::Bool(b),
+            } => Ok(Expr::Literal((), Literal::Bool(b))),
+            SExpr {
+                kind: SExprKind::Int(i),
+            } => Ok(Expr::Literal((), Literal::Int(i))),
+            SExpr {
+                kind: SExprKind::String(s),
+            } => Ok(Expr::Literal((), Literal::String(s))),
+            SExpr {
+                kind: SExprKind::Symbol(s),
+            } => Ok(Expr::Var((), s)),
+            SExpr {
+                kind: SExprKind::Nil,
+            } => Ok(Expr::Literal((), Literal::Nil)),
+            SExpr {
+                kind: SExprKind::Char(c),
+            } => Ok(Expr::Literal((), Literal::Char(c))),
+            list_pattern![
+                SExpr {
+                    kind: SExprKind::Symbol("quote")
+                },
+                ..cdr
+            ] => match cdr {
                 list_pattern![sexpr] => Ok(Expr::Literal((), Literal::Quote(sexpr))),
                 _ => Err(compiler_error!("Invalid quote expression")),
             },
-            list_pattern![SExpr::Symbol("define"), ..cdr] => match cdr {
-                list_pattern![SExpr::Symbol(name), expr] => Ok(Expr::Define(
+            list_pattern![
+                SExpr {
+                    kind: SExprKind::Symbol("define")
+                },
+                ..cdr
+            ] => match cdr {
+                list_pattern![
+                    SExpr {
+                        kind: SExprKind::Symbol(name)
+                    },
+                    expr
+                ] => Ok(Expr::Define(
                     (),
                     Define {
                         name,
@@ -70,20 +97,35 @@ impl Expr<Parsed> {
                     },
                 )),
                 list_pattern![list_pattern![name, ..args], ..expr] => Expr::from_sexpr(list![
-                    SExpr::Symbol("define".to_string()),
+                    SExpr {
+                        kind: SExprKind::Symbol("define".to_string())
+                    },
                     name,
-                    list![SExpr::Symbol("lambda".to_string()), args, ..expr]
+                    list![
+                        SExpr {
+                            kind: SExprKind::Symbol("lambda".to_string())
+                        },
+                        args,
+                        ..expr
+                    ]
                 ]),
                 _ => Err(compiler_error!("Invalid define expression")),
             },
-            list_pattern![SExpr::Symbol("lambda"), ..cdr] => match cdr {
+            list_pattern![
+                SExpr {
+                    kind: SExprKind::Symbol("lambda")
+                },
+                ..cdr
+            ] => match cdr {
                 list_pattern![args, ..sexprs] => {
                     let args = args
                         .to_vec()
                         .ok_or_else(|| compiler_error!("Expected a list of symbols"))?
                         .into_iter()
                         .map(|arg| match arg {
-                            SExpr::Symbol(s) => Ok(s),
+                            SExpr {
+                                kind: SExprKind::Symbol(s),
+                            } => Ok(s),
                             _ => Err(compiler_error!("Expected a symbol")),
                         })
                         .collect::<Result<Vec<String>>>()?;
@@ -97,7 +139,12 @@ impl Expr<Parsed> {
                 }
                 _ => Err(compiler_error!("Invalid lambda expression")),
             },
-            list_pattern![SExpr::Symbol("if"), ..cdr] => match cdr {
+            list_pattern![
+                SExpr {
+                    kind: SExprKind::Symbol("if")
+                },
+                ..cdr
+            ] => match cdr {
                 list_pattern![cond, then, els] => {
                     let cond = Expr::from_sexpr(cond)?;
                     let then = Expr::from_sexpr(then)?;
@@ -113,7 +160,12 @@ impl Expr<Parsed> {
                 }
                 _ => Err(compiler_error!("Invalid if expression",)),
             },
-            list_pattern![SExpr::Symbol("let"), ..cdr] => match cdr {
+            list_pattern![
+                SExpr {
+                    kind: SExprKind::Symbol("let")
+                },
+                ..cdr
+            ] => match cdr {
                 // TODO: 効率が悪いが一旦ラムダ式に変換
                 list_pattern![bindings, ..body] => {
                     let bindings = bindings
@@ -121,9 +173,12 @@ impl Expr<Parsed> {
                         .ok_or_else(|| compiler_error!("Expected a list of bindings"))?
                         .into_iter()
                         .map(|binding| match binding {
-                            list_pattern![SExpr::String(name), expr] => {
-                                Ok((name, Expr::from_sexpr(expr)?))
-                            }
+                            list_pattern![
+                                SExpr {
+                                    kind: SExprKind::String(name)
+                                },
+                                expr
+                            ] => Ok((name, Expr::from_sexpr(expr)?)),
                             _ => Err(compiler_error!("Invalid binding")),
                         })
                         .collect::<Result<Vec<(_, _)>>>()?;
@@ -138,7 +193,12 @@ impl Expr<Parsed> {
                 }
                 _ => Err(compiler_error!("Invalid let expression")),
             },
-            list_pattern![SExpr::Symbol("begin"), ..exprs] => {
+            list_pattern![
+                SExpr {
+                    kind: SExprKind::Symbol("begin")
+                },
+                ..exprs
+            ] => {
                 let exprs = exprs
                     .to_vec()
                     .ok_or_else(|| compiler_error!("Invalid begin expression"))?
@@ -147,8 +207,18 @@ impl Expr<Parsed> {
                     .collect::<Result<Vec<_>>>()?;
                 Ok(Expr::Begin((), Begin { exprs }))
             }
-            list_pattern![SExpr::Symbol("set!"), ..cdr] => match cdr {
-                list_pattern![SExpr::Symbol(name), expr] => {
+            list_pattern![
+                SExpr {
+                    kind: SExprKind::Symbol("set!")
+                },
+                ..cdr
+            ] => match cdr {
+                list_pattern![
+                    SExpr {
+                        kind: SExprKind::Symbol(name)
+                    },
+                    expr
+                ] => {
                     let expr = Expr::from_sexpr(expr)?;
                     Ok(Expr::Set(
                         (),
