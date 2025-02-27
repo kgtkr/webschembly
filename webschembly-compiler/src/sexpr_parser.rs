@@ -7,7 +7,7 @@ use super::token::Token;
 use super::parser_combinator::{satisfy, satisfy_map_opt};
 use nom::{branch::alt, multi::many0, IResult, Parser};
 
-type Tokens<'a> = &'a [Token<'a>];
+type Tokens<'a> = &'a [Token];
 
 fn bool(input: Tokens) -> IResult<Tokens, SExpr> {
     satisfy_map_opt(|t: &Token| match &t.kind {
