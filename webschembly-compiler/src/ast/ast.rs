@@ -1,27 +1,36 @@
 use crate::sexpr::SExpr;
-use crate::x::{FamilyX, RunX};
+use crate::x::{FamilyX, Phase, RunX};
 use strum_macros::{EnumIter, EnumString, FromRepr, IntoStaticStr};
 
+#[derive(Debug, Clone)]
 pub enum AstX {}
+#[derive(Debug, Clone)]
 pub enum LiteralX {}
+#[derive(Debug, Clone)]
 
 pub enum DefineX {}
+#[derive(Debug, Clone)]
 
 pub enum LambdaX {}
+#[derive(Debug, Clone)]
 
 pub enum IfX {}
+#[derive(Debug, Clone)]
 
 pub enum CallX {}
+#[derive(Debug, Clone)]
 
 pub enum VarX {}
-
+#[derive(Debug, Clone)]
 pub enum BeginX {}
+#[derive(Debug, Clone)]
 
 pub enum SetX {}
+#[derive(Debug, Clone)]
 
 pub enum LetX {}
 
-pub trait XBound = Sized
+pub trait XBound = Sized + Phase
 where
     AstX: FamilyX<Self>,
     LiteralX: FamilyX<Self>,

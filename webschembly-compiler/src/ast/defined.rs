@@ -1,8 +1,16 @@
+use std::marker::PhantomData;
+
+use frunk::field;
+use frunk::hlist::h_cons;
+
 use super::ast::*;
 use super::Desugared;
 use crate::compiler_error;
 use crate::error::Result;
+use crate::family_x_rs;
+use crate::x::by_phase;
 use crate::x::FamilyX;
+use crate::x::Phase;
 
 // 変数の巻き上げを行うためにラムダ式で定義されている変数の名前リストを作成する
 // また、変数の重複チェックと、defineできない場所でdefineが行われていないかも確認する
@@ -10,7 +18,9 @@ use crate::x::FamilyX;
 #[derive(Debug, Clone)]
 pub enum Defined {}
 
-type Prev = Desugared;
+impl Phase for Defined {
+    type Prev = Desugared;
+}
 
 #[derive(Debug, Clone)]
 pub struct DefinedLambdaR {
@@ -18,43 +28,53 @@ pub struct DefinedLambdaR {
 }
 
 impl FamilyX<Defined> for AstX {
-    type R = <Self as FamilyX<Prev>>::R;
+    type R = ();
+    type RS = family_x_rs!();
 }
 impl FamilyX<Defined> for LiteralX {
-    type R = <Self as FamilyX<Prev>>::R;
+    type R = ();
+    type RS = family_x_rs!();
 }
 impl FamilyX<Defined> for DefineX {
     type R = !;
+    type RS = family_x_rs!();
 }
 impl FamilyX<Defined> for LambdaX {
     type R = DefinedLambdaR;
+    type RS = family_x_rs!();
 }
 impl FamilyX<Defined> for IfX {
-    type R = <Self as FamilyX<Prev>>::R;
+    type R = ();
+    type RS = family_x_rs!();
 }
 impl FamilyX<Defined> for CallX {
-    type R = <Self as FamilyX<Prev>>::R;
+    type R = ();
+    type RS = family_x_rs!();
 }
 impl FamilyX<Defined> for VarX {
-    type R = <Self as FamilyX<Prev>>::R;
+    type R = ();
+    type RS = family_x_rs!();
 }
 impl FamilyX<Defined> for BeginX {
-    type R = <Self as FamilyX<Prev>>::R;
+    type R = ();
+    type RS = family_x_rs!();
 }
 impl FamilyX<Defined> for SetX {
-    type R = <Self as FamilyX<Prev>>::R;
+    type R = ();
+    type RS = family_x_rs!();
 }
 
 impl FamilyX<Defined> for LetX {
-    type R = <Self as FamilyX<Prev>>::R;
+    type R = ();
+    type RS = family_x_rs!();
 }
 
 impl Ast<Defined> {
-    pub fn from_ast(ast: Ast<Prev>) -> Result<Self> {
+    pub fn from_ast(ast: Ast<<Defined as Phase>::Prev>) -> Result<Self> {
         let new_exprs: Vec<Expr<Defined>> =
             Expr::<Defined>::from_block(ast.exprs, DefineContext::Global, &mut Vec::new())?;
         Ok(Ast {
-            x: ast.x,
+            x: h_cons(field![Defined, ()], ast.x),
             exprs: new_exprs,
         })
     }
@@ -79,13 +99,19 @@ impl DefineContext {
 
 impl Expr<Defined> {
     fn from_expr(
-        expr: Expr<Prev>,
+        expr: Expr<<Defined as Phase>::Prev>,
         ctx: DefineContext,
         names: &mut Vec<String>,
     ) -> Result<(DefineContext, Self)> {
         match expr {
-            Expr::Literal(x, lit) => Ok((ctx.to_undefinable_if_local(), Expr::Literal(x, lit))),
-            Expr::Var(x, var) => Ok((ctx.to_undefinable_if_local(), Expr::Var(x, var))),
+            Expr::Literal(x, lit) => Ok((
+                ctx.to_undefinable_if_local(),
+                Expr::Literal(h_cons(field![Defined, ()], x), lit),
+            )),
+            Expr::Var(x, var) => Ok((
+                ctx.to_undefinable_if_local(),
+                Expr::Var(h_cons(field![Defined, ()], x), var),
+            )),
             Expr::Define(x, def) => {
                 match ctx {
                     DefineContext::Global => {}
@@ -111,7 +137,7 @@ impl Expr<Defined> {
                 Ok((
                     ctx,
                     Expr::Set(
-                        x,
+                        h_cons(field![Defined, ()], x),
                         Set {
                             name: def.name,
                             expr: Box::new(
@@ -122,14 +148,14 @@ impl Expr<Defined> {
                     ),
                 ))
             }
-            Expr::Lambda(_, lambda) => {
+            Expr::Lambda(x, lambda) => {
                 let mut names = Vec::new();
                 let new_body =
                     Self::from_block(lambda.body, DefineContext::LocalDefinable, &mut names)?;
                 Ok((
                     ctx,
                     Expr::Lambda(
-                        DefinedLambdaR { defines: names },
+                        h_cons(field![Defined, DefinedLambdaR { defines: names }], x),
                         Lambda {
                             args: lambda.args,
                             body: new_body,
@@ -137,10 +163,10 @@ impl Expr<Defined> {
                     ),
                 ))
             }
-            Expr::If(_, if_) => Ok((
+            Expr::If(x, if_) => Ok((
                 ctx.to_undefinable_if_local(),
                 Expr::If(
-                    (),
+                    h_cons(field![Defined, ()], x),
                     If {
                         cond: Box::new(
                             Self::from_expr(*if_.cond, ctx.to_undefinable_if_local(), names)
@@ -157,7 +183,7 @@ impl Expr<Defined> {
                     },
                 ),
             )),
-            Expr::Call(_, call) => {
+            Expr::Call(x, call) => {
                 let new_func = Self::from_expr(*call.func, ctx.to_undefinable_if_local(), names)
                     .map(|(_, expr)| expr)?;
                 let new_args = call
@@ -171,7 +197,7 @@ impl Expr<Defined> {
                 Ok((
                     ctx.to_undefinable_if_local(),
                     Expr::Call(
-                        (),
+                        h_cons(field![Defined, ()], x),
                         Call {
                             func: Box::new(new_func),
                             args: new_args,
@@ -179,20 +205,20 @@ impl Expr<Defined> {
                     ),
                 ))
             }
-            Expr::Begin(_, begin) => {
+            Expr::Begin(x, begin) => {
                 let new_exprs = Self::from_block(begin.exprs, ctx, names)?;
                 Ok((
                     ctx.to_undefinable_if_local(),
-                    Expr::Begin((), Begin { exprs: new_exprs }),
+                    Expr::Begin(h_cons(field![Defined, ()], x), Begin { exprs: new_exprs }),
                 ))
             }
-            Expr::Set(_, set) => {
+            Expr::Set(x, set) => {
                 let new_expr = Self::from_expr(*set.expr, ctx.to_undefinable_if_local(), names)
                     .map(|(_, expr)| expr)?;
                 Ok((
                     ctx.to_undefinable_if_local(),
                     Expr::Set(
-                        (),
+                        h_cons(field![Defined, ()], x),
                         Set {
                             name: set.name,
                             expr: Box::new(new_expr),
@@ -200,12 +226,12 @@ impl Expr<Defined> {
                     ),
                 ))
             }
-            Expr::Let(x, _) => x,
+            Expr::Let(x, _) => by_phase(PhantomData::<Desugared>, x),
         }
     }
 
     fn from_block(
-        exprs: Vec<Expr<Prev>>,
+        exprs: Vec<Expr<<Defined as Phase>::Prev>>,
         mut ctx: DefineContext,
         names: &mut Vec<String>,
     ) -> Result<Vec<Self>> {

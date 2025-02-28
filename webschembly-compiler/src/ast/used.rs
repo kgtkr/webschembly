@@ -1,13 +1,23 @@
-use std::collections::HashMap;
-use std::collections::HashSet;
+use frunk::field;
+use frunk::hlist::h_cons;
 
 use super::ast::*;
 use super::defined::*;
+use super::Desugared;
+use crate::family_x_rs;
+use crate::x::by_phase;
 use crate::x::FamilyX;
+use crate::x::Phase;
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::marker::PhantomData;
 
 #[derive(Debug, Clone)]
 pub enum Used {}
-type Prev = Defined;
+
+impl Phase for Used {
+    type Prev = Defined;
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct LocalVarId(pub usize);
@@ -47,41 +57,51 @@ pub struct UsedSetR {
 
 impl FamilyX<Used> for AstX {
     type R = UsedAstR;
+    type RS = family_x_rs!();
 }
 impl FamilyX<Used> for LiteralX {
-    type R = <Self as FamilyX<Prev>>::R;
+    type R = ();
+    type RS = family_x_rs!();
 }
 
 impl FamilyX<Used> for DefineX {
-    type R = <Self as FamilyX<Prev>>::R;
+    type R = ();
+    type RS = family_x_rs!();
 }
 
 impl FamilyX<Used> for LambdaX {
     type R = UsedLambdaR;
+    type RS = family_x_rs!();
 }
 
 impl FamilyX<Used> for IfX {
-    type R = <Self as FamilyX<Prev>>::R;
+    type R = ();
+    type RS = family_x_rs!();
 }
 
 impl FamilyX<Used> for CallX {
-    type R = <Self as FamilyX<Prev>>::R;
+    type R = ();
+    type RS = family_x_rs!();
 }
 
 impl FamilyX<Used> for VarX {
     type R = UsedVarR;
+    type RS = family_x_rs!();
 }
 
 impl FamilyX<Used> for BeginX {
-    type R = <Self as FamilyX<Prev>>::R;
+    type R = ();
+    type RS = family_x_rs!();
 }
 
 impl FamilyX<Used> for SetX {
     type R = UsedSetR;
+    type RS = family_x_rs!();
 }
 
 impl FamilyX<Used> for LetX {
-    type R = <Self as FamilyX<Prev>>::R;
+    type R = ();
+    type RS = family_x_rs!();
 }
 
 #[derive(Debug, Clone)]
@@ -180,7 +200,7 @@ impl VarIdGen {
 }
 
 impl Ast<Used> {
-    pub fn from_ast(ast: Ast<Prev>, var_id_gen: &mut VarIdGen) -> Self {
+    pub fn from_ast(ast: Ast<<Used as Phase>::Prev>, var_id_gen: &mut VarIdGen) -> Self {
         var_id_gen.reset_for_module();
         let new_exprs = ast
             .exprs
@@ -189,14 +209,20 @@ impl Ast<Used> {
             .collect();
 
         Ast {
-            x: UsedAstR {
-                box_vars: var_id_gen
-                    .mutated_vars
-                    .intersection(&var_id_gen.captured_vars)
-                    .copied()
-                    .collect(),
-                global_vars: var_id_gen.use_globals.clone(),
-            },
+            x: h_cons(
+                field![
+                    Used,
+                    UsedAstR {
+                        box_vars: var_id_gen
+                            .mutated_vars
+                            .intersection(&var_id_gen.captured_vars)
+                            .copied()
+                            .collect(),
+                        global_vars: var_id_gen.use_globals.clone(),
+                    }
+                ],
+                ast.x,
+            ),
             exprs: new_exprs,
         }
     }
@@ -204,14 +230,14 @@ impl Ast<Used> {
 
 impl Expr<Used> {
     fn from_expr(
-        expr: Expr<Prev>,
+        expr: Expr<<Used as Phase>::Prev>,
         ctx: &Context,
         var_id_gen: &mut VarIdGen,
         state: &mut State,
     ) -> Self {
         match expr {
-            Expr::Literal(x, lit) => Expr::Literal(x, lit),
-            Expr::Var(_, var) => {
+            Expr::Literal(x, lit) => Expr::Literal(h_cons(field![Used, ()], x), lit),
+            Expr::Var(x, var) => {
                 let var_id = match ctx {
                     Context::Global => var_id_gen.get_global_or_builtins(&var),
                     Context::Local(LocalContext { env }) => {
@@ -225,9 +251,9 @@ impl Expr<Used> {
                         }
                     }
                 };
-                Expr::Var(UsedVarR { var_id }, var)
+                Expr::Var(h_cons(field![Used, UsedVarR { var_id }], x), var)
             }
-            Expr::Define(x, _) => x,
+            Expr::Define(x, _) => by_phase(PhantomData::<Defined>, x),
             Expr::Lambda(x, lambda) => {
                 let mut new_env = HashMap::new();
                 match ctx {
@@ -259,7 +285,8 @@ impl Expr<Used> {
                         id
                     })
                     .collect::<Vec<_>>();
-                let defines: Vec<_> = x
+
+                let defines: Vec<_> = by_phase(PhantomData::<Defined>, x.clone())
                     .defines
                     .iter()
                     .map(|def| {
@@ -297,11 +324,17 @@ impl Expr<Used> {
                 }
 
                 Expr::Lambda(
-                    UsedLambdaR {
-                        args: args,
-                        defines: defines,
-                        captures: new_state.captures.into_iter().collect(), // 非決定的だが問題ないはず
-                    },
+                    h_cons(
+                        field![
+                            Used,
+                            UsedLambdaR {
+                                args: args,
+                                defines: defines,
+                                captures: new_state.captures.into_iter().collect(), // 非決定的だが問題ないはず
+                            }
+                        ],
+                        x,
+                    ),
                     Lambda {
                         args: lambda.args,
                         body: new_body,
@@ -313,7 +346,7 @@ impl Expr<Used> {
                 let new_then = Box::new(Self::from_expr(*if_.then, ctx, var_id_gen, state));
                 let new_els = Box::new(Self::from_expr(*if_.els, ctx, var_id_gen, state));
                 Expr::If(
-                    x,
+                    h_cons(field![Used, ()], x),
                     If {
                         cond: new_cond,
                         then: new_then,
@@ -329,7 +362,7 @@ impl Expr<Used> {
                     .map(|arg| Self::from_expr(arg, ctx, var_id_gen, state))
                     .collect();
                 Expr::Call(
-                    x,
+                    h_cons(field![Used, ()], x),
                     Call {
                         func: new_func,
                         args: new_args,
@@ -342,9 +375,9 @@ impl Expr<Used> {
                     .into_iter()
                     .map(|expr| Self::from_expr(expr, ctx, var_id_gen, state))
                     .collect();
-                Expr::Begin(x, Begin { exprs: new_exprs })
+                Expr::Begin(h_cons(field![Used, ()], x), Begin { exprs: new_exprs })
             }
-            Expr::Set(_, set) => {
+            Expr::Set(x, set) => {
                 let var_id = match ctx {
                     Context::Global => var_id_gen.get_global_or_builtins(&set.name),
                     Context::Local(LocalContext { env }) => {
@@ -361,14 +394,14 @@ impl Expr<Used> {
                 };
                 let new_expr = Self::from_expr(*set.expr, ctx, var_id_gen, state);
                 Expr::Set(
-                    UsedSetR { var_id },
+                    h_cons(field![Used, UsedSetR { var_id }], x),
                     Set {
                         name: set.name,
                         expr: Box::new(new_expr),
                     },
                 )
             }
-            Expr::Let(x, _) => x,
+            Expr::Let(x, _) => by_phase(PhantomData::<Desugared>, x),
         }
     }
 }

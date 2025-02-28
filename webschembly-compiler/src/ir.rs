@@ -1,6 +1,13 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    marker::PhantomData,
+};
 
-use crate::{ast, sexpr, x::RunX};
+use crate::{
+    ast::{self, Defined, Desugared, Used},
+    sexpr,
+    x::{by_phase, RunX},
+};
 use strum::IntoEnumIterator;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
@@ -132,7 +139,9 @@ impl IrGenerator {
     }
 
     fn gen(mut self, ast: &ast::Ast<ast::Final>) -> Ir {
-        self.box_vars = ast.x.box_vars.clone();
+        self.box_vars = by_phase(PhantomData::<Used>, ast.x.clone())
+            .box_vars
+            .clone();
         let func = FuncGenerator::new(&mut self).entry_gen(ast);
         let func_id = self.funcs.len();
         self.funcs.push(func);
@@ -178,7 +187,7 @@ impl<'a> FuncGenerator<'a> {
             block_gen.stats.push(Stat::Expr(
                 None,
                 Expr::InitGlobals(
-                    ast.x
+                    by_phase(PhantomData::<Used>, ast.x.clone())
                         .global_vars
                         .iter()
                         .map(|x| x.0)
@@ -208,23 +217,27 @@ impl<'a> FuncGenerator<'a> {
         lambda: &ast::Lambda<ast::Final>,
     ) -> Func {
         let self_closure = self.local(Type::Val(ValType::Closure));
-        for &arg in &x.args {
+        for arg in by_phase(PhantomData::<Used>, x.clone()).args {
             self.define_ast_local(arg);
         }
 
         let mut restore_envs = Vec::new();
         // 環境を復元するためのローカル変数を定義
-        for var_id in x.captures.iter() {
+        for var_id in by_phase(PhantomData::<Used>, x.clone()).captures.iter() {
             self.define_ast_local(*var_id);
         }
         // 環境の型を収集
-        let env_types = x
+        let env_types = by_phase(PhantomData::<Used>, x.clone())
             .captures
             .iter()
             .map(|id| self.locals[*self.local_ids.get(id).unwrap()])
             .collect::<Vec<_>>();
         // 環境を復元する処理を追加
-        for (i, var_id) in x.captures.iter().enumerate() {
+        for (i, var_id) in by_phase(PhantomData::<Used>, x.clone())
+            .captures
+            .iter()
+            .enumerate()
+        {
             let env_local = *self.local_ids.get(var_id).unwrap();
             restore_envs.push(Stat::Expr(
                 Some(env_local),
@@ -234,7 +247,7 @@ impl<'a> FuncGenerator<'a> {
 
         let mut create_mut_cells = Vec::new();
 
-        for id in x.defines {
+        for id in by_phase(PhantomData::<Used>, x.clone()).defines {
             let local = self.define_ast_local(id);
             if self.ir_generator.box_vars.contains(&id) {
                 create_mut_cells.push(Stat::Expr(Some(local), Expr::CreateMutCell));
@@ -328,9 +341,9 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                     self.quote(result, sexpr);
                 }
             },
-            ast::Expr::Define(x, _) => *x,
+            ast::Expr::Define(x, _) => by_phase(PhantomData::<Defined>, x.clone()),
             ast::Expr::Lambda(x, lambda) => {
-                let captures = x
+                let captures = by_phase(PhantomData::<Used>, x.clone())
                     .captures
                     .iter()
                     .map(|id| *self.func_gen.local_ids.get(id).unwrap())
@@ -369,99 +382,95 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                     .push(Stat::If(cond_local, then_stats, else_stats));
             }
             ast::Expr::Call(_, ast::Call { func, args }) => {
-                match func.as_ref() {
-                    ast::Expr::Var(
-                        ast::UsedVarR {
-                            var_id: ast::VarId::Builtin(builtin),
-                        },
-                        _,
-                    ) => {
-                        let builtin_typ = builtin_func_type(*builtin);
-                        debug_assert!(builtin_typ.rets.len() == 1);
-                        let ret_type = builtin_typ.rets[0];
-                        if builtin_typ.args.len() != args.len() {
-                            let msg = self.func_gen.local(Type::Val(ValType::String));
-                            self.stats.push(Stat::Expr(
-                                Some(msg),
-                                Expr::String("builtin args count mismatch\n".to_string()),
-                            ));
-                            self.stats.push(Stat::Expr(result, Expr::Error(msg)));
-                        } else {
-                            let mut arg_locals = Vec::new();
-                            for (typ, arg) in builtin_typ.args.iter().zip(args) {
-                                let boxed_arg_local = self.func_gen.local(Type::Boxed);
-                                self.gen_stat(Some(boxed_arg_local), arg);
-                                let arg_local = match typ {
-                                    Type::Boxed => boxed_arg_local,
-                                    Type::MutCell => {
-                                        unreachable!()
-                                    }
-                                    Type::Val(val_type) => {
-                                        let unboxed_arg_local =
-                                            self.func_gen.local(Type::Val(*val_type));
-                                        // TODO: 動的型チェック
-                                        self.stats.push(Stat::Expr(
-                                            Some(unboxed_arg_local),
-                                            Expr::Unbox(*val_type, boxed_arg_local),
-                                        ));
-                                        unboxed_arg_local
-                                    }
-                                };
-                                arg_locals.push(arg_local);
-                            }
-
-                            let ret_local = match ret_type {
-                                Type::Boxed => self.func_gen.local(Type::Boxed),
-                                Type::MutCell => {
-                                    unreachable!()
-                                }
-                                Type::Val(val_type) => self.func_gen.local(Type::Val(val_type)),
-                            };
-                            self.stats.push(Stat::Expr(
-                                Some(ret_local),
-                                Expr::Builtin(*builtin, arg_locals),
-                            ));
-                            match ret_type {
-                                Type::Boxed => {
-                                    self.stats.push(Stat::Expr(result, Expr::Move(ret_local)));
-                                }
+                if let ast::Expr::Var(x, _) = func.as_ref()
+                    && let ast::UsedVarR {
+                        var_id: ast::VarId::Builtin(builtin),
+                    } = by_phase(PhantomData::<Used>, x.clone())
+                {
+                    let builtin_typ = builtin_func_type(builtin);
+                    debug_assert!(builtin_typ.rets.len() == 1);
+                    let ret_type = builtin_typ.rets[0];
+                    if builtin_typ.args.len() != args.len() {
+                        let msg = self.func_gen.local(Type::Val(ValType::String));
+                        self.stats.push(Stat::Expr(
+                            Some(msg),
+                            Expr::String("builtin args count mismatch\n".to_string()),
+                        ));
+                        self.stats.push(Stat::Expr(result, Expr::Error(msg)));
+                    } else {
+                        let mut arg_locals = Vec::new();
+                        for (typ, arg) in builtin_typ.args.iter().zip(args) {
+                            let boxed_arg_local = self.func_gen.local(Type::Boxed);
+                            self.gen_stat(Some(boxed_arg_local), arg);
+                            let arg_local = match typ {
+                                Type::Boxed => boxed_arg_local,
                                 Type::MutCell => {
                                     unreachable!()
                                 }
                                 Type::Val(val_type) => {
-                                    self.stats
-                                        .push(Stat::Expr(result, Expr::Box(val_type, ret_local)));
+                                    let unboxed_arg_local =
+                                        self.func_gen.local(Type::Val(*val_type));
+                                    // TODO: 動的型チェック
+                                    self.stats.push(Stat::Expr(
+                                        Some(unboxed_arg_local),
+                                        Expr::Unbox(*val_type, boxed_arg_local),
+                                    ));
+                                    unboxed_arg_local
                                 }
+                            };
+                            arg_locals.push(arg_local);
+                        }
+
+                        let ret_local = match ret_type {
+                            Type::Boxed => self.func_gen.local(Type::Boxed),
+                            Type::MutCell => {
+                                unreachable!()
+                            }
+                            Type::Val(val_type) => self.func_gen.local(Type::Val(val_type)),
+                        };
+                        self.stats.push(Stat::Expr(
+                            Some(ret_local),
+                            Expr::Builtin(builtin, arg_locals),
+                        ));
+                        match ret_type {
+                            Type::Boxed => {
+                                self.stats.push(Stat::Expr(result, Expr::Move(ret_local)));
+                            }
+                            Type::MutCell => {
+                                unreachable!()
+                            }
+                            Type::Val(val_type) => {
+                                self.stats
+                                    .push(Stat::Expr(result, Expr::Box(val_type, ret_local)));
                             }
                         }
                     }
-                    _ => {
-                        let boxed_func_local = self.func_gen.local(Type::Boxed);
-                        self.gen_stat(Some(boxed_func_local), func);
+                } else {
+                    let boxed_func_local = self.func_gen.local(Type::Boxed);
+                    self.gen_stat(Some(boxed_func_local), func);
 
-                        // TODO: funcがクロージャかのチェック
-                        let func_local = self.func_gen.local(Type::Val(ValType::Closure));
-                        self.stats.push(Stat::Expr(
-                            Some(func_local),
-                            Expr::Unbox(ValType::Closure, boxed_func_local),
-                        ));
+                    // TODO: funcがクロージャかのチェック
+                    let func_local = self.func_gen.local(Type::Val(ValType::Closure));
+                    self.stats.push(Stat::Expr(
+                        Some(func_local),
+                        Expr::Unbox(ValType::Closure, boxed_func_local),
+                    ));
 
-                        // TODO: 引数の数が合っているかのチェック
-                        let mut arg_locals = Vec::new();
-                        arg_locals.push(func_local); // 第一引数にクロージャを渡す
-                        for arg in args {
-                            let arg_local = self.func_gen.local(Type::Boxed);
-                            self.gen_stat(Some(arg_local), arg);
-                            arg_locals.push(arg_local);
-                        }
-                        self.stats.push(Stat::Expr(
-                            result,
-                            Expr::CallClosure(func_local, arg_locals),
-                        ));
+                    // TODO: 引数の数が合っているかのチェック
+                    let mut arg_locals = Vec::new();
+                    arg_locals.push(func_local); // 第一引数にクロージャを渡す
+                    for arg in args {
+                        let arg_local = self.func_gen.local(Type::Boxed);
+                        self.gen_stat(Some(arg_local), arg);
+                        arg_locals.push(arg_local);
                     }
+                    self.stats.push(Stat::Expr(
+                        result,
+                        Expr::CallClosure(func_local, arg_locals),
+                    ));
                 }
             }
-            ast::Expr::Var(x, _) => match x.var_id {
+            ast::Expr::Var(x, _) => match by_phase(PhantomData::<Used>, x.clone()).var_id {
                 ast::VarId::Local(id) => {
                     if self.func_gen.ir_generator.box_vars.contains(&id) {
                         self.stats.push(Stat::Expr(
@@ -488,46 +497,48 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                 block_gen.gen_stats(result, stats);
                 self.stats.extend(block_gen.stats);
             }
-            ast::Expr::Set(x, ast::Set { expr, .. }) => match x.var_id {
-                ast::VarId::Local(id) => {
-                    if self.func_gen.ir_generator.box_vars.contains(&id) {
-                        let boxed_local = self.func_gen.local(Type::Boxed);
-                        self.gen_stat(Some(boxed_local), expr);
-                        let local = self.func_gen.local_ids.get(&id).unwrap();
-                        self.stats
-                            .push(Stat::Expr(None, Expr::SetMutCell(*local, boxed_local)));
-                        self.stats.push(Stat::Expr(result, Expr::Move(boxed_local)));
-                    } else {
-                        let local = *self.func_gen.local_ids.get(&id).unwrap();
-                        self.gen_stat(Some(local), expr);
-                        self.stats.push(Stat::Expr(result, Expr::Move(local)));
+            ast::Expr::Set(x, ast::Set { expr, .. }) => {
+                match by_phase(PhantomData::<Used>, x.clone()).var_id {
+                    ast::VarId::Local(id) => {
+                        if self.func_gen.ir_generator.box_vars.contains(&id) {
+                            let boxed_local = self.func_gen.local(Type::Boxed);
+                            self.gen_stat(Some(boxed_local), expr);
+                            let local = self.func_gen.local_ids.get(&id).unwrap();
+                            self.stats
+                                .push(Stat::Expr(None, Expr::SetMutCell(*local, boxed_local)));
+                            self.stats.push(Stat::Expr(result, Expr::Move(boxed_local)));
+                        } else {
+                            let local = *self.func_gen.local_ids.get(&id).unwrap();
+                            self.gen_stat(Some(local), expr);
+                            self.stats.push(Stat::Expr(result, Expr::Move(local)));
+                        }
                     }
-                }
-                ast::VarId::Global(id) => {
-                    let local = self.func_gen.local(Type::Boxed);
-                    self.gen_stat(Some(local), expr);
-                    self.stats
-                        .push(Stat::Expr(None, Expr::GlobalSet(id.0, local)));
-                    self.stats.push(Stat::Expr(result, Expr::Move(local)));
-                }
-                ast::VarId::Builtin(builtin) => {
-                    if self.func_gen.ir_generator.config.allow_set_builtin {
+                    ast::VarId::Global(id) => {
                         let local = self.func_gen.local(Type::Boxed);
                         self.gen_stat(Some(local), expr);
                         self.stats
-                            .push(Stat::Expr(None, Expr::SetBuiltin(builtin, local)));
+                            .push(Stat::Expr(None, Expr::GlobalSet(id.0, local)));
                         self.stats.push(Stat::Expr(result, Expr::Move(local)));
-                    } else {
-                        let msg = self.func_gen.local(Type::Val(ValType::String));
-                        self.stats.push(Stat::Expr(
-                            Some(msg),
-                            Expr::String("set! builtin is not allowed\n".to_string()),
-                        ));
-                        self.stats.push(Stat::Expr(result, Expr::Error(msg)));
+                    }
+                    ast::VarId::Builtin(builtin) => {
+                        if self.func_gen.ir_generator.config.allow_set_builtin {
+                            let local = self.func_gen.local(Type::Boxed);
+                            self.gen_stat(Some(local), expr);
+                            self.stats
+                                .push(Stat::Expr(None, Expr::SetBuiltin(builtin, local)));
+                            self.stats.push(Stat::Expr(result, Expr::Move(local)));
+                        } else {
+                            let msg = self.func_gen.local(Type::Val(ValType::String));
+                            self.stats.push(Stat::Expr(
+                                Some(msg),
+                                Expr::String("set! builtin is not allowed\n".to_string()),
+                            ));
+                            self.stats.push(Stat::Expr(result, Expr::Error(msg)));
+                        }
                     }
                 }
-            },
-            ast::Expr::Let(x, _) => *x,
+            }
+            ast::Expr::Let(x, _) => by_phase(PhantomData::<Desugared>, x.clone()),
         }
     }
 

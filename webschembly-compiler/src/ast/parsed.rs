@@ -1,41 +1,58 @@
+use frunk::hlist::h_cons;
+use frunk::{field, HNil};
+
 use super::ast::*;
-use crate::compiler_error;
 use crate::error::Result;
 use crate::sexpr::{SExpr, SExprKind};
-use crate::x::FamilyX;
+use crate::x::{BasePhase, FamilyX, Phase};
+use crate::{compiler_error, family_x_rs};
 #[derive(Debug, Clone)]
 pub enum Parsed {}
 
+impl Phase for Parsed {
+    type Prev = BasePhase;
+}
+
 impl FamilyX<Parsed> for AstX {
     type R = ();
+    type RS = family_x_rs!();
 }
 impl FamilyX<Parsed> for LiteralX {
     type R = ();
+    type RS = family_x_rs!();
 }
 impl FamilyX<Parsed> for DefineX {
     type R = ();
+    type RS = family_x_rs!();
 }
 impl FamilyX<Parsed> for LambdaX {
     type R = ();
+    type RS = family_x_rs!();
 }
 impl FamilyX<Parsed> for IfX {
     type R = ();
+    type RS = family_x_rs!();
 }
 impl FamilyX<Parsed> for CallX {
     type R = ();
+    type RS = family_x_rs!();
 }
 impl FamilyX<Parsed> for VarX {
     type R = ();
+    type RS = family_x_rs!();
 }
 impl FamilyX<Parsed> for BeginX {
     type R = ();
+    type RS = family_x_rs!();
 }
 impl FamilyX<Parsed> for SetX {
     type R = ();
+    type RS = family_x_rs!();
 }
 
 impl FamilyX<Parsed> for LetX {
     type R = ();
+    type RS = family_x_rs!();
 }
 
 impl Ast<Parsed> {
@@ -44,7 +61,10 @@ impl Ast<Parsed> {
             .into_iter()
             .map(Expr::from_sexpr)
             .collect::<Result<Vec<_>>>()?;
-        Ok(Ast { x: (), exprs })
+        Ok(Ast {
+            x: h_cons(field![Parsed, ()], HNil),
+            exprs,
+        })
     }
 }
 
@@ -54,27 +74,42 @@ impl Expr<Parsed> {
             SExpr {
                 kind: SExprKind::Bool(b),
                 ..
-            } => Ok(Expr::Literal((), Literal::Bool(b))),
+            } => Ok(Expr::Literal(
+                h_cons(field![Parsed, ()], HNil),
+                Literal::Bool(b),
+            )),
             SExpr {
                 kind: SExprKind::Int(i),
                 ..
-            } => Ok(Expr::Literal((), Literal::Int(i))),
+            } => Ok(Expr::Literal(
+                h_cons(field![Parsed, ()], HNil),
+                Literal::Int(i),
+            )),
             SExpr {
                 kind: SExprKind::String(s),
                 ..
-            } => Ok(Expr::Literal((), Literal::String(s))),
+            } => Ok(Expr::Literal(
+                h_cons(field![Parsed, ()], HNil),
+                Literal::String(s),
+            )),
             SExpr {
                 kind: SExprKind::Symbol(s),
                 ..
-            } => Ok(Expr::Var((), s)),
+            } => Ok(Expr::Var(h_cons(field![Parsed, ()], HNil), s)),
             SExpr {
                 kind: SExprKind::Nil,
                 ..
-            } => Ok(Expr::Literal((), Literal::Nil)),
+            } => Ok(Expr::Literal(
+                h_cons(field![Parsed, ()], HNil),
+                Literal::Nil,
+            )),
             SExpr {
                 kind: SExprKind::Char(c),
                 ..
-            } => Ok(Expr::Literal((), Literal::Char(c))),
+            } => Ok(Expr::Literal(
+                h_cons(field![Parsed, ()], HNil),
+                Literal::Char(c),
+            )),
             list_pattern![
                 SExpr {
                     kind: SExprKind::Symbol("quote"),
@@ -82,7 +117,10 @@ impl Expr<Parsed> {
                 },
                 ..cdr
             ] => match cdr {
-                list_pattern![sexpr,] => Ok(Expr::Literal((), Literal::Quote(sexpr))),
+                list_pattern![sexpr,] => Ok(Expr::Literal(
+                    h_cons(field![Parsed, ()], HNil),
+                    Literal::Quote(sexpr),
+                )),
                 _ => Err(compiler_error!("Invalid quote expression")),
             },
             list_pattern![
@@ -99,7 +137,7 @@ impl Expr<Parsed> {
                     },
                     expr,
                 ] => Ok(Expr::Define(
-                    (),
+                    h_cons(field![Parsed, ()], HNil),
                     Define {
                         name,
                         expr: Box::new(Expr::from_sexpr(expr)?),
@@ -115,7 +153,7 @@ impl Expr<Parsed> {
                     ],
                     ..exprs
                 ] => Ok(Expr::Define(
-                    (),
+                    h_cons(field![Parsed, ()], HNil),
                     Define {
                         name,
                         expr: Box::new(Self::parse_lambda(args, exprs)?),
@@ -145,7 +183,7 @@ impl Expr<Parsed> {
                     let then = Expr::from_sexpr(then)?;
                     let els = Expr::from_sexpr(els)?;
                     Ok(Expr::If(
-                        (),
+                        h_cons(field![Parsed, ()], HNil),
                         If {
                             cond: Box::new(cond),
                             then: Box::new(then),
@@ -186,7 +224,10 @@ impl Expr<Parsed> {
                         .map(Expr::from_sexpr)
                         .collect::<Result<Vec<_>>>()?;
 
-                    Ok(Expr::Let((), Let { bindings, body }))
+                    Ok(Expr::Let(
+                        h_cons(field![Parsed, ()], HNil),
+                        Let { bindings, body },
+                    ))
                 }
                 _ => Err(compiler_error!("Invalid let expression")),
             },
@@ -203,7 +244,10 @@ impl Expr<Parsed> {
                     .into_iter()
                     .map(Expr::from_sexpr)
                     .collect::<Result<Vec<_>>>()?;
-                Ok(Expr::Begin((), Begin { exprs }))
+                Ok(Expr::Begin(
+                    h_cons(field![Parsed, ()], HNil),
+                    Begin { exprs },
+                ))
             }
             list_pattern![
                 SExpr {
@@ -221,7 +265,7 @@ impl Expr<Parsed> {
                 ] => {
                     let expr = Expr::from_sexpr(expr)?;
                     Ok(Expr::Set(
-                        (),
+                        h_cons(field![Parsed, ()], HNil),
                         Set {
                             name,
                             expr: Box::new(expr),
@@ -239,7 +283,7 @@ impl Expr<Parsed> {
                     .map(Expr::from_sexpr)
                     .collect::<Result<Vec<_>>>()?;
                 Ok(Expr::Call(
-                    (),
+                    h_cons(field![Parsed, ()], HNil),
                     Call {
                         func: Box::new(func),
                         args: args,
@@ -265,6 +309,9 @@ impl Expr<Parsed> {
             .into_iter()
             .map(Expr::from_sexpr)
             .collect::<Result<Vec<_>>>()?;
-        Ok(Expr::Lambda((), Lambda { args, body: exprs }))
+        Ok(Expr::Lambda(
+            h_cons(field![Parsed, ()], HNil),
+            Lambda { args, body: exprs },
+        ))
     }
 }
