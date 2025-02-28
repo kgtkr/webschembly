@@ -6,7 +6,7 @@ use std::{
 use crate::{
     ast::{self, Defined, Desugared, Used},
     sexpr,
-    x::{by_phase, RunX},
+    x::{by_phase_ref, RunX},
 };
 use strum::IntoEnumIterator;
 
@@ -139,9 +139,7 @@ impl IrGenerator {
     }
 
     fn gen(mut self, ast: &ast::Ast<ast::Final>) -> Ir {
-        self.box_vars = by_phase(PhantomData::<Used>, ast.x.clone())
-            .box_vars
-            .clone();
+        self.box_vars = by_phase_ref(PhantomData::<Used>, &ast.x).box_vars.clone();
         let func = FuncGenerator::new(&mut self).entry_gen(ast);
         let func_id = self.funcs.len();
         self.funcs.push(func);
@@ -187,7 +185,7 @@ impl<'a> FuncGenerator<'a> {
             block_gen.stats.push(Stat::Expr(
                 None,
                 Expr::InitGlobals(
-                    by_phase(PhantomData::<Used>, ast.x.clone())
+                    by_phase_ref(PhantomData::<Used>, &ast.x)
                         .global_vars
                         .iter()
                         .map(|x| x.0)
@@ -217,23 +215,23 @@ impl<'a> FuncGenerator<'a> {
         lambda: &ast::Lambda<ast::Final>,
     ) -> Func {
         let self_closure = self.local(Type::Val(ValType::Closure));
-        for arg in by_phase(PhantomData::<Used>, x.clone()).args {
-            self.define_ast_local(arg);
+        for arg in &by_phase_ref(PhantomData::<Used>, &x).args {
+            self.define_ast_local(*arg);
         }
 
         let mut restore_envs = Vec::new();
         // 環境を復元するためのローカル変数を定義
-        for var_id in by_phase(PhantomData::<Used>, x.clone()).captures.iter() {
+        for var_id in by_phase_ref(PhantomData::<Used>, &x).captures.iter() {
             self.define_ast_local(*var_id);
         }
         // 環境の型を収集
-        let env_types = by_phase(PhantomData::<Used>, x.clone())
+        let env_types = by_phase_ref(PhantomData::<Used>, &x)
             .captures
             .iter()
             .map(|id| self.locals[*self.local_ids.get(id).unwrap()])
             .collect::<Vec<_>>();
         // 環境を復元する処理を追加
-        for (i, var_id) in by_phase(PhantomData::<Used>, x.clone())
+        for (i, var_id) in by_phase_ref(PhantomData::<Used>, &x)
             .captures
             .iter()
             .enumerate()
@@ -247,8 +245,8 @@ impl<'a> FuncGenerator<'a> {
 
         let mut create_mut_cells = Vec::new();
 
-        for id in by_phase(PhantomData::<Used>, x.clone()).defines {
-            let local = self.define_ast_local(id);
+        for id in &by_phase_ref(PhantomData::<Used>, &x).defines {
+            let local = self.define_ast_local(*id);
             if self.ir_generator.box_vars.contains(&id) {
                 create_mut_cells.push(Stat::Expr(Some(local), Expr::CreateMutCell));
             }
@@ -341,9 +339,9 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                     self.quote(result, sexpr);
                 }
             },
-            ast::Expr::Define(x, _) => by_phase(PhantomData::<Defined>, x.clone()),
+            ast::Expr::Define(x, _) => *by_phase_ref(PhantomData::<Defined>, x),
             ast::Expr::Lambda(x, lambda) => {
-                let captures = by_phase(PhantomData::<Used>, x.clone())
+                let captures = by_phase_ref(PhantomData::<Used>, x)
                     .captures
                     .iter()
                     .map(|id| *self.func_gen.local_ids.get(id).unwrap())
@@ -385,9 +383,9 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                 if let ast::Expr::Var(x, _) = func.as_ref()
                     && let ast::UsedVarR {
                         var_id: ast::VarId::Builtin(builtin),
-                    } = by_phase(PhantomData::<Used>, x.clone())
+                    } = by_phase_ref(PhantomData::<Used>, x)
                 {
-                    let builtin_typ = builtin_func_type(builtin);
+                    let builtin_typ = builtin_func_type(*builtin);
                     debug_assert!(builtin_typ.rets.len() == 1);
                     let ret_type = builtin_typ.rets[0];
                     if builtin_typ.args.len() != args.len() {
@@ -430,7 +428,7 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                         };
                         self.stats.push(Stat::Expr(
                             Some(ret_local),
-                            Expr::Builtin(builtin, arg_locals),
+                            Expr::Builtin(*builtin, arg_locals),
                         ));
                         match ret_type {
                             Type::Boxed => {
@@ -470,7 +468,7 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                     ));
                 }
             }
-            ast::Expr::Var(x, _) => match by_phase(PhantomData::<Used>, x.clone()).var_id {
+            ast::Expr::Var(x, _) => match &by_phase_ref(PhantomData::<Used>, x).var_id {
                 ast::VarId::Local(id) => {
                     if self.func_gen.ir_generator.box_vars.contains(&id) {
                         self.stats.push(Stat::Expr(
@@ -489,7 +487,7 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                 }
                 ast::VarId::Builtin(builtin) => {
                     self.stats
-                        .push(Stat::Expr(result, Expr::GetBuiltin(builtin)));
+                        .push(Stat::Expr(result, Expr::GetBuiltin(*builtin)));
                 }
             },
             ast::Expr::Begin(_, ast::Begin { exprs: stats }) => {
@@ -498,7 +496,7 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                 self.stats.extend(block_gen.stats);
             }
             ast::Expr::Set(x, ast::Set { expr, .. }) => {
-                match by_phase(PhantomData::<Used>, x.clone()).var_id {
+                match &by_phase_ref(PhantomData::<Used>, x).var_id {
                     ast::VarId::Local(id) => {
                         if self.func_gen.ir_generator.box_vars.contains(&id) {
                             let boxed_local = self.func_gen.local(Type::Boxed);
@@ -525,7 +523,7 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                             let local = self.func_gen.local(Type::Boxed);
                             self.gen_stat(Some(local), expr);
                             self.stats
-                                .push(Stat::Expr(None, Expr::SetBuiltin(builtin, local)));
+                                .push(Stat::Expr(None, Expr::SetBuiltin(*builtin, local)));
                             self.stats.push(Stat::Expr(result, Expr::Move(local)));
                         } else {
                             let msg = self.func_gen.local(Type::Val(ValType::String));
@@ -538,7 +536,7 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                     }
                 }
             }
-            ast::Expr::Let(x, _) => by_phase(PhantomData::<Desugared>, x.clone()),
+            ast::Expr::Let(x, _) => *by_phase_ref(PhantomData::<Desugared>, x),
         }
     }
 
