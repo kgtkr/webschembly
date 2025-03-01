@@ -12,14 +12,17 @@ use nom::{
     bytes::complete::{tag, take_while, take_while1},
     character::complete::{anychar, satisfy},
     combinator::{consumed, eof as nom_eof, map, map_res},
-    error::{convert_error, ParseError, VerboseError},
+    error::{ErrorKind, FromExternalError, ParseError},
     multi::many0,
     IResult, Parser,
 };
 
 type LocatedStr<'a> = LocatedSpan<&'a str>;
+trait ErrorBound<'a> = ParseError<LocatedStr<'a>> + FromExternalError<LocatedStr<'a>, Self>;
 
-fn identifier(input: LocatedStr) -> IResult<LocatedStr, TokenKind, VerboseError<LocatedStr>> {
+fn identifier<'a, E: ErrorBound<'a>>(
+    input: LocatedStr<'a>,
+) -> IResult<LocatedStr<'a>, TokenKind, E> {
     const SYMBOLS: &str = "!$%&*+-/:<=>?^_~";
 
     let (input, first) = satisfy(|c: char| c.is_ascii_alphabetic() || SYMBOLS.contains(c))(input)?;
@@ -28,21 +31,22 @@ fn identifier(input: LocatedStr) -> IResult<LocatedStr, TokenKind, VerboseError<
     Ok((input, TokenKind::Identifier(format!("{}{}", first, rest))))
 }
 
-fn int(input: LocatedStr) -> IResult<LocatedStr, TokenKind, VerboseError<LocatedStr>> {
+fn int<'a, E: ErrorBound<'a>>(input: LocatedStr<'a>) -> IResult<LocatedStr<'a>, TokenKind, E> {
     let (input, int) = map_res(take_while(|c: char| c.is_ascii_digit()), |s: LocatedStr| {
         s.parse::<i64>()
+            .map_err(|_| E::from_error_kind(s, ErrorKind::Digit))
     })(input)?;
     Ok((input, TokenKind::Int(int)))
 }
 
-fn string(input: LocatedStr) -> IResult<LocatedStr, TokenKind, VerboseError<LocatedStr>> {
+fn string<'a, E: ErrorBound<'a>>(input: LocatedStr<'a>) -> IResult<LocatedStr<'a>, TokenKind, E> {
     let (input, _) = tag("\"")(input)?;
     let (input, string) = take_while(|c: char| c != '"')(input)?;
     let (input, _) = tag("\"")(input)?;
     Ok((input, TokenKind::String(string.to_string())))
 }
 
-fn char(input: LocatedStr) -> IResult<LocatedStr, TokenKind, VerboseError<LocatedStr>> {
+fn char<'a, E: ErrorBound<'a>>(input: LocatedStr<'a>) -> IResult<LocatedStr<'a>, TokenKind, E> {
     let (input, _) = tag("#\\")(input)?;
     let (input, first) = anychar(input)?;
     if first.is_ascii_alphabetic() {
@@ -55,7 +59,10 @@ fn char(input: LocatedStr) -> IResult<LocatedStr, TokenKind, VerboseError<Locate
                 // r5rsにもgoshにもないがこれがないと括弧の対応が分かりにくくて書きにくいので
                 "openparen" => Ok((input, TokenKind::Char('('))),
                 "closeparen" => Ok((input, TokenKind::Char(')'))),
-                _ => Err(nom::Err::Failure(VerboseError::from_char(input, ' '))),
+                _ => Err(nom::Err::Failure(E::from_error_kind(
+                    input,
+                    ErrorKind::Char,
+                ))),
             }
         } else {
             Ok((input, TokenKind::Char(first)))
@@ -65,7 +72,9 @@ fn char(input: LocatedStr) -> IResult<LocatedStr, TokenKind, VerboseError<Locate
     }
 }
 
-fn token_kind(input: LocatedStr) -> IResult<LocatedStr, TokenKind, VerboseError<LocatedStr>> {
+fn token_kind<'a, E: ErrorBound<'a>>(
+    input: LocatedStr<'a>,
+) -> IResult<LocatedStr<'a>, TokenKind, E> {
     alt((
         tag("(").map(|_| TokenKind::OpenParen),
         tag(")").map(|_| TokenKind::CloseParen),
@@ -81,22 +90,22 @@ fn token_kind(input: LocatedStr) -> IResult<LocatedStr, TokenKind, VerboseError<
     .parse(input)
 }
 
-fn space(input: LocatedStr) -> IResult<LocatedStr, (), VerboseError<LocatedStr>> {
+fn space<'a, E: ErrorBound<'a>>(input: LocatedStr<'a>) -> IResult<LocatedStr<'a>, (), E> {
     map(take_while1(|c: char| c.is_ascii_whitespace()), |_| ()).parse(input)
 }
 
-fn line_comment(input: LocatedStr) -> IResult<LocatedStr, (), VerboseError<LocatedStr>> {
+fn line_comment<'a, E: ErrorBound<'a>>(input: LocatedStr<'a>) -> IResult<LocatedStr<'a>, (), E> {
     let (input, _) = tag(";")(input)?;
     let (input, _) = take_while(|c: char| c != '\n')(input)?;
     Ok((input, ()))
 }
 
-fn ignore(input: LocatedStr) -> IResult<LocatedStr, (), VerboseError<LocatedStr>> {
+fn ignore<'a, E: ErrorBound<'a>>(input: LocatedStr<'a>) -> IResult<LocatedStr<'a>, (), E> {
     let (input, _) = many0(alt((space, line_comment)))(input)?;
     Ok((input, ()))
 }
 
-fn token(input: LocatedStr) -> IResult<LocatedStr, Token, VerboseError<LocatedStr>> {
+fn token<'a, E: ErrorBound<'a>>(input: LocatedStr<'a>) -> IResult<LocatedStr<'a>, Token, E> {
     let (input, _) = ignore(input)?;
     let (input, (pos, kind)) = consumed(token_kind)(input)?;
     Ok((
@@ -108,7 +117,7 @@ fn token(input: LocatedStr) -> IResult<LocatedStr, Token, VerboseError<LocatedSt
     ))
 }
 
-fn eof(input: LocatedStr) -> IResult<LocatedStr, Token, VerboseError<LocatedStr>> {
+fn eof<'a, E: ErrorBound<'a>>(input: LocatedStr<'a>) -> IResult<LocatedStr<'a>, Token, E> {
     let (input, _) = ignore(input)?;
     let (input, (pos, _)) = consumed(nom_eof)(input)?;
     Ok((
@@ -120,7 +129,7 @@ fn eof(input: LocatedStr) -> IResult<LocatedStr, Token, VerboseError<LocatedStr>
     ))
 }
 
-fn tokens(input: LocatedStr) -> IResult<LocatedStr, Vec<Token>, VerboseError<LocatedStr>> {
+fn tokens<'a, E: ErrorBound<'a>>(input: LocatedStr<'a>) -> IResult<LocatedStr<'a>, Vec<Token>, E> {
     let (input, tokens) = many0(token)(input)?;
     let (input, eof_token) = eof(input)?;
     Ok((input, {
@@ -145,7 +154,8 @@ fn to_span(located: LocatedStr) -> Span {
 
 pub fn lex(input: &str) -> Result<Vec<Token>, CompilerError> {
     let input = LocatedStr::new(input);
-    let (input, tokens) = tokens(input).map_err(|e| compiler_error!("{}", e))?;
+    let (input, tokens) =
+        tokens(input).map_err(|e: nom::Err<nom::error::Error<_>>| compiler_error!("{}", e))?;
     debug_assert!(input.len() == 0);
     Ok(tokens)
 }
