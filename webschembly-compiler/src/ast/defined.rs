@@ -7,7 +7,6 @@ use super::ast::*;
 use super::Desugared;
 use crate::compiler_error;
 use crate::error::Result;
-use crate::family_x_rs;
 use crate::x::by_phase;
 use crate::x::FamilyX;
 use crate::x::Phase;
@@ -29,44 +28,34 @@ pub struct DefinedLambdaR {
 
 impl FamilyX<Defined> for AstX {
     type R = ();
-    type RS = family_x_rs!();
 }
 impl FamilyX<Defined> for LiteralX {
     type R = ();
-    type RS = family_x_rs!();
 }
 impl FamilyX<Defined> for DefineX {
     type R = !;
-    type RS = family_x_rs!();
 }
 impl FamilyX<Defined> for LambdaX {
     type R = DefinedLambdaR;
-    type RS = family_x_rs!();
 }
 impl FamilyX<Defined> for IfX {
     type R = ();
-    type RS = family_x_rs!();
 }
 impl FamilyX<Defined> for CallX {
     type R = ();
-    type RS = family_x_rs!();
 }
 impl FamilyX<Defined> for VarX {
     type R = ();
-    type RS = family_x_rs!();
 }
 impl FamilyX<Defined> for BeginX {
     type R = ();
-    type RS = family_x_rs!();
 }
 impl FamilyX<Defined> for SetX {
     type R = ();
-    type RS = family_x_rs!();
 }
 
 impl FamilyX<Defined> for LetX {
     type R = ();
-    type RS = family_x_rs!();
 }
 
 impl Ast<Defined> {

@@ -1,44 +1,39 @@
 use std::marker::PhantomData;
 
-use frunk::labelled::ByNameFieldPlucker;
-use frunk::HNil;
+use frunk::labelled::{ByNameFieldPlucker, Field};
+use frunk::{HCons, HNil};
 
 use crate::by_name_field_ref_plucker::ByNameFieldRefPlucker;
 
 // trees that grow: https://github.com/guygastineau/rust-trees-that-grow/blob/main/src/lib.rs
 pub trait Phase: Sized {
-    type Prev: Phase;
+    type Prev;
 }
 
 pub trait FamilyX<X: Phase> {
-    type X = X; // for macro
     type R: std::fmt::Debug + Clone;
-    type RS: std::fmt::Debug + Clone;
 }
-pub type RunX<T, X> = <T as FamilyX<X>>::RS;
+pub trait FamilyRunX<X> {
+    type R: std::fmt::Debug + Clone;
+}
 
-// FamilyX::RSの推奨される型
-// マクロにしないと無限再帰と表示されて定義できないので
-#[macro_export]
-macro_rules! family_x_rs {
-    () => {
-        frunk::HCons<frunk::labelled::Field<Self::X, Self::R>, $crate::x::RunX<Self, <Self::X as Phase>::Prev>>
-    };
+impl<T: FamilyX<X>, X: Phase> FamilyRunX<X> for T
+where
+    T: FamilyRunX<<X as Phase>::Prev>,
+    T: FamilyX<X>,
+    X: Clone,
+{
+    type R = HCons<Field<X, <T as FamilyX<X>>::R>, <T as FamilyRunX<<X as Phase>::Prev>>::R>;
 }
+
+impl<T> FamilyRunX<BasePhase> for T {
+    type R = HNil;
+}
+
+pub type RunX<T, X> = <T as FamilyRunX<X>>::R;
 
 #[derive(Debug, Clone)]
 pub enum BasePhase {}
-impl Phase for BasePhase {
-    type Prev = BasePhase;
-}
-
-impl<T> FamilyX<BasePhase> for T
-where
-    T: std::fmt::Debug + Clone,
-{
-    type R = ();
-    type RS = HNil;
-}
 
 pub fn by_phase<X, I, T: ByNameFieldPlucker<X, I>>(_x: PhantomData<X>, x: T) -> T::TargetValue {
     ByNameFieldPlucker::<X, I>::pluck_by_name(x).0.value

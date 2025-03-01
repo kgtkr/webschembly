@@ -4,7 +4,6 @@ use frunk::hlist::h_cons;
 use super::ast::*;
 use super::defined::*;
 use super::Desugared;
-use crate::family_x_rs;
 use crate::x::by_phase;
 use crate::x::FamilyX;
 use crate::x::Phase;
@@ -57,51 +56,41 @@ pub struct UsedSetR {
 
 impl FamilyX<Used> for AstX {
     type R = UsedAstR;
-    type RS = family_x_rs!();
 }
 impl FamilyX<Used> for LiteralX {
     type R = ();
-    type RS = family_x_rs!();
 }
 
 impl FamilyX<Used> for DefineX {
     type R = ();
-    type RS = family_x_rs!();
 }
 
 impl FamilyX<Used> for LambdaX {
     type R = UsedLambdaR;
-    type RS = family_x_rs!();
 }
 
 impl FamilyX<Used> for IfX {
     type R = ();
-    type RS = family_x_rs!();
 }
 
 impl FamilyX<Used> for CallX {
     type R = ();
-    type RS = family_x_rs!();
 }
 
 impl FamilyX<Used> for VarX {
     type R = UsedVarR;
-    type RS = family_x_rs!();
 }
 
 impl FamilyX<Used> for BeginX {
     type R = ();
-    type RS = family_x_rs!();
 }
 
 impl FamilyX<Used> for SetX {
     type R = UsedSetR;
-    type RS = family_x_rs!();
 }
 
 impl FamilyX<Used> for LetX {
     type R = ();
-    type RS = family_x_rs!();
 }
 
 #[derive(Debug, Clone)]

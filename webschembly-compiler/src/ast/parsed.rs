@@ -2,10 +2,11 @@ use frunk::hlist::h_cons;
 use frunk::{field, HNil};
 
 use super::ast::*;
+use crate::compiler_error;
 use crate::error::Result;
 use crate::sexpr::{SExpr, SExprKind};
 use crate::x::{BasePhase, FamilyX, Phase};
-use crate::{compiler_error, family_x_rs};
+
 #[derive(Debug, Clone)]
 pub enum Parsed {}
 
@@ -15,44 +16,34 @@ impl Phase for Parsed {
 
 impl FamilyX<Parsed> for AstX {
     type R = ();
-    type RS = family_x_rs!();
 }
 impl FamilyX<Parsed> for LiteralX {
     type R = ();
-    type RS = family_x_rs!();
 }
 impl FamilyX<Parsed> for DefineX {
     type R = ();
-    type RS = family_x_rs!();
 }
 impl FamilyX<Parsed> for LambdaX {
     type R = ();
-    type RS = family_x_rs!();
 }
 impl FamilyX<Parsed> for IfX {
     type R = ();
-    type RS = family_x_rs!();
 }
 impl FamilyX<Parsed> for CallX {
     type R = ();
-    type RS = family_x_rs!();
 }
 impl FamilyX<Parsed> for VarX {
     type R = ();
-    type RS = family_x_rs!();
 }
 impl FamilyX<Parsed> for BeginX {
     type R = ();
-    type RS = family_x_rs!();
 }
 impl FamilyX<Parsed> for SetX {
     type R = ();
-    type RS = family_x_rs!();
 }
 
 impl FamilyX<Parsed> for LetX {
     type R = ();
-    type RS = family_x_rs!();
 }
 
 impl Ast<Parsed> {

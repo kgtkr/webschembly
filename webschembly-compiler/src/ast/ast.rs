@@ -1,5 +1,7 @@
+use std::fmt::Debug;
+
 use crate::sexpr::SExpr;
-use crate::x::{FamilyX, Phase, RunX};
+use crate::x::{FamilyRunX, FamilyX, Phase, RunX};
 use strum_macros::{EnumIter, EnumString, FromRepr, IntoStaticStr};
 
 #[derive(Debug, Clone)]
@@ -30,18 +32,18 @@ pub enum SetX {}
 
 pub enum LetX {}
 
-pub trait XBound = Sized + Phase
+pub trait XBound = Sized + Phase + Clone + Debug
 where
-    AstX: FamilyX<Self>,
-    LiteralX: FamilyX<Self>,
-    DefineX: FamilyX<Self>,
-    LambdaX: FamilyX<Self>,
-    IfX: FamilyX<Self>,
-    CallX: FamilyX<Self>,
-    VarX: FamilyX<Self>,
-    BeginX: FamilyX<Self>,
-    SetX: FamilyX<Self>,
-    LetX: FamilyX<Self>;
+    AstX: FamilyRunX<Self>,
+    LiteralX: FamilyRunX<Self>,
+    DefineX: FamilyRunX<Self>,
+    LambdaX: FamilyRunX<Self>,
+    IfX: FamilyRunX<Self>,
+    CallX: FamilyRunX<Self>,
+    VarX: FamilyRunX<Self>,
+    BeginX: FamilyRunX<Self>,
+    SetX: FamilyRunX<Self>,
+    LetX: FamilyRunX<Self>;
 
 #[derive(Debug, Clone)]
 pub struct Ast<X>

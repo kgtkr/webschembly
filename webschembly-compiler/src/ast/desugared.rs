@@ -3,7 +3,6 @@ use frunk::hlist::h_cons;
 
 use super::ast::*;
 use super::Parsed;
-use crate::family_x_rs;
 use crate::x::FamilyX;
 use crate::x::Phase;
 
@@ -16,44 +15,34 @@ impl Phase for Desugared {
 
 impl FamilyX<Desugared> for AstX {
     type R = ();
-    type RS = family_x_rs!();
 }
 impl FamilyX<Desugared> for LiteralX {
     type R = ();
-    type RS = family_x_rs!();
 }
 impl FamilyX<Desugared> for DefineX {
     type R = ();
-    type RS = family_x_rs!();
 }
 impl FamilyX<Desugared> for LambdaX {
     type R = ();
-    type RS = family_x_rs!();
 }
 impl FamilyX<Desugared> for IfX {
     type R = ();
-    type RS = family_x_rs!();
 }
 impl FamilyX<Desugared> for CallX {
     type R = ();
-    type RS = family_x_rs!();
 }
 impl FamilyX<Desugared> for VarX {
     type R = ();
-    type RS = family_x_rs!();
 }
 impl FamilyX<Desugared> for BeginX {
     type R = ();
-    type RS = family_x_rs!();
 }
 impl FamilyX<Desugared> for SetX {
     type R = ();
-    type RS = family_x_rs!();
 }
 
 impl FamilyX<Desugared> for LetX {
     type R = !;
-    type RS = family_x_rs!();
 }
 
 impl Ast<Desugared> {
