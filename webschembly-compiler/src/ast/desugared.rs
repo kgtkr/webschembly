@@ -1,6 +1,8 @@
 use super::ast::*;
+use super::parsed;
 use super::Parsed;
 use crate::x::type_map;
+use crate::x::type_map::IntoTypeMap;
 use crate::x::FamilyX;
 use crate::x::Phase;
 use crate::x::TypeMap;
@@ -42,6 +44,30 @@ impl FamilyX<Desugared> for SetX {
 
 impl FamilyX<Desugared> for LetX {
     type R = !;
+}
+
+impl Into<parsed::ParsedLambdaR> for parsed::ParsedLetR {
+    fn into(self) -> parsed::ParsedLambdaR {
+        parsed::ParsedLambdaR {
+            span: self.span,
+            arg_spans: self.binding_spans,
+        }
+    }
+}
+
+impl Into<parsed::ParsedCallR> for parsed::ParsedLetR {
+    fn into(self) -> parsed::ParsedCallR {
+        parsed::ParsedCallR { span: self.span }
+    }
+}
+
+impl Into<parsed::ParsedSetR> for parsed::ParsedDefineR {
+    fn into(self) -> parsed::ParsedSetR {
+        parsed::ParsedSetR {
+            span: self.span,
+            name_span: self.name_span,
+        }
+    }
 }
 
 impl Ast<Desugared> {
@@ -103,10 +129,12 @@ impl Expr<Desugared> {
             Expr::Let(x, let_) => {
                 let (names, exprs) = let_.bindings.into_iter().collect::<(Vec<_>, Vec<_>)>();
                 Expr::Call(
-                    x.clone().add(type_map::key::<Desugared>(), ()),
+                    x.clone()
+                        .into_type_map()
+                        .add(type_map::key::<Desugared>(), ()),
                     Call {
                         func: Box::new(Expr::Lambda(
-                            x.add(type_map::key::<Desugared>(), ()),
+                            x.into_type_map().add(type_map::key::<Desugared>(), ()),
                             Lambda {
                                 args: names,
                                 body: let_.body.into_iter().map(Self::from_expr).collect(),

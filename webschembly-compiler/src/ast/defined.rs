@@ -3,6 +3,7 @@ use super::Desugared;
 use crate::compiler_error;
 use crate::error::Result;
 use crate::x::type_map;
+use crate::x::type_map::IntoTypeMap;
 use crate::x::FamilyX;
 use crate::x::Phase;
 use crate::x::TypeMap;
@@ -122,7 +123,7 @@ impl Expr<Defined> {
                 Ok((
                     ctx,
                     Expr::Set(
-                        x.add(type_map::key::<Defined>(), ()),
+                        x.into_type_map().add(type_map::key::<Defined>(), ()),
                         Set {
                             name: def.name,
                             expr: Box::new(

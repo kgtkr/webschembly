@@ -73,13 +73,19 @@ macro_rules! list {
 
 #[macro_export]
 macro_rules! list_pattern {
+    (=> $span:pat) => {
+        $crate::sexpr::SExpr {kind: $crate::sexpr::SExprKind::Nil, span: $span, ..}
+    };
     () => {
-        $crate::sexpr::SExpr {kind: $crate::sexpr::SExprKind::Nil, ..}
+        list_pattern!(=> _)
     };
     (..$cdr:pat) => {
         $cdr
     };
+    ($car:pat => $span:pat, $($t:tt)*) => {
+        $crate::sexpr::SExpr {kind: $crate::sexpr::SExprKind::Cons(box $crate::sexpr::Cons{car: $car, cdr: list_pattern!($($t)*)}), span: $span, ..}
+    };
     ($car:pat, $($t:tt)*) => {
-        $crate::sexpr::SExpr {kind: $crate::sexpr::SExprKind::Cons(box $crate::sexpr::Cons{car: $car, cdr: list_pattern!($($t)*)}), ..}
+        list_pattern!($car => _, $($t)*)
     };
 }
