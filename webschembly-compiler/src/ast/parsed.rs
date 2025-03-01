@@ -1,11 +1,8 @@
-use frunk::hlist::h_cons;
-use frunk::{field, HNil};
-
 use super::ast::*;
 use crate::compiler_error;
 use crate::error::Result;
 use crate::sexpr::{SExpr, SExprKind};
-use crate::x::{BasePhase, FamilyX, Phase};
+use crate::x::{type_map, BasePhase, FamilyX, Phase};
 
 #[derive(Debug, Clone)]
 pub enum Parsed {}
@@ -53,7 +50,7 @@ impl Ast<Parsed> {
             .map(Expr::from_sexpr)
             .collect::<Result<Vec<_>>>()?;
         Ok(Ast {
-            x: h_cons(field![Parsed, ()], HNil),
+            x: type_map::singleton(type_map::key::<Parsed>(), ()),
             exprs,
         })
     }
@@ -66,39 +63,42 @@ impl Expr<Parsed> {
                 kind: SExprKind::Bool(b),
                 ..
             } => Ok(Expr::Literal(
-                h_cons(field![Parsed, ()], HNil),
+                type_map::singleton(type_map::key::<Parsed>(), ()),
                 Literal::Bool(b),
             )),
             SExpr {
                 kind: SExprKind::Int(i),
                 ..
             } => Ok(Expr::Literal(
-                h_cons(field![Parsed, ()], HNil),
+                type_map::singleton(type_map::key::<Parsed>(), ()),
                 Literal::Int(i),
             )),
             SExpr {
                 kind: SExprKind::String(s),
                 ..
             } => Ok(Expr::Literal(
-                h_cons(field![Parsed, ()], HNil),
+                type_map::singleton(type_map::key::<Parsed>(), ()),
                 Literal::String(s),
             )),
             SExpr {
                 kind: SExprKind::Symbol(s),
                 ..
-            } => Ok(Expr::Var(h_cons(field![Parsed, ()], HNil), s)),
+            } => Ok(Expr::Var(
+                type_map::singleton(type_map::key::<Parsed>(), ()),
+                s,
+            )),
             SExpr {
                 kind: SExprKind::Nil,
                 ..
             } => Ok(Expr::Literal(
-                h_cons(field![Parsed, ()], HNil),
+                type_map::singleton(type_map::key::<Parsed>(), ()),
                 Literal::Nil,
             )),
             SExpr {
                 kind: SExprKind::Char(c),
                 ..
             } => Ok(Expr::Literal(
-                h_cons(field![Parsed, ()], HNil),
+                type_map::singleton(type_map::key::<Parsed>(), ()),
                 Literal::Char(c),
             )),
             list_pattern![
@@ -109,7 +109,7 @@ impl Expr<Parsed> {
                 ..cdr
             ] => match cdr {
                 list_pattern![sexpr,] => Ok(Expr::Literal(
-                    h_cons(field![Parsed, ()], HNil),
+                    type_map::singleton(type_map::key::<Parsed>(), ()),
                     Literal::Quote(sexpr),
                 )),
                 _ => Err(compiler_error!("Invalid quote expression")),
@@ -128,7 +128,7 @@ impl Expr<Parsed> {
                     },
                     expr,
                 ] => Ok(Expr::Define(
-                    h_cons(field![Parsed, ()], HNil),
+                    type_map::singleton(type_map::key::<Parsed>(), ()),
                     Define {
                         name,
                         expr: Box::new(Expr::from_sexpr(expr)?),
@@ -144,7 +144,7 @@ impl Expr<Parsed> {
                     ],
                     ..exprs
                 ] => Ok(Expr::Define(
-                    h_cons(field![Parsed, ()], HNil),
+                    type_map::singleton(type_map::key::<Parsed>(), ()),
                     Define {
                         name,
                         expr: Box::new(Self::parse_lambda(args, exprs)?),
@@ -174,7 +174,7 @@ impl Expr<Parsed> {
                     let then = Expr::from_sexpr(then)?;
                     let els = Expr::from_sexpr(els)?;
                     Ok(Expr::If(
-                        h_cons(field![Parsed, ()], HNil),
+                        type_map::singleton(type_map::key::<Parsed>(), ()),
                         If {
                             cond: Box::new(cond),
                             then: Box::new(then),
@@ -216,7 +216,7 @@ impl Expr<Parsed> {
                         .collect::<Result<Vec<_>>>()?;
 
                     Ok(Expr::Let(
-                        h_cons(field![Parsed, ()], HNil),
+                        type_map::singleton(type_map::key::<Parsed>(), ()),
                         Let { bindings, body },
                     ))
                 }
@@ -236,7 +236,7 @@ impl Expr<Parsed> {
                     .map(Expr::from_sexpr)
                     .collect::<Result<Vec<_>>>()?;
                 Ok(Expr::Begin(
-                    h_cons(field![Parsed, ()], HNil),
+                    type_map::singleton(type_map::key::<Parsed>(), ()),
                     Begin { exprs },
                 ))
             }
@@ -256,7 +256,7 @@ impl Expr<Parsed> {
                 ] => {
                     let expr = Expr::from_sexpr(expr)?;
                     Ok(Expr::Set(
-                        h_cons(field![Parsed, ()], HNil),
+                        type_map::singleton(type_map::key::<Parsed>(), ()),
                         Set {
                             name,
                             expr: Box::new(expr),
@@ -274,7 +274,7 @@ impl Expr<Parsed> {
                     .map(Expr::from_sexpr)
                     .collect::<Result<Vec<_>>>()?;
                 Ok(Expr::Call(
-                    h_cons(field![Parsed, ()], HNil),
+                    type_map::singleton(type_map::key::<Parsed>(), ()),
                     Call {
                         func: Box::new(func),
                         args: args,
@@ -301,7 +301,7 @@ impl Expr<Parsed> {
             .map(Expr::from_sexpr)
             .collect::<Result<Vec<_>>>()?;
         Ok(Expr::Lambda(
-            h_cons(field![Parsed, ()], HNil),
+            type_map::singleton(type_map::key::<Parsed>(), ()),
             Lambda { args, body: exprs },
         ))
     }

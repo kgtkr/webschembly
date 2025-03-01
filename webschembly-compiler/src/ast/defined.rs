@@ -1,15 +1,11 @@
-use std::marker::PhantomData;
-
-use frunk::field;
-use frunk::hlist::h_cons;
-
 use super::ast::*;
 use super::Desugared;
 use crate::compiler_error;
 use crate::error::Result;
-use crate::x::by_phase;
+use crate::x::type_map;
 use crate::x::FamilyX;
 use crate::x::Phase;
+use crate::x::TypeMap;
 
 // 変数の巻き上げを行うためにラムダ式で定義されている変数の名前リストを作成する
 // また、変数の重複チェックと、defineできない場所でdefineが行われていないかも確認する
@@ -63,7 +59,7 @@ impl Ast<Defined> {
         let new_exprs: Vec<Expr<Defined>> =
             Expr::<Defined>::from_block(ast.exprs, DefineContext::Global, &mut Vec::new())?;
         Ok(Ast {
-            x: h_cons(field![Defined, ()], ast.x),
+            x: ast.x.add(type_map::key::<Defined>(), ()),
             exprs: new_exprs,
         })
     }
@@ -95,11 +91,11 @@ impl Expr<Defined> {
         match expr {
             Expr::Literal(x, lit) => Ok((
                 ctx.to_undefinable_if_local(),
-                Expr::Literal(h_cons(field![Defined, ()], x), lit),
+                Expr::Literal(x.add(type_map::key::<Defined>(), ()), lit),
             )),
             Expr::Var(x, var) => Ok((
                 ctx.to_undefinable_if_local(),
-                Expr::Var(h_cons(field![Defined, ()], x), var),
+                Expr::Var(x.add(type_map::key::<Defined>(), ()), var),
             )),
             Expr::Define(x, def) => {
                 match ctx {
@@ -126,7 +122,7 @@ impl Expr<Defined> {
                 Ok((
                     ctx,
                     Expr::Set(
-                        h_cons(field![Defined, ()], x),
+                        x.add(type_map::key::<Defined>(), ()),
                         Set {
                             name: def.name,
                             expr: Box::new(
@@ -144,7 +140,10 @@ impl Expr<Defined> {
                 Ok((
                     ctx,
                     Expr::Lambda(
-                        h_cons(field![Defined, DefinedLambdaR { defines: names }], x),
+                        x.add(
+                            type_map::key::<Defined>(),
+                            DefinedLambdaR { defines: names },
+                        ),
                         Lambda {
                             args: lambda.args,
                             body: new_body,
@@ -155,7 +154,7 @@ impl Expr<Defined> {
             Expr::If(x, if_) => Ok((
                 ctx.to_undefinable_if_local(),
                 Expr::If(
-                    h_cons(field![Defined, ()], x),
+                    x.add(type_map::key::<Defined>(), ()),
                     If {
                         cond: Box::new(
                             Self::from_expr(*if_.cond, ctx.to_undefinable_if_local(), names)
@@ -186,7 +185,7 @@ impl Expr<Defined> {
                 Ok((
                     ctx.to_undefinable_if_local(),
                     Expr::Call(
-                        h_cons(field![Defined, ()], x),
+                        x.add(type_map::key::<Defined>(), ()),
                         Call {
                             func: Box::new(new_func),
                             args: new_args,
@@ -198,7 +197,10 @@ impl Expr<Defined> {
                 let new_exprs = Self::from_block(begin.exprs, ctx, names)?;
                 Ok((
                     ctx.to_undefinable_if_local(),
-                    Expr::Begin(h_cons(field![Defined, ()], x), Begin { exprs: new_exprs }),
+                    Expr::Begin(
+                        x.add(type_map::key::<Defined>(), ()),
+                        Begin { exprs: new_exprs },
+                    ),
                 ))
             }
             Expr::Set(x, set) => {
@@ -207,7 +209,7 @@ impl Expr<Defined> {
                 Ok((
                     ctx.to_undefinable_if_local(),
                     Expr::Set(
-                        h_cons(field![Defined, ()], x),
+                        x.add(type_map::key::<Defined>(), ()),
                         Set {
                             name: set.name,
                             expr: Box::new(new_expr),
@@ -215,7 +217,7 @@ impl Expr<Defined> {
                     ),
                 ))
             }
-            Expr::Let(x, _) => by_phase(PhantomData::<Desugared>, x),
+            Expr::Let(x, _) => x.get_owned(type_map::key::<Desugared>()),
         }
     }
 

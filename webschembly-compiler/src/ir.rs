@@ -1,12 +1,9 @@
-use std::{
-    collections::{HashMap, HashSet},
-    marker::PhantomData,
-};
+use std::collections::{HashMap, HashSet};
 
 use crate::{
-    ast::{self, Defined, Desugared, Used},
+    ast::{self, Desugared, Used},
     sexpr,
-    x::{by_phase_ref, RunX},
+    x::{type_map, RunX, TypeMap},
 };
 use strum::IntoEnumIterator;
 
@@ -139,7 +136,7 @@ impl IrGenerator {
     }
 
     fn gen(mut self, ast: &ast::Ast<ast::Final>) -> Ir {
-        self.box_vars = by_phase_ref(PhantomData::<Used>, &ast.x).box_vars.clone();
+        self.box_vars = ast.x.get_ref(type_map::key::<Used>()).box_vars.clone();
         let func = FuncGenerator::new(&mut self).entry_gen(ast);
         let func_id = self.funcs.len();
         self.funcs.push(func);
@@ -185,7 +182,8 @@ impl<'a> FuncGenerator<'a> {
             block_gen.stats.push(Stat::Expr(
                 None,
                 Expr::InitGlobals(
-                    by_phase_ref(PhantomData::<Used>, &ast.x)
+                    ast.x
+                        .get_ref(type_map::key::<Used>())
                         .global_vars
                         .iter()
                         .map(|x| x.0)
@@ -215,23 +213,25 @@ impl<'a> FuncGenerator<'a> {
         lambda: &ast::Lambda<ast::Final>,
     ) -> Func {
         let self_closure = self.local(Type::Val(ValType::Closure));
-        for arg in &by_phase_ref(PhantomData::<Used>, &x).args {
+        for arg in &x.get_ref(type_map::key::<Used>()).args {
             self.define_ast_local(*arg);
         }
 
         let mut restore_envs = Vec::new();
         // 環境を復元するためのローカル変数を定義
-        for var_id in by_phase_ref(PhantomData::<Used>, &x).captures.iter() {
+        for var_id in x.get_ref(type_map::key::<Used>()).captures.iter() {
             self.define_ast_local(*var_id);
         }
         // 環境の型を収集
-        let env_types = by_phase_ref(PhantomData::<Used>, &x)
+        let env_types = x
+            .get_ref(type_map::key::<Used>())
             .captures
             .iter()
             .map(|id| self.locals[*self.local_ids.get(id).unwrap()])
             .collect::<Vec<_>>();
         // 環境を復元する処理を追加
-        for (i, var_id) in by_phase_ref(PhantomData::<Used>, &x)
+        for (i, var_id) in x
+            .get_ref(type_map::key::<Used>())
             .captures
             .iter()
             .enumerate()
@@ -245,7 +245,7 @@ impl<'a> FuncGenerator<'a> {
 
         let mut create_mut_cells = Vec::new();
 
-        for id in &by_phase_ref(PhantomData::<Used>, &x).defines {
+        for id in &x.get_ref(type_map::key::<Used>()).defines {
             let local = self.define_ast_local(*id);
             if self.ir_generator.box_vars.contains(&id) {
                 create_mut_cells.push(Stat::Expr(Some(local), Expr::CreateMutCell));
@@ -339,9 +339,10 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                     self.quote(result, sexpr);
                 }
             },
-            ast::Expr::Define(x, _) => *by_phase_ref(PhantomData::<Defined>, x),
+            ast::Expr::Define(x, _) => *x.get_ref(type_map::key::<Used>()),
             ast::Expr::Lambda(x, lambda) => {
-                let captures = by_phase_ref(PhantomData::<Used>, x)
+                let captures = x
+                    .get_ref(type_map::key::<Used>())
                     .captures
                     .iter()
                     .map(|id| *self.func_gen.local_ids.get(id).unwrap())
@@ -383,7 +384,7 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                 if let ast::Expr::Var(x, _) = func.as_ref()
                     && let ast::UsedVarR {
                         var_id: ast::VarId::Builtin(builtin),
-                    } = by_phase_ref(PhantomData::<Used>, x)
+                    } = x.get_ref(type_map::key::<Used>())
                 {
                     let builtin_typ = builtin_func_type(*builtin);
                     debug_assert!(builtin_typ.rets.len() == 1);
@@ -468,7 +469,7 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                     ));
                 }
             }
-            ast::Expr::Var(x, _) => match &by_phase_ref(PhantomData::<Used>, x).var_id {
+            ast::Expr::Var(x, _) => match &x.get_ref(type_map::key::<Used>()).var_id {
                 ast::VarId::Local(id) => {
                     if self.func_gen.ir_generator.box_vars.contains(&id) {
                         self.stats.push(Stat::Expr(
@@ -496,7 +497,7 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                 self.stats.extend(block_gen.stats);
             }
             ast::Expr::Set(x, ast::Set { expr, .. }) => {
-                match &by_phase_ref(PhantomData::<Used>, x).var_id {
+                match &x.get_ref(type_map::key::<Used>()).var_id {
                     ast::VarId::Local(id) => {
                         if self.func_gen.ir_generator.box_vars.contains(&id) {
                             let boxed_local = self.func_gen.local(Type::Boxed);
@@ -536,7 +537,7 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                     }
                 }
             }
-            ast::Expr::Let(x, _) => *by_phase_ref(PhantomData::<Desugared>, x),
+            ast::Expr::Let(x, _) => *x.get_ref(type_map::key::<Desugared>()),
         }
     }
 

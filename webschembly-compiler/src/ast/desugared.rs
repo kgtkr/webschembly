@@ -1,10 +1,9 @@
-use frunk::field;
-use frunk::hlist::h_cons;
-
 use super::ast::*;
 use super::Parsed;
+use crate::x::type_map;
 use crate::x::FamilyX;
 use crate::x::Phase;
+use crate::x::TypeMap;
 
 #[derive(Debug, Clone)]
 pub enum Desugared {}
@@ -48,7 +47,7 @@ impl FamilyX<Desugared> for LetX {
 impl Ast<Desugared> {
     pub fn from_ast(ast: Ast<<Desugared as Phase>::Prev>) -> Self {
         Ast {
-            x: h_cons(field![Desugared, ()], ast.x),
+            x: ast.x.add(type_map::key::<Desugared>(), ()),
             exprs: ast.exprs.into_iter().map(Expr::from_expr).collect(),
         }
     }
@@ -57,24 +56,24 @@ impl Ast<Desugared> {
 impl Expr<Desugared> {
     fn from_expr(expr: Expr<<Desugared as Phase>::Prev>) -> Self {
         match expr {
-            Expr::Literal(x, lit) => Expr::Literal(h_cons(field![Desugared, ()], x), lit),
-            Expr::Var(x, var) => Expr::Var(h_cons(field![Desugared, ()], x), var),
+            Expr::Literal(x, lit) => Expr::Literal(x.add(type_map::key::<Desugared>(), ()), lit),
+            Expr::Var(x, var) => Expr::Var(x.add(type_map::key::<Desugared>(), ()), var),
             Expr::Define(x, def) => Expr::Define(
-                h_cons(field![Desugared, ()], x),
+                x.add(type_map::key::<Desugared>(), ()),
                 Define {
                     name: def.name,
                     expr: Box::new(Self::from_expr(*def.expr)),
                 },
             ),
             Expr::Lambda(x, lambda) => Expr::Lambda(
-                h_cons(field![Desugared, ()], x),
+                x.add(type_map::key::<Desugared>(), ()),
                 Lambda {
                     args: lambda.args,
                     body: lambda.body.into_iter().map(Self::from_expr).collect(),
                 },
             ),
             Expr::If(x, if_) => Expr::If(
-                h_cons(field![Desugared, ()], x),
+                x.add(type_map::key::<Desugared>(), ()),
                 If {
                     cond: Box::new(Self::from_expr(*if_.cond)),
                     then: Box::new(Self::from_expr(*if_.then)),
@@ -82,20 +81,20 @@ impl Expr<Desugared> {
                 },
             ),
             Expr::Call(x, call) => Expr::Call(
-                h_cons(field![Desugared, ()], x),
+                x.add(type_map::key::<Desugared>(), ()),
                 Call {
                     func: Box::new(Self::from_expr(*call.func)),
                     args: call.args.into_iter().map(Self::from_expr).collect(),
                 },
             ),
             Expr::Begin(x, begin) => Expr::Begin(
-                h_cons(field![Desugared, ()], x),
+                x.add(type_map::key::<Desugared>(), ()),
                 Begin {
                     exprs: begin.exprs.into_iter().map(Self::from_expr).collect(),
                 },
             ),
             Expr::Set(x, set) => Expr::Set(
-                h_cons(field![Desugared, ()], x),
+                x.add(type_map::key::<Desugared>(), ()),
                 Set {
                     name: set.name,
                     expr: Box::new(Self::from_expr(*set.expr)),
@@ -104,10 +103,10 @@ impl Expr<Desugared> {
             Expr::Let(x, let_) => {
                 let (names, exprs) = let_.bindings.into_iter().collect::<(Vec<_>, Vec<_>)>();
                 Expr::Call(
-                    h_cons(field![Desugared, ()], x.clone()),
+                    x.clone().add(type_map::key::<Desugared>(), ()),
                     Call {
                         func: Box::new(Expr::Lambda(
-                            h_cons(field![Desugared, ()], x),
+                            x.add(type_map::key::<Desugared>(), ()),
                             Lambda {
                                 args: names,
                                 body: let_.body.into_iter().map(Self::from_expr).collect(),

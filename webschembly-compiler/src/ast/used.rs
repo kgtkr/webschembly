@@ -1,15 +1,12 @@
-use frunk::field;
-use frunk::hlist::h_cons;
-
 use super::ast::*;
 use super::defined::*;
 use super::Desugared;
-use crate::x::by_phase;
+use crate::x::type_map;
 use crate::x::FamilyX;
 use crate::x::Phase;
+use crate::x::TypeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::marker::PhantomData;
 
 #[derive(Debug, Clone)]
 pub enum Used {}
@@ -198,19 +195,16 @@ impl Ast<Used> {
             .collect();
 
         Ast {
-            x: h_cons(
-                field![
-                    Used,
-                    UsedAstR {
-                        box_vars: var_id_gen
-                            .mutated_vars
-                            .intersection(&var_id_gen.captured_vars)
-                            .copied()
-                            .collect(),
-                        global_vars: var_id_gen.use_globals.clone(),
-                    }
-                ],
-                ast.x,
+            x: ast.x.add(
+                type_map::key::<Used>(),
+                UsedAstR {
+                    box_vars: var_id_gen
+                        .mutated_vars
+                        .intersection(&var_id_gen.captured_vars)
+                        .copied()
+                        .collect(),
+                    global_vars: var_id_gen.use_globals.clone(),
+                },
             ),
             exprs: new_exprs,
         }
@@ -225,7 +219,7 @@ impl Expr<Used> {
         state: &mut State,
     ) -> Self {
         match expr {
-            Expr::Literal(x, lit) => Expr::Literal(h_cons(field![Used, ()], x), lit),
+            Expr::Literal(x, lit) => Expr::Literal(x.add(type_map::key::<Used>(), ()), lit),
             Expr::Var(x, var) => {
                 let var_id = match ctx {
                     Context::Global => var_id_gen.get_global_or_builtins(&var),
@@ -240,9 +234,9 @@ impl Expr<Used> {
                         }
                     }
                 };
-                Expr::Var(h_cons(field![Used, UsedVarR { var_id }], x), var)
+                Expr::Var(x.add(type_map::key::<Used>(), UsedVarR { var_id }), var)
             }
-            Expr::Define(x, _) => by_phase(PhantomData::<Defined>, x),
+            Expr::Define(x, _) => x.get_owned(type_map::key::<Defined>()),
             Expr::Lambda(x, lambda) => {
                 let mut new_env = HashMap::new();
                 match ctx {
@@ -275,7 +269,8 @@ impl Expr<Used> {
                     })
                     .collect::<Vec<_>>();
 
-                let defines: Vec<_> = by_phase(PhantomData::<Defined>, x.clone())
+                let defines: Vec<_> = x
+                    .get_ref(type_map::key::<Defined>())
                     .defines
                     .iter()
                     .map(|def| {
@@ -313,16 +308,13 @@ impl Expr<Used> {
                 }
 
                 Expr::Lambda(
-                    h_cons(
-                        field![
-                            Used,
-                            UsedLambdaR {
-                                args: args,
-                                defines: defines,
-                                captures: new_state.captures.into_iter().collect(), // 非決定的だが問題ないはず
-                            }
-                        ],
-                        x,
+                    x.add(
+                        type_map::key::<Used>(),
+                        UsedLambdaR {
+                            args: args,
+                            defines: defines,
+                            captures: new_state.captures.into_iter().collect(), // 非決定的だが問題ないはず
+                        },
                     ),
                     Lambda {
                         args: lambda.args,
@@ -335,7 +327,7 @@ impl Expr<Used> {
                 let new_then = Box::new(Self::from_expr(*if_.then, ctx, var_id_gen, state));
                 let new_els = Box::new(Self::from_expr(*if_.els, ctx, var_id_gen, state));
                 Expr::If(
-                    h_cons(field![Used, ()], x),
+                    x.add(type_map::key::<Used>(), ()),
                     If {
                         cond: new_cond,
                         then: new_then,
@@ -351,7 +343,7 @@ impl Expr<Used> {
                     .map(|arg| Self::from_expr(arg, ctx, var_id_gen, state))
                     .collect();
                 Expr::Call(
-                    h_cons(field![Used, ()], x),
+                    x.add(type_map::key::<Used>(), ()),
                     Call {
                         func: new_func,
                         args: new_args,
@@ -364,7 +356,10 @@ impl Expr<Used> {
                     .into_iter()
                     .map(|expr| Self::from_expr(expr, ctx, var_id_gen, state))
                     .collect();
-                Expr::Begin(h_cons(field![Used, ()], x), Begin { exprs: new_exprs })
+                Expr::Begin(
+                    x.add(type_map::key::<Used>(), ()),
+                    Begin { exprs: new_exprs },
+                )
             }
             Expr::Set(x, set) => {
                 let var_id = match ctx {
@@ -383,14 +378,14 @@ impl Expr<Used> {
                 };
                 let new_expr = Self::from_expr(*set.expr, ctx, var_id_gen, state);
                 Expr::Set(
-                    h_cons(field![Used, UsedSetR { var_id }], x),
+                    x.add(type_map::key::<Used>(), UsedSetR { var_id }),
                     Set {
                         name: set.name,
                         expr: Box::new(new_expr),
                     },
                 )
             }
-            Expr::Let(x, _) => by_phase(PhantomData::<Desugared>, x),
+            Expr::Let(x, _) => x.get_owned(type_map::key::<Desugared>()),
         }
     }
 }
