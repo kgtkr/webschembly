@@ -15,7 +15,6 @@ pub mod codegen;
 pub mod compiler;
 #[macro_use]
 pub mod error;
-mod by_name_field_ref_plucker;
 pub mod ir;
 pub mod sexpr_parser;
 pub mod span;

@@ -1,9 +1,11 @@
+mod by_name_field_ref_plucker;
+
 use std::marker::PhantomData;
 
 use frunk::labelled::{ByNameFieldPlucker, Field};
 use frunk::{HCons, HNil};
 
-use crate::by_name_field_ref_plucker::ByNameFieldRefPlucker;
+use by_name_field_ref_plucker::ByNameFieldRefPlucker;
 
 // trees that grow: https://github.com/guygastineau/rust-trees-that-grow/blob/main/src/lib.rs
 pub trait Phase: Sized {
