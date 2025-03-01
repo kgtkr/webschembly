@@ -19,7 +19,7 @@ impl Compiler {
     }
 
     pub fn compile(&mut self, input: &str, is_stdlib: bool) -> crate::error::Result<Vec<u8>> {
-        let tokens = lexer::lex(&input).map_err(|e| compiler_error!("{}", e))?;
+        let tokens = lexer::lex(&input)?;
         let sexprs =
             sexpr_parser::parse(tokens.as_slice()).map_err(|e| compiler_error!("{}", e))?;
         let ast = self.ast_gen.gen_ast(sexprs)?;
