@@ -12,10 +12,11 @@ use nom::{
     bytes::complete::{tag, take_while, take_while1},
     character::complete::{anychar, satisfy},
     combinator::{consumed, eof as nom_eof, map, map_res},
-    error::{ErrorKind, FromExternalError, ParseError},
+    error::{ErrorKind, FromExternalError, ParseError, VerboseError, VerboseErrorKind},
     multi::many0,
-    IResult, Parser,
+    Finish, IResult, Parser,
 };
+use std::fmt::Write;
 
 type LocatedStr<'a> = LocatedSpan<&'a str>;
 trait ErrorBound<'a> = ParseError<LocatedStr<'a>> + FromExternalError<LocatedStr<'a>, Self>;
@@ -112,7 +113,7 @@ fn token<'a, E: ErrorBound<'a>>(input: LocatedStr<'a>) -> IResult<LocatedStr<'a>
         input,
         Token {
             kind,
-            span: to_span(pos),
+            span: to_span(&pos),
         },
     ))
 }
@@ -124,7 +125,7 @@ fn eof<'a, E: ErrorBound<'a>>(input: LocatedStr<'a>) -> IResult<LocatedStr<'a>, 
         input,
         Token {
             kind: TokenKind::Eof,
-            span: to_span(pos),
+            span: to_span(&pos),
         },
     ))
 }
@@ -140,7 +141,7 @@ fn tokens<'a, E: ErrorBound<'a>>(input: LocatedStr<'a>) -> IResult<LocatedStr<'a
 }
 
 // トークンが複数行にまたがることはないという前提
-pub fn to_span(located: LocatedStr) -> Span {
+fn to_span(located: &LocatedStr) -> Span {
     let start = to_pos(located);
     let end = Pos::new(
         start.line,
@@ -149,17 +150,62 @@ pub fn to_span(located: LocatedStr) -> Span {
     Span::new(start, end)
 }
 
-pub fn to_pos(located: LocatedStr) -> Pos {
+fn to_pos(located: &LocatedStr) -> Pos {
     Pos::new(
         located.location_line() as usize,
         located.get_utf8_column() as usize,
     )
 }
 
+fn convert_error(e: VerboseError<LocatedStr>) -> CompilerError {
+    let mut result = String::new();
+
+    for (substring, kind) in e.errors.iter() {
+        let pos = to_pos(substring);
+
+        match kind {
+            VerboseErrorKind::Char(c) => {
+                if let Some(actual) = substring.chars().next() {
+                    write!(
+                        &mut result,
+                        "{pos}: expected '{expected}', found {actual}\n",
+                        pos = pos,
+                        expected = c,
+                        actual = actual,
+                    )
+                } else {
+                    write!(
+                        &mut result,
+                        "{pos}: expected '{expected}', got end of input\n",
+                        pos = pos,
+                        expected = c,
+                    )
+                }
+            }
+            VerboseErrorKind::Context(s) => write!(
+                &mut result,
+                "{pos}, in {context}:\n",
+                pos = pos,
+                context = s,
+            ),
+            VerboseErrorKind::Nom(e) => write!(
+                &mut result,
+                "{pos}, in {nom_err:?}:\n",
+                pos = pos,
+                nom_err = e,
+            ),
+        }
+        .unwrap();
+    }
+
+    CompilerError(result)
+}
+
 pub fn lex(input: &str) -> Result<Vec<Token>, CompilerError> {
     let input = LocatedStr::new(input);
-    let (input, tokens) =
-        tokens(input).map_err(|e: nom::Err<nom::error::Error<_>>| compiler_error!("{}", e))?;
+    let (input, tokens) = tokens::<nom::error::VerboseError<_>>(input)
+        .finish()
+        .map_err(convert_error)?;
     debug_assert!(input.len() == 0);
     Ok(tokens)
 }
