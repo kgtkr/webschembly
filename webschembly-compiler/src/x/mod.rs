@@ -1,5 +1,3 @@
-mod by_name_field_ref_plucker;
-
 pub mod type_map;
 pub use type_map::TypeMap;
 

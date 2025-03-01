@@ -7,16 +7,17 @@ use frunk::{
     HCons, HNil,
 };
 
-use super::by_name_field_ref_plucker::ByNameFieldRefPlucker;
-
 pub trait TypeMap {
     fn get_owned<K, I>(self, _k: Key<K>) -> <Self as ByNameFieldPlucker<K, I>>::TargetValue
     where
         Self: ByNameFieldPlucker<K, I>;
 
-    fn get_ref<K, I>(&self, _k: Key<K>) -> &<Self as ByNameFieldRefPlucker<K, I>>::TargetValue
+    fn get_ref<'a, K, I>(
+        &'a self,
+        _k: Key<K>,
+    ) -> <&'a Self as ByNameFieldPlucker<K, I>>::TargetValue
     where
-        Self: ByNameFieldRefPlucker<K, I>;
+        &'a Self: ByNameFieldPlucker<K, I>;
 
     fn add<K, V>(self, _k: Key<K>, value: V) -> HCons<Field<K, V>, Self>
     where
@@ -31,13 +32,14 @@ impl<T> TypeMap for T {
         ByNameFieldPlucker::<K, I>::pluck_by_name(self).0.value
     }
 
-    fn get_ref<K, I>(&self, _k: Key<K>) -> &<Self as ByNameFieldRefPlucker<K, I>>::TargetValue
+    fn get_ref<'a, K, I>(
+        &'a self,
+        _k: Key<K>,
+    ) -> <&'a Self as ByNameFieldPlucker<K, I>>::TargetValue
     where
-        Self: ByNameFieldRefPlucker<K, I>,
+        &'a Self: ByNameFieldPlucker<K, I>,
     {
-        ByNameFieldRefPlucker::<K, I>::ref_pluck_by_name(self)
-            .0
-            .value
+        ByNameFieldPlucker::<K, I>::pluck_by_name(self).0.value
     }
 
     fn add<K, V>(self, _k: Key<K>, value: V) -> Add<K, V, Self>

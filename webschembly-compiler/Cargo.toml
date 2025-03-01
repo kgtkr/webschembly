@@ -4,8 +4,8 @@ name = "webschembly-compiler"
 version = "0.1.0"
 
 [dependencies]
-frunk = "0.4.3"
-frunk_core = "0.4.3"
+frunk = {git = "https://github.com/kgtkr/frunk.git", branch = "ref-Plucker"}
+frunk_core = {git = "https://github.com/kgtkr/frunk.git", branch = "ref-Plucker"}
 log = "0.4.26"
 nom = "7.1.3"
 nom_locate = "4.2.0"

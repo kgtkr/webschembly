@@ -26,7 +26,7 @@ args@{
   ignoreLockHash,
 }:
 let
-  nixifiedLockHash = "0879f64ef55ad2e457b02698834d32d7acff4000f6620196c15be29ab3a2fe35";
+  nixifiedLockHash = "4adaae1b76b7f1419b22fa54d38ab1c7b724faa2d49c97beb0a73862d6bc2a6c";
   workspaceSrc = if args.workspaceSrc == null then ./. else args.workspaceSrc;
   currentLockHash = builtins.hashFile "sha256" (workspaceSrc + /Cargo.lock);
   lockHashIgnored = if ignoreLockHash
@@ -224,11 +224,16 @@ in
     src = fetchCratesIo { inherit name version; sha256 = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"; };
   });
   
-  "registry+https://github.com/rust-lang/crates.io-index".frunk."0.4.3" = overridableMkRustCrate (profileName: rec {
+  "git+https://github.com/kgtkr/frunk.git".frunk."0.4.3" = overridableMkRustCrate (profileName: rec {
     name = "frunk";
     version = "0.4.3";
-    registry = "registry+https://github.com/rust-lang/crates.io-index";
-    src = fetchCratesIo { inherit name version; sha256 = "874b6a17738fc273ec753618bac60ddaeac48cb1d7684c3e7bd472e57a28b817"; };
+    registry = "git+https://github.com/kgtkr/frunk.git";
+    src = fetchCrateGit {
+      url = https://github.com/kgtkr/frunk.git;
+      name = "frunk";
+      version = "0.4.3";
+      rev = "8795e341455d2425f1b3b4efbab3dad9fba034ef";
+      ref = "ref-Plucker";};
     features = builtins.concatLists [
       [ "alloc" ]
       [ "default" ]
@@ -237,18 +242,23 @@ in
       [ "validated" ]
     ];
     dependencies = {
-      frunk_core = (rustPackages."registry+https://github.com/rust-lang/crates.io-index".frunk_core."0.4.3" { inherit profileName; }).out;
-      frunk_derives = (buildRustPackages."registry+https://github.com/rust-lang/crates.io-index".frunk_derives."0.4.3" { profileName = "__noProfile"; }).out;
-      frunk_proc_macros = (buildRustPackages."registry+https://github.com/rust-lang/crates.io-index".frunk_proc_macros."0.1.3" { profileName = "__noProfile"; }).out;
+      frunk_core = (rustPackages."git+https://github.com/kgtkr/frunk.git".frunk_core."0.4.3" { inherit profileName; }).out;
+      frunk_derives = (buildRustPackages."git+https://github.com/kgtkr/frunk.git".frunk_derives."0.4.3" { profileName = "__noProfile"; }).out;
+      frunk_proc_macros = (buildRustPackages."git+https://github.com/kgtkr/frunk.git".frunk_proc_macros."0.1.3" { profileName = "__noProfile"; }).out;
       serde = (rustPackages."registry+https://github.com/rust-lang/crates.io-index".serde."1.0.218" { inherit profileName; }).out;
     };
   });
   
-  "registry+https://github.com/rust-lang/crates.io-index".frunk_core."0.4.3" = overridableMkRustCrate (profileName: rec {
+  "git+https://github.com/kgtkr/frunk.git".frunk_core."0.4.3" = overridableMkRustCrate (profileName: rec {
     name = "frunk_core";
     version = "0.4.3";
-    registry = "registry+https://github.com/rust-lang/crates.io-index";
-    src = fetchCratesIo { inherit name version; sha256 = "3529a07095650187788833d585c219761114005d5976185760cf794d265b6a5c"; };
+    registry = "git+https://github.com/kgtkr/frunk.git";
+    src = fetchCrateGit {
+      url = https://github.com/kgtkr/frunk.git;
+      name = "frunk_core";
+      version = "0.4.3";
+      rev = "8795e341455d2425f1b3b4efbab3dad9fba034ef";
+      ref = "ref-Plucker";};
     features = builtins.concatLists [
       [ "alloc" ]
       [ "default" ]
@@ -258,39 +268,54 @@ in
     };
   });
   
-  "registry+https://github.com/rust-lang/crates.io-index".frunk_derives."0.4.3" = overridableMkRustCrate (profileName: rec {
+  "git+https://github.com/kgtkr/frunk.git".frunk_derives."0.4.3" = overridableMkRustCrate (profileName: rec {
     name = "frunk_derives";
     version = "0.4.3";
-    registry = "registry+https://github.com/rust-lang/crates.io-index";
-    src = fetchCratesIo { inherit name version; sha256 = "e99b8b3c28ae0e84b604c75f721c21dc77afb3706076af5e8216d15fd1deaae3"; };
+    registry = "git+https://github.com/kgtkr/frunk.git";
+    src = fetchCrateGit {
+      url = https://github.com/kgtkr/frunk.git;
+      name = "frunk_derives";
+      version = "0.4.3";
+      rev = "8795e341455d2425f1b3b4efbab3dad9fba034ef";
+      ref = "ref-Plucker";};
     dependencies = {
-      frunk_proc_macro_helpers = (rustPackages."registry+https://github.com/rust-lang/crates.io-index".frunk_proc_macro_helpers."0.1.3" { inherit profileName; }).out;
+      frunk_proc_macro_helpers = (rustPackages."git+https://github.com/kgtkr/frunk.git".frunk_proc_macro_helpers."0.1.3" { inherit profileName; }).out;
       quote = (rustPackages."registry+https://github.com/rust-lang/crates.io-index".quote."1.0.38" { inherit profileName; }).out;
       syn = (rustPackages."registry+https://github.com/rust-lang/crates.io-index".syn."2.0.98" { inherit profileName; }).out;
     };
   });
   
-  "registry+https://github.com/rust-lang/crates.io-index".frunk_proc_macro_helpers."0.1.3" = overridableMkRustCrate (profileName: rec {
+  "git+https://github.com/kgtkr/frunk.git".frunk_proc_macro_helpers."0.1.3" = overridableMkRustCrate (profileName: rec {
     name = "frunk_proc_macro_helpers";
     version = "0.1.3";
-    registry = "registry+https://github.com/rust-lang/crates.io-index";
-    src = fetchCratesIo { inherit name version; sha256 = "05a956ef36c377977e512e227dcad20f68c2786ac7a54dacece3746046fea5ce"; };
+    registry = "git+https://github.com/kgtkr/frunk.git";
+    src = fetchCrateGit {
+      url = https://github.com/kgtkr/frunk.git;
+      name = "frunk_proc_macro_helpers";
+      version = "0.1.3";
+      rev = "8795e341455d2425f1b3b4efbab3dad9fba034ef";
+      ref = "ref-Plucker";};
     dependencies = {
-      frunk_core = (rustPackages."registry+https://github.com/rust-lang/crates.io-index".frunk_core."0.4.3" { inherit profileName; }).out;
+      frunk_core = (rustPackages."git+https://github.com/kgtkr/frunk.git".frunk_core."0.4.3" { inherit profileName; }).out;
       proc_macro2 = (rustPackages."registry+https://github.com/rust-lang/crates.io-index".proc-macro2."1.0.93" { inherit profileName; }).out;
       quote = (rustPackages."registry+https://github.com/rust-lang/crates.io-index".quote."1.0.38" { inherit profileName; }).out;
       syn = (rustPackages."registry+https://github.com/rust-lang/crates.io-index".syn."2.0.98" { inherit profileName; }).out;
     };
   });
   
-  "registry+https://github.com/rust-lang/crates.io-index".frunk_proc_macros."0.1.3" = overridableMkRustCrate (profileName: rec {
+  "git+https://github.com/kgtkr/frunk.git".frunk_proc_macros."0.1.3" = overridableMkRustCrate (profileName: rec {
     name = "frunk_proc_macros";
     version = "0.1.3";
-    registry = "registry+https://github.com/rust-lang/crates.io-index";
-    src = fetchCratesIo { inherit name version; sha256 = "67e86c2c9183662713fea27ea527aad20fb15fee635a71081ff91bf93df4dc51"; };
+    registry = "git+https://github.com/kgtkr/frunk.git";
+    src = fetchCrateGit {
+      url = https://github.com/kgtkr/frunk.git;
+      name = "frunk_proc_macros";
+      version = "0.1.3";
+      rev = "8795e341455d2425f1b3b4efbab3dad9fba034ef";
+      ref = "ref-Plucker";};
     dependencies = {
-      frunk_core = (rustPackages."registry+https://github.com/rust-lang/crates.io-index".frunk_core."0.4.3" { inherit profileName; }).out;
-      frunk_proc_macro_helpers = (rustPackages."registry+https://github.com/rust-lang/crates.io-index".frunk_proc_macro_helpers."0.1.3" { inherit profileName; }).out;
+      frunk_core = (rustPackages."git+https://github.com/kgtkr/frunk.git".frunk_core."0.4.3" { inherit profileName; }).out;
+      frunk_proc_macro_helpers = (rustPackages."git+https://github.com/kgtkr/frunk.git".frunk_proc_macro_helpers."0.1.3" { inherit profileName; }).out;
       quote = (rustPackages."registry+https://github.com/rust-lang/crates.io-index".quote."1.0.38" { inherit profileName; }).out;
       syn = (rustPackages."registry+https://github.com/rust-lang/crates.io-index".syn."2.0.98" { inherit profileName; }).out;
     };
@@ -601,8 +626,8 @@ in
     registry = "unknown";
     src = fetchCrateLocal workspaceSrc;
     dependencies = {
-      frunk = (rustPackages."registry+https://github.com/rust-lang/crates.io-index".frunk."0.4.3" { inherit profileName; }).out;
-      frunk_core = (rustPackages."registry+https://github.com/rust-lang/crates.io-index".frunk_core."0.4.3" { inherit profileName; }).out;
+      frunk = (rustPackages."git+https://github.com/kgtkr/frunk.git".frunk."0.4.3" { inherit profileName; }).out;
+      frunk_core = (rustPackages."git+https://github.com/kgtkr/frunk.git".frunk_core."0.4.3" { inherit profileName; }).out;
       log = (rustPackages."registry+https://github.com/rust-lang/crates.io-index".log."0.4.26" { inherit profileName; }).out;
       nom = (rustPackages."registry+https://github.com/rust-lang/crates.io-index".nom."7.1.3" { inherit profileName; }).out;
       nom_locate = (rustPackages."registry+https://github.com/rust-lang/crates.io-index".nom_locate."4.2.0" { inherit profileName; }).out;
