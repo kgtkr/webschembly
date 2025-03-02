@@ -2,6 +2,8 @@ name: ci
 on: push
 jobs:
   build:
+    env:
+      CI: 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
