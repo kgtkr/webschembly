@@ -3,7 +3,6 @@ use crate::{
     span::{Pos, Span},
     token::TokenKind,
 };
-use nom_locate::LocatedSpan;
 
 use super::token::Token;
 use nom::{
@@ -16,8 +15,10 @@ use nom::{
     Finish, IResult, Parser,
 };
 use std::fmt::Write;
+mod error;
+mod located;
+pub use located::LocatedStr;
 
-type LocatedStr<'a> = LocatedSpan<&'a str>;
 trait ErrorBound<'a> = ParseError<LocatedStr<'a>> + FromExternalError<LocatedStr<'a>, Self>;
 
 fn identifier<'a, E: ErrorBound<'a>>(

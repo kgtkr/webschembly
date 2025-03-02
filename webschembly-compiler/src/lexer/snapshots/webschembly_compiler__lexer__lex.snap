@@ -1,5 +1,5 @@
 ---
-source: webschembly-compiler/src/lexer.rs
+source: webschembly-compiler/src/lexer/mod.rs
 expression: result
 ---
 [

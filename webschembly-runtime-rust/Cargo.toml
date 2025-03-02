@@ -9,3 +9,4 @@ webschembly-compiler = {path = "../webschembly-compiler"}
 
 [lib]
 crate-type = ["cdylib", "rlib"]
+test = false
