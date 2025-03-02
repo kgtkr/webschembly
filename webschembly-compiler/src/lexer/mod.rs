@@ -5,6 +5,7 @@ use crate::{
 };
 
 use super::token::Token;
+use located::{to_pos, to_span};
 use nom::{
     branch::alt,
     bytes::complete::{tag, take_while, take_while1},
@@ -138,23 +139,6 @@ fn tokens<'a, E: ErrorBound<'a>>(input: LocatedStr<'a>) -> IResult<LocatedStr<'a
         tokens.push(eof_token);
         tokens
     }))
-}
-
-// トークンが複数行にまたがることはないという前提
-fn to_span(located: &LocatedStr) -> Span {
-    let start = to_pos(located);
-    let end = Pos::new(
-        start.line,
-        start.column + located.fragment().chars().count(),
-    );
-    Span::new(start, end)
-}
-
-fn to_pos(located: &LocatedStr) -> Pos {
-    Pos::new(
-        located.location_line() as usize,
-        located.get_utf8_column() as usize,
-    )
 }
 
 fn convert_error(e: VerboseError<LocatedStr>) -> CompilerError {
