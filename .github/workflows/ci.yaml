@@ -43,7 +43,7 @@ jobs:
           cargo clippy
       - name: cargo2nix
         run: |
-          cargo2nix -o
+          cargo2nix -o -l
           git diff --exit-code
       - name: Test
         run: |
