@@ -59,6 +59,7 @@ jobs:
         run: |
           npm install
           make build-playground
+          ls -l dist
       - name: Upload Playground
         uses: actions/upload-artifact@v4
         with:
