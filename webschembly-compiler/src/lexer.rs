@@ -1,5 +1,4 @@
 use crate::{
-    compiler_error,
     error::CompilerError,
     span::{Pos, Span},
     token::TokenKind,
@@ -208,4 +207,11 @@ pub fn lex(input: &str) -> Result<Vec<Token>, CompilerError> {
         .map_err(convert_error)?;
     debug_assert!(input.len() == 0);
     Ok(tokens)
+}
+
+#[test]
+fn test_lex() {
+    use insta::assert_debug_snapshot;
+    let result = lex("(+ 1 2)").unwrap();
+    assert_debug_snapshot!(result);
 }

@@ -12,3 +12,6 @@ nom_locate = "4.2.0"
 strum = "0.27"
 strum_macros = "0.27"
 wasm-encoder = "0.221.2"
+
+[dev-dependencies]
+insta = {version = "1.42.2"}

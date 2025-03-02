@@ -44,6 +44,9 @@ jobs:
           cargo2nix -o
           git diff --exit-code
       - name: Test
+        run: |
+          cargo test
+      - name: E2E Test
         working-directory: test
         run: |
           npm install
