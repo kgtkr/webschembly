@@ -1,10 +1,15 @@
+import { createNodeRuntimeEnv } from "./node-runtime-env.js";
 import { createRuntime } from "./runtime.js";
 
-const runtime = createRuntime({
-  runtimeName: "repl.scm",
-  exitWhenException: false,
-  printEvalResult: true,
-});
+const runtime = createRuntime(
+  createNodeRuntimeEnv({
+    runtimeName: "repl.scm",
+  }),
+  {
+    exitWhenException: false,
+    printEvalResult: true,
+  }
+);
 
 process.stdout.write("=> <eval stdlib>\n");
 runtime.loadStdlib();

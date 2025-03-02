@@ -3,6 +3,7 @@ import * as fsLegacy from "fs";
 import { beforeAll, describe, expect, test } from "vitest";
 import * as path from "path";
 import { createRuntime } from "./runtime.js";
+import { createNodeRuntimeEnv } from "./node-runtime-env.js";
 
 function concatBufs(bufs) {
   const bufLen = bufs.map((buf) => buf.length).reduce((a, b) => a + b, 0);
@@ -36,25 +37,28 @@ describe("E2E test", () => {
       let exitCode = 0;
       const stdoutBufs = [];
       const stderrBufs = [];
-      const runtime = createRuntime({
-        runtimeName: filename,
-        exit: (code) => {
-          exitCode = code;
-        },
-        writeBuf: (fd, buf) => {
-          switch (fd) {
-            case 1:
-              stdoutBufs.push(new Uint8Array(buf));
-              break;
-            case 2:
-              stderrBufs.push(new Uint8Array(buf));
-              break;
-            default:
-              throw new Error(`Unsupported file descriptor: ${fd}`);
-          }
-        },
-        runtimeBuf,
-      });
+      const runtime = createRuntime(
+        createNodeRuntimeEnv({
+          runtimeName: filename,
+          exit: (code) => {
+            exitCode = code;
+          },
+          writeBuf: (fd, buf) => {
+            switch (fd) {
+              case 1:
+                stdoutBufs.push(new Uint8Array(buf));
+                break;
+              case 2:
+                stderrBufs.push(new Uint8Array(buf));
+                break;
+              default:
+                throw new Error(`Unsupported file descriptor: ${fd}`);
+            }
+          },
+          runtimeBuf,
+        }),
+        {}
+      );
 
       runtime.loadStdlib();
       runtime.loadSrc(srcBuf);

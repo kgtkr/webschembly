@@ -1,41 +1,7 @@
-import * as fs from "fs";
-import * as path from "path";
-
-export function createRuntime({
-  runtimeName = "untitled",
-  exit = process.exit,
-  exitWhenException = true,
-  logDir = process.env.LOG_DIR || null,
-  runtimeBuf = fs.readFileSync(process.env["WEBSCHEMBLY_RUNTIME"]),
-  writeBuf = (fd, buf) => {
-    switch (fd) {
-      case 1:
-        process.stdout.write(buf);
-        break;
-      case 2:
-        process.stderr.write(buf);
-        break;
-      default:
-        throw new Error(`Unsupported file descriptor: ${fd}`);
-    }
-  },
-  printEvalResult = false,
-}) {
-  const logBasename = path.basename(runtimeName) + "-" + Date.now();
-  let logFile = null;
-  if (logDir !== null) {
-    try {
-      fs.mkdirSync(logDir);
-    } catch (e) {
-      if (e.code !== "EEXIST") {
-        throw e;
-      }
-    }
-
-    logFile = fs.openSync(path.join(logDir, logBasename + ".log"), "a");
-  }
-  let instantiateCount = 0;
-
+export function createRuntime(
+  { exit, logger, runtimeBuf, writeBuf },
+  { exitWhenException = true, printEvalResult = false }
+) {
   const runtimeImportObjects = {
     js_instantiate: (bufPtr, bufSize) => {
       const buf = new Uint8Array(
@@ -43,13 +9,7 @@ export function createRuntime({
         bufPtr,
         bufSize
       );
-      if (logDir !== null) {
-        fs.writeFileSync(
-          path.join(logDir, logBasename + "-" + instantiateCount + ".wasm"),
-          buf
-        );
-      }
-      instantiateCount++;
+      logger.instantiate(buf);
 
       const instance = new WebAssembly.Instance(
         new WebAssembly.Module(buf),
@@ -65,9 +25,7 @@ export function createRuntime({
       const s = new TextDecoder().decode(
         new Uint8Array(runtimeInstance.exports.memory.buffer, bufPtr, bufLen)
       );
-      if (logFile !== null) {
-        fs.writeSync(logFile, s + "\n");
-      }
+      logger.log(s);
     },
     js_write_buf: (fd, bufPtr, bufLen) => {
       const buf = new Uint8Array(
