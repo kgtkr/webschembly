@@ -2,13 +2,13 @@
 use core::cell::RefCell;
 use std::collections::HashMap;
 use std::vec;
-use webschembly_compiler;
 mod logger;
 use std::alloc::{Allocator, Global, Layout};
 use std::ptr::NonNull;
 mod env;
 mod runtime;
 
+#[allow(clippy::missing_safety_doc)]
 #[no_mangle]
 pub unsafe extern "C" fn malloc(size: i32) -> i32 {
     let total_size = size as usize + std::mem::size_of::<usize>();
@@ -19,6 +19,7 @@ pub unsafe extern "C" fn malloc(size: i32) -> i32 {
     raw_ptr.add(1) as *mut u8 as i32
 }
 
+#[allow(clippy::missing_safety_doc)]
 #[no_mangle]
 pub unsafe extern "C" fn free(ptr: i32) {
     let ptr = ptr as *mut u8;
@@ -79,7 +80,7 @@ thread_local!(
         RefCell::new(webschembly_compiler::compiler::Compiler::new());
 );
 
-const STDIN_FD: i32 = 0;
+// const STDIN_FD: i32 = 0;
 const STDOUT_FD: i32 = 1;
 const STDERR_FD: i32 = 2;
 
@@ -100,7 +101,7 @@ fn load_src_inner(src: String, is_stdlib: bool) {
     if let Some(err) = err {
         let err = format!("{}\n", err);
         WRITERS.with(|writers| {
-            get_writer(&mut *writers.borrow_mut(), STDERR_FD).write_buf(err.as_bytes())
+            get_writer(&mut writers.borrow_mut(), STDERR_FD).write_buf(err.as_bytes())
         });
         unsafe {
             runtime::throw_webassembly_exception();
@@ -195,7 +196,7 @@ fn get_writer(writers: &mut HashMap<i32, WasmWriter>, fd: i32) -> &mut WasmWrite
 
 #[unsafe(no_mangle)]
 pub extern "C" fn write_char_fd(fd: i32, c: i32) {
-    WRITERS.with(|writers| get_writer(&mut *writers.borrow_mut(), fd).write_char(c));
+    WRITERS.with(|writers| get_writer(&mut writers.borrow_mut(), fd).write_char(c));
 }
 
 // TODO: Rustのコード生成の都合で一旦
@@ -208,7 +209,7 @@ pub extern "C" fn write_char(c: i32) {
 pub extern "C" fn write_buf(fd: i32, buf_ptr: i32, buf_len: i32) {
     let buf_ptr: *const u8 = buf_ptr as *const u8;
     let buf = unsafe { std::slice::from_raw_parts(buf_ptr, buf_len as usize) };
-    WRITERS.with(|writers| get_writer(&mut *writers.borrow_mut(), fd).write_buf(buf));
+    WRITERS.with(|writers| get_writer(&mut writers.borrow_mut(), fd).write_buf(buf));
 }
 
 #[unsafe(no_mangle)]
@@ -234,7 +235,6 @@ pub extern "C" fn _int_to_string(i: i64) -> i64 {
         std::ptr::copy_nonoverlapping(s.as_ptr(), s_ptr as *mut u8, s.len());
     }
 
-    let s_ptr = s_ptr as i32;
     let s_len = s.len() as i32;
     cons_tuple_i32(s_ptr, s_len)
 }

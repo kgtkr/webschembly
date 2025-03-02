@@ -230,13 +230,13 @@ impl ModuleGenerator {
     const CONS_CDR_FIELD: u32 = 1;
     const SYMBOL_STRING_FIELD: u32 = 0;
     const CLOSURE_FUNC_FIELD: u32 = 0;
-    const CLOSURE_BOXED_FUNC_FIELD: u32 = 1;
+    // const CLOSURE_BOXED_FUNC_FIELD: u32 = 1;
     const CLOSURE_ENVS_FIELD_OFFSET: u32 = 2;
-    const STRING_BUF_BUF_FIELD: u32 = 0;
-    const STRING_BUF_SHARED_FIELD: u32 = 1;
-    const STRING_BUF_FIELD: u32 = 0;
-    const STRING_LEN_FIELD: u32 = 1;
-    const STRING_OFFSET_FIELD: u32 = 2;
+    // const STRING_BUF_BUF_FIELD: u32 = 0;
+    // const STRING_BUF_SHARED_FIELD: u32 = 1;
+    // const STRING_BUF_FIELD: u32 = 0;
+    // const STRING_LEN_FIELD: u32 = 1;
+    // const STRING_OFFSET_FIELD: u32 = 2;
 
     pub fn gen(&mut self, ir: &ir::Ir) -> Module {
         self.mut_cell_type = self.type_count;
@@ -650,7 +650,7 @@ impl ModuleGenerator {
         }
     }
 
-    fn gen_expr(&mut self, function: &mut Function, locals: &Vec<ir::Type>, expr: &ir::Expr) {
+    fn gen_expr(&mut self, function: &mut Function, locals: &[ir::Type], expr: &ir::Expr) {
         match expr {
             ir::Expr::Bool(b) => {
                 function.instruction(&Instruction::I32Const(if *b { 1 } else { 0 }));

@@ -1,9 +1,9 @@
-mod ast;
+mod astx;
 mod defined;
 mod desugared;
 mod parsed;
 mod used;
-pub use ast::*;
+pub use astx::*;
 pub use defined::*;
 pub use desugared::*;
 pub use parsed::*;

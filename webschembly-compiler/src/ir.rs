@@ -599,7 +599,7 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
         }
     }
 
-    fn gen_stats(&mut self, result: Option<usize>, stats: &Vec<ast::Expr<ast::Final>>) {
+    fn gen_stats(&mut self, result: Option<usize>, stats: &[ast::Expr<ast::Final>]) {
         if let Some((last, rest)) = stats.split_last() {
             for stat in rest {
                 self.gen_stat(None, stat);

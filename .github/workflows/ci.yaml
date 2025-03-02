@@ -40,7 +40,7 @@ jobs:
           nixpkgs-fmt --check $(git ls-files ':(attr:!linguist-generated)*.nix')
       - name: Clippy
         run: |
-          cargo clippy
+          cargo clippy --all --lib --tests -- -D warnings
       - name: cargo2nix
         run: |
           cargo2nix -o -l

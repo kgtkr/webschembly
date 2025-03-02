@@ -1,4 +1,4 @@
-use super::ast::*;
+use super::astx::*;
 use super::defined::*;
 use super::Desugared;
 use crate::x::type_map;

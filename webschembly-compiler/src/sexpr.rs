@@ -20,7 +20,7 @@ pub struct SExpr {
 impl SExpr {
     pub fn to_vec(self) -> Option<Vec<SExpr>> {
         match self.kind {
-            SExprKind::Cons(cons) => cons.to_vec(),
+            SExprKind::Cons(cons) => cons.into_vec(),
             SExprKind::Nil => Some(vec![]),
             _ => None,
         }
@@ -38,7 +38,7 @@ impl Cons {
         Self { car, cdr }
     }
 
-    fn to_vec_and_cdr(self) -> (Vec<SExpr>, SExpr) {
+    fn into_vec_and_cdr(self) -> (Vec<SExpr>, SExpr) {
         let mut list = vec![self.car];
         let mut cdr = self.cdr;
         while let SExprKind::Cons(cons) = cdr.kind {
@@ -48,8 +48,8 @@ impl Cons {
         (list, cdr)
     }
 
-    fn to_vec(self) -> Option<Vec<SExpr>> {
-        let (list, cdr) = self.to_vec_and_cdr();
+    fn into_vec(self) -> Option<Vec<SExpr>> {
+        let (list, cdr) = self.into_vec_and_cdr();
         if let SExprKind::Nil = cdr.kind {
             Some(list)
         } else {

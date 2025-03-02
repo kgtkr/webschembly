@@ -1,4 +1,4 @@
-use super::ast::*;
+use super::astx::*;
 use crate::compiler_error;
 use crate::error::Result;
 use crate::sexpr::{SExpr, SExprKind};
