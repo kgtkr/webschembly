@@ -53,6 +53,16 @@ jobs:
         run: |
           npm install
           make test
+      - name: Build Playground
+        working-directory: webschembly-js
+        run: |
+          npm install
+          make build-playground
+      - name: Upload Playground
+        uses: actions/upload-artifact@v4
+        with:
+          name: github-pages
+          path: webschembly-js/dist
       - name: Build cli
         run: |
           nix build .#webschembly-compiler-cli --out-link result-cli
@@ -67,3 +77,16 @@ jobs:
         with:
           name: runtime
           path: result-runtime/lib/webschembly_runtime.wasm
+  deploy:
+    needs: build
+    if: github.ref == 'refs/heads/master'
+    permissions:
+      id-token: write
+      pages: write
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/deploy-pages@v4
+        id: deployment
