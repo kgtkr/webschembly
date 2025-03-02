@@ -23,7 +23,7 @@ fn main() -> anyhow::Result<()> {
         .map(|s| Path::new(&s).to_path_buf())
         .unwrap_or_else(|| {
             let first_input = Path::new(args.inputs.first().unwrap());
-            
+
             first_input.with_extension("wasm")
         });
     let output_stem = output.file_stem().unwrap_or_default();

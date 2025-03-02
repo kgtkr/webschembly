@@ -181,12 +181,9 @@ fn convert_error(e: VerboseError<LocatedStr>) -> CompilerError {
                     )
                 }
             }
-            VerboseErrorKind::Context(s) => writeln!(
-                &mut result,
-                "{pos}, in {context}:",
-                pos = pos,
-                context = s,
-            ),
+            VerboseErrorKind::Context(s) => {
+                writeln!(&mut result, "{pos}, in {context}:", pos = pos, context = s,)
+            }
             VerboseErrorKind::Nom(e) => writeln!(
                 &mut result,
                 "{pos}, in {nom_err:?}:",

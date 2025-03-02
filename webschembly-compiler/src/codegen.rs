@@ -583,9 +583,10 @@ impl ModuleGenerator {
                     boxed_func_idx,
                 },
             );
-            self.elements
-                .declared(Elements::Functions(Cow::Borrowed(&[func_idx,
-                    boxed_func_idx])));
+            self.elements.declared(Elements::Functions(Cow::Borrowed(&[
+                func_idx,
+                boxed_func_idx,
+            ])));
 
             self.functions.function(type_idx);
             self.code.function(&function);

@@ -15,8 +15,5 @@ pub fn to_span(located: &LocatedStr) -> Span {
 }
 
 pub fn to_pos(located: &LocatedStr) -> Pos {
-    Pos::new(
-        located.location_line() as usize,
-        located.get_utf8_column(),
-    )
+    Pos::new(located.location_line() as usize, located.get_utf8_column())
 }
