@@ -55,6 +55,7 @@ jobs:
           make test
       - name: Build Playground
         working-directory: webschembly-js
+        # TODO: production buildしたruntimeを使う
         run: |
           npm install
           make build-playground
@@ -63,20 +64,21 @@ jobs:
         with:
           name: github-pages
           path: webschembly-js/dist
-      - name: Build cli
-        run: |
-          nix build .#webschembly-compiler-cli --out-link result-cli
-      - name: Build runtime
-        run: |
-          nix build .#webschembly-runtime --out-link result-runtime
-      - uses: actions/upload-artifact@v4
-        with:
-          name: cli
-          path: result-cli-bin/bin/webschembly-compiler-cli
-      - uses: actions/upload-artifact@v4
-        with:
-          name: runtime
-          path: result-runtime/lib/webschembly_runtime.wasm
+      # TODO: frunkがビルド通らないので一時的に
+      # - name: Build cli
+      #   run: |
+      #     nix build .#webschembly-compiler-cli --out-link result-cli
+      # - name: Build runtime
+      #   run: |
+      #     nix build .#webschembly-runtime --out-link result-runtime
+      # - uses: actions/upload-artifact@v4
+      #   with:
+      #     name: cli
+      #     path: result-cli-bin/bin/webschembly-compiler-cli
+      # - uses: actions/upload-artifact@v4
+      #   with:
+      #     name: runtime
+      #     path: result-runtime/lib/webschembly_runtime.wasm
   deploy:
     needs: build
     if: github.ref == 'refs/heads/master'
