@@ -247,7 +247,7 @@ impl<'a> FuncGenerator<'a> {
 
         for id in &x.get_ref(type_map::key::<Used>()).defines {
             let local = self.define_ast_local(*id);
-            if self.ir_generator.box_vars.contains(&id) {
+            if self.ir_generator.box_vars.contains(id) {
                 create_mut_cells.push(Stat::Expr(Some(local), Expr::CreateMutCell));
             }
         }
@@ -471,15 +471,15 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
             }
             ast::Expr::Var(x, _) => match &x.get_ref(type_map::key::<Used>()).var_id {
                 ast::VarId::Local(id) => {
-                    if self.func_gen.ir_generator.box_vars.contains(&id) {
+                    if self.func_gen.ir_generator.box_vars.contains(id) {
                         self.stats.push(Stat::Expr(
                             result,
-                            Expr::DerefMutCell(*self.func_gen.local_ids.get(&id).unwrap()),
+                            Expr::DerefMutCell(*self.func_gen.local_ids.get(id).unwrap()),
                         ));
                     } else {
                         self.stats.push(Stat::Expr(
                             result,
-                            Expr::Move(*self.func_gen.local_ids.get(&id).unwrap()),
+                            Expr::Move(*self.func_gen.local_ids.get(id).unwrap()),
                         ));
                     }
                 }
@@ -499,15 +499,15 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
             ast::Expr::Set(x, ast::Set { expr, .. }) => {
                 match &x.get_ref(type_map::key::<Used>()).var_id {
                     ast::VarId::Local(id) => {
-                        if self.func_gen.ir_generator.box_vars.contains(&id) {
+                        if self.func_gen.ir_generator.box_vars.contains(id) {
                             let boxed_local = self.func_gen.local(Type::Boxed);
                             self.gen_stat(Some(boxed_local), expr);
-                            let local = self.func_gen.local_ids.get(&id).unwrap();
+                            let local = self.func_gen.local_ids.get(id).unwrap();
                             self.stats
                                 .push(Stat::Expr(None, Expr::SetMutCell(*local, boxed_local)));
                             self.stats.push(Stat::Expr(result, Expr::Move(boxed_local)));
                         } else {
-                            let local = *self.func_gen.local_ids.get(&id).unwrap();
+                            let local = *self.func_gen.local_ids.get(id).unwrap();
                             self.gen_stat(Some(local), expr);
                             self.stats.push(Stat::Expr(result, Expr::Move(local)));
                         }

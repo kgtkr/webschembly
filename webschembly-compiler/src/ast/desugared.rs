@@ -46,26 +46,26 @@ impl FamilyX<Desugared> for LetX {
     type R = !;
 }
 
-impl Into<parsed::ParsedLambdaR> for parsed::ParsedLetR {
-    fn into(self) -> parsed::ParsedLambdaR {
+impl From<parsed::ParsedLetR> for parsed::ParsedLambdaR {
+    fn from(val: parsed::ParsedLetR) -> Self {
         parsed::ParsedLambdaR {
-            span: self.span,
-            arg_spans: self.binding_spans,
+            span: val.span,
+            arg_spans: val.binding_spans,
         }
     }
 }
 
-impl Into<parsed::ParsedCallR> for parsed::ParsedLetR {
-    fn into(self) -> parsed::ParsedCallR {
-        parsed::ParsedCallR { span: self.span }
+impl From<parsed::ParsedLetR> for parsed::ParsedCallR {
+    fn from(val: parsed::ParsedLetR) -> Self {
+        parsed::ParsedCallR { span: val.span }
     }
 }
 
-impl Into<parsed::ParsedSetR> for parsed::ParsedDefineR {
-    fn into(self) -> parsed::ParsedSetR {
+impl From<parsed::ParsedDefineR> for parsed::ParsedSetR {
+    fn from(val: parsed::ParsedDefineR) -> Self {
         parsed::ParsedSetR {
-            span: self.span,
-            name_span: self.name_span,
+            span: val.span,
+            name_span: val.name_span,
         }
     }
 }

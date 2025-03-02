@@ -27,6 +27,12 @@ struct FuncIndex {
 #[derive(Debug)]
 pub struct Codegen {}
 
+impl Default for Codegen {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Codegen {
     pub fn new() -> Self {
         Self {}
@@ -34,7 +40,7 @@ impl Codegen {
 
     pub fn gen(&mut self, ir: &ir::Ir) -> Vec<u8> {
         let mut module_gen = ModuleGenerator::new();
-        let module = module_gen.gen(&ir);
+        let module = module_gen.gen(ir);
         module.finish()
     }
 }
@@ -181,7 +187,7 @@ impl ModuleGenerator {
             let mut fields = self.closure_type_fields.clone();
             for ty in env_types.iter() {
                 fields.push(FieldType {
-                    element_type: StorageType::Val(ty.clone()),
+                    element_type: StorageType::Val(*ty),
                     mutable: false,
                 });
             }
@@ -578,10 +584,8 @@ impl ModuleGenerator {
                 },
             );
             self.elements
-                .declared(Elements::Functions(Cow::Borrowed(&vec![
-                    func_idx,
-                    boxed_func_idx,
-                ])));
+                .declared(Elements::Functions(Cow::Borrowed(&[func_idx,
+                    boxed_func_idx])));
 
             self.functions.function(type_idx);
             self.code.function(&function);

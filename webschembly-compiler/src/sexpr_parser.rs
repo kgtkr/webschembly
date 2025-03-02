@@ -75,7 +75,7 @@ fn list(input: Tokens) -> IResult<Tokens, SExpr> {
     let (input, close_token) = satisfy(|t: &Token| t.kind == TokenKind::CloseParen).parse(input)?;
     let is_dotted = tail.is_some();
     let elements_is_empty = elements.is_empty();
-    let tail = tail.unwrap_or_else(|| SExpr {
+    let tail = tail.unwrap_or(SExpr {
         kind: SExprKind::Nil,
         span: close_token.span,
     });

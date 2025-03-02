@@ -18,6 +18,12 @@ pub struct ASTGenerator {
     var_id_gen: VarIdGen,
 }
 
+impl Default for ASTGenerator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ASTGenerator {
     pub fn new() -> Self {
         Self {

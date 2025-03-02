@@ -5,8 +5,7 @@ use located::{to_pos, to_span};
 use nom::{
     branch::alt,
     bytes::complete::{tag, take, take_while, take_while1},
-    character::complete::{anychar, satisfy},
-    combinator::{consumed, eof as nom_eof, map, map_res, success, value},
+    combinator::{consumed, eof as nom_eof, map, success, value},
     error::{ErrorKind, FromExternalError, ParseError, VerboseError, VerboseErrorKind},
     multi::many0,
     Err, Finish, IResult, Parser,
@@ -166,31 +165,31 @@ fn convert_error(e: VerboseError<LocatedStr>) -> CompilerError {
         match kind {
             VerboseErrorKind::Char(c) => {
                 if let Some(actual) = substring.chars().next() {
-                    write!(
+                    writeln!(
                         &mut result,
-                        "{pos}: expected '{expected}', found {actual}\n",
+                        "{pos}: expected '{expected}', found {actual}",
                         pos = pos,
                         expected = c,
                         actual = actual,
                     )
                 } else {
-                    write!(
+                    writeln!(
                         &mut result,
-                        "{pos}: expected '{expected}', got end of input\n",
+                        "{pos}: expected '{expected}', got end of input",
                         pos = pos,
                         expected = c,
                     )
                 }
             }
-            VerboseErrorKind::Context(s) => write!(
+            VerboseErrorKind::Context(s) => writeln!(
                 &mut result,
-                "{pos}, in {context}:\n",
+                "{pos}, in {context}:",
                 pos = pos,
                 context = s,
             ),
-            VerboseErrorKind::Nom(e) => write!(
+            VerboseErrorKind::Nom(e) => writeln!(
                 &mut result,
-                "{pos}, in {nom_err:?}:\n",
+                "{pos}, in {nom_err:?}:",
                 pos = pos,
                 nom_err = e,
             ),

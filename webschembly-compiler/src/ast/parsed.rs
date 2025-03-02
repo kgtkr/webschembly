@@ -356,7 +356,7 @@ impl Expr<Parsed> {
                     type_map::singleton(type_map::key::<Parsed>(), ParsedCallR { span }),
                     Call {
                         func: Box::new(func),
-                        args: args,
+                        args,
                     },
                 ))
             }

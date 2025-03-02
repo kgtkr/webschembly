@@ -132,6 +132,12 @@ pub struct VarIdGen {
     use_globals: HashSet<GlobalVarId>,
 }
 
+impl Default for VarIdGen {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl VarIdGen {
     pub fn new() -> Self {
         VarIdGen {
@@ -311,8 +317,8 @@ impl Expr<Used> {
                     x.add(
                         type_map::key::<Used>(),
                         UsedLambdaR {
-                            args: args,
-                            defines: defines,
+                            args,
+                            defines,
                             captures: new_state.captures.into_iter().collect(), // 非決定的だが問題ないはず
                         },
                     ),
