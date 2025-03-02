@@ -58,7 +58,7 @@ jobs:
         # TODO: production buildしたruntimeを使う
         run: |
           npm install
-          make build-playground
+          BASE_URL=/webschembly/ make build-playground
           # https://github.com/actions/deploy-pages/issues/303
           chmod -R a+rX dist
       - name: Upload Playground
