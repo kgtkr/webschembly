@@ -62,9 +62,9 @@ jobs:
           # https://github.com/actions/deploy-pages/issues/303
           chmod -R a+rX dist
       - name: Upload Playground
-        uses: actions/upload-artifact@v4
+        id: deployment
+        uses: actions/upload-pages-artifact@v3
         with:
-          name: github-pages
           path: webschembly-js/dist
       # TODO: frunkがビルド通らないので一時的に
       # - name: Build cli
