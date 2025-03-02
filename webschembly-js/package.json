@@ -1,5 +1,5 @@
 {
-  "name": "webschembly-test",
+  "name": "webschembly-js",
   "type": "module",
   "scripts": {
     "test": "vitest"

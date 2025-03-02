@@ -49,7 +49,7 @@ jobs:
         run: |
           cargo test
       - name: E2E Test
-        working-directory: test
+        working-directory: webschembly-js
         run: |
           npm install
           make test
