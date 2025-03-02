@@ -26,7 +26,7 @@ args@{
   ignoreLockHash,
 }:
 let
-  nixifiedLockHash = "5243b6d556b5dae8738559b94d2a99fb1e4e46b3dc283ba7e8b98c0d52e110f8";
+  nixifiedLockHash = "d0c4a90285f8870e38ae77d4a0d0f215d3e4b9bea40d6961a58d5c072bb20231";
   workspaceSrc = if args.workspaceSrc == null then ./. else args.workspaceSrc;
   currentLockHash = builtins.hashFile "sha256" (workspaceSrc + /Cargo.lock);
   lockHashIgnored = if ignoreLockHash
@@ -256,7 +256,7 @@ in
       url = https://github.com/kgtkr/frunk.git;
       name = "frunk";
       version = "0.4.3";
-      rev = "5752a3062e2918e9395d7540ab18a7a223afed34";
+      rev = "b3575b13094528bbb7abc198b17c74cbec0eae9a";
       ref = "ref-Plucker";};
     features = builtins.concatLists [
       [ "alloc" ]
@@ -281,7 +281,7 @@ in
       url = https://github.com/kgtkr/frunk.git;
       name = "frunk_core";
       version = "0.4.3";
-      rev = "5752a3062e2918e9395d7540ab18a7a223afed34";
+      rev = "b3575b13094528bbb7abc198b17c74cbec0eae9a";
       ref = "ref-Plucker";};
     features = builtins.concatLists [
       [ "alloc" ]
@@ -300,7 +300,7 @@ in
       url = https://github.com/kgtkr/frunk.git;
       name = "frunk_derives";
       version = "0.4.3";
-      rev = "5752a3062e2918e9395d7540ab18a7a223afed34";
+      rev = "b3575b13094528bbb7abc198b17c74cbec0eae9a";
       ref = "ref-Plucker";};
     dependencies = {
       frunk_proc_macro_helpers = (rustPackages."git+https://github.com/kgtkr/frunk.git".frunk_proc_macro_helpers."0.1.3" { inherit profileName; }).out;
@@ -317,7 +317,7 @@ in
       url = https://github.com/kgtkr/frunk.git;
       name = "frunk_proc_macro_helpers";
       version = "0.1.3";
-      rev = "5752a3062e2918e9395d7540ab18a7a223afed34";
+      rev = "b3575b13094528bbb7abc198b17c74cbec0eae9a";
       ref = "ref-Plucker";};
     dependencies = {
       frunk_core = (rustPackages."git+https://github.com/kgtkr/frunk.git".frunk_core."0.4.3" { inherit profileName; }).out;
@@ -335,7 +335,7 @@ in
       url = https://github.com/kgtkr/frunk.git;
       name = "frunk_proc_macros";
       version = "0.1.3";
-      rev = "5752a3062e2918e9395d7540ab18a7a223afed34";
+      rev = "b3575b13094528bbb7abc198b17c74cbec0eae9a";
       ref = "ref-Plucker";};
     dependencies = {
       frunk_core = (rustPackages."git+https://github.com/kgtkr/frunk.git".frunk_core."0.4.3" { inherit profileName; }).out;

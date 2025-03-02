@@ -143,7 +143,7 @@ checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
 [[package]]
 name = "frunk"
 version = "0.4.3"
-source = "git+https://github.com/kgtkr/frunk.git?branch=ref-Plucker#5752a3062e2918e9395d7540ab18a7a223afed34"
+source = "git+https://github.com/kgtkr/frunk.git?branch=ref-Plucker#b3575b13094528bbb7abc198b17c74cbec0eae9a"
 dependencies = [
  "frunk_core",
  "frunk_derives",
@@ -154,7 +154,7 @@ dependencies = [
 [[package]]
 name = "frunk_core"
 version = "0.4.3"
-source = "git+https://github.com/kgtkr/frunk.git?branch=ref-Plucker#5752a3062e2918e9395d7540ab18a7a223afed34"
+source = "git+https://github.com/kgtkr/frunk.git?branch=ref-Plucker#b3575b13094528bbb7abc198b17c74cbec0eae9a"
 dependencies = [
  "serde",
 ]
@@ -162,7 +162,7 @@ dependencies = [
 [[package]]
 name = "frunk_derives"
 version = "0.4.3"
-source = "git+https://github.com/kgtkr/frunk.git?branch=ref-Plucker#5752a3062e2918e9395d7540ab18a7a223afed34"
+source = "git+https://github.com/kgtkr/frunk.git?branch=ref-Plucker#b3575b13094528bbb7abc198b17c74cbec0eae9a"
 dependencies = [
  "frunk_proc_macro_helpers",
  "quote",
@@ -172,7 +172,7 @@ dependencies = [
 [[package]]
 name = "frunk_proc_macro_helpers"
 version = "0.1.3"
-source = "git+https://github.com/kgtkr/frunk.git?branch=ref-Plucker#5752a3062e2918e9395d7540ab18a7a223afed34"
+source = "git+https://github.com/kgtkr/frunk.git?branch=ref-Plucker#b3575b13094528bbb7abc198b17c74cbec0eae9a"
 dependencies = [
  "frunk_core",
  "proc-macro2",
@@ -183,7 +183,7 @@ dependencies = [
 [[package]]
 name = "frunk_proc_macros"
 version = "0.1.3"
-source = "git+https://github.com/kgtkr/frunk.git?branch=ref-Plucker#5752a3062e2918e9395d7540ab18a7a223afed34"
+source = "git+https://github.com/kgtkr/frunk.git?branch=ref-Plucker#b3575b13094528bbb7abc198b17c74cbec0eae9a"
 dependencies = [
  "frunk_core",
  "frunk_proc_macro_helpers",
