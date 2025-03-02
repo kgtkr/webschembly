@@ -59,7 +59,8 @@ jobs:
         run: |
           npm install
           make build-playground
-          ls -lR dist
+          # https://github.com/actions/deploy-pages/issues/303
+          chmod -R a+rX dist
       - name: Upload Playground
         uses: actions/upload-artifact@v4
         with:
