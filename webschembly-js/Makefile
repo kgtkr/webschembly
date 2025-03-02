@@ -53,6 +53,14 @@ repl: $(WEBSCHEMBLY_RUNTIME)
 run: $(WEBSCHEMBLY_RUNTIME)
 	WEBSCHEMBLY_RUNTIME=$(WEBSCHEMBLY_RUNTIME) node run.js $(SRC)
 
+.PHONY: build-playground
+build-playground: $(WEBSCHEMBLY_RUNTIME)
+	WEBSCHEMBLY_RUNTIME=$(WEBSCHEMBLY_RUNTIME) npm run build
+
+.PHONY: dev-playground
+dev-playground: $(WEBSCHEMBLY_RUNTIME)
+	WEBSCHEMBLY_RUNTIME=$(WEBSCHEMBLY_RUNTIME) npm run dev
+
 .PHONY: clean
 clean:
 	rm -f $(WASM) $(WAT)

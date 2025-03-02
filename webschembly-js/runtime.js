@@ -1,5 +1,5 @@
 export function createRuntime(
-  { exit, logger, runtimeBuf, writeBuf },
+  { exit, logger, runtimeModule, writeBuf },
   { exitWhenException = true, printEvalResult = false }
 ) {
   const runtimeImportObjects = {
@@ -33,16 +33,13 @@ export function createRuntime(
         bufPtr,
         bufLen
       );
-      writeBuf(1, buf);
+      writeBuf(fd, buf);
     },
   };
 
-  const runtimeInstance = new WebAssembly.Instance(
-    new WebAssembly.Module(new Uint8Array(runtimeBuf)),
-    {
-      env: runtimeImportObjects,
-    }
-  );
+  const runtimeInstance = new WebAssembly.Instance(runtimeModule, {
+    env: runtimeImportObjects,
+  });
 
   const importObject = {
     runtime: runtimeInstance.exports,

@@ -22,9 +22,11 @@ const filenames = fsLegacy
   .filter((file) => file.endsWith(".scm"));
 
 describe("E2E test", () => {
-  let runtimeBuf;
+  let runtimeModule;
   beforeAll(async () => {
-    runtimeBuf = await fs.readFile(process.env["WEBSCHEMBLY_RUNTIME"]);
+    runtimeModule = new WebAssembly.Module(
+      await fs.readFile(process.env["WEBSCHEMBLY_RUNTIME"])
+    );
   });
 
   describe.each(filenames)("%s", (filename) => {
@@ -55,7 +57,7 @@ describe("E2E test", () => {
                 throw new Error(`Unsupported file descriptor: ${fd}`);
             }
           },
-          runtimeBuf,
+          runtimeModule,
         }),
         {}
       );

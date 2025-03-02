@@ -42,7 +42,9 @@ export function createNodeRuntimeEnv({
   runtimeName = "untitled",
   exit = process.exit,
   logger = createLogger({ runtimeName }),
-  runtimeBuf = fs.readFileSync(process.env["WEBSCHEMBLY_RUNTIME"]),
+  runtimeModule = new WebAssembly.Module(
+    fs.readFileSync(process.env["WEBSCHEMBLY_RUNTIME"])
+  ),
   writeBuf = (fd, buf) => {
     switch (fd) {
       case 1:
@@ -60,7 +62,7 @@ export function createNodeRuntimeEnv({
     runtimeName,
     exit,
     logger,
-    runtimeBuf,
+    runtimeModule,
     writeBuf,
   };
 }

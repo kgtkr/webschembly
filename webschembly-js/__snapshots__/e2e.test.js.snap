@@ -41,9 +41,9 @@ exports[`E2E test > define.scm > snapshot test 1`] = `
 exports[`E2E test > define_builtin.scm > snapshot test 1`] = `
 {
   "exitCode": 1,
-  "stderr": "",
-  "stdout": "set! builtin is not allowed
+  "stderr": "set! builtin is not allowed
 ",
+  "stdout": "",
 }
 `;
 
@@ -138,8 +138,8 @@ exports[`E2E test > local_duplication2.scm > snapshot test 1`] = `
 exports[`E2E test > set_builtin.scm > snapshot test 1`] = `
 {
   "exitCode": 1,
-  "stderr": "",
-  "stdout": "set! builtin is not allowed
+  "stderr": "set! builtin is not allowed
 ",
+  "stdout": "",
 }
 `;
