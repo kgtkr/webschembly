@@ -1,0 +1,49 @@
+---
+source: webschembly-compiler/src/lexer/mod.rs
+expression: "lex(\". abc\")"
+---
+Ok(
+    [
+        Token {
+            kind: Dot,
+            span: Span {
+                start: Pos {
+                    line: 1,
+                    column: 1,
+                },
+                end: Pos {
+                    line: 1,
+                    column: 2,
+                },
+            },
+        },
+        Token {
+            kind: Identifier(
+                "abc",
+            ),
+            span: Span {
+                start: Pos {
+                    line: 1,
+                    column: 3,
+                },
+                end: Pos {
+                    line: 1,
+                    column: 6,
+                },
+            },
+        },
+        Token {
+            kind: Eof,
+            span: Span {
+                start: Pos {
+                    line: 1,
+                    column: 6,
+                },
+                end: Pos {
+                    line: 1,
+                    column: 6,
+                },
+            },
+        },
+    ],
+)

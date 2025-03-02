@@ -1,0 +1,36 @@
+---
+source: webschembly-compiler/src/lexer/mod.rs
+expression: "lex(\"+1\")"
+---
+Ok(
+    [
+        Token {
+            kind: Int(
+                1,
+            ),
+            span: Span {
+                start: Pos {
+                    line: 1,
+                    column: 1,
+                },
+                end: Pos {
+                    line: 1,
+                    column: 3,
+                },
+            },
+        },
+        Token {
+            kind: Eof,
+            span: Span {
+                start: Pos {
+                    line: 1,
+                    column: 3,
+                },
+                end: Pos {
+                    line: 1,
+                    column: 3,
+                },
+            },
+        },
+    ],
+)

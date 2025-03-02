@@ -1,19 +1,15 @@
-use crate::{
-    error::CompilerError,
-    span::{Pos, Span},
-    token::TokenKind,
-};
+use crate::{error::CompilerError, token::TokenKind};
 
 use super::token::Token;
 use located::{to_pos, to_span};
 use nom::{
     branch::alt,
-    bytes::complete::{tag, take_while, take_while1},
+    bytes::complete::{tag, take, take_while, take_while1},
     character::complete::{anychar, satisfy},
-    combinator::{consumed, eof as nom_eof, map, map_res},
+    combinator::{consumed, eof as nom_eof, map, map_res, success, value},
     error::{ErrorKind, FromExternalError, ParseError, VerboseError, VerboseErrorKind},
     multi::many0,
-    Finish, IResult, Parser,
+    Err, Finish, IResult, Parser,
 };
 use std::fmt::Write;
 mod error;
@@ -22,23 +18,47 @@ pub use located::LocatedStr;
 
 trait ErrorBound<'a> = ParseError<LocatedStr<'a>> + FromExternalError<LocatedStr<'a>, Self>;
 
+const IDENT_SYMBOLS: &str = "!$%&*+-/:<=>?^_~.";
+
+fn identifier_like<'a, E: ErrorBound<'a>>(
+    input: LocatedStr<'a>,
+) -> IResult<LocatedStr<'a>, &'a str, E> {
+    let (input, ident) =
+        take_while1(|c: char| c.is_ascii_alphanumeric() || IDENT_SYMBOLS.contains(c))(input)?;
+    Ok((input, ident.fragment()))
+}
+
+fn dot<'a, E: ErrorBound<'a>>(input: LocatedStr<'a>) -> IResult<LocatedStr<'a>, TokenKind, E> {
+    let (input, ident) = identifier_like(input)?;
+    if ident == "." {
+        Ok((input, TokenKind::Dot))
+    } else {
+        Err(nom::Err::Error(E::from_error_kind(input, ErrorKind::Char)))
+    }
+}
+
+fn number<'a, E: ErrorBound<'a>>(input: LocatedStr<'a>) -> IResult<LocatedStr<'a>, TokenKind, E> {
+    let (input, sign) = alt((value(1, tag("+")), value(-1, tag("-")), success(1)))(input)?;
+    let (input, ident) = identifier_like(input)?;
+    if ident.starts_with(|c: char| c.is_ascii_digit() || c == '.') {
+        let num = ident
+            .parse::<i64>()
+            .map_err(|_| Err::Failure(E::from_error_kind(input, ErrorKind::Digit)))?;
+        Ok((input, TokenKind::Int(sign * num)))
+    } else {
+        Err(nom::Err::Error(E::from_error_kind(input, ErrorKind::Digit)))
+    }
+}
+
 fn identifier<'a, E: ErrorBound<'a>>(
     input: LocatedStr<'a>,
 ) -> IResult<LocatedStr<'a>, TokenKind, E> {
-    const SYMBOLS: &str = "!$%&*+-/:<=>?^_~";
-
-    let (input, first) = satisfy(|c: char| c.is_ascii_alphabetic() || SYMBOLS.contains(c))(input)?;
-    let (input, rest) =
-        take_while(|c: char| c.is_ascii_alphanumeric() || SYMBOLS.contains(c))(input)?;
-    Ok((input, TokenKind::Identifier(format!("{}{}", first, rest))))
-}
-
-fn int<'a, E: ErrorBound<'a>>(input: LocatedStr<'a>) -> IResult<LocatedStr<'a>, TokenKind, E> {
-    let (input, int) = map_res(take_while(|c: char| c.is_ascii_digit()), |s: LocatedStr| {
-        s.parse::<i64>()
-            .map_err(|_| E::from_error_kind(s, ErrorKind::Digit))
-    })(input)?;
-    Ok((input, TokenKind::Int(int)))
+    let (input, ident) = identifier_like(input)?;
+    if !ident.starts_with(|c: char| c.is_ascii_digit() || c == '.') {
+        Ok((input, TokenKind::Identifier(ident.to_string())))
+    } else {
+        Err(nom::Err::Error(E::from_error_kind(input, ErrorKind::Digit)))
+    }
 }
 
 fn string<'a, E: ErrorBound<'a>>(input: LocatedStr<'a>) -> IResult<LocatedStr<'a>, TokenKind, E> {
@@ -50,27 +70,22 @@ fn string<'a, E: ErrorBound<'a>>(input: LocatedStr<'a>) -> IResult<LocatedStr<'a
 
 fn char<'a, E: ErrorBound<'a>>(input: LocatedStr<'a>) -> IResult<LocatedStr<'a>, TokenKind, E> {
     let (input, _) = tag("#\\")(input)?;
-    let (input, first) = anychar(input)?;
-    if first.is_ascii_alphabetic() {
-        let (input, rest) = take_while(|c: char| c.is_alphanumeric())(input)?;
-        if !rest.is_empty() {
-            let cname = format!("{}{}", first, rest);
-            match cname.as_str().to_lowercase().as_str() {
-                "space" => Ok((input, TokenKind::Char(' '))),
-                "newline" => Ok((input, TokenKind::Char('\n'))),
-                // r5rsにもgoshにもないがこれがないと括弧の対応が分かりにくくて書きにくいので
-                "openparen" => Ok((input, TokenKind::Char('('))),
-                "closeparen" => Ok((input, TokenKind::Char(')'))),
-                _ => Err(nom::Err::Failure(E::from_error_kind(
-                    input,
-                    ErrorKind::Char,
-                ))),
-            }
-        } else {
-            Ok((input, TokenKind::Char(first)))
-        }
+    let (input, ident) =
+        alt((identifier_like, take(1usize).map(|s: LocatedStr| *s))).parse(input)?;
+    if ident.chars().count() == 1 {
+        Ok((input, TokenKind::Char(ident.chars().next().unwrap())))
     } else {
-        Ok((input, TokenKind::Char(first)))
+        match ident.to_lowercase().as_str() {
+            "space" => Ok((input, TokenKind::Char(' '))),
+            "newline" => Ok((input, TokenKind::Char('\n'))),
+            // r5rsにもgoshにもないがこれがないと括弧の対応が分かりにくくて書きにくいので
+            "openparen" => Ok((input, TokenKind::Char('('))),
+            "closeparen" => Ok((input, TokenKind::Char(')'))),
+            _ => Err(nom::Err::Failure(E::from_error_kind(
+                input,
+                ErrorKind::Char,
+            ))),
+        }
     }
 }
 
@@ -83,11 +98,12 @@ fn token_kind<'a, E: ErrorBound<'a>>(
         tag("#t").map(|_| TokenKind::Bool(true)),
         tag("#f").map(|_| TokenKind::Bool(false)),
         tag("'").map(|_| TokenKind::Quote),
-        tag(".").map(|_| TokenKind::Dot),
-        identifier,
-        int,
         string,
         char,
+        // 順番に意味がある
+        dot,
+        number,
+        identifier,
     ))
     .parse(input)
 }
@@ -195,8 +211,25 @@ pub fn lex(input: &str) -> Result<Vec<Token>, CompilerError> {
 }
 
 #[test]
-fn test_lex() {
+fn test_snapshot_lex() {
     use insta::assert_debug_snapshot;
-    let result = lex("(+ 1 2)").unwrap();
-    assert_debug_snapshot!(result);
+    assert_debug_snapshot!(lex("(+ 1 2)"));
+    assert_debug_snapshot!(lex(". abc"));
+    assert_debug_snapshot!(lex("+1"));
+    assert_debug_snapshot!(lex("+ 1"));
+    assert_debug_snapshot!(lex("+a"));
+    assert_debug_snapshot!(lex("#\\a"));
+    assert_debug_snapshot!(lex("#\\\n"));
+    assert_debug_snapshot!(lex("#\\newline"));
+    assert_debug_snapshot!(lex("#\\nEwLine"));
+}
+
+#[test]
+fn test_lex() {
+    assert!(lex(".abc").is_err());
+    assert!(lex("123abc").is_err());
+    assert!(lex("+1a").is_err());
+    assert!(lex("#\\").is_err());
+    assert!(lex("#\\abc").is_err());
+    assert!(lex("#\\.123").is_err());
 }

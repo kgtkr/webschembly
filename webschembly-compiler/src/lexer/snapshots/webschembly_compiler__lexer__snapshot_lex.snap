@@ -1,0 +1,92 @@
+---
+source: webschembly-compiler/src/lexer/mod.rs
+expression: "lex(\"(+ 1 2)\")"
+---
+Ok(
+    [
+        Token {
+            kind: OpenParen,
+            span: Span {
+                start: Pos {
+                    line: 1,
+                    column: 1,
+                },
+                end: Pos {
+                    line: 1,
+                    column: 2,
+                },
+            },
+        },
+        Token {
+            kind: Identifier(
+                "+",
+            ),
+            span: Span {
+                start: Pos {
+                    line: 1,
+                    column: 2,
+                },
+                end: Pos {
+                    line: 1,
+                    column: 3,
+                },
+            },
+        },
+        Token {
+            kind: Int(
+                1,
+            ),
+            span: Span {
+                start: Pos {
+                    line: 1,
+                    column: 4,
+                },
+                end: Pos {
+                    line: 1,
+                    column: 5,
+                },
+            },
+        },
+        Token {
+            kind: Int(
+                2,
+            ),
+            span: Span {
+                start: Pos {
+                    line: 1,
+                    column: 6,
+                },
+                end: Pos {
+                    line: 1,
+                    column: 7,
+                },
+            },
+        },
+        Token {
+            kind: CloseParen,
+            span: Span {
+                start: Pos {
+                    line: 1,
+                    column: 7,
+                },
+                end: Pos {
+                    line: 1,
+                    column: 8,
+                },
+            },
+        },
+        Token {
+            kind: Eof,
+            span: Span {
+                start: Pos {
+                    line: 1,
+                    column: 8,
+                },
+                end: Pos {
+                    line: 1,
+                    column: 8,
+                },
+            },
+        },
+    ],
+)

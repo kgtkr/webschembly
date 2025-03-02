@@ -1,0 +1,36 @@
+---
+source: webschembly-compiler/src/lexer/mod.rs
+expression: "lex(\"#\\\\newline\")"
+---
+Ok(
+    [
+        Token {
+            kind: Char(
+                '\n',
+            ),
+            span: Span {
+                start: Pos {
+                    line: 1,
+                    column: 1,
+                },
+                end: Pos {
+                    line: 1,
+                    column: 10,
+                },
+            },
+        },
+        Token {
+            kind: Eof,
+            span: Span {
+                start: Pos {
+                    line: 1,
+                    column: 10,
+                },
+                end: Pos {
+                    line: 1,
+                    column: 10,
+                },
+            },
+        },
+    ],
+)
