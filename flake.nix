@@ -7,9 +7,13 @@
       url = "github:cargo2nix/cargo2nix";
       inputs.rust-overlay.follows = "rust-overlay";
     };
+    crate2nix = {
+      url = "github:nix-community/crate2nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
-  outputs = { nixpkgs, flake-utils, cargo2nix, ... }:
+  outputs = { nixpkgs, flake-utils, cargo2nix, crate2nix, ... }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         rustToolchain = pkgs.pkgsBuildHost.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
@@ -18,18 +22,52 @@
           inherit system overlays;
         };
         pkgs = import nixpkgs pkgsArgs;
+        tools = pkgs.callPackage crate2nix.lib.tools { inherit pkgs; };
+        src = ./.;
+        cargoToml = "Cargo.toml";
+        crateDir = dirOf (src + "/${cargoToml}");
+        vendor = tools.internal.vendorSupport rec {
+          inherit crateDir;
+          lockFiles = tools.internal.gatherLockFiles crateDir;
+          hashes = tools.internal.gatherHashes (lockFiles);
+        };
+        cargonix = pkgs.stdenv.mkDerivation {
+          name = "cargonix";
+
+          buildInputs = [ rustToolchain cargo2nix.packages.${system}.cargo2nix ];
+
+          inherit src;
+
+          buildPhase = ''
+            export HOME=/tmp/home
+            export CARGO_HOME="$HOME/cargo"
+            mkdir -p $CARGO_HOME
+
+            cp ${vendor.cargoConfig} $CARGO_HOME/config
+
+            CARGO_OFFLINE=true cargo2nix -o -f default.nix -l
+          '';
+
+          installPhase = ''
+            mkdir -p $out
+            cp default.nix $out/
+          '';
+
+        };
         mkWebschembly =
           { release }:
           let
             rustPkgs = pkgs.rustBuilder.makePackageSet {
               rustToolchain = rustToolchain;
-              packageFun = import ./Cargo.nix;
+              packageFun = import cargonix;
+              workspaceSrc = src;
               inherit release;
             };
             wasmRustPkgs = pkgs.rustBuilder.makePackageSet {
               rustToolchain = rustToolchain;
-              packageFun = import ./Cargo.nix;
+              packageFun = import cargonix;
               target = "wasm32-unknown-unknown";
+              workspaceSrc = src;
               inherit release;
             };
             webschembly-compiler-cli = (rustPkgs.workspace.webschembly-compiler-cli { }).bin;
@@ -48,6 +86,7 @@
           inherit (webschembly) webschembly-compiler-cli webschembly-runtime;
           webschembly-compiler-cli-debug = webschembly-debug.webschembly-compiler-cli;
           webschembly-runtime-debug = webschembly-debug.webschembly-runtime;
+          inherit cargonix;
         };
         defaultPackage = webschembly.webschembly-compiler-cli;
         devShell = webschembly.workspaceShell {
