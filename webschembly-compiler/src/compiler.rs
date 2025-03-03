@@ -29,13 +29,10 @@ impl Compiler {
         let sexprs =
             sexpr_parser::parse(tokens.as_slice()).map_err(|e| compiler_error!("{}", e))?;
         let ast = self.ast_gen.gen_ast(sexprs)?;
-        let ir = ir::Ir::from_ast(
-            &ast,
-            ir::Config {
-                allow_set_builtin: is_stdlib,
-            },
-        );
-        let code = self.codegen.gen(&ir);
+        let ir = ir::Ir::from_ast(&ast, ir::Config {
+            allow_set_builtin: is_stdlib,
+        });
+        let code = self.codegen.generate(&ir);
         Ok(code)
     }
 }

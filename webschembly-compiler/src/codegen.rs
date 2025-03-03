@@ -38,9 +38,9 @@ impl Codegen {
         Self {}
     }
 
-    pub fn gen(&mut self, ir: &ir::Ir) -> Vec<u8> {
+    pub fn generate(&mut self, ir: &ir::Ir) -> Vec<u8> {
         let mut module_gen = ModuleGenerator::new();
-        let module = module_gen.gen(ir);
+        let module = module_gen.generate(ir);
         module.finish()
     }
 }
@@ -238,7 +238,7 @@ impl ModuleGenerator {
     // const STRING_LEN_FIELD: u32 = 1;
     // const STRING_OFFSET_FIELD: u32 = 2;
 
-    pub fn gen(&mut self, ir: &ir::Ir) -> Module {
+    pub fn generate(&mut self, ir: &ir::Ir) -> Module {
         self.mut_cell_type = self.type_count;
         self.type_count += 1;
         self.types.ty().struct_(vec![FieldType {
