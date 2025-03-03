@@ -15,22 +15,24 @@ pub unsafe extern "C" fn malloc(size: i32) -> i32 {
     let layout = Layout::from_size_align(total_size, std::mem::align_of::<usize>()).unwrap();
     let ptr = Global.allocate(layout).unwrap();
     let raw_ptr = ptr.as_mut_ptr() as *mut usize;
-    *raw_ptr = size as usize;
-    raw_ptr.add(1) as *mut u8 as i32
+    unsafe {
+        *raw_ptr = size as usize;
+    }
+    unsafe { raw_ptr.add(1) as *mut u8 as i32 }
 }
 
 #[allow(clippy::missing_safety_doc)]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn free(ptr: i32) {
     let ptr = ptr as *mut u8;
-    let size_ptr = (ptr as *mut usize).offset(-1);
-    let size = *size_ptr;
+    let size_ptr = unsafe { (ptr as *mut usize).offset(-1) };
+    let size = unsafe { *size_ptr };
     let layout = Layout::from_size_align(
         size + std::mem::size_of::<usize>(),
         std::mem::align_of::<usize>(),
     )
     .unwrap();
-    Global.deallocate(NonNull::new_unchecked(size_ptr as *mut u8), layout);
+    unsafe { Global.deallocate(NonNull::new_unchecked(size_ptr as *mut u8), layout) };
 }
 thread_local!(
     static SYMBOL_MANAGER: RefCell<SymbolManager> = RefCell::new(SymbolManager::new());
