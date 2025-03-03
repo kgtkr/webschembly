@@ -9,7 +9,7 @@ mod env;
 mod runtime;
 
 #[allow(clippy::missing_safety_doc)]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn malloc(size: i32) -> i32 {
     let total_size = size as usize + std::mem::size_of::<usize>();
     let layout = Layout::from_size_align(total_size, std::mem::align_of::<usize>()).unwrap();
@@ -20,7 +20,7 @@ pub unsafe extern "C" fn malloc(size: i32) -> i32 {
 }
 
 #[allow(clippy::missing_safety_doc)]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn free(ptr: i32) {
     let ptr = ptr as *mut u8;
     let size_ptr = (ptr as *mut usize).offset(-1);

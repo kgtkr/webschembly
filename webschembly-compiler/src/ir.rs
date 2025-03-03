@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use crate::{
     ast::{self, Desugared, Used},
     sexpr,
-    x::{type_map, RunX, TypeMap},
+    x::{RunX, TypeMap, type_map},
 };
 use strum::IntoEnumIterator;
 
@@ -110,7 +110,7 @@ impl Ir {
     pub fn from_ast(ast: &ast::Ast<ast::Final>, config: Config) -> Ir {
         let ir_gen = IrGenerator::new(config);
 
-        ir_gen.gen(ast)
+        ir_gen.generate(ast)
     }
 }
 
@@ -135,7 +135,7 @@ impl IrGenerator {
         }
     }
 
-    fn gen(mut self, ast: &ast::Ast<ast::Final>) -> Ir {
+    fn generate(mut self, ast: &ast::Ast<ast::Final>) -> Ir {
         self.box_vars = ast.x.get_ref(type_map::key::<Used>()).box_vars.clone();
         let func = FuncGenerator::new(&mut self).entry_gen(ast);
         let func_id = self.funcs.len();

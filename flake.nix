@@ -4,7 +4,7 @@
     flake-utils.url = "github:numtide/flake-utils";
     rust-overlay.url = "github:oxalica/rust-overlay";
     cargo2nix = {
-      url = "github:cargo2nix/cargo2nix";
+      url = "github:kgtkr/cargo2nix/396edea";
       inputs.rust-overlay.follows = "rust-overlay";
     };
     crate2nix = {
@@ -45,7 +45,7 @@
 
             cp ${vendor.cargoConfig} $CARGO_HOME/config
 
-            CARGO_OFFLINE=true cargo2nix -o -f default.nix -l
+            CARGO_OFFLINE=true cargo2nix -o -f default.nix --locked
           '';
 
           installPhase = ''
@@ -87,6 +87,7 @@
           webschembly-compiler-cli-debug = webschembly-debug.webschembly-compiler-cli;
           webschembly-runtime-debug = webschembly-debug.webschembly-runtime;
           inherit cargonix;
+          x = cargonix;
         };
         defaultPackage = webschembly.webschembly-compiler-cli;
         devShell = webschembly.workspaceShell {
