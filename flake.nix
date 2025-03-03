@@ -7,57 +7,58 @@
       url = "github:cargo2nix/cargo2nix";
       inputs.rust-overlay.follows = "rust-overlay";
     };
+    crate2nix.url = "github:nix-community/crate2nix";
   };
 
-  outputs = { nixpkgs, flake-utils, cargo2nix, ... }:
+  outputs = { self, nixpkgs, flake-utils, cargo2nix, crate2nix, ... }:
     flake-utils.lib.eachDefaultSystem (system:
       let
-        rustToolchain = pkgs.pkgsBuildHost.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
         overlays = [ cargo2nix.overlays.default ];
         pkgsArgs = {
           inherit system overlays;
         };
         pkgs = import nixpkgs pkgsArgs;
-        mkWebschembly =
-          { release }:
+        wasmPkgs = import nixpkgs (pkgsArgs // {
+          crossSystem = pkgs.lib.systems.examples.wasi32 // { rustc.config = "wasm32-unknown-unknown"; };
+        });
+        mkWorkspace =
+          { pkgs }:
           let
-            rustPkgs = pkgs.rustBuilder.makePackageSet {
-              rustToolchain = rustToolchain;
-              packageFun = import ./Cargo.nix;
-              inherit release;
+            rustToolchain = pkgs.pkgsBuildHost.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
+            buildRustCrateForPkgs = crate: pkgs.buildRustCrate.override {
+              rustc = rustToolchain;
+              cargo = rustToolchain;
             };
-            wasmRustPkgs = pkgs.rustBuilder.makePackageSet {
-              rustToolchain = rustToolchain;
-              packageFun = import ./Cargo.nix;
-              target = "wasm32-unknown-unknown";
-              inherit release;
+            generatedCargoNix = crate2nix.tools.${system}.generatedCargoNix {
+              name = "Cargo.nix";
+              src = ./.;
             };
-            webschembly-compiler-cli = (rustPkgs.workspace.webschembly-compiler-cli { }).bin;
-            webschembly-runtime-rust = (wasmRustPkgs.workspace.webschembly-runtime-rust { }).out;
-            webschembly-runtime = pkgs.callPackage ./webschembly-runtime { inherit webschembly-runtime-rust; BINARYEN_ARGS = pkgs.lib.strings.trim (builtins.readFile ./binaryen-args.txt); };
+            cargoNix = import generatedCargoNix {
+              inherit pkgs buildRustCrateForPkgs;
+            };
           in
           {
-            inherit webschembly-compiler-cli webschembly-runtime;
-            inherit (rustPkgs) workspaceShell;
+            inherit (cargoNix) workspaceMembers;
+            inherit rustToolchain;
           };
-        webschembly = mkWebschembly { release = true; };
-        webschembly-debug = mkWebschembly { release = false; };
+        workspace = mkWorkspace { inherit pkgs; };
+        wasmWorkspace = mkWorkspace { pkgs = wasmPkgs; };
+        webschembly-compiler-cli = workspace.workspaceMembers.webschembly-compiler-cli.build;
+        webschembly-runtime-rust = wasmWorkspace.workspaceMembers.webschembly-runtime-rust.build;
+        webschembly-runtime = pkgs.callPackage ./webschembly-runtime { inherit webschembly-runtime-rust; BINARYEN_ARGS = pkgs.lib.strings.trim (builtins.readFile ./binaryen-args.txt); };
       in
       {
         packages = {
-          inherit (webschembly) webschembly-compiler-cli webschembly-runtime;
-          webschembly-compiler-cli-debug = webschembly-debug.webschembly-compiler-cli;
-          webschembly-runtime-debug = webschembly-debug.webschembly-runtime;
+          inherit webschembly-compiler-cli webschembly-runtime-rust webschembly-runtime;
         };
-        defaultPackage = webschembly.webschembly-compiler-cli;
-        devShell = webschembly.workspaceShell {
-          nativeBuildInputs = [
-            cargo2nix.packages.${system}.cargo2nix
-          ] ++ pkgs.lib.optionals pkgs.stdenv.isLinux [
+        defaultPackage = self.packages.${system}.webschembly-compiler-cli;
+        devShell = pkgs.mkShell {
+          nativeBuildInputs = pkgs.lib.optionals pkgs.stdenv.isLinux [
             pkgs.pkg-config
           ];
 
           buildInputs = [
+            workspace.rustToolchain
             pkgs.gnumake
             pkgs.nodejs_22
             pkgs.nixpkgs-fmt
