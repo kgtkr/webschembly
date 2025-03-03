@@ -58,13 +58,14 @@
           ];
 
           buildInputs = [
-            pkgs.glibc
             pkgs.gnumake
             pkgs.nodejs_22
             pkgs.nixpkgs-fmt
             pkgs.binaryen
             pkgs.wasm-tools
             pkgs.cargo-insta
+          ] ++ pkgs.lib.optionals pkgs.stdenv.isLinux [
+            pkgs.glibc
           ];
         };
       }
