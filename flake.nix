@@ -7,19 +7,13 @@
       url = "github:kgtkr/cargo2nix/396edea";
       inputs.rust-overlay.follows = "rust-overlay";
     };
-    # for tools.nix
-    crate2nix = {
-      url = "github:nix-community/crate2nix";
-      flake = false;
-    };
-    # for lib/filterCargoSources.nix
-    crane = {
-      url = "github:ipetkov/crane";
-      flake = false;
+    cargo2nix-ifd = {
+      url = "github:kgtkr/cargo2nix-ifd";
+      inputs.cargo2nix.follows = "cargo2nix";
     };
   };
 
-  outputs = { nixpkgs, flake-utils, cargo2nix, crate2nix, crane, ... }:
+  outputs = { nixpkgs, flake-utils, cargo2nix, cargo2nix-ifd, ... }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         rustToolchain = pkgs.pkgsBuildHost.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
@@ -28,44 +22,20 @@
           inherit system overlays;
         };
         pkgs = import nixpkgs pkgsArgs;
-        tools = pkgs.callPackage "${crate2nix}/tools.nix" { inherit pkgs; };
-        src = ./.;
-        filterCargoSources = pkgs.callPackage "${crane}/lib/filterCargoSources.nix" {};
-        filterWebschembly = orig_path: type:
-          let
-            path = (toString orig_path);
-            base = baseNameOf path;
-          in
-            base == "stdlib.scm";
-        filter = path: type: filterCargoSources path type || filterWebschembly path type;
-        filteredSrc = pkgs.lib.cleanSourceWith {
-          name = "webschembly-src";
-          inherit src filter;
+        projectName = "webschembly";
+        filteredSrc = cargo2nix-ifd.lib.${system}.filterSrc {
+          src = ./.;
+          orFilter = orig_path: type:
+            let
+              path = (toString orig_path);
+              base = baseNameOf path;
+            in
+              base == "stdlib.scm";
+          inherit projectName;
         };
-        vendor = tools.internal.vendorSupport rec {
-          crateDir = filteredSrc;
-          lockFiles = [ "${crateDir}/Cargo.lock" ];
-        };
-        generatedSrc = pkgs.stdenv.mkDerivation {
-          name = "webschembly-generated-src";
-          buildInputs = [ rustToolchain cargo2nix.packages.${system}.cargo2nix ];
+        generatedSrc = cargo2nix-ifd.lib.${system}.generateSrc {
           src = filteredSrc;
-          buildPhase = ''
-            export HOME=/tmp/home
-            export CARGO_HOME="$HOME/cargo"
-            mkdir -p $CARGO_HOME
-
-            cp ${vendor.cargoConfig} $CARGO_HOME/config
-            CARGO_OFFLINE=true cargo2nix --locked
-          '';
-
-          installPhase = ''
-            mkdir -p $out
-
-            cp -r $src/* $out/
-            cp Cargo.nix $out/
-          '';
-
+          inherit projectName rustToolchain;
         };
         mkWebschembly =
           { release }:
