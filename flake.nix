@@ -16,12 +16,11 @@
   outputs = { nixpkgs, flake-utils, cargo2nix, cargo2nix-ifd, ... }:
     flake-utils.lib.eachDefaultSystem (system:
       let
-        rustToolchain = pkgs.pkgsBuildHost.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
-        overlays = [ cargo2nix.overlays.default ];
-        pkgsArgs = {
-          inherit system overlays;
+        rustToolchain = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
+        pkgs = import nixpkgs {
+          inherit system;
+          overlays = [ cargo2nix.overlays.default ];
         };
-        pkgs = import nixpkgs pkgsArgs;
         projectName = "webschembly";
         filteredSrc = cargo2nix-ifd.lib.${system}.filterSrc {
           src = ./.;
@@ -41,15 +40,13 @@
           { release }:
           let
             rustPkgs = pkgs.rustBuilder.makePackageSet {
-              rustToolchain = rustToolchain;
               packageFun = import "${generatedSrc}/Cargo.nix";
-              inherit release;
+              inherit rustToolchain release;
             };
             wasmRustPkgs = pkgs.rustBuilder.makePackageSet {
-              rustToolchain = rustToolchain;
               packageFun = import "${generatedSrc}/Cargo.nix";
               target = "wasm32-unknown-unknown";
-              inherit release;
+              inherit rustToolchain release;
             };
             webschembly-compiler-cli = (rustPkgs.workspace.webschembly-compiler-cli { }).bin;
             webschembly-runtime-rust = (wasmRustPkgs.workspace.webschembly-runtime-rust { }).out;
