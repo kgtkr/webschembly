@@ -1,6 +1,7 @@
 {
   "name": "webschembly-playground",
   "type": "module",
+  "version": "0.1.0",
   "scripts": {
     "build": "vite build",
     "dev": "vite"

@@ -53,16 +53,13 @@ jobs:
           npm ci
           cd webschembly-js && make test
       - name: Build Playground
-        # TODO: production buildしたruntimeを使う
         run: |
-          npm ci
-          cd webschembly-playground && BASE_URL=/webschembly/ make && chmod -R a+rX dist
-          # https://github.com/actions/deploy-pages/issues/303
+          nix build .#webschembly-playground-for-pages --out-link result-playground
       - name: Upload Playground
         id: deployment
         uses: actions/upload-pages-artifact@v3
         with:
-          path: webschembly-playground/dist
+          path: result-playground/
       - name: Build cli
         run: |
           nix build .#webschembly-compiler-cli --out-link result-cli

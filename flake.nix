@@ -11,15 +11,17 @@
       url = "github:kgtkr/cargo2nix-ifd";
       inputs.cargo2nix.follows = "cargo2nix";
     };
+    napalm.url = "github:nix-community/napalm";
   };
 
-  outputs = { self, nixpkgs, flake-utils, cargo2nix, cargo2nix-ifd, ... }:
+  outputs = { self, nixpkgs, flake-utils, cargo2nix, cargo2nix-ifd, napalm, ... }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs {
           inherit system;
-          overlays = [ cargo2nix.overlays.default ];
+          overlays = [ cargo2nix.overlays.default napalm.overlays.default ];
         };
+        nodejs = pkgs.nodejs_22;
         rustToolchain = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
         projectName = "webschembly";
         staticTarget = pkgs.pkgsStatic.stdenv.hostPlatform.config;
@@ -56,11 +58,29 @@
         webschembly-compiler-cli = (staticRustPkgs.workspace.webschembly-compiler-cli { }).bin;
         webschembly-runtime-rust = (wasmRustPkgs.workspace.webschembly-runtime-rust { }).out;
         webschembly-runtime = pkgs.callPackage ./webschembly-runtime { inherit webschembly-runtime-rust; BINARYEN_ARGS = pkgs.lib.strings.trim (builtins.readFile ./binaryen-args.txt); };
+        webschembly-node_modules = pkgs.napalm.buildPackage ./. {
+          inherit nodejs;
+          name = "webschembly-node_modules";
+        };
+        webschembly-playground = pkgs.stdenv.mkDerivation {
+          name = "webschembly-playground";
+          buildInputs = [ pkgs.gnumake nodejs ];
+          src = "${webschembly-node_modules}/_napalm-install";
+          buildPhase = ''
+            make -C webschembly-playground WEBSCHEMBLY_RUNTIME=${webschembly-runtime}/lib/webschembly_runtime.wasm
+          '';
+          installPhase = ''
+            mkdir -p $out
+            cp -r webschembly-playground/dist/* $out
+          '';
+        };
       in
       {
         packages = {
-          inherit webschembly-compiler-cli webschembly-runtime;
-          inherit rustToolchain;
+          inherit webschembly-compiler-cli webschembly-runtime webschembly-playground;
+          webschembly-playground-for-pages = webschembly-playground.overrideAttrs (oldAttrs: {
+            BASE_URL="/webschembly/";
+          });
         };
         defaultPackage = self.packages.${system}.webschembly-compiler-cli;
         devShell = rustPkgs.workspaceShell {
@@ -70,7 +90,7 @@
 
           buildInputs = [
             pkgs.gnumake
-            pkgs.nodejs_22
+            nodejs
             pkgs.nixpkgs-fmt
             pkgs.binaryen
             pkgs.wasm-tools
