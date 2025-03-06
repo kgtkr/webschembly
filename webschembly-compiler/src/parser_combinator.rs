@@ -1,6 +1,6 @@
 use nom::{
-    error::{ErrorKind, ParseError},
     Err, IResult, InputIter, Parser, Slice,
+    error::{ErrorKind, ParseError},
 };
 use std::ops::RangeFrom;
 

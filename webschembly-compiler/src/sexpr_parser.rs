@@ -8,7 +8,7 @@ use super::parser_combinator::{satisfy, satisfy_map_opt};
 use crate::tokens::Tokens;
 use nom::combinator::opt;
 use nom::sequence::preceded;
-use nom::{branch::alt, multi::many0, IResult, Parser};
+use nom::{IResult, Parser, branch::alt, multi::many0};
 
 fn bool(input: Tokens) -> IResult<Tokens, SExpr> {
     satisfy_map_opt(|t: &Token| match &t.kind {
@@ -113,17 +113,14 @@ fn quote(input: Tokens) -> IResult<Tokens, SExpr> {
     let (input, expr) = sexpr(input)?;
     let span = quote.span.merge(expr.span);
 
-    Ok((
-        input,
-        list![
-            SExpr {
-                kind: SExprKind::Symbol("quote".to_string()),
-                span: quote.span,
-            } => span,
-            expr => span,
-            => span
-        ],
-    ))
+    Ok((input, list![
+        SExpr {
+            kind: SExprKind::Symbol("quote".to_string()),
+            span: quote.span,
+        } => span,
+        expr => span,
+        => span
+    ]))
 }
 
 fn sexpr(input: Tokens) -> IResult<Tokens, SExpr> {

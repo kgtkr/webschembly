@@ -3,7 +3,7 @@ use crate::compiler_error;
 use crate::error::Result;
 use crate::sexpr::{SExpr, SExprKind};
 use crate::span::Span;
-use crate::x::{type_map, BasePhase, FamilyX, Phase};
+use crate::x::{BasePhase, FamilyX, Phase, type_map};
 
 #[derive(Debug, Clone)]
 pub enum Parsed {}
@@ -192,10 +192,10 @@ impl Expr<Parsed> {
                     },
                     expr,
                 ] => Ok(Expr::Define(
-                    type_map::singleton(
-                        type_map::key::<Parsed>(),
-                        ParsedDefineR { span, name_span },
-                    ),
+                    type_map::singleton(type_map::key::<Parsed>(), ParsedDefineR {
+                        span,
+                        name_span,
+                    }),
                     Define {
                         name,
                         expr: Box::new(Expr::from_sexpr(expr)?),
@@ -211,10 +211,10 @@ impl Expr<Parsed> {
                     ] => lambda_span,
                     ..exprs
                 ] => Ok(Expr::Define(
-                    type_map::singleton(
-                        type_map::key::<Parsed>(),
-                        ParsedDefineR { span, name_span },
-                    ),
+                    type_map::singleton(type_map::key::<Parsed>(), ParsedDefineR {
+                        span,
+                        name_span,
+                    }),
                     Define {
                         name,
                         expr: Box::new(Self::parse_lambda(lambda_span, args, exprs)?),
@@ -286,13 +286,10 @@ impl Expr<Parsed> {
                         .collect::<Result<Vec<_>>>()?;
 
                     Ok(Expr::Let(
-                        type_map::singleton(
-                            type_map::key::<Parsed>(),
-                            ParsedLetR {
-                                span,
-                                binding_spans,
-                            },
-                        ),
+                        type_map::singleton(type_map::key::<Parsed>(), ParsedLetR {
+                            span,
+                            binding_spans,
+                        }),
                         Let { bindings, body },
                     ))
                 }
@@ -332,10 +329,10 @@ impl Expr<Parsed> {
                 ] => {
                     let expr = Expr::from_sexpr(expr)?;
                     Ok(Expr::Set(
-                        type_map::singleton(
-                            type_map::key::<Parsed>(),
-                            ParsedSetR { span, name_span },
-                        ),
+                        type_map::singleton(type_map::key::<Parsed>(), ParsedSetR {
+                            span,
+                            name_span,
+                        }),
                         Set {
                             name,
                             expr: Box::new(expr),

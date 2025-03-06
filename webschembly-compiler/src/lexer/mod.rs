@@ -3,12 +3,12 @@ use crate::{error::CompilerError, token::TokenKind};
 use super::token::Token;
 use located::{to_pos, to_span};
 use nom::{
+    Err, Finish, IResult, Parser,
     branch::alt,
     bytes::complete::{tag, take, take_while, take_while1},
     combinator::{consumed, eof as nom_eof, map, success, value},
     error::{ErrorKind, FromExternalError, ParseError, VerboseError, VerboseErrorKind},
     multi::many0,
-    Err, Finish, IResult, Parser,
 };
 use std::fmt::Write;
 mod error;
@@ -125,25 +125,19 @@ fn ignore<'a, E: ErrorBound<'a>>(input: LocatedStr<'a>) -> IResult<LocatedStr<'a
 fn token<'a, E: ErrorBound<'a>>(input: LocatedStr<'a>) -> IResult<LocatedStr<'a>, Token, E> {
     let (input, _) = ignore(input)?;
     let (input, (pos, kind)) = consumed(token_kind)(input)?;
-    Ok((
-        input,
-        Token {
-            kind,
-            span: to_span(&pos),
-        },
-    ))
+    Ok((input, Token {
+        kind,
+        span: to_span(&pos),
+    }))
 }
 
 fn eof<'a, E: ErrorBound<'a>>(input: LocatedStr<'a>) -> IResult<LocatedStr<'a>, Token, E> {
     let (input, _) = ignore(input)?;
     let (input, (pos, _)) = consumed(nom_eof)(input)?;
-    Ok((
-        input,
-        Token {
-            kind: TokenKind::Eof,
-            span: to_span(&pos),
-        },
-    ))
+    Ok((input, Token {
+        kind: TokenKind::Eof,
+        span: to_span(&pos),
+    }))
 }
 
 fn tokens<'a, E: ErrorBound<'a>>(input: LocatedStr<'a>) -> IResult<LocatedStr<'a>, Vec<Token>, E> {

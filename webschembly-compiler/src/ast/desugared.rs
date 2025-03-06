@@ -1,11 +1,11 @@
+use super::Parsed;
 use super::astx::*;
 use super::parsed;
-use super::Parsed;
-use crate::x::type_map;
-use crate::x::type_map::IntoTypeMap;
 use crate::x::FamilyX;
 use crate::x::Phase;
 use crate::x::TypeMap;
+use crate::x::type_map;
+use crate::x::type_map::IntoTypeMap;
 
 #[derive(Debug, Clone)]
 pub enum Desugared {}
@@ -84,48 +84,32 @@ impl Expr<Desugared> {
         match expr {
             Expr::Literal(x, lit) => Expr::Literal(x.add(type_map::key::<Desugared>(), ()), lit),
             Expr::Var(x, var) => Expr::Var(x.add(type_map::key::<Desugared>(), ()), var),
-            Expr::Define(x, def) => Expr::Define(
-                x.add(type_map::key::<Desugared>(), ()),
-                Define {
-                    name: def.name,
-                    expr: Box::new(Self::from_expr(*def.expr)),
-                },
-            ),
-            Expr::Lambda(x, lambda) => Expr::Lambda(
-                x.add(type_map::key::<Desugared>(), ()),
-                Lambda {
+            Expr::Define(x, def) => Expr::Define(x.add(type_map::key::<Desugared>(), ()), Define {
+                name: def.name,
+                expr: Box::new(Self::from_expr(*def.expr)),
+            }),
+            Expr::Lambda(x, lambda) => {
+                Expr::Lambda(x.add(type_map::key::<Desugared>(), ()), Lambda {
                     args: lambda.args,
                     body: lambda.body.into_iter().map(Self::from_expr).collect(),
-                },
-            ),
-            Expr::If(x, if_) => Expr::If(
-                x.add(type_map::key::<Desugared>(), ()),
-                If {
-                    cond: Box::new(Self::from_expr(*if_.cond)),
-                    then: Box::new(Self::from_expr(*if_.then)),
-                    els: Box::new(Self::from_expr(*if_.els)),
-                },
-            ),
-            Expr::Call(x, call) => Expr::Call(
-                x.add(type_map::key::<Desugared>(), ()),
-                Call {
-                    func: Box::new(Self::from_expr(*call.func)),
-                    args: call.args.into_iter().map(Self::from_expr).collect(),
-                },
-            ),
-            Expr::Begin(x, begin) => Expr::Begin(
-                x.add(type_map::key::<Desugared>(), ()),
-                Begin {
-                    exprs: begin.exprs.into_iter().map(Self::from_expr).collect(),
-                },
-            ),
-            Expr::Set(x, set) => Expr::Set(
-                x.add(type_map::key::<Desugared>(), ()),
-                Set {
-                    name: set.name,
-                    expr: Box::new(Self::from_expr(*set.expr)),
-                },
-            ),
+                })
+            }
+            Expr::If(x, if_) => Expr::If(x.add(type_map::key::<Desugared>(), ()), If {
+                cond: Box::new(Self::from_expr(*if_.cond)),
+                then: Box::new(Self::from_expr(*if_.then)),
+                els: Box::new(Self::from_expr(*if_.els)),
+            }),
+            Expr::Call(x, call) => Expr::Call(x.add(type_map::key::<Desugared>(), ()), Call {
+                func: Box::new(Self::from_expr(*call.func)),
+                args: call.args.into_iter().map(Self::from_expr).collect(),
+            }),
+            Expr::Begin(x, begin) => Expr::Begin(x.add(type_map::key::<Desugared>(), ()), Begin {
+                exprs: begin.exprs.into_iter().map(Self::from_expr).collect(),
+            }),
+            Expr::Set(x, set) => Expr::Set(x.add(type_map::key::<Desugared>(), ()), Set {
+                name: set.name,
+                expr: Box::new(Self::from_expr(*set.expr)),
+            }),
             Expr::Let(x, let_) => {
                 let (names, exprs) = let_.bindings.into_iter().collect::<(Vec<_>, Vec<_>)>();
                 Expr::Call(

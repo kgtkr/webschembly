@@ -1,12 +1,12 @@
-use super::astx::*;
 use super::Desugared;
+use super::astx::*;
 use crate::compiler_error;
 use crate::error::Result;
-use crate::x::type_map;
-use crate::x::type_map::IntoTypeMap;
 use crate::x::FamilyX;
 use crate::x::Phase;
 use crate::x::TypeMap;
+use crate::x::type_map;
+use crate::x::type_map::IntoTypeMap;
 
 // 変数の巻き上げを行うためにラムダ式で定義されている変数の名前リストを作成する
 // また、変数の重複チェックと、defineできない場所でdefineが行われていないかも確認する
@@ -115,23 +115,20 @@ impl Expr<Defined> {
                         return Err(compiler_error!(
                             "Define is not allowed in this context: {}",
                             def.name
-                        ))
+                        ));
                     }
                 };
 
                 // defineは巻き上げを行う以外set!と同じ
                 Ok((
                     ctx,
-                    Expr::Set(
-                        x.into_type_map().add(type_map::key::<Defined>(), ()),
-                        Set {
-                            name: def.name,
-                            expr: Box::new(
-                                Self::from_expr(*def.expr, ctx.to_undefinable_if_local(), names)
-                                    .map(|(_, expr)| expr)?,
-                            ),
-                        },
-                    ),
+                    Expr::Set(x.into_type_map().add(type_map::key::<Defined>(), ()), Set {
+                        name: def.name,
+                        expr: Box::new(
+                            Self::from_expr(*def.expr, ctx.to_undefinable_if_local(), names)
+                                .map(|(_, expr)| expr)?,
+                        ),
+                    }),
                 ))
             }
             Expr::Lambda(x, lambda) => {
@@ -141,10 +138,9 @@ impl Expr<Defined> {
                 Ok((
                     ctx,
                     Expr::Lambda(
-                        x.add(
-                            type_map::key::<Defined>(),
-                            DefinedLambdaR { defines: names },
-                        ),
+                        x.add(type_map::key::<Defined>(), DefinedLambdaR {
+                            defines: names,
+                        }),
                         Lambda {
                             args: lambda.args,
                             body: new_body,
@@ -154,23 +150,20 @@ impl Expr<Defined> {
             }
             Expr::If(x, if_) => Ok((
                 ctx.to_undefinable_if_local(),
-                Expr::If(
-                    x.add(type_map::key::<Defined>(), ()),
-                    If {
-                        cond: Box::new(
-                            Self::from_expr(*if_.cond, ctx.to_undefinable_if_local(), names)
-                                .map(|(_, expr)| expr)?,
-                        ),
-                        then: Box::new(
-                            Self::from_expr(*if_.then, ctx.to_undefinable_if_local(), names)
-                                .map(|(_, expr)| expr)?,
-                        ),
-                        els: Box::new(
-                            Self::from_expr(*if_.els, ctx.to_undefinable_if_local(), names)
-                                .map(|(_, expr)| expr)?,
-                        ),
-                    },
-                ),
+                Expr::If(x.add(type_map::key::<Defined>(), ()), If {
+                    cond: Box::new(
+                        Self::from_expr(*if_.cond, ctx.to_undefinable_if_local(), names)
+                            .map(|(_, expr)| expr)?,
+                    ),
+                    then: Box::new(
+                        Self::from_expr(*if_.then, ctx.to_undefinable_if_local(), names)
+                            .map(|(_, expr)| expr)?,
+                    ),
+                    els: Box::new(
+                        Self::from_expr(*if_.els, ctx.to_undefinable_if_local(), names)
+                            .map(|(_, expr)| expr)?,
+                    ),
+                }),
             )),
             Expr::Call(x, call) => {
                 let new_func = Self::from_expr(*call.func, ctx.to_undefinable_if_local(), names)
@@ -185,23 +178,19 @@ impl Expr<Defined> {
                     .collect::<Result<Vec<_>>>()?;
                 Ok((
                     ctx.to_undefinable_if_local(),
-                    Expr::Call(
-                        x.add(type_map::key::<Defined>(), ()),
-                        Call {
-                            func: Box::new(new_func),
-                            args: new_args,
-                        },
-                    ),
+                    Expr::Call(x.add(type_map::key::<Defined>(), ()), Call {
+                        func: Box::new(new_func),
+                        args: new_args,
+                    }),
                 ))
             }
             Expr::Begin(x, begin) => {
                 let new_exprs = Self::from_block(begin.exprs, ctx, names)?;
                 Ok((
                     ctx.to_undefinable_if_local(),
-                    Expr::Begin(
-                        x.add(type_map::key::<Defined>(), ()),
-                        Begin { exprs: new_exprs },
-                    ),
+                    Expr::Begin(x.add(type_map::key::<Defined>(), ()), Begin {
+                        exprs: new_exprs,
+                    }),
                 ))
             }
             Expr::Set(x, set) => {
@@ -209,13 +198,10 @@ impl Expr<Defined> {
                     .map(|(_, expr)| expr)?;
                 Ok((
                     ctx.to_undefinable_if_local(),
-                    Expr::Set(
-                        x.add(type_map::key::<Defined>(), ()),
-                        Set {
-                            name: set.name,
-                            expr: Box::new(new_expr),
-                        },
-                    ),
+                    Expr::Set(x.add(type_map::key::<Defined>(), ()), Set {
+                        name: set.name,
+                        expr: Box::new(new_expr),
+                    }),
                 ))
             }
             Expr::Let(x, _) => x.get_owned(type_map::key::<Desugared>()),

@@ -1,9 +1,8 @@
 use std::marker::PhantomData;
 
 use frunk::{
-    field,
+    HCons, HNil, field,
     labelled::{ByNameFieldPlucker, Field},
-    HCons, HNil,
 };
 
 pub trait TypeMap: Sized {

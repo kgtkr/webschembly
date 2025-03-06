@@ -481,68 +481,51 @@ impl ModuleGenerator {
             }),
         );
 
-        self.display_func = self.add_runtime_function(
-            "display",
-            WasmFuncType {
-                params: vec![ValType::Ref(RefType {
+        self.display_func = self.add_runtime_function("display", WasmFuncType {
+            params: vec![ValType::Ref(RefType {
+                nullable: false,
+                heap_type: HeapType::Concrete(self.string_type),
+            })],
+            results: vec![],
+        });
+        self.display_fd_func = self.add_runtime_function("display_fd", WasmFuncType {
+            params: vec![
+                ValType::I32,
+                ValType::Ref(RefType {
                     nullable: false,
                     heap_type: HeapType::Concrete(self.string_type),
-                })],
-                results: vec![],
-            },
-        );
-        self.display_fd_func = self.add_runtime_function(
-            "display_fd",
-            WasmFuncType {
-                params: vec![
-                    ValType::I32,
-                    ValType::Ref(RefType {
-                        nullable: false,
-                        heap_type: HeapType::Concrete(self.string_type),
-                    }),
-                ],
-                results: vec![],
-            },
-        );
-        self.string_to_symbol_func = self.add_runtime_function(
-            "string_to_symbol",
-            WasmFuncType {
-                params: vec![ValType::Ref(RefType {
-                    nullable: false,
-                    heap_type: HeapType::Concrete(self.string_type),
-                })],
-                results: vec![ValType::Ref(RefType {
-                    nullable: false,
-                    heap_type: HeapType::Concrete(self.symbol_type),
-                })],
-            },
-        );
+                }),
+            ],
+            results: vec![],
+        });
+        self.string_to_symbol_func = self.add_runtime_function("string_to_symbol", WasmFuncType {
+            params: vec![ValType::Ref(RefType {
+                nullable: false,
+                heap_type: HeapType::Concrete(self.string_type),
+            })],
+            results: vec![ValType::Ref(RefType {
+                nullable: false,
+                heap_type: HeapType::Concrete(self.symbol_type),
+            })],
+        });
 
-        self.write_char_func = self.add_runtime_function(
-            "write_char",
-            WasmFuncType {
-                params: vec![ValType::I32],
-                results: vec![],
-            },
-        );
-        self.int_to_string_func = self.add_runtime_function(
-            "int_to_string",
-            WasmFuncType {
-                params: vec![ValType::I64],
-                results: vec![ValType::Ref(RefType {
-                    nullable: false,
-                    heap_type: HeapType::Concrete(self.string_type),
-                })],
-            },
-        );
+        self.write_char_func = self.add_runtime_function("write_char", WasmFuncType {
+            params: vec![ValType::I32],
+            results: vec![],
+        });
+        self.int_to_string_func = self.add_runtime_function("int_to_string", WasmFuncType {
+            params: vec![ValType::I64],
+            results: vec![ValType::Ref(RefType {
+                nullable: false,
+                heap_type: HeapType::Concrete(self.string_type),
+            })],
+        });
 
-        self.throw_webassembly_exception = self.add_runtime_function(
-            "throw_webassembly_exception",
-            WasmFuncType {
+        self.throw_webassembly_exception =
+            self.add_runtime_function("throw_webassembly_exception", WasmFuncType {
                 params: vec![],
                 results: vec![],
-            },
-        );
+            });
 
         for (i, func) in ir.funcs.iter().enumerate() {
             let type_idx = self.func_type_from_ir(func.func_type());
@@ -576,13 +559,10 @@ impl ModuleGenerator {
             function.instruction(&Instruction::Return);
             function.instruction(&Instruction::End);
 
-            self.func_indices.insert(
-                i,
-                FuncIndex {
-                    func_idx,
-                    boxed_func_idx,
-                },
-            );
+            self.func_indices.insert(i, FuncIndex {
+                func_idx,
+                boxed_func_idx,
+            });
             self.elements.declared(Elements::Functions(Cow::Borrowed(&[
                 func_idx,
                 boxed_func_idx,

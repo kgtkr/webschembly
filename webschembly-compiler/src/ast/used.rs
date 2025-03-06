@@ -1,10 +1,10 @@
+use super::Desugared;
 use super::astx::*;
 use super::defined::*;
-use super::Desugared;
-use crate::x::type_map;
 use crate::x::FamilyX;
 use crate::x::Phase;
 use crate::x::TypeMap;
+use crate::x::type_map;
 use std::collections::HashMap;
 use std::collections::HashSet;
 
@@ -201,17 +201,14 @@ impl Ast<Used> {
             .collect();
 
         Ast {
-            x: ast.x.add(
-                type_map::key::<Used>(),
-                UsedAstR {
-                    box_vars: var_id_gen
-                        .mutated_vars
-                        .intersection(&var_id_gen.captured_vars)
-                        .copied()
-                        .collect(),
-                    global_vars: var_id_gen.use_globals.clone(),
-                },
-            ),
+            x: ast.x.add(type_map::key::<Used>(), UsedAstR {
+                box_vars: var_id_gen
+                    .mutated_vars
+                    .intersection(&var_id_gen.captured_vars)
+                    .copied()
+                    .collect(),
+                global_vars: var_id_gen.use_globals.clone(),
+            }),
             exprs: new_exprs,
         }
     }
@@ -249,13 +246,10 @@ impl Expr<Used> {
                     Context::Global => {}
                     Context::Local(LocalContext { env }) => {
                         for (name, local_var) in env.iter() {
-                            new_env.insert(
-                                name.clone(),
-                                EnvLocalVar {
-                                    id: local_var.id,
-                                    is_captured: true,
-                                },
-                            );
+                            new_env.insert(name.clone(), EnvLocalVar {
+                                id: local_var.id,
+                                is_captured: true,
+                            });
                         }
                     }
                 }
@@ -264,13 +258,10 @@ impl Expr<Used> {
                     .iter()
                     .map(|arg| {
                         let id = var_id_gen.gen_local();
-                        new_env.insert(
-                            arg.clone(),
-                            EnvLocalVar {
-                                id,
-                                is_captured: false,
-                            },
-                        );
+                        new_env.insert(arg.clone(), EnvLocalVar {
+                            id,
+                            is_captured: false,
+                        });
                         id
                     })
                     .collect::<Vec<_>>();
@@ -281,13 +272,10 @@ impl Expr<Used> {
                     .iter()
                     .map(|def| {
                         let id = var_id_gen.gen_local();
-                        new_env.insert(
-                            def.clone(),
-                            EnvLocalVar {
-                                id,
-                                is_captured: false,
-                            },
-                        );
+                        new_env.insert(def.clone(), EnvLocalVar {
+                            id,
+                            is_captured: false,
+                        });
                         id
                     })
                     .collect();
@@ -314,14 +302,11 @@ impl Expr<Used> {
                 }
 
                 Expr::Lambda(
-                    x.add(
-                        type_map::key::<Used>(),
-                        UsedLambdaR {
-                            args,
-                            defines,
-                            captures: new_state.captures.into_iter().collect(), // 非決定的だが問題ないはず
-                        },
-                    ),
+                    x.add(type_map::key::<Used>(), UsedLambdaR {
+                        args,
+                        defines,
+                        captures: new_state.captures.into_iter().collect(), // 非決定的だが問題ないはず
+                    }),
                     Lambda {
                         args: lambda.args,
                         body: new_body,
@@ -332,14 +317,11 @@ impl Expr<Used> {
                 let new_cond = Box::new(Self::from_expr(*if_.cond, ctx, var_id_gen, state));
                 let new_then = Box::new(Self::from_expr(*if_.then, ctx, var_id_gen, state));
                 let new_els = Box::new(Self::from_expr(*if_.els, ctx, var_id_gen, state));
-                Expr::If(
-                    x.add(type_map::key::<Used>(), ()),
-                    If {
-                        cond: new_cond,
-                        then: new_then,
-                        els: new_els,
-                    },
-                )
+                Expr::If(x.add(type_map::key::<Used>(), ()), If {
+                    cond: new_cond,
+                    then: new_then,
+                    els: new_els,
+                })
             }
             Expr::Call(x, call) => {
                 let new_func = Box::new(Self::from_expr(*call.func, ctx, var_id_gen, state));
@@ -348,13 +330,10 @@ impl Expr<Used> {
                     .into_iter()
                     .map(|arg| Self::from_expr(arg, ctx, var_id_gen, state))
                     .collect();
-                Expr::Call(
-                    x.add(type_map::key::<Used>(), ()),
-                    Call {
-                        func: new_func,
-                        args: new_args,
-                    },
-                )
+                Expr::Call(x.add(type_map::key::<Used>(), ()), Call {
+                    func: new_func,
+                    args: new_args,
+                })
             }
             Expr::Begin(x, begin) => {
                 let new_exprs = begin
@@ -362,10 +341,9 @@ impl Expr<Used> {
                     .into_iter()
                     .map(|expr| Self::from_expr(expr, ctx, var_id_gen, state))
                     .collect();
-                Expr::Begin(
-                    x.add(type_map::key::<Used>(), ()),
-                    Begin { exprs: new_exprs },
-                )
+                Expr::Begin(x.add(type_map::key::<Used>(), ()), Begin {
+                    exprs: new_exprs,
+                })
             }
             Expr::Set(x, set) => {
                 let var_id = match ctx {
@@ -383,13 +361,10 @@ impl Expr<Used> {
                     }
                 };
                 let new_expr = Self::from_expr(*set.expr, ctx, var_id_gen, state);
-                Expr::Set(
-                    x.add(type_map::key::<Used>(), UsedSetR { var_id }),
-                    Set {
-                        name: set.name,
-                        expr: Box::new(new_expr),
-                    },
-                )
+                Expr::Set(x.add(type_map::key::<Used>(), UsedSetR { var_id }), Set {
+                    name: set.name,
+                    expr: Box::new(new_expr),
+                })
             }
             Expr::Let(x, _) => x.get_owned(type_map::key::<Desugared>()),
         }
