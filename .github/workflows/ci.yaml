@@ -49,23 +49,20 @@ jobs:
         run: |
           cargo test
       - name: E2E Test
-        working-directory: webschembly-js
         run: |
-          npm install
-          make test
+          npm ci
+          cd webschembly-js && make test
       - name: Build Playground
-        working-directory: webschembly-js
         # TODO: production buildしたruntimeを使う
         run: |
-          npm install
-          BASE_URL=/webschembly/ make build-playground
+          npm ci
+          cd webschembly-playground && BASE_URL=/webschembly/ make && chmod -R a+rX dist
           # https://github.com/actions/deploy-pages/issues/303
-          chmod -R a+rX dist
       - name: Upload Playground
         id: deployment
         uses: actions/upload-pages-artifact@v3
         with:
-          path: webschembly-js/dist
+          path: webschembly-playground/dist
       - name: Build cli
         run: |
           nix build .#webschembly-compiler-cli --out-link result-cli

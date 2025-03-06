@@ -1,0 +1,13 @@
+{
+  "name": "webschembly-playground",
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite"
+  },
+  "devDependencies": {
+    "vite": "^6.2.0",
+    "vite-plugin-static-copy": "^2.3.0",
+    "webschembly-js": "^0.1.0"
+  }
+}

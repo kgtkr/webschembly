@@ -4,5 +4,4 @@
 *.wat
 bin/*
 /log/
-/node_modules/
-/dist/
+

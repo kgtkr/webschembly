@@ -1,14 +1,11 @@
 {
   "name": "webschembly-js",
   "type": "module",
+  "version": "0.1.0",
   "scripts": {
-    "test": "vitest",
-    "build": "vite build",
-    "dev": "vite"
+    "test": "vitest"
   },
   "devDependencies": {
-    "vite": "^6.2.0",
-    "vite-plugin-static-copy": "^2.3.0",
     "vitest": "^3.0.6"
   }
 }

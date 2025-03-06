@@ -1,0 +1,8 @@
+{
+    "name": "webschembly",
+    "private": true,
+    "workspaces": [
+        "webschembly-js",
+        "webschembly-playground"
+    ]
+}
