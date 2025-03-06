@@ -26,16 +26,14 @@
         rustToolchain = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
         projectName = "webschembly";
         staticTarget = pkgs.pkgsStatic.stdenv.hostPlatform.config;
-        mkSrc = srcs: stdenv.mkDerivation {
-          name = "src";
-          phases = [ "installPhase" ];
-          installPhase = ''
-            mkdir -p $out
-            ${lib.concatStringsSep "\n" (lib.map (name: "cp -r ${lib.path.append ./. name} $out/${name}") srcs)}
-          '';
-        };
         filteredSrc = cargo2nix-ifd.lib.${system}.filterSrc {
-          src = mkSrc (["Cargo.toml" "Cargo.lock"] ++ (fromTOML (builtins.readFile ./Cargo.toml)).workspace.members);
+          src = lib.fileset.toSource {
+            root = ./.;
+            fileset = lib.fileset.unions ([
+              ./Cargo.toml
+              ./Cargo.lock
+            ] ++ lib.map (lib.path.append ./.) (fromTOML (builtins.readFile ./Cargo.toml)).workspace.members);
+          };
           orFilter = path: _type:
             let
               files = ["stdlib.scm"];
@@ -66,7 +64,14 @@
         webschembly-compiler-cli = (staticRustPkgs.workspace.webschembly-compiler-cli { }).bin;
         webschembly-runtime-rust = (wasmRustPkgs.workspace.webschembly-runtime-rust { }).out;
         webschembly-runtime = pkgs.callPackage ./webschembly-runtime { inherit webschembly-runtime-rust; BINARYEN_ARGS = lib.strings.trim (builtins.readFile ./binaryen-args.txt); };
-        webschembly-node_modules = pkgs.napalm.buildPackage (mkSrc (["package.json" "package-lock.json"] ++ (builtins.fromJSON (builtins.readFile ./package.json)).workspaces)) {
+        nodeSrc = lib.fileset.toSource {
+          root = ./.;
+          fileset = lib.fileset.unions ([
+            ./package.json
+            ./package-lock.json
+          ] ++ lib.map (lib.path.append ./.) (builtins.fromJSON (builtins.readFile ./package.json)).workspaces);
+        };
+        webschembly-node_modules = pkgs.napalm.buildPackage nodeSrc {
           inherit nodejs;
           name = "webschembly-node_modules";
         };
