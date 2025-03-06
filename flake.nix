@@ -36,9 +36,9 @@
           };
           orFilter = path: _type:
             let
-              files = ["stdlib.scm"];
+              files = [ "stdlib.scm" ];
             in
-              lib.any (file: baseNameOf path == file) files;
+            lib.any (file: baseNameOf path == file) files;
           inherit projectName;
         };
         generatedSrc = cargo2nix-ifd.lib.${system}.generateSrc {
