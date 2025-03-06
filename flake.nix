@@ -32,7 +32,7 @@
               path = (toString orig_path);
               base = baseNameOf path;
             in
-              base == "stdlib.scm";
+            base == "stdlib.scm";
           inherit projectName;
         };
         generatedSrc = cargo2nix-ifd.lib.${system}.generateSrc {
@@ -79,7 +79,7 @@
         packages = {
           inherit webschembly-compiler-cli webschembly-runtime webschembly-playground;
           webschembly-playground-for-pages = webschembly-playground.overrideAttrs (oldAttrs: {
-            BASE_URL="/webschembly/";
+            BASE_URL = "/webschembly/";
           });
         };
         defaultPackage = self.packages.${system}.webschembly-compiler-cli;
