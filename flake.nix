@@ -13,7 +13,7 @@
     };
   };
 
-  outputs = { nixpkgs, flake-utils, cargo2nix, cargo2nix-ifd, ... }:
+  outputs = { self, nixpkgs, flake-utils, cargo2nix, cargo2nix-ifd, ... }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         rustToolchain = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
@@ -65,7 +65,7 @@
           webschembly-compiler-cli-debug = webschembly-debug.webschembly-compiler-cli;
           webschembly-runtime-debug = webschembly-debug.webschembly-runtime;
         };
-        defaultPackage = webschembly.webschembly-compiler-cli;
+        defaultPackage = self.packages.${system}.webschembly-compiler-cli;
         devShell = webschembly.workspaceShell {
           nativeBuildInputs = [
             cargo2nix.packages.${system}.cargo2nix
