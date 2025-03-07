@@ -1,4 +1,4 @@
-{ lib, inputs, ... }: {
+{ lib, ... }: {
   perSystem = { config, system, pkgs, cargo2nix-ifd-lib, ... }:
     let
       rustToolchain = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
