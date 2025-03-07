@@ -1,5 +1,5 @@
 { lib, inputs, ... }: {
-  perSystem = { config, system, pkgs, ... }:
+  perSystem = { config, system, pkgs, cargo2nix-ifd-lib, ... }:
     let
       rustToolchain = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
       projectName = "webschembly";
@@ -11,7 +11,7 @@
           ./Cargo.lock
         ] ++ lib.map (lib.path.append ./.) (fromTOML (builtins.readFile ./Cargo.toml)).workspace.members);
       };
-      filteredSrc = inputs.cargo2nix-ifd.lib.${system}.filterSrc {
+      filteredSrc = cargo2nix-ifd-lib.filterSrc {
         inherit src;
         orFilter = path: _type:
           let
@@ -20,13 +20,9 @@
           lib.any (file: baseNameOf path == file) files;
         inherit projectName;
       };
-      generatedSrc = inputs.cargo2nix-ifd.lib.${system}.generateSrc {
+      generatedSrc = cargo2nix-ifd-lib.generateSrc {
         src = filteredSrc;
         inherit projectName rustToolchain;
-      };
-      rustPkgs = pkgs.rustBuilder.makePackageSet {
-        packageFun = import "${generatedSrc}/Cargo.nix";
-        inherit rustToolchain;
       };
       staticRustPkgs = pkgs.rustBuilder.makePackageSet {
         packageFun = import "${generatedSrc}/Cargo.nix";

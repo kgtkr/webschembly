@@ -23,14 +23,17 @@
         ./rust.nix
         ./js.nix
       ];
-      perSystem = { config, pkgs, system, ... }:
+      perSystem = { self', pkgs, system, ... }:
         {
-          _module.args.pkgs = import inputs.nixpkgs {
-            inherit system;
-            overlays = [ inputs.cargo2nix.overlays.default inputs.napalm.overlays.default ];
+          _module.args = {
+            pkgs = import inputs.nixpkgs {
+              inherit system;
+              overlays = [ inputs.cargo2nix.overlays.default inputs.napalm.overlays.default ];
+            };
+            cargo2nix-ifd-lib = inputs.cargo2nix-ifd.mkLib pkgs;
           };
           packages = {
-            default = config.packages.webschembly-compiler-cli;
+            default = self'.packages.webschembly-compiler-cli;
           };
           make-shells.default = {
             packages = [

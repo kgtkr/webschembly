@@ -1,5 +1,5 @@
 { lib, ... }: {
-  perSystem = { config, pkgs, ... }:
+  perSystem = { self', pkgs, ... }:
     let
       nodejs = pkgs.nodejs_22;
       src = lib.fileset.toSource {
@@ -18,7 +18,7 @@
         buildInputs = [ pkgs.gnumake nodejs ];
         src = "${generatedSrc}/_napalm-install";
         buildPhase = ''
-          make -C webschembly-playground WEBSCHEMBLY_RUNTIME=${config.packages.webschembly-runtime}/lib/webschembly_runtime.wasm
+          make -C webschembly-playground WEBSCHEMBLY_RUNTIME=${self'.packages.webschembly-runtime}/lib/webschembly_runtime.wasm
         '';
         installPhase = ''
           mkdir -p $out
