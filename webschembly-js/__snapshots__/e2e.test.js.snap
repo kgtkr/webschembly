@@ -135,6 +135,33 @@ exports[`E2E test > local_duplication2.scm > snapshot test 1`] = `
 }
 `;
 
+exports[`E2E test > num_cmp.scm > snapshot test 1`] = `
+{
+  "exitCode": 0,
+  "stderr": "",
+  "stdout": "#t
+#f
+
+#f
+#f
+#t
+
+#f
+#t
+#f
+
+#t
+#f
+#t
+
+#t
+#t
+#f
+
+",
+}
+`;
+
 exports[`E2E test > set_builtin.scm > snapshot test 1`] = `
 {
   "exitCode": 1,

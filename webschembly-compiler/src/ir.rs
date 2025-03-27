@@ -676,5 +676,25 @@ pub fn builtin_func_type(builtin: ast::Builtin) -> FuncType {
             args: vec![Type::Val(ValType::Int)], // TODO: 一般のnumberに使えるように
             rets: vec![Type::Val(ValType::String)],
         },
+        ast::Builtin::EqNum => FuncType {
+            args: vec![Type::Val(ValType::Int), Type::Val(ValType::Int)],
+            rets: vec![Type::Val(ValType::Bool)],
+        },
+        ast::Builtin::Lt => FuncType {
+            args: vec![Type::Val(ValType::Int), Type::Val(ValType::Int)],
+            rets: vec![Type::Val(ValType::Bool)],
+        },
+        ast::Builtin::Gt => FuncType {
+            args: vec![Type::Val(ValType::Int), Type::Val(ValType::Int)],
+            rets: vec![Type::Val(ValType::Bool)],
+        },
+        ast::Builtin::Le => FuncType {
+            args: vec![Type::Val(ValType::Int), Type::Val(ValType::Int)],
+            rets: vec![Type::Val(ValType::Bool)],
+        },
+        ast::Builtin::Ge => FuncType {
+            args: vec![Type::Val(ValType::Int), Type::Val(ValType::Int)],
+            rets: vec![Type::Val(ValType::Bool)],
+        },
     }
 }

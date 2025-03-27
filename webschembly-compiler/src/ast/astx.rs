@@ -177,6 +177,16 @@ pub enum Builtin {
     SymbolToString,
     #[strum(serialize = "number->string")]
     NumberToString,
+    #[strum(serialize = "=")]
+    EqNum,
+    #[strum(serialize = "<")]
+    Lt,
+    #[strum(serialize = ">")]
+    Gt,
+    #[strum(serialize = "<=")]
+    Le,
+    #[strum(serialize = ">=")]
+    Ge,
 }
 
 impl Builtin {

@@ -1043,6 +1043,21 @@ impl ModuleGenerator {
                 // TODO: 一般のnumberに対応
                 function.instruction(&Instruction::Call(self.int_to_string_func));
             }
+            ast::Builtin::EqNum => {
+                function.instruction(&Instruction::I64Eq);
+            }
+            ast::Builtin::Lt => {
+                function.instruction(&Instruction::I64LtS);
+            }
+            ast::Builtin::Gt => {
+                function.instruction(&Instruction::I64GtS);
+            }
+            ast::Builtin::Le => {
+                function.instruction(&Instruction::I64LeS);
+            }
+            ast::Builtin::Ge => {
+                function.instruction(&Instruction::I64GeS);
+            }
         }
     }
 }
