@@ -16,9 +16,21 @@ export function createRuntime(
         importObject
       );
 
-      const result = instance.exports.start();
-      if (printEvalResult) {
-        runtimeInstance.exports.print_for_repl(result);
+      try {
+        const result = instance.exports.start();
+        if (printEvalResult) {
+          runtimeInstance.exports.print_for_repl(result);
+        }
+        return 0;
+      } catch (e) {
+        if (
+          e instanceof WebAssembly.Exception &&
+          e.is(runtimeInstance.exports.WEBSCHEMBLY_EXCEPTION)
+        ) {
+          return -1;
+        } else {
+          throw e;
+        }
       }
     },
     js_webschembly_log: (bufPtr, bufLen) => {
@@ -51,13 +63,12 @@ export function createRuntime(
       try {
         f(...args);
       } catch (e) {
-        if (e instanceof WebAssembly.Exception) {
-          if (e.is(runtimeInstance.exports.WEBSCHEMBLY_EXCEPTION)) {
-            if (exitWhenException) {
-              exit(1);
-            }
-          } else {
-            throw e;
+        if (
+          e instanceof WebAssembly.Exception &&
+          e.is(runtimeInstance.exports.WEBSCHEMBLY_EXCEPTION)
+        ) {
+          if (exitWhenException) {
+            exit(1);
           }
         } else {
           throw e;

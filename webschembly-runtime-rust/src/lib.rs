@@ -87,24 +87,31 @@ const STDOUT_FD: i32 = 1;
 const STDERR_FD: i32 = 2;
 
 fn load_src_inner(src: String, is_stdlib: bool) {
-    let err = COMPILER.with(|compiler| {
+    let (error_msg, throw_error) = COMPILER.with(|compiler| {
         let mut compiler = compiler.borrow_mut();
         let wasm = compiler.compile(&src, is_stdlib);
         match wasm {
             Ok(wasm) => {
-                unsafe { env::js_instantiate(wasm.as_ptr() as i32, wasm.len() as i32) };
+                let result =
+                    unsafe { env::js_instantiate(wasm.as_ptr() as i32, wasm.len() as i32) };
                 drop(wasm);
-                None
+                if result == 0 {
+                    (None, false)
+                } else {
+                    (None, true)
+                }
             }
-            Err(err) => Some(err),
+            Err(err) => (Some(format!("{}\n", err)), true),
         }
     });
 
-    if let Some(err) = err {
-        let err = format!("{}\n", err);
+    if let Some(error_msg) = error_msg {
         WRITERS.with(|writers| {
-            get_writer(&mut writers.borrow_mut(), STDERR_FD).write_buf(err.as_bytes())
+            get_writer(&mut writers.borrow_mut(), STDERR_FD).write_buf(error_msg.as_bytes())
         });
+    }
+
+    if throw_error {
         unsafe {
             runtime::throw_webassembly_exception();
         }
