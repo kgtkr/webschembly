@@ -162,6 +162,15 @@ exports[`E2E test > num_cmp.scm > snapshot test 1`] = `
 }
 `;
 
+exports[`E2E test > rec.scm > snapshot test 1`] = `
+{
+  "exitCode": 0,
+  "stderr": "",
+  "stdout": "5050
+",
+}
+`;
+
 exports[`E2E test > set_builtin.scm > snapshot test 1`] = `
 {
   "exitCode": 1,

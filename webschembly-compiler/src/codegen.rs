@@ -978,6 +978,9 @@ impl ModuleGenerator {
             ast::Builtin::Add => {
                 function.instruction(&Instruction::I64Add);
             }
+            ast::Builtin::Sub => {
+                function.instruction(&Instruction::I64Sub);
+            }
             ast::Builtin::WriteChar => {
                 function.instruction(&Instruction::Call(self.write_char_func));
                 function.instruction(&Instruction::I32Const(0));

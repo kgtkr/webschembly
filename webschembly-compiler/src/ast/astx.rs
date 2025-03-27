@@ -151,6 +151,8 @@ pub enum Builtin {
     Display, // TODO: 将来的には組み込み関数ではなくしたい
     #[strum(serialize = "+")]
     Add,
+    #[strum(serialize = "-")]
+    Sub,
     #[strum(serialize = "write-char")]
     WriteChar,
     #[strum(serialize = "pair?")]
