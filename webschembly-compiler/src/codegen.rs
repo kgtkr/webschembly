@@ -716,7 +716,7 @@ impl ModuleGenerator {
                     self.closure_type_from_ir(envs.iter().map(|env| locals[*env]).collect()),
                 ));
             }
-            ir::Expr::CallClosure(closure, args) => {
+            ir::Expr::CallClosure(tail_call, closure, args) => {
                 let func_type = self.func_type_from_ir(ir::FuncType {
                     args: args.iter().map(|arg| locals[*arg]).collect(),
                     rets: vec![ir::Type::Boxed],
@@ -732,7 +732,11 @@ impl ModuleGenerator {
                     field_index: Self::CLOSURE_FUNC_FIELD,
                 });
                 function.instruction(&Instruction::RefCastNonNull(HeapType::Concrete(func_type)));
-                function.instruction(&Instruction::CallRef(func_type));
+                if *tail_call {
+                    function.instruction(&Instruction::ReturnCallRef(func_type));
+                } else {
+                    function.instruction(&Instruction::CallRef(func_type));
+                }
             }
             ir::Expr::Move(val) => {
                 function.instruction(&Instruction::LocalGet(*val as u32));

@@ -1,4 +1,5 @@
 use super::Desugared;
+use super::TailCall;
 use super::astx::*;
 use super::defined::*;
 use crate::x::FamilyX;
@@ -12,7 +13,7 @@ use std::collections::HashSet;
 pub enum Used {}
 
 impl Phase for Used {
-    type Prev = Defined;
+    type Prev = TailCall;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

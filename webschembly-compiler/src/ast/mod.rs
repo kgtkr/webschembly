@@ -2,11 +2,13 @@ mod astx;
 mod defined;
 mod desugared;
 mod parsed;
+mod tail_call;
 mod used;
 pub use astx::*;
 pub use defined::*;
 pub use desugared::*;
 pub use parsed::*;
+pub use tail_call::*;
 pub use used::*;
 
 use crate::error::Result;
@@ -36,7 +38,8 @@ impl ASTGenerator {
         let parsed = Ast::<Parsed>::from_sexprs(sexprs)?;
         let desugared = Ast::<Desugared>::from_ast(parsed);
         let defined = Ast::<Defined>::from_ast(desugared)?;
-        let used = Ast::<Used>::from_ast(defined, &mut self.var_id_gen);
+        let tail_call = Ast::<TailCall>::from_ast(defined);
+        let used = Ast::<Used>::from_ast(tail_call, &mut self.var_id_gen);
         // TODO: 末尾位置解析
         Ok(used)
     }

@@ -98,6 +98,15 @@ exports[`E2E test > lambda.scm > snapshot test 1`] = `
 }
 `;
 
+exports[`E2E test > large_rec.scm > snapshot test 1`] = `
+{
+  "exitCode": 0,
+  "stderr": "",
+  "stdout": "0
+",
+}
+`;
+
 exports[`E2E test > list_syntax.scm > snapshot test 1`] = `
 {
   "exitCode": 0,

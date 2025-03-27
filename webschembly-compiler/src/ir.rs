@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::{
-    ast::{self, Desugared, Used},
+    ast::{self, Desugared, TailCall, Used},
     sexpr,
     x::{RunX, TypeMap, type_map},
 };
@@ -41,7 +41,7 @@ pub enum Expr {
     DerefMutCell(usize),
     SetMutCell(usize /* mutcell */, usize /* value */),
     Closure(Vec<usize>, usize),
-    CallClosure(usize, Vec<usize>),
+    CallClosure(bool, usize, Vec<usize>),
     Move(usize),
     Box(ValType, usize),
     Unbox(ValType, usize),
@@ -380,7 +380,7 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                 self.stats
                     .push(Stat::If(cond_local, then_stats, else_stats));
             }
-            ast::Expr::Call(_, ast::Call { func, args }) => {
+            ast::Expr::Call(x, ast::Call { func, args }) => {
                 if let ast::Expr::Var(x, _) = func.as_ref()
                     && let ast::UsedVarR {
                         var_id: ast::VarId::Builtin(builtin),
@@ -465,7 +465,11 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                     }
                     self.stats.push(Stat::Expr(
                         result,
-                        Expr::CallClosure(func_local, arg_locals),
+                        Expr::CallClosure(
+                            x.get_ref(type_map::key::<TailCall>()).is_tail,
+                            func_local,
+                            arg_locals,
+                        ),
                     ));
                 }
             }
