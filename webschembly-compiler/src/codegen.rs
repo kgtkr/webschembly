@@ -212,11 +212,11 @@ impl ModuleGenerator {
         }
     }
 
-    fn closure_type_from_ir(&mut self, env_types: Vec<ir::Type>) -> u32 {
+    fn closure_type_from_ir(&mut self, env_types: Vec<ir::LocalType>) -> u32 {
         self.closure_type(
             env_types
                 .into_iter()
-                .map(|ty| self.convert_type(ty))
+                .map(|ty| self.convert_local_type(ty))
                 .collect(),
         )
     }
@@ -541,7 +541,7 @@ impl ModuleGenerator {
                     .iter()
                     .skip(func.args)
                     .map(|ty| {
-                        let ty = self.convert_type(*ty);
+                        let ty = self.convert_local_type(*ty);
                         (1, ty)
                     })
                     .collect::<Vec<_>>(),
@@ -605,7 +605,7 @@ impl ModuleGenerator {
         module
     }
 
-    fn gen_stat(&mut self, function: &mut Function, locals: &Vec<ir::Type>, stat: &ir::Stat) {
+    fn gen_stat(&mut self, function: &mut Function, locals: &Vec<ir::LocalType>, stat: &ir::Stat) {
         match stat {
             ir::Stat::If(cond, then_stat, else_stat) => {
                 function.instruction(&Instruction::LocalGet(*cond as u32));
@@ -630,7 +630,7 @@ impl ModuleGenerator {
         }
     }
 
-    fn gen_expr(&mut self, function: &mut Function, locals: &[ir::Type], expr: &ir::Expr) {
+    fn gen_expr(&mut self, function: &mut Function, locals: &[ir::LocalType], expr: &ir::Expr) {
         match expr {
             ir::Expr::Bool(b) => {
                 function.instruction(&Instruction::I32Const(if *b { 1 } else { 0 }));
@@ -718,7 +718,7 @@ impl ModuleGenerator {
             }
             ir::Expr::CallClosure(tail_call, closure, args) => {
                 let func_type = self.func_type_from_ir(ir::FuncType {
-                    args: args.iter().map(|arg| locals[*arg]).collect(),
+                    args: args.iter().map(|arg| locals[*arg].to_type()).collect(),
                     rets: vec![ir::Type::Boxed],
                 });
 
@@ -941,13 +941,19 @@ impl ModuleGenerator {
         }
     }
 
-    fn convert_type(&self, ty: ir::Type) -> ValType {
+    fn convert_local_type(&self, ty: ir::LocalType) -> ValType {
         match ty {
-            ir::Type::Boxed => Self::BOXED_TYPE,
-            ir::Type::MutCell => ValType::Ref(RefType {
+            ir::LocalType::MutCell => ValType::Ref(RefType {
                 nullable: false,
                 heap_type: HeapType::Concrete(self.mut_cell_type),
             }),
+            ir::LocalType::Type(ty) => self.convert_type(ty),
+        }
+    }
+
+    fn convert_type(&self, ty: ir::Type) -> ValType {
+        match ty {
+            ir::Type::Boxed => Self::BOXED_TYPE,
             ir::Type::Val(val) => match val {
                 ir::ValType::Bool => ValType::I32,
                 ir::ValType::Int => ValType::I64,

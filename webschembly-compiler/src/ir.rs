@@ -8,12 +8,42 @@ use crate::{
 use strum::IntoEnumIterator;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
+pub enum LocalType {
+    MutCell, // 中身はBoxed固定
+    Type(Type),
+}
+
+impl From<Type> for LocalType {
+    fn from(typ: Type) -> Self {
+        Self::Type(typ)
+    }
+}
+
+impl From<ValType> for LocalType {
+    fn from(typ: ValType) -> Self {
+        Self::Type(Type::from(typ))
+    }
+}
+
+impl LocalType {
+    pub fn to_type(&self) -> Type {
+        match self {
+            LocalType::MutCell => Type::Boxed,
+            LocalType::Type(typ) => *typ,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum Type {
     Boxed,
-    // 一旦中身はBoxedで固定
-    // TODO: FuncTypeの型がMutCellになることはないので型を綺麗に整理したい
-    MutCell,
     Val(ValType),
+}
+
+impl From<ValType> for Type {
+    fn from(typ: ValType) -> Self {
+        Self::Val(typ)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
@@ -46,9 +76,9 @@ pub enum Expr {
     Box(ValType, usize),
     Unbox(ValType, usize),
     ClosureEnv(
-        Vec<Type>, /* env types */
-        usize,     /* closure */
-        usize,     /* env index */
+        Vec<LocalType>, /* env types */
+        usize,          /* closure */
+        usize,          /* env index */
     ),
     GlobalSet(usize, usize),
     GlobalGet(usize),
@@ -69,7 +99,7 @@ pub enum Stat {
 
 #[derive(Debug, Clone)]
 pub struct Func {
-    pub locals: Vec<Type>,
+    pub locals: Vec<LocalType>,
     // localsの先頭何個が引数か
     pub args: usize,
     // localsのうちどれが返り値か
@@ -79,11 +109,14 @@ pub struct Func {
 
 impl Func {
     pub fn arg_types(&self) -> Vec<Type> {
-        (0..self.args).map(|i| self.locals[i]).collect()
+        (0..self.args).map(|i| self.locals[i].to_type()).collect()
     }
 
     pub fn ret_types(&self) -> Vec<Type> {
-        self.rets.iter().map(|&ret| self.locals[ret]).collect()
+        self.rets
+            .iter()
+            .map(|&ret| self.locals[ret].to_type())
+            .collect()
     }
 
     pub fn func_type(&self) -> FuncType {
@@ -161,7 +194,7 @@ impl IrGenerator {
 
 #[derive(Debug)]
 struct FuncGenerator<'a> {
-    locals: Vec<Type>,
+    locals: Vec<LocalType>,
     local_ids: HashMap<ast::LocalVarId, usize>,
     ir_generator: &'a mut IrGenerator,
 }
@@ -270,17 +303,17 @@ impl<'a> FuncGenerator<'a> {
         }
     }
 
-    fn local(&mut self, typ: Type) -> usize {
+    fn local<T: Into<LocalType>>(&mut self, typ: T) -> usize {
         let local = self.locals.len();
-        self.locals.push(typ);
+        self.locals.push(typ.into());
         local
     }
 
     fn define_ast_local(&mut self, id: ast::LocalVarId) -> usize {
         let local = self.local(if self.ir_generator.box_vars.contains(&id) {
-            Type::MutCell
+            LocalType::MutCell
         } else {
-            Type::Boxed
+            LocalType::Type(Type::Boxed)
         });
         self.local_ids.insert(id, local);
         local
@@ -403,9 +436,6 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                             self.gen_stat(Some(boxed_arg_local), arg);
                             let arg_local = match typ {
                                 Type::Boxed => boxed_arg_local,
-                                Type::MutCell => {
-                                    unreachable!()
-                                }
                                 Type::Val(val_type) => {
                                     let unboxed_arg_local =
                                         self.func_gen.local(Type::Val(*val_type));
@@ -422,9 +452,6 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
 
                         let ret_local = match ret_type {
                             Type::Boxed => self.func_gen.local(Type::Boxed),
-                            Type::MutCell => {
-                                unreachable!()
-                            }
                             Type::Val(val_type) => self.func_gen.local(Type::Val(val_type)),
                         };
                         self.stats.push(Stat::Expr(
@@ -434,9 +461,6 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                         match ret_type {
                             Type::Boxed => {
                                 self.stats.push(Stat::Expr(result, Expr::Move(ret_local)));
-                            }
-                            Type::MutCell => {
-                                unreachable!()
                             }
                             Type::Val(val_type) => {
                                 self.stats
