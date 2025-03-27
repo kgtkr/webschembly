@@ -14,6 +14,7 @@ use crate::sexpr::SExpr;
 
 pub type Final = Used;
 
+#[derive(Debug)]
 pub struct ASTGenerator {
     var_id_gen: VarIdGen,
 }

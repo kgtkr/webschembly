@@ -5,6 +5,7 @@ use crate::ir;
 use crate::lexer;
 use crate::sexpr_parser;
 
+#[derive(Debug)]
 pub struct Compiler {
     ast_gen: ast::ASTGenerator,
     codegen: codegen::Codegen,
