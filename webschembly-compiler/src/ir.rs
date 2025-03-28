@@ -622,9 +622,7 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                 }
             },
             ast::Expr::Begin(_, ast::Begin { exprs: stats }) => {
-                let mut block_gen = BlockGenerator::new(self.func_gen);
-                block_gen.gen_stats(result, stats);
-                self.exprs.extend(block_gen.exprs);
+                self.gen_stats(result, stats);
             }
             ast::Expr::Set(x, ast::Set { expr, .. }) => {
                 match &x.get_ref(type_map::key::<Used>()).var_id {
