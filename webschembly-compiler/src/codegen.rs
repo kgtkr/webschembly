@@ -582,6 +582,7 @@ impl ModuleGenerator {
             }
             gen_bb(self, func, &mut function, func.bb_entry);
 
+            function.instruction(&Instruction::Unreachable); // TODO: 型チェックを通すため
             function.instruction(&Instruction::End);
 
             self.func_indices.insert(i, FuncIndex {
