@@ -632,7 +632,7 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                             self.gen_stat(Some(boxed_local), expr);
                             let local = self.func_gen.local_ids.get(id).unwrap();
                             self.exprs.push(ExprAssign {
-                                local: Some(*local),
+                                local: None,
                                 expr: Expr::SetMutCell(*local, boxed_local),
                             });
                             self.exprs.push(ExprAssign {
