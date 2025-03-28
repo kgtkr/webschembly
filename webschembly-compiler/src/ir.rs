@@ -98,14 +98,22 @@ pub struct ExprAssign {
 }
 
 #[derive(Debug, Clone)]
+struct BasicBlockOptionalNext {
+    pub exprs: Vec<ExprAssign>,
+    pub next: Option<BasicBlockNext>,
+}
+
+#[derive(Debug, Clone)]
 pub struct BasicBlock {
     pub exprs: Vec<ExprAssign>,
     pub next: BasicBlockNext,
 }
 
-#[derive(Debug, Clone)]
+// 閉路を作ってはいけない
+#[derive(Debug, Clone, Copy)]
 pub enum BasicBlockNext {
-    If(usize, usize, usize), // 後方ジャンプのみ
+    If(usize, usize, usize),
+    Jump(usize),
     Return,
 }
 
@@ -209,6 +217,8 @@ impl IrGenerator {
 struct FuncGenerator<'a> {
     locals: Vec<LocalType>,
     local_ids: HashMap<ast::LocalVarId, usize>,
+    bbs: Vec<BasicBlockOptionalNext>,
+    next_undecided_bb_ids: HashSet<usize>,
     ir_generator: &'a mut IrGenerator,
 }
 
@@ -217,39 +227,48 @@ impl<'a> FuncGenerator<'a> {
         Self {
             locals: Vec::new(),
             local_ids: HashMap::new(),
+            bbs: Vec::new(),
+            next_undecided_bb_ids: HashSet::new(),
             ir_generator,
         }
     }
 
     fn entry_gen(mut self, ast: &ast::Ast<ast::Final>) -> Func {
         let boxed_local = self.local(Type::Boxed);
-        let body = {
-            let mut block_gen = BlockGenerator::new(&mut self);
-            block_gen.exprs.push(ExprAssign {
-                local: None,
-                expr: Expr::InitGlobals(
-                    ast.x
-                        .get_ref(type_map::key::<Used>())
-                        .global_vars
-                        .iter()
-                        .map(|x| x.0)
-                        .max()
-                        .map(|n| n + 1)
-                        .unwrap_or(0),
-                ),
-            });
-            block_gen.exprs.push(ExprAssign {
-                local: None,
-                expr: Expr::InitBuiltins(ast::Builtin::iter().len()),
-            });
-            block_gen.gen_stats(Some(boxed_local), &ast.exprs);
-            block_gen.exprs
-        };
+
+        let mut block_gen = BlockGenerator::new(&mut self);
+        block_gen.exprs.push(ExprAssign {
+            local: None,
+            expr: Expr::InitGlobals(
+                ast.x
+                    .get_ref(type_map::key::<Used>())
+                    .global_vars
+                    .iter()
+                    .map(|x| x.0)
+                    .max()
+                    .map(|n| n + 1)
+                    .unwrap_or(0),
+            ),
+        });
+        block_gen.exprs.push(ExprAssign {
+            local: None,
+            expr: Expr::InitBuiltins(ast::Builtin::iter().len()),
+        });
+        block_gen.gen_stats(Some(boxed_local), &ast.exprs);
+        block_gen.close_bb(Some(BasicBlockNext::Return));
         Func {
             args: 0,
             rets: vec![boxed_local],
             locals: self.locals,
-            body,
+            bb_entry: 0,
+            bbs: self
+                .bbs
+                .into_iter()
+                .map(|bb| BasicBlock {
+                    exprs: bb.exprs,
+                    next: bb.next.unwrap(),
+                })
+                .collect(),
         }
     }
 
@@ -302,20 +321,25 @@ impl<'a> FuncGenerator<'a> {
         }
 
         let ret = self.local(Type::Boxed);
-        let body = {
-            let mut block_gen = BlockGenerator::new(&mut self);
-            block_gen.gen_stats(Some(ret), &lambda.body);
-            let mut body = Vec::new();
-            body.extend(restore_envs);
-            body.extend(create_mut_cells);
-            body.extend(block_gen.exprs);
-            body
-        };
+
+        let mut block_gen = BlockGenerator::new(&mut self);
+        block_gen.exprs.extend(restore_envs);
+        block_gen.exprs.extend(create_mut_cells);
+        block_gen.gen_stats(Some(ret), &lambda.body);
+        block_gen.close_bb(Some(BasicBlockNext::Return));
         Func {
             args: lambda.args.len() + 1,
             rets: vec![ret],
             locals: self.locals,
-            body,
+            bb_entry: 0,
+            bbs: self
+                .bbs
+                .into_iter()
+                .map(|bb| BasicBlock {
+                    exprs: bb.exprs,
+                    next: bb.next.unwrap(),
+                })
+                .collect(),
         }
     }
 
@@ -442,22 +466,41 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                     expr: Expr::Unbox(ValType::Bool, boxed_cond_local),
                 });
 
-                let then_stats = {
+                let bb_id = self.close_bb(None);
+
+                let then_first_bb_id = self.func_gen.bbs.len();
+
+                let then_last_bb_exprs = {
                     let mut then_gen = BlockGenerator::new(self.func_gen);
                     then_gen.gen_stat(result, then);
                     then_gen.exprs
                 };
+                let then_last_bb_id = self.func_gen.bbs.len();
+                self.func_gen.bbs.push(BasicBlockOptionalNext {
+                    exprs: then_last_bb_exprs,
+                    next: None,
+                });
 
-                let else_stats = {
+                let else_first_bb_id = self.func_gen.bbs.len();
+                let else_bb_exprs = {
                     let mut els_gen = BlockGenerator::new(self.func_gen);
                     els_gen.gen_stat(result, els);
                     els_gen.exprs
                 };
-
-                self.exprs.push(ExprAssign {
-                    local: None,
-                    expr: Expr::If(cond_local, then_stats, else_stats),
+                let else_last_bb_id = self.func_gen.bbs.len();
+                self.func_gen.bbs.push(BasicBlockOptionalNext {
+                    exprs: else_bb_exprs,
+                    next: None,
                 });
+
+                self.func_gen.bbs[bb_id].next = Some(BasicBlockNext::If(
+                    cond_local,
+                    then_first_bb_id,
+                    else_first_bb_id,
+                ));
+
+                self.func_gen.next_undecided_bb_ids.insert(then_last_bb_id);
+                self.func_gen.next_undecided_bb_ids.insert(else_last_bb_id);
             }
             ast::Expr::Call(x, ast::Call { func, args }) => {
                 if let ast::Expr::Var(x, _) = func.as_ref()
@@ -591,7 +634,7 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                             self.gen_stat(Some(boxed_local), expr);
                             let local = self.func_gen.local_ids.get(id).unwrap();
                             self.exprs.push(ExprAssign {
-                                local: Some(local),
+                                local: Some(*local),
                                 expr: Expr::SetMutCell(*local, boxed_local),
                             });
                             self.exprs.push(ExprAssign {
@@ -758,6 +801,22 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                 expr: Expr::Box(ValType::Nil, unboxed),
             });
         }
+    }
+
+    fn close_bb(&mut self, next: Option<BasicBlockNext>) -> usize {
+        let bb_exprs = std::mem::take(&mut self.exprs);
+        let bb_id = self.func_gen.bbs.len();
+        self.func_gen.bbs.push(BasicBlockOptionalNext {
+            exprs: bb_exprs,
+            next,
+        });
+
+        let undecided_bb_ids = std::mem::take(&mut self.func_gen.next_undecided_bb_ids);
+        for undecided_bb_id in undecided_bb_ids {
+            self.func_gen.bbs[undecided_bb_id].next = Some(BasicBlockNext::Jump(bb_id));
+        }
+
+        bb_id
     }
 }
 
