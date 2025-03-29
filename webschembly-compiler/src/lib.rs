@@ -16,6 +16,7 @@ pub mod wasm_generator;
 #[macro_use]
 pub mod error;
 pub mod ir;
+pub mod ir_generator;
 pub mod sexpr_parser;
 pub mod span;
 pub mod stdlib;
