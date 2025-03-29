@@ -10,17 +10,17 @@
         ]
       },
       "locked": {
-        "lastModified": 1741026767,
-        "narHash": "sha256-Qa4EVVdBjjOA0Y8Kcon0t5usvo8HLbqdY8RKL8Wg2lk=",
-        "owner": "kgtkr",
+        "lastModified": 1741485131,
+        "narHash": "sha256-Lj3vMdic4CjrS1I/6lMaI1OqHTTxoKKlchobrw3qBKY=",
+        "owner": "cargo2nix",
         "repo": "cargo2nix",
-        "rev": "396edea14ecfbfca95e78e3957f76d4d715011bc",
+        "rev": "8ce65922a814571dd94bd2f49910758b5b7edff2",
         "type": "github"
       },
       "original": {
-        "owner": "kgtkr",
-        "ref": "396edea",
+        "owner": "cargo2nix",
         "repo": "cargo2nix",
+        "rev": "8ce65922a814571dd94bd2f49910758b5b7edff2",
         "type": "github"
       }
     },
