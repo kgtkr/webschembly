@@ -89,6 +89,18 @@ exports[`E2E test > if.scm > snapshot test 1`] = `
 }
 `;
 
+exports[`E2E test > if_nest.scm > snapshot test 1`] = `
+{
+  "exitCode": 0,
+  "stderr": "",
+  "stdout": ""1"
+"8"
+"10"
+"16"
+",
+}
+`;
+
 exports[`E2E test > lambda.scm > snapshot test 1`] = `
 {
   "exitCode": 0,

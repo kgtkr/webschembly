@@ -313,27 +313,12 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                 let bb_id = self.close_bb(None);
 
                 let then_first_bb_id = self.func_gen.bbs.next_key();
-
-                let then_last_bb_exprs = {
-                    let mut then_gen = BlockGenerator::new(self.func_gen);
-                    then_gen.gen_stat(result, then);
-                    then_gen.exprs
-                };
-                let then_last_bb_id = self.func_gen.bbs.push_and_get_key(BasicBlockOptionalNext {
-                    exprs: then_last_bb_exprs,
-                    next: None,
-                });
+                self.gen_stat(result, then);
+                let then_last_bb_id = self.close_bb(None);
 
                 let else_first_bb_id = self.func_gen.bbs.next_key();
-                let else_bb_exprs = {
-                    let mut els_gen = BlockGenerator::new(self.func_gen);
-                    els_gen.gen_stat(result, els);
-                    els_gen.exprs
-                };
-                let else_last_bb_id = self.func_gen.bbs.push_and_get_key(BasicBlockOptionalNext {
-                    exprs: else_bb_exprs,
-                    next: None,
-                });
+                self.gen_stat(result, els);
+                let else_last_bb_id = self.close_bb(None);
 
                 self.func_gen.bbs[bb_id].next = Some(BasicBlockNext::If(
                     cond_local,
@@ -639,7 +624,6 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
         for undecided_bb_id in undecided_bb_ids {
             self.func_gen.bbs[undecided_bb_id].next = Some(BasicBlockNext::Jump(bb_id));
         }
-
         bb_id
     }
 }
