@@ -635,7 +635,7 @@ impl ModuleGenerator {
     fn gen_assign(
         &mut self,
         function: &mut Function,
-        locals: &Vec<ir::LocalType>,
+        locals: &[ir::LocalType],
         expr: &ir::ExprAssign,
     ) {
         self.gen_expr(function, locals, &expr.expr);
