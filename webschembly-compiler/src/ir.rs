@@ -5,7 +5,9 @@ use crate::{
     sexpr,
     x::{RunX, TypeMap, type_map},
 };
+use derive_more::{From, Into};
 use strum::IntoEnumIterator;
+use typed_index_collections::TiVec;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum LocalType {
@@ -109,11 +111,14 @@ pub struct BasicBlock {
     pub next: BasicBlockNext,
 }
 
+#[derive(Debug, Clone, Copy, From, Into, Hash, PartialEq, Eq)]
+pub struct BasicBlockId(usize);
+
 // 閉路を作ってはいけない
 #[derive(Debug, Clone, Copy)]
 pub enum BasicBlockNext {
-    If(usize, usize, usize),
-    Jump(usize),
+    If(usize, BasicBlockId, BasicBlockId),
+    Jump(BasicBlockId),
     Return,
 }
 
@@ -124,8 +129,8 @@ pub struct Func {
     pub args: usize,
     // localsのうちどれが返り値か
     pub rets: Vec<usize>,
-    pub bb_entry: usize,
-    pub bbs: Vec<BasicBlock>,
+    pub bb_entry: BasicBlockId,
+    pub bbs: TiVec<BasicBlockId, BasicBlock>,
 }
 
 impl Func {
@@ -217,8 +222,8 @@ impl IrGenerator {
 struct FuncGenerator<'a> {
     locals: Vec<LocalType>,
     local_ids: FxHashMap<ast::LocalVarId, usize>,
-    bbs: Vec<BasicBlockOptionalNext>,
-    next_undecided_bb_ids: FxHashSet<usize>,
+    bbs: TiVec<BasicBlockId, BasicBlockOptionalNext>,
+    next_undecided_bb_ids: FxHashSet<BasicBlockId>,
     ir_generator: &'a mut IrGenerator,
 }
 
@@ -227,7 +232,7 @@ impl<'a> FuncGenerator<'a> {
         Self {
             locals: Vec::new(),
             local_ids: FxHashMap::default(),
-            bbs: Vec::new(),
+            bbs: TiVec::new(),
             next_undecided_bb_ids: FxHashSet::default(),
             ir_generator,
         }
@@ -260,7 +265,7 @@ impl<'a> FuncGenerator<'a> {
             args: 0,
             rets: vec![boxed_local],
             locals: self.locals,
-            bb_entry: 0,
+            bb_entry: BasicBlockId::from(0), // TODO: もっと綺麗な書き方があるはず
             bbs: self
                 .bbs
                 .into_iter()
@@ -331,7 +336,7 @@ impl<'a> FuncGenerator<'a> {
             args: lambda.args.len() + 1,
             rets: vec![ret],
             locals: self.locals,
-            bb_entry: 0,
+            bb_entry: BasicBlockId::from(0), // TODO: もっと綺麗な書き方があるはず
             bbs: self
                 .bbs
                 .into_iter()
@@ -468,27 +473,25 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
 
                 let bb_id = self.close_bb(None);
 
-                let then_first_bb_id = self.func_gen.bbs.len();
+                let then_first_bb_id = self.func_gen.bbs.next_key();
 
                 let then_last_bb_exprs = {
                     let mut then_gen = BlockGenerator::new(self.func_gen);
                     then_gen.gen_stat(result, then);
                     then_gen.exprs
                 };
-                let then_last_bb_id = self.func_gen.bbs.len();
-                self.func_gen.bbs.push(BasicBlockOptionalNext {
+                let then_last_bb_id = self.func_gen.bbs.push_and_get_key(BasicBlockOptionalNext {
                     exprs: then_last_bb_exprs,
                     next: None,
                 });
 
-                let else_first_bb_id = self.func_gen.bbs.len();
+                let else_first_bb_id = self.func_gen.bbs.next_key();
                 let else_bb_exprs = {
                     let mut els_gen = BlockGenerator::new(self.func_gen);
                     els_gen.gen_stat(result, els);
                     els_gen.exprs
                 };
-                let else_last_bb_id = self.func_gen.bbs.len();
-                self.func_gen.bbs.push(BasicBlockOptionalNext {
+                let else_last_bb_id = self.func_gen.bbs.push_and_get_key(BasicBlockOptionalNext {
                     exprs: else_bb_exprs,
                     next: None,
                 });
@@ -801,10 +804,9 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
         }
     }
 
-    fn close_bb(&mut self, next: Option<BasicBlockNext>) -> usize {
+    fn close_bb(&mut self, next: Option<BasicBlockNext>) -> BasicBlockId {
         let bb_exprs = std::mem::take(&mut self.exprs);
-        let bb_id = self.func_gen.bbs.len();
-        self.func_gen.bbs.push(BasicBlockOptionalNext {
+        let bb_id = self.func_gen.bbs.push_and_get_key(BasicBlockOptionalNext {
             exprs: bb_exprs,
             next,
         });

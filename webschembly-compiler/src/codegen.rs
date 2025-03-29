@@ -554,7 +554,7 @@ impl ModuleGenerator {
                 genetator: &mut ModuleGenerator,
                 func: &ir::Func,
                 function: &mut Function,
-                bb_id: usize,
+                bb_id: ir::BasicBlockId,
             ) {
                 let bb = &func.bbs[bb_id];
                 for expr in &bb.exprs {
