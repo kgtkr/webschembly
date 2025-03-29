@@ -1,6 +1,6 @@
 use strum::IntoEnumIterator;
 
-use crate::{ir::Builtin, ir_generator};
+use crate::ir::Builtin;
 
 pub fn generate_stdlib() -> String {
     let mut result = String::new();
@@ -12,7 +12,7 @@ pub fn generate_stdlib() -> String {
 }
 
 fn generate_builtin(builtin: Builtin) -> String {
-    let builtin_typ = ir_generator::builtin_func_type(builtin);
+    let builtin_typ = builtin.func_type();
     debug_assert_eq!(builtin_typ.rets.len(), 1);
     let args = builtin_typ
         .args

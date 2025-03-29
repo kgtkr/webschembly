@@ -351,7 +351,7 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                     } = x.get_ref(type_map::key::<Used>())
                     && let Some(builtin) = Builtin::from_name(name)
                 {
-                    let builtin_typ = builtin_func_type(builtin);
+                    let builtin_typ = builtin.func_type();
                     debug_assert!(builtin_typ.rets.len() == 1);
                     let ret_type = builtin_typ.rets[0];
                     if builtin_typ.args.len() != args.len() {
@@ -641,95 +641,6 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
         }
 
         bb_id
-    }
-}
-
-pub fn builtin_func_type(builtin: Builtin) -> FuncType {
-    match builtin {
-        Builtin::Display => FuncType {
-            args: vec![Type::Val(ValType::String)], // TODO: 一旦Stringのみ
-            rets: vec![Type::Val(ValType::Nil)],
-        },
-        Builtin::Add => FuncType {
-            args: vec![Type::Val(ValType::Int), Type::Val(ValType::Int)],
-            rets: vec![Type::Val(ValType::Int)],
-        },
-        Builtin::Sub => FuncType {
-            args: vec![Type::Val(ValType::Int), Type::Val(ValType::Int)],
-            rets: vec![Type::Val(ValType::Int)],
-        },
-        Builtin::WriteChar => FuncType {
-            args: vec![Type::Val(ValType::Char)],
-            rets: vec![Type::Val(ValType::Nil)],
-        },
-        Builtin::IsPair => FuncType {
-            args: vec![Type::Boxed],
-            rets: vec![Type::Val(ValType::Bool)],
-        },
-        Builtin::IsSymbol => FuncType {
-            args: vec![Type::Boxed],
-            rets: vec![Type::Val(ValType::Bool)],
-        },
-        Builtin::IsString => FuncType {
-            args: vec![Type::Boxed],
-            rets: vec![Type::Val(ValType::Bool)],
-        },
-        Builtin::IsNumber => FuncType {
-            args: vec![Type::Boxed],
-            rets: vec![Type::Val(ValType::Bool)],
-        },
-        Builtin::IsBoolean => FuncType {
-            args: vec![Type::Boxed],
-            rets: vec![Type::Val(ValType::Bool)],
-        },
-        Builtin::IsProcedure => FuncType {
-            args: vec![Type::Boxed],
-            rets: vec![Type::Val(ValType::Bool)],
-        },
-        Builtin::IsChar => FuncType {
-            args: vec![Type::Boxed],
-            rets: vec![Type::Val(ValType::Bool)],
-        },
-        Builtin::Eq => FuncType {
-            args: vec![Type::Boxed, Type::Boxed],
-            rets: vec![Type::Val(ValType::Bool)],
-        },
-        Builtin::Car => FuncType {
-            args: vec![Type::Val(ValType::Cons)],
-            rets: vec![Type::Boxed],
-        },
-        Builtin::Cdr => FuncType {
-            args: vec![Type::Val(ValType::Cons)],
-            rets: vec![Type::Boxed],
-        },
-        Builtin::SymbolToString => FuncType {
-            args: vec![Type::Val(ValType::Symbol)],
-            rets: vec![Type::Val(ValType::String)],
-        },
-        Builtin::NumberToString => FuncType {
-            args: vec![Type::Val(ValType::Int)], // TODO: 一般のnumberに使えるように
-            rets: vec![Type::Val(ValType::String)],
-        },
-        Builtin::EqNum => FuncType {
-            args: vec![Type::Val(ValType::Int), Type::Val(ValType::Int)],
-            rets: vec![Type::Val(ValType::Bool)],
-        },
-        Builtin::Lt => FuncType {
-            args: vec![Type::Val(ValType::Int), Type::Val(ValType::Int)],
-            rets: vec![Type::Val(ValType::Bool)],
-        },
-        Builtin::Gt => FuncType {
-            args: vec![Type::Val(ValType::Int), Type::Val(ValType::Int)],
-            rets: vec![Type::Val(ValType::Bool)],
-        },
-        Builtin::Le => FuncType {
-            args: vec![Type::Val(ValType::Int), Type::Val(ValType::Int)],
-            rets: vec![Type::Val(ValType::Bool)],
-        },
-        Builtin::Ge => FuncType {
-            args: vec![Type::Val(ValType::Int), Type::Val(ValType::Int)],
-            rets: vec![Type::Val(ValType::Bool)],
-        },
     }
 }
 
