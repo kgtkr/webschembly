@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
     ast::{self, Desugared, TailCall, Used},
@@ -155,7 +155,7 @@ pub struct Config {
 #[derive(Debug)]
 struct IrGenerator {
     funcs: Vec<Func>,
-    box_vars: HashSet<ast::LocalVarId>,
+    box_vars: FxHashSet<ast::LocalVarId>,
     config: Config,
 }
 
@@ -163,7 +163,7 @@ impl IrGenerator {
     fn new(config: Config) -> Self {
         Self {
             funcs: Vec::new(),
-            box_vars: HashSet::new(),
+            box_vars: FxHashSet::default(),
             config,
         }
     }
@@ -195,7 +195,7 @@ impl IrGenerator {
 #[derive(Debug)]
 struct FuncGenerator<'a> {
     locals: Vec<LocalType>,
-    local_ids: HashMap<ast::LocalVarId, usize>,
+    local_ids: FxHashMap<ast::LocalVarId, usize>,
     ir_generator: &'a mut IrGenerator,
 }
 
@@ -203,7 +203,7 @@ impl<'a> FuncGenerator<'a> {
     fn new(ir_generator: &'a mut IrGenerator) -> Self {
         Self {
             locals: Vec::new(),
-            local_ids: HashMap::new(),
+            local_ids: FxHashMap::default(),
             ir_generator,
         }
     }

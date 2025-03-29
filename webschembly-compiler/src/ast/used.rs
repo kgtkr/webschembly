@@ -6,8 +6,7 @@ use crate::x::FamilyX;
 use crate::x::Phase;
 use crate::x::TypeMap;
 use crate::x::type_map;
-use std::collections::HashMap;
-use std::collections::HashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 #[derive(Debug, Clone)]
 pub enum Used {}
@@ -31,8 +30,8 @@ pub enum VarId {
 
 #[derive(Debug, Clone)]
 pub struct UsedAstR {
-    pub box_vars: HashSet<LocalVarId>,
-    pub global_vars: HashSet<GlobalVarId>,
+    pub box_vars: FxHashSet<LocalVarId>,
+    pub global_vars: FxHashSet<GlobalVarId>,
 }
 
 #[derive(Debug, Clone)]
@@ -99,7 +98,7 @@ enum Context {
 
 #[derive(Debug, Clone)]
 struct LocalContext {
-    env: HashMap<String, EnvLocalVar>,
+    env: FxHashMap<String, EnvLocalVar>,
 }
 
 #[derive(Debug, Clone)]
@@ -110,13 +109,13 @@ struct EnvLocalVar {
 
 #[derive(Debug, Clone)]
 struct State {
-    captures: HashSet<LocalVarId>,
+    captures: FxHashSet<LocalVarId>,
 }
 
 impl State {
     fn new() -> Self {
         State {
-            captures: HashSet::new(),
+            captures: FxHashSet::default(),
         }
     }
 }
@@ -125,12 +124,12 @@ impl State {
 pub struct VarIdGen {
     global_count: usize,
     local_count: usize,
-    globals: HashMap<String, GlobalVarId>,
-    mutated_vars: HashSet<LocalVarId>,
-    captured_vars: HashSet<LocalVarId>,
+    globals: FxHashMap<String, GlobalVarId>,
+    mutated_vars: FxHashSet<LocalVarId>,
+    captured_vars: FxHashSet<LocalVarId>,
     // 以下はモジュールごとにリセットされる状態
     // このモジュールで使ったグローバル変数
-    use_globals: HashSet<GlobalVarId>,
+    use_globals: FxHashSet<GlobalVarId>,
 }
 
 impl Default for VarIdGen {
@@ -144,10 +143,10 @@ impl VarIdGen {
         VarIdGen {
             global_count: 0,
             local_count: 0,
-            globals: HashMap::new(),
-            mutated_vars: HashSet::new(),
-            captured_vars: HashSet::new(),
-            use_globals: HashSet::new(),
+            globals: FxHashMap::default(),
+            mutated_vars: FxHashSet::default(),
+            captured_vars: FxHashSet::default(),
+            use_globals: FxHashSet::default(),
         }
     }
 
@@ -242,7 +241,7 @@ impl Expr<Used> {
             }
             Expr::Define(x, _) => x.get_owned(type_map::key::<Defined>()),
             Expr::Lambda(x, lambda) => {
-                let mut new_env = HashMap::new();
+                let mut new_env = FxHashMap::default();
                 match ctx {
                     Context::Global => {}
                     Context::Local(LocalContext { env }) => {

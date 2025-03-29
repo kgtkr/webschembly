@@ -1,4 +1,5 @@
-use std::{borrow::Cow, collections::HashMap};
+use rustc_hash::FxHashMap;
+use std::borrow::Cow;
 
 use crate::ast;
 
@@ -67,7 +68,7 @@ struct ModuleGenerator {
     globals: GlobalSection,
     datas: DataSection,
     elements: ElementSection,
-    func_indices: HashMap<usize, FuncIndex>,
+    func_indices: FxHashMap<usize, FuncIndex>,
     exports: ExportSection,
     // types
     mut_cell_type: u32,
@@ -83,8 +84,8 @@ struct ModuleGenerator {
     variable_params_type: u32,
     boxed_func_type: u32,
     closure_type: u32,
-    closure_types: HashMap<Vec<ValType>, u32>, // env types -> type index
-    func_types: HashMap<WasmFuncType, u32>,
+    closure_types: FxHashMap<Vec<ValType>, u32>, // env types -> type index
+    func_types: FxHashMap<WasmFuncType, u32>,
     closure_type_fields: Vec<FieldType>,
     // table
     global_table: u32,
@@ -114,7 +115,7 @@ impl ModuleGenerator {
             code: CodeSection::new(),
             globals: GlobalSection::new(),
             elements: ElementSection::new(),
-            func_indices: HashMap::new(),
+            func_indices: FxHashMap::default(),
             datas: DataSection::new(),
             exports: ExportSection::new(),
             mut_cell_type: 0,
@@ -130,8 +131,8 @@ impl ModuleGenerator {
             variable_params_type: 0,
             boxed_func_type: 0,
             closure_type: 0,
-            closure_types: HashMap::new(),
-            func_types: HashMap::new(),
+            closure_types: FxHashMap::default(),
+            func_types: FxHashMap::default(),
             closure_type_fields: Vec::new(),
             global_table: 0,
             builtin_table: 0,

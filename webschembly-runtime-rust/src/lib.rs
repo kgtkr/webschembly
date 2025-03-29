@@ -1,6 +1,6 @@
 #![feature(ptr_as_ref_unchecked, allocator_api, slice_ptr_get)]
 use core::cell::RefCell;
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 use std::vec;
 mod logger;
 use std::alloc::{Allocator, Global, Layout};
@@ -48,16 +48,16 @@ pub extern "C" fn _string_to_symbol(s_ptr: i32, s_buf: i32) -> i32 {
 }
 
 struct SymbolManager {
-    symbol_to_bytes: HashMap<usize, Vec<u8>>,
-    bytes_to_symbol: HashMap<Vec<u8>, usize>,
+    symbol_to_bytes: FxHashMap<usize, Vec<u8>>,
+    bytes_to_symbol: FxHashMap<Vec<u8>, usize>,
     symbol_id: usize,
 }
 
 impl SymbolManager {
     fn new() -> Self {
         Self {
-            symbol_to_bytes: HashMap::new(),
-            bytes_to_symbol: HashMap::new(),
+            symbol_to_bytes: FxHashMap::default(),
+            bytes_to_symbol: FxHashMap::default(),
             symbol_id: 0,
         }
     }
@@ -196,10 +196,10 @@ impl WasmWriter {
 }
 
 thread_local!(
-    static WRITERS: RefCell<HashMap<i32, WasmWriter>> = RefCell::new(HashMap::new());
+    static WRITERS: RefCell<FxHashMap<i32, WasmWriter>> = RefCell::new(FxHashMap::default());
 );
 
-fn get_writer(writers: &mut HashMap<i32, WasmWriter>, fd: i32) -> &mut WasmWriter {
+fn get_writer(writers: &mut FxHashMap<i32, WasmWriter>, fd: i32) -> &mut WasmWriter {
     writers.entry(fd).or_insert_with(|| WasmWriter::new(fd))
 }
 
