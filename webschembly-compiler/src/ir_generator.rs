@@ -110,8 +110,10 @@ impl<'a> FuncGenerator<'a> {
             bb_entry: BasicBlockId::from(0), // TODO: もっと綺麗な書き方があるはず
             bbs: self
                 .bbs
+                .into_iter_enumerated()
                 .into_iter()
-                .map(|bb| BasicBlock {
+                .map(|(id, bb)| BasicBlock {
+                    id,
                     exprs: bb.exprs,
                     next: bb.next.unwrap(),
                 })
@@ -181,8 +183,9 @@ impl<'a> FuncGenerator<'a> {
             bb_entry: BasicBlockId::from(0), // TODO: もっと綺麗な書き方があるはず
             bbs: self
                 .bbs
-                .into_iter()
-                .map(|bb| BasicBlock {
+                .into_iter_enumerated()
+                .map(|(id, bb)| BasicBlock {
+                    id,
                     exprs: bb.exprs,
                     next: bb.next.unwrap(),
                 })

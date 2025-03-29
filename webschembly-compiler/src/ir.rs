@@ -95,6 +95,7 @@ pub struct ExprAssign {
 
 #[derive(Debug, Clone)]
 pub struct BasicBlock {
+    pub id: BasicBlockId,
     pub exprs: Vec<ExprAssign>,
     pub next: BasicBlockNext,
 }
