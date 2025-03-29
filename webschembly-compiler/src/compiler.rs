@@ -1,14 +1,14 @@
 use crate::ast;
-use crate::codegen;
 use crate::compiler_error;
 use crate::ir;
 use crate::lexer;
 use crate::sexpr_parser;
+use crate::wasm_generator;
 
 #[derive(Debug)]
 pub struct Compiler {
-    ast_gen: ast::ASTGenerator,
-    codegen: codegen::Codegen,
+    ast_generator: ast::ASTGenerator,
+    wasm_generator: wasm_generator::WasmGenerator,
 }
 
 impl Default for Compiler {
@@ -20,8 +20,8 @@ impl Default for Compiler {
 impl Compiler {
     pub fn new() -> Self {
         Self {
-            ast_gen: ast::ASTGenerator::new(),
-            codegen: codegen::Codegen::new(),
+            ast_generator: ast::ASTGenerator::new(),
+            wasm_generator: wasm_generator::WasmGenerator::new(),
         }
     }
 
@@ -29,11 +29,11 @@ impl Compiler {
         let tokens = lexer::lex(input)?;
         let sexprs =
             sexpr_parser::parse(tokens.as_slice()).map_err(|e| compiler_error!("{}", e))?;
-        let ast = self.ast_gen.gen_ast(sexprs)?;
+        let ast = self.ast_generator.gen_ast(sexprs)?;
         let ir = ir::Ir::from_ast(&ast, ir::Config {
             allow_set_builtin: is_stdlib,
         });
-        let code = self.codegen.generate(&ir);
+        let code = self.wasm_generator.generate(&ir);
         Ok(code)
     }
 }

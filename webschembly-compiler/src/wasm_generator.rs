@@ -26,15 +26,15 @@ struct FuncIndex {
 }
 
 #[derive(Debug)]
-pub struct Codegen {}
+pub struct WasmGenerator {}
 
-impl Default for Codegen {
+impl Default for WasmGenerator {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl Codegen {
+impl WasmGenerator {
     pub fn new() -> Self {
         Self {}
     }

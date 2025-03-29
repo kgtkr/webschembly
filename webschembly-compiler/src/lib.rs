@@ -11,8 +11,8 @@ pub mod parser_combinator;
 #[macro_use]
 pub mod sexpr;
 pub mod ast;
-pub mod codegen;
 pub mod compiler;
+pub mod wasm_generator;
 #[macro_use]
 pub mod error;
 pub mod ir;
