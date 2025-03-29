@@ -17,7 +17,6 @@ jobs:
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
       - name: Build devShell
         run: |
-          nix build .#devShell.$(nix eval --expr 'builtins.currentSystem' --impure --raw) --out-link result-devShell
           nix print-dev-env > result-devShell.sh
           echo "BASH_ENV=$PWD/result-devShell.sh" >> $GITHUB_ENV
       - name: Cache cargo target
