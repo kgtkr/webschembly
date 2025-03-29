@@ -127,7 +127,6 @@ impl<'a> FuncGenerator<'a> {
             self.define_ast_local(*arg);
         }
 
-        let mut restore_envs = Vec::new();
         // 環境を復元するためのローカル変数を定義
         for var_id in x.get_ref(type_map::key::<Used>()).captures.iter() {
             self.define_ast_local(*var_id);
@@ -147,18 +146,16 @@ impl<'a> FuncGenerator<'a> {
             .enumerate()
         {
             let env_local = *self.local_ids.get(var_id).unwrap();
-            restore_envs.push(ExprAssign {
+            self.exprs.push(ExprAssign {
                 local: Some(env_local),
                 expr: Expr::ClosureEnv(env_types.clone(), self_closure, i),
             });
         }
 
-        let mut create_mut_cells = Vec::new();
-
         for id in &x.get_ref(type_map::key::<Used>()).defines {
             let local = self.define_ast_local(*id);
             if self.ir_generator.box_vars.contains(id) {
-                create_mut_cells.push(ExprAssign {
+                self.exprs.push(ExprAssign {
                     local: Some(local),
                     expr: Expr::CreateMutCell,
                 });
@@ -166,9 +163,6 @@ impl<'a> FuncGenerator<'a> {
         }
 
         let ret = self.local(Type::Boxed);
-
-        self.exprs.extend(restore_envs);
-        self.exprs.extend(create_mut_cells);
         self.gen_exprs(Some(ret), &lambda.body);
         self.close_bb(Some(BasicBlockNext::Return));
         Func {
