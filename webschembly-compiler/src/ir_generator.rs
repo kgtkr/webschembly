@@ -62,8 +62,8 @@ impl IrGenerator {
 
 #[derive(Debug)]
 struct FuncGenerator<'a> {
-    locals: Vec<LocalType>,
-    local_ids: FxHashMap<ast::LocalVarId, usize>,
+    locals: TiVec<LocalId, LocalType>,
+    local_ids: FxHashMap<ast::LocalVarId, LocalId>,
     bbs: TiVec<BasicBlockId, BasicBlockOptionalNext>,
     next_undecided_bb_ids: FxHashSet<BasicBlockId>,
     ir_generator: &'a mut IrGenerator,
@@ -72,7 +72,7 @@ struct FuncGenerator<'a> {
 impl<'a> FuncGenerator<'a> {
     fn new(ir_generator: &'a mut IrGenerator) -> Self {
         Self {
-            locals: Vec::new(),
+            locals: TiVec::new(),
             local_ids: FxHashMap::default(),
             bbs: TiVec::new(),
             next_undecided_bb_ids: FxHashSet::default(),
@@ -193,13 +193,11 @@ impl<'a> FuncGenerator<'a> {
         }
     }
 
-    fn local<T: Into<LocalType>>(&mut self, typ: T) -> usize {
-        let local = self.locals.len();
-        self.locals.push(typ.into());
-        local
+    fn local<T: Into<LocalType>>(&mut self, typ: T) -> LocalId {
+        self.locals.push_and_get_key(typ.into())
     }
 
-    fn define_ast_local(&mut self, id: ast::LocalVarId) -> usize {
+    fn define_ast_local(&mut self, id: ast::LocalVarId) -> LocalId {
         let local = self.local(if self.ir_generator.box_vars.contains(&id) {
             LocalType::MutCell
         } else {
@@ -210,6 +208,7 @@ impl<'a> FuncGenerator<'a> {
     }
 }
 
+// TODO: BlockGeneratorいる？
 #[derive(Debug)]
 struct BlockGenerator<'a, 'b> {
     exprs: Vec<ExprAssign>,
@@ -224,7 +223,7 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
         }
     }
 
-    fn gen_stat(&mut self, result: Option<usize>, ast: &ast::Expr<ast::Final>) {
+    fn gen_stat(&mut self, result: Option<LocalId>, ast: &ast::Expr<ast::Final>) {
         match ast {
             ast::Expr::Literal(_, lit) => match lit {
                 ast::Literal::Bool(b) => {
@@ -538,7 +537,7 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
         }
     }
 
-    fn quote(&mut self, result: Option<usize>, sexpr: &sexpr::SExpr) {
+    fn quote(&mut self, result: Option<LocalId>, sexpr: &sexpr::SExpr) {
         match &sexpr.kind {
             sexpr::SExprKind::Bool(b) => {
                 let unboxed = self.func_gen.local(Type::Val(ValType::Bool));
@@ -630,7 +629,7 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
         }
     }
 
-    fn gen_stats(&mut self, result: Option<usize>, stats: &[ast::Expr<ast::Final>]) {
+    fn gen_stats(&mut self, result: Option<LocalId>, stats: &[ast::Expr<ast::Final>]) {
         if let Some((last, rest)) = stats.split_last() {
             for stat in rest {
                 self.gen_stat(None, stat);

@@ -54,42 +54,45 @@ pub enum ValType {
     Char,
 }
 
+#[derive(Debug, Clone, Copy, From, Into, Hash, PartialEq, Eq)]
+pub struct LocalId(usize);
+
 #[derive(Debug, Clone)]
 pub enum Expr {
     Bool(bool),
     Int(i64),
     String(String),
-    StringToSymbol(usize),
+    StringToSymbol(LocalId),
     Nil,
     Char(char),
-    Cons(usize, usize),
+    Cons(LocalId, LocalId),
     CreateMutCell,
-    DerefMutCell(usize),
-    SetMutCell(usize /* mutcell */, usize /* value */),
-    Closure(Vec<usize>, usize),
-    CallClosure(bool, usize, Vec<usize>),
-    Move(usize),
-    Box(ValType, usize),
-    Unbox(ValType, usize),
+    DerefMutCell(LocalId),
+    SetMutCell(LocalId /* mutcell */, LocalId /* value */),
+    Closure(Vec<LocalId>, usize),
+    CallClosure(bool, LocalId, Vec<LocalId>),
+    Move(LocalId),
+    Box(ValType, LocalId),
+    Unbox(ValType, LocalId),
     ClosureEnv(
         Vec<LocalType>, /* env types */
-        usize,          /* closure */
+        LocalId,        /* closure */
         usize,          /* env index */
     ),
-    GlobalSet(usize, usize),
+    GlobalSet(usize, LocalId),
     GlobalGet(usize),
     // Builtin = BuiltinClosure + CallClosureだが後から最適化するのは大変なので一旦分けておく
-    Builtin(ast::Builtin, Vec<usize>), // TODO: astを参照するべきではない
+    Builtin(ast::Builtin, Vec<LocalId>), // TODO: astを参照するべきではない
     GetBuiltin(ast::Builtin),
-    SetBuiltin(ast::Builtin, usize),
-    Error(usize),
+    SetBuiltin(ast::Builtin, LocalId),
+    Error(LocalId),
     InitGlobals(usize),  // global count
     InitBuiltins(usize), // builtin count
 }
 
 #[derive(Debug, Clone)]
 pub struct ExprAssign {
-    pub local: Option<usize>,
+    pub local: Option<LocalId>,
     pub expr: Expr,
 }
 
@@ -106,25 +109,27 @@ pub struct BasicBlockId(usize);
 // 閉路を作ってはいけない
 #[derive(Debug, Clone, Copy)]
 pub enum BasicBlockNext {
-    If(usize, BasicBlockId, BasicBlockId),
+    If(LocalId, BasicBlockId, BasicBlockId),
     Jump(BasicBlockId),
     Return,
 }
 
 #[derive(Debug, Clone)]
 pub struct Func {
-    pub locals: Vec<LocalType>,
+    pub locals: TiVec<LocalId, LocalType>,
     // localsの先頭何個が引数か
     pub args: usize,
     // localsのうちどれが返り値か
-    pub rets: Vec<usize>,
+    pub rets: Vec<LocalId>,
     pub bb_entry: BasicBlockId,
     pub bbs: TiVec<BasicBlockId, BasicBlock>,
 }
 
 impl Func {
     pub fn arg_types(&self) -> Vec<Type> {
-        (0..self.args).map(|i| self.locals[i].to_type()).collect()
+        (0..self.args)
+            .map(|i| self.locals[LocalId::from(i)].to_type())
+            .collect()
     }
 
     pub fn ret_types(&self) -> Vec<Type> {
