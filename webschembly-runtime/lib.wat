@@ -33,7 +33,6 @@
   (global $true (export "true") (ref $Bool) (struct.new $Bool (i32.const 1)))
   (global $false (export "false") (ref $Bool) (struct.new $Bool (i32.const 0)))
   (table $globals (export "globals") 1 eqref)
-  (table $builtins (export "builtins") 1 eqref)
   (table $symbols 1 (ref null $Symbol))
   (tag $WEBSCHEMBLY_EXCEPTION (export "WEBSCHEMBLY_EXCEPTION"))
 
@@ -182,8 +181,8 @@
     ;; TODO: もっと汎用的な方法でJSからschemeのグローバル変数を参照できるようにする
     (local $write_closure (ref $Closure))
     (local $write (ref $Func1))
-    ;; writeは今のところ1番目に入っているはず(壊れやすいコードなので要修正)
-    (local.set $write_closure (ref.cast (ref $Closure) (table.get $globals (i32.const 1))))
+    ;; writeは今のところ22番目に入っているはず(壊れやすいコードなので要修正)
+    (local.set $write_closure (ref.cast (ref $Closure) (table.get $globals (i32.const 22))))
     (local.set $write (ref.cast (ref $Func1) (struct.get $Closure $func (local.get $write_closure))))
     (call_ref $Func1 (local.get $write_closure) (local.get $x) (local.get $write))
     (drop)

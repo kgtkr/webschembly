@@ -2,7 +2,7 @@ use rustc_hash::FxHashMap;
 use std::borrow::Cow;
 use typed_index_collections::TiSlice;
 
-use crate::{ast, ir::BasicBlockNext};
+use crate::ir::BasicBlockNext;
 
 use super::ir;
 use wasm_encoder::{
@@ -90,7 +90,6 @@ struct ModuleGenerator {
     closure_type_fields: Vec<FieldType>,
     // table
     global_table: u32,
-    builtin_table: u32,
     // const
     nil_global: Option<u32>,
     true_global: Option<u32>,
@@ -136,7 +135,6 @@ impl ModuleGenerator {
             func_types: FxHashMap::default(),
             closure_type_fields: Vec::new(),
             global_table: 0,
-            builtin_table: 0,
             nil_global: None,
             true_global: None,
             false_global: None,
@@ -460,20 +458,6 @@ impl ModuleGenerator {
         self.imports.import(
             "runtime",
             "globals",
-            EntityType::Table(TableType {
-                element_type: RefType::EQREF,
-                table64: false,
-                minimum: 0,
-                maximum: None,
-                shared: false,
-            }),
-        );
-
-        self.builtin_table = self.table_count;
-        self.table_count += 1;
-        self.imports.import(
-            "runtime",
-            "builtins",
             EntityType::Table(TableType {
                 element_type: RefType::EQREF,
                 table64: false,
@@ -910,16 +894,6 @@ impl ModuleGenerator {
                 }
                 self.gen_builtin(*builtin, function);
             }
-            ir::Expr::GetBuiltin(builtin) => {
-                function.instruction(&Instruction::I32Const(builtin.id()));
-                function.instruction(&Instruction::TableGet(self.builtin_table));
-            }
-            ir::Expr::SetBuiltin(builtin, val) => {
-                function.instruction(&Instruction::I32Const(builtin.id()));
-                function.instruction(&Instruction::LocalGet(Self::from_local_id(*val)));
-                function.instruction(&Instruction::TableSet(self.builtin_table));
-                function.instruction(&Instruction::LocalGet(Self::from_local_id(*val)));
-            }
             ir::Expr::InitGlobals(n) => {
                 // 必要なサイズになるまで2倍に拡張
                 function.instruction(&Instruction::Block(BlockType::Empty));
@@ -934,31 +908,6 @@ impl ModuleGenerator {
                 }));
                 function.instruction(&Instruction::TableSize(self.global_table));
                 function.instruction(&Instruction::TableGrow(self.global_table));
-                function.instruction(&Instruction::I32Const(-1));
-                function.instruction(&Instruction::I32Eq);
-                function.instruction(&Instruction::If(BlockType::Empty));
-                function.instruction(&Instruction::Unreachable);
-                function.instruction(&Instruction::End);
-                function.instruction(&Instruction::Br(0));
-                function.instruction(&Instruction::End);
-                function.instruction(&Instruction::End);
-
-                function.instruction(&Instruction::GlobalGet(self.nil_global.unwrap()));
-            }
-            ir::Expr::InitBuiltins(n) => {
-                // 必要なサイズになるまで2倍に拡張
-                function.instruction(&Instruction::Block(BlockType::Empty));
-                function.instruction(&Instruction::Loop(BlockType::Empty));
-                function.instruction(&Instruction::TableSize(self.builtin_table));
-                function.instruction(&Instruction::I32Const(*n as i32));
-                function.instruction(&Instruction::I32GeU);
-                function.instruction(&Instruction::BrIf(1));
-                function.instruction(&Instruction::RefNull(HeapType::Abstract {
-                    shared: false,
-                    ty: AbstractHeapType::Eq,
-                }));
-                function.instruction(&Instruction::TableSize(self.builtin_table));
-                function.instruction(&Instruction::TableGrow(self.builtin_table));
                 function.instruction(&Instruction::I32Const(-1));
                 function.instruction(&Instruction::I32Eq);
                 function.instruction(&Instruction::If(BlockType::Empty));
@@ -1011,96 +960,96 @@ impl ModuleGenerator {
         }
     }
 
-    fn gen_builtin(&self, builtin: ast::Builtin, function: &mut Function) {
+    fn gen_builtin(&self, builtin: ir::Builtin, function: &mut Function) {
         match builtin {
-            ast::Builtin::Display => {
+            ir::Builtin::Display => {
                 function.instruction(&Instruction::Call(self.display_func));
                 function.instruction(&Instruction::I32Const(0));
             }
-            ast::Builtin::Add => {
+            ir::Builtin::Add => {
                 function.instruction(&Instruction::I64Add);
             }
-            ast::Builtin::Sub => {
+            ir::Builtin::Sub => {
                 function.instruction(&Instruction::I64Sub);
             }
-            ast::Builtin::WriteChar => {
+            ir::Builtin::WriteChar => {
                 function.instruction(&Instruction::Call(self.write_char_func));
                 function.instruction(&Instruction::I32Const(0));
             }
-            ast::Builtin::IsPair => {
+            ir::Builtin::IsPair => {
                 function.instruction(&Instruction::RefTestNonNull(HeapType::Concrete(
                     self.cons_type,
                 )));
             }
-            ast::Builtin::IsSymbol => {
+            ir::Builtin::IsSymbol => {
                 function.instruction(&Instruction::RefTestNonNull(HeapType::Concrete(
                     self.symbol_type,
                 )));
             }
-            ast::Builtin::IsString => {
+            ir::Builtin::IsString => {
                 function.instruction(&Instruction::RefTestNonNull(HeapType::Concrete(
                     self.string_type,
                 )));
             }
-            ast::Builtin::IsChar => {
+            ir::Builtin::IsChar => {
                 function.instruction(&Instruction::RefTestNonNull(HeapType::Concrete(
                     self.char_type,
                 )));
             }
-            ast::Builtin::IsNumber => {
+            ir::Builtin::IsNumber => {
                 // TODO: 一般のnumberかを判定
                 function.instruction(&Instruction::RefTestNonNull(HeapType::Concrete(
                     self.int_type,
                 )));
             }
-            ast::Builtin::IsBoolean => {
+            ir::Builtin::IsBoolean => {
                 function.instruction(&Instruction::RefTestNonNull(HeapType::Concrete(
                     self.bool_type,
                 )));
             }
-            ast::Builtin::IsProcedure => {
+            ir::Builtin::IsProcedure => {
                 function.instruction(&Instruction::RefTestNonNull(HeapType::Concrete(
                     self.closure_type,
                 )));
             }
-            ast::Builtin::Eq => {
+            ir::Builtin::Eq => {
                 function.instruction(&Instruction::RefEq);
             }
-            ast::Builtin::Car => {
+            ir::Builtin::Car => {
                 function.instruction(&Instruction::StructGet {
                     struct_type_index: self.cons_type,
                     field_index: Self::CONS_CAR_FIELD,
                 });
             }
-            ast::Builtin::Cdr => {
+            ir::Builtin::Cdr => {
                 function.instruction(&Instruction::StructGet {
                     struct_type_index: self.cons_type,
                     field_index: Self::CONS_CDR_FIELD,
                 });
             }
-            ast::Builtin::SymbolToString => {
+            ir::Builtin::SymbolToString => {
                 function.instruction(&Instruction::StructGet {
                     struct_type_index: self.symbol_type,
                     field_index: Self::SYMBOL_STRING_FIELD,
                 });
             }
-            ast::Builtin::NumberToString => {
+            ir::Builtin::NumberToString => {
                 // TODO: 一般のnumberに対応
                 function.instruction(&Instruction::Call(self.int_to_string_func));
             }
-            ast::Builtin::EqNum => {
+            ir::Builtin::EqNum => {
                 function.instruction(&Instruction::I64Eq);
             }
-            ast::Builtin::Lt => {
+            ir::Builtin::Lt => {
                 function.instruction(&Instruction::I64LtS);
             }
-            ast::Builtin::Gt => {
+            ir::Builtin::Gt => {
                 function.instruction(&Instruction::I64GtS);
             }
-            ast::Builtin::Le => {
+            ir::Builtin::Le => {
                 function.instruction(&Instruction::I64LeS);
             }
-            ast::Builtin::Ge => {
+            ir::Builtin::Ge => {
                 function.instruction(&Instruction::I64GeS);
             }
         }
