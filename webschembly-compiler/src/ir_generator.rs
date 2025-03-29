@@ -97,7 +97,7 @@ impl<'a> FuncGenerator<'a> {
                     .unwrap_or(0),
             ),
         });
-        self.gen_stats(Some(boxed_local), &ast.exprs);
+        self.gen_exprs(Some(boxed_local), &ast.exprs);
         self.close_bb(Some(BasicBlockNext::Return));
         Func {
             args: 0,
@@ -169,7 +169,7 @@ impl<'a> FuncGenerator<'a> {
 
         self.exprs.extend(restore_envs);
         self.exprs.extend(create_mut_cells);
-        self.gen_stats(Some(ret), &lambda.body);
+        self.gen_exprs(Some(ret), &lambda.body);
         self.close_bb(Some(BasicBlockNext::Return));
         Func {
             args: lambda.args.len() + 1,
@@ -202,7 +202,7 @@ impl<'a> FuncGenerator<'a> {
         local
     }
 
-    fn gen_stat(&mut self, result: Option<LocalId>, ast: &ast::Expr<ast::Final>) {
+    fn gen_expr(&mut self, result: Option<LocalId>, ast: &ast::Expr<ast::Final>) {
         match ast {
             ast::Expr::Literal(_, lit) => match lit {
                 ast::Literal::Bool(b) => {
@@ -285,7 +285,7 @@ impl<'a> FuncGenerator<'a> {
             }
             ast::Expr::If(_, ast::If { cond, then, els }) => {
                 let boxed_cond_local = self.local(Type::Boxed);
-                self.gen_stat(Some(boxed_cond_local), cond);
+                self.gen_expr(Some(boxed_cond_local), cond);
 
                 // TODO: condがboolかのチェック
                 let cond_local = self.local(Type::Val(ValType::Bool));
@@ -297,11 +297,11 @@ impl<'a> FuncGenerator<'a> {
                 let bb_id = self.close_bb(None);
 
                 let then_first_bb_id = self.bbs.next_key();
-                self.gen_stat(result, then);
+                self.gen_expr(result, then);
                 let then_last_bb_id = self.close_bb(None);
 
                 let else_first_bb_id = self.bbs.next_key();
-                self.gen_stat(result, els);
+                self.gen_expr(result, els);
                 let else_last_bb_id = self.close_bb(None);
 
                 self.bbs[bb_id].next = Some(BasicBlockNext::If(
@@ -337,7 +337,7 @@ impl<'a> FuncGenerator<'a> {
                         let mut arg_locals = Vec::new();
                         for (typ, arg) in builtin_typ.args.iter().zip(args) {
                             let boxed_arg_local = self.local(Type::Boxed);
-                            self.gen_stat(Some(boxed_arg_local), arg);
+                            self.gen_expr(Some(boxed_arg_local), arg);
                             let arg_local = match typ {
                                 Type::Boxed => boxed_arg_local,
                                 Type::Val(val_type) => {
@@ -378,7 +378,7 @@ impl<'a> FuncGenerator<'a> {
                     }
                 } else {
                     let boxed_func_local = self.local(Type::Boxed);
-                    self.gen_stat(Some(boxed_func_local), func);
+                    self.gen_expr(Some(boxed_func_local), func);
 
                     // TODO: funcがクロージャかのチェック
                     let func_local = self.local(Type::Val(ValType::Closure));
@@ -392,7 +392,7 @@ impl<'a> FuncGenerator<'a> {
                     arg_locals.push(func_local); // 第一引数にクロージャを渡す
                     for arg in args {
                         let arg_local = self.local(Type::Boxed);
-                        self.gen_stat(Some(arg_local), arg);
+                        self.gen_expr(Some(arg_local), arg);
                         arg_locals.push(arg_local);
                     }
                     self.exprs.push(ExprAssign {
@@ -426,15 +426,15 @@ impl<'a> FuncGenerator<'a> {
                     });
                 }
             },
-            ast::Expr::Begin(_, ast::Begin { exprs: stats }) => {
-                self.gen_stats(result, stats);
+            ast::Expr::Begin(_, ast::Begin { exprs }) => {
+                self.gen_exprs(result, exprs);
             }
             ast::Expr::Set(x, ast::Set { name, expr, .. }) => {
                 match &x.get_ref(type_map::key::<Used>()).var_id {
                     ast::VarId::Local(id) => {
                         if self.ir_generator.box_vars.contains(id) {
                             let boxed_local = self.local(Type::Boxed);
-                            self.gen_stat(Some(boxed_local), expr);
+                            self.gen_expr(Some(boxed_local), expr);
                             let local = self.local_ids.get(id).unwrap();
                             self.exprs.push(ExprAssign {
                                 local: None,
@@ -446,7 +446,7 @@ impl<'a> FuncGenerator<'a> {
                             });
                         } else {
                             let local = *self.local_ids.get(id).unwrap();
-                            self.gen_stat(Some(local), expr);
+                            self.gen_expr(Some(local), expr);
                             self.exprs.push(ExprAssign {
                                 local: result,
                                 expr: Expr::Move(local),
@@ -468,7 +468,7 @@ impl<'a> FuncGenerator<'a> {
                             });
                         } else {
                             let local = self.local(Type::Boxed);
-                            self.gen_stat(Some(local), expr);
+                            self.gen_expr(Some(local), expr);
                             self.exprs.push(ExprAssign {
                                 local: None,
                                 expr: Expr::GlobalSet(id.0, local),
@@ -577,12 +577,12 @@ impl<'a> FuncGenerator<'a> {
         }
     }
 
-    fn gen_stats(&mut self, result: Option<LocalId>, stats: &[ast::Expr<ast::Final>]) {
-        if let Some((last, rest)) = stats.split_last() {
-            for stat in rest {
-                self.gen_stat(None, stat);
+    fn gen_exprs(&mut self, result: Option<LocalId>, exprs: &[ast::Expr<ast::Final>]) {
+        if let Some((last, rest)) = exprs.split_last() {
+            for expr in rest {
+                self.gen_expr(None, expr);
             }
-            self.gen_stat(result, last);
+            self.gen_expr(result, last);
         } else {
             let unboxed = self.local(Type::Val(ValType::Nil));
             self.exprs.push(ExprAssign {
