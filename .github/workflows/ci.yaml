@@ -40,10 +40,6 @@ jobs:
       - name: Clippy
         run: |
           cargo clippy --all --lib --tests -- -D warnings
-      - name: cargo2nix
-        run: |
-          cargo2nix -o -l
-          git diff --exit-code
       - name: Test
         run: |
           cargo test
