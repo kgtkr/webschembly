@@ -92,9 +92,29 @@ pub enum Expr {
 }
 
 #[derive(Debug, Clone)]
-pub enum Stat {
-    If(usize, Vec<Stat>, Vec<Stat>),
-    Expr(Option<usize>, Expr),
+pub struct ExprAssign {
+    pub local: Option<usize>,
+    pub expr: Expr,
+}
+
+#[derive(Debug, Clone)]
+struct BasicBlockOptionalNext {
+    pub exprs: Vec<ExprAssign>,
+    pub next: Option<BasicBlockNext>,
+}
+
+#[derive(Debug, Clone)]
+pub struct BasicBlock {
+    pub exprs: Vec<ExprAssign>,
+    pub next: BasicBlockNext,
+}
+
+// 閉路を作ってはいけない
+#[derive(Debug, Clone, Copy)]
+pub enum BasicBlockNext {
+    If(usize, usize, usize),
+    Jump(usize),
+    Return,
 }
 
 #[derive(Debug, Clone)]
@@ -104,7 +124,8 @@ pub struct Func {
     pub args: usize,
     // localsのうちどれが返り値か
     pub rets: Vec<usize>,
-    pub body: Vec<Stat>,
+    pub bb_entry: usize,
+    pub bbs: Vec<BasicBlock>,
 }
 
 impl Func {
@@ -196,6 +217,8 @@ impl IrGenerator {
 struct FuncGenerator<'a> {
     locals: Vec<LocalType>,
     local_ids: FxHashMap<ast::LocalVarId, usize>,
+    bbs: Vec<BasicBlockOptionalNext>,
+    next_undecided_bb_ids: FxHashSet<usize>,
     ir_generator: &'a mut IrGenerator,
 }
 
@@ -204,39 +227,48 @@ impl<'a> FuncGenerator<'a> {
         Self {
             locals: Vec::new(),
             local_ids: FxHashMap::default(),
+            bbs: Vec::new(),
+            next_undecided_bb_ids: FxHashSet::default(),
             ir_generator,
         }
     }
 
     fn entry_gen(mut self, ast: &ast::Ast<ast::Final>) -> Func {
         let boxed_local = self.local(Type::Boxed);
-        let body = {
-            let mut block_gen = BlockGenerator::new(&mut self);
-            block_gen.stats.push(Stat::Expr(
-                None,
-                Expr::InitGlobals(
-                    ast.x
-                        .get_ref(type_map::key::<Used>())
-                        .global_vars
-                        .iter()
-                        .map(|x| x.0)
-                        .max()
-                        .map(|n| n + 1)
-                        .unwrap_or(0),
-                ),
-            ));
-            block_gen.stats.push(Stat::Expr(
-                None,
-                Expr::InitBuiltins(ast::Builtin::iter().len()),
-            ));
-            block_gen.gen_stats(Some(boxed_local), &ast.exprs);
-            block_gen.stats
-        };
+
+        let mut block_gen = BlockGenerator::new(&mut self);
+        block_gen.exprs.push(ExprAssign {
+            local: None,
+            expr: Expr::InitGlobals(
+                ast.x
+                    .get_ref(type_map::key::<Used>())
+                    .global_vars
+                    .iter()
+                    .map(|x| x.0)
+                    .max()
+                    .map(|n| n + 1)
+                    .unwrap_or(0),
+            ),
+        });
+        block_gen.exprs.push(ExprAssign {
+            local: None,
+            expr: Expr::InitBuiltins(ast::Builtin::iter().len()),
+        });
+        block_gen.gen_stats(Some(boxed_local), &ast.exprs);
+        block_gen.close_bb(Some(BasicBlockNext::Return));
         Func {
             args: 0,
             rets: vec![boxed_local],
             locals: self.locals,
-            body,
+            bb_entry: 0,
+            bbs: self
+                .bbs
+                .into_iter()
+                .map(|bb| BasicBlock {
+                    exprs: bb.exprs,
+                    next: bb.next.unwrap(),
+                })
+                .collect(),
         }
     }
 
@@ -270,10 +302,10 @@ impl<'a> FuncGenerator<'a> {
             .enumerate()
         {
             let env_local = *self.local_ids.get(var_id).unwrap();
-            restore_envs.push(Stat::Expr(
-                Some(env_local),
-                Expr::ClosureEnv(env_types.clone(), self_closure, i),
-            ));
+            restore_envs.push(ExprAssign {
+                local: Some(env_local),
+                expr: Expr::ClosureEnv(env_types.clone(), self_closure, i),
+            });
         }
 
         let mut create_mut_cells = Vec::new();
@@ -281,25 +313,33 @@ impl<'a> FuncGenerator<'a> {
         for id in &x.get_ref(type_map::key::<Used>()).defines {
             let local = self.define_ast_local(*id);
             if self.ir_generator.box_vars.contains(id) {
-                create_mut_cells.push(Stat::Expr(Some(local), Expr::CreateMutCell));
+                create_mut_cells.push(ExprAssign {
+                    local: Some(local),
+                    expr: Expr::CreateMutCell,
+                });
             }
         }
 
         let ret = self.local(Type::Boxed);
-        let body = {
-            let mut block_gen = BlockGenerator::new(&mut self);
-            block_gen.gen_stats(Some(ret), &lambda.body);
-            let mut body = Vec::new();
-            body.extend(restore_envs);
-            body.extend(create_mut_cells);
-            body.extend(block_gen.stats);
-            body
-        };
+
+        let mut block_gen = BlockGenerator::new(&mut self);
+        block_gen.exprs.extend(restore_envs);
+        block_gen.exprs.extend(create_mut_cells);
+        block_gen.gen_stats(Some(ret), &lambda.body);
+        block_gen.close_bb(Some(BasicBlockNext::Return));
         Func {
             args: lambda.args.len() + 1,
             rets: vec![ret],
             locals: self.locals,
-            body,
+            bb_entry: 0,
+            bbs: self
+                .bbs
+                .into_iter()
+                .map(|bb| BasicBlock {
+                    exprs: bb.exprs,
+                    next: bb.next.unwrap(),
+                })
+                .collect(),
         }
     }
 
@@ -322,14 +362,14 @@ impl<'a> FuncGenerator<'a> {
 
 #[derive(Debug)]
 struct BlockGenerator<'a, 'b> {
-    stats: Vec<Stat>,
+    exprs: Vec<ExprAssign>,
     func_gen: &'b mut FuncGenerator<'a>,
 }
 
 impl<'a, 'b> BlockGenerator<'a, 'b> {
     fn new(func_gen: &'b mut FuncGenerator<'a>) -> Self {
         Self {
-            stats: Vec::new(),
+            exprs: Vec::new(),
             func_gen,
         }
     }
@@ -339,34 +379,58 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
             ast::Expr::Literal(_, lit) => match lit {
                 ast::Literal::Bool(b) => {
                     let unboxed = self.func_gen.local(Type::Val(ValType::Bool));
-                    self.stats.push(Stat::Expr(Some(unboxed), Expr::Bool(*b)));
-                    self.stats
-                        .push(Stat::Expr(result, Expr::Box(ValType::Bool, unboxed)));
+                    self.exprs.push(ExprAssign {
+                        local: Some(unboxed),
+                        expr: Expr::Bool(*b),
+                    });
+                    self.exprs.push(ExprAssign {
+                        local: result,
+                        expr: Expr::Box(ValType::Bool, unboxed),
+                    });
                 }
                 ast::Literal::Int(i) => {
                     let unboxed = self.func_gen.local(Type::Val(ValType::Int));
-                    self.stats.push(Stat::Expr(Some(unboxed), Expr::Int(*i)));
-                    self.stats
-                        .push(Stat::Expr(result, Expr::Box(ValType::Int, unboxed)));
+                    self.exprs.push(ExprAssign {
+                        local: Some(unboxed),
+                        expr: Expr::Int(*i),
+                    });
+                    self.exprs.push(ExprAssign {
+                        local: result,
+                        expr: Expr::Box(ValType::Int, unboxed),
+                    });
                 }
                 ast::Literal::String(s) => {
                     let unboxed = self.func_gen.local(Type::Val(ValType::String));
-                    self.stats
-                        .push(Stat::Expr(Some(unboxed), Expr::String(s.clone())));
-                    self.stats
-                        .push(Stat::Expr(result, Expr::Box(ValType::String, unboxed)));
+                    self.exprs.push(ExprAssign {
+                        local: Some(unboxed),
+                        expr: Expr::String(s.clone()),
+                    });
+                    self.exprs.push(ExprAssign {
+                        local: result,
+                        expr: Expr::Box(ValType::String, unboxed),
+                    });
                 }
                 ast::Literal::Nil => {
                     let unboxed = self.func_gen.local(Type::Val(ValType::Nil));
-                    self.stats.push(Stat::Expr(Some(unboxed), Expr::Nil));
-                    self.stats
-                        .push(Stat::Expr(result, Expr::Box(ValType::Nil, unboxed)));
+                    self.exprs.push(ExprAssign {
+                        local: Some(unboxed),
+                        expr: Expr::Nil,
+                    });
+                    self.exprs.push(ExprAssign {
+                        local: result,
+                        expr: Expr::Box(ValType::Nil, unboxed),
+                    });
                 }
                 ast::Literal::Char(c) => {
                     let unboxed = self.func_gen.local(Type::Val(ValType::Char));
-                    self.stats.push(Stat::Expr(Some(unboxed), Expr::Char(*c)));
-                    self.stats
-                        .push(Stat::Expr(result, Expr::Box(ValType::Char, unboxed)));
+                    self.exprs.push(ExprAssign {
+                        local: Some(unboxed),
+                        expr: Expr::Char(*c),
+                    });
+                    self.exprs.push(ExprAssign {
+                        local: result,
+                        expr: Expr::Box(ValType::Char, unboxed),
+                    });
                 }
                 ast::Literal::Quote(sexpr) => {
                     self.quote(result, sexpr);
@@ -382,10 +446,14 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                     .collect::<Vec<_>>();
                 let func_id: usize = self.func_gen.ir_generator.gen_func(x.clone(), lambda);
                 let unboxed = self.func_gen.local(Type::Val(ValType::Closure));
-                self.stats
-                    .push(Stat::Expr(Some(unboxed), Expr::Closure(captures, func_id)));
-                self.stats
-                    .push(Stat::Expr(result, Expr::Box(ValType::Closure, unboxed)));
+                self.exprs.push(ExprAssign {
+                    local: Some(unboxed),
+                    expr: Expr::Closure(captures, func_id),
+                });
+                self.exprs.push(ExprAssign {
+                    local: result,
+                    expr: Expr::Box(ValType::Closure, unboxed),
+                });
             }
             ast::Expr::If(_, ast::If { cond, then, els }) => {
                 let boxed_cond_local = self.func_gen.local(Type::Boxed);
@@ -393,25 +461,46 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
 
                 // TODO: condがboolかのチェック
                 let cond_local = self.func_gen.local(Type::Val(ValType::Bool));
-                self.stats.push(Stat::Expr(
-                    Some(cond_local),
-                    Expr::Unbox(ValType::Bool, boxed_cond_local),
-                ));
+                self.exprs.push(ExprAssign {
+                    local: Some(cond_local),
+                    expr: Expr::Unbox(ValType::Bool, boxed_cond_local),
+                });
 
-                let then_stats = {
+                let bb_id = self.close_bb(None);
+
+                let then_first_bb_id = self.func_gen.bbs.len();
+
+                let then_last_bb_exprs = {
                     let mut then_gen = BlockGenerator::new(self.func_gen);
                     then_gen.gen_stat(result, then);
-                    then_gen.stats
+                    then_gen.exprs
                 };
+                let then_last_bb_id = self.func_gen.bbs.len();
+                self.func_gen.bbs.push(BasicBlockOptionalNext {
+                    exprs: then_last_bb_exprs,
+                    next: None,
+                });
 
-                let else_stats = {
+                let else_first_bb_id = self.func_gen.bbs.len();
+                let else_bb_exprs = {
                     let mut els_gen = BlockGenerator::new(self.func_gen);
                     els_gen.gen_stat(result, els);
-                    els_gen.stats
+                    els_gen.exprs
                 };
+                let else_last_bb_id = self.func_gen.bbs.len();
+                self.func_gen.bbs.push(BasicBlockOptionalNext {
+                    exprs: else_bb_exprs,
+                    next: None,
+                });
 
-                self.stats
-                    .push(Stat::If(cond_local, then_stats, else_stats));
+                self.func_gen.bbs[bb_id].next = Some(BasicBlockNext::If(
+                    cond_local,
+                    then_first_bb_id,
+                    else_first_bb_id,
+                ));
+
+                self.func_gen.next_undecided_bb_ids.insert(then_last_bb_id);
+                self.func_gen.next_undecided_bb_ids.insert(else_last_bb_id);
             }
             ast::Expr::Call(x, ast::Call { func, args }) => {
                 if let ast::Expr::Var(x, _) = func.as_ref()
@@ -424,11 +513,14 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                     let ret_type = builtin_typ.rets[0];
                     if builtin_typ.args.len() != args.len() {
                         let msg = self.func_gen.local(Type::Val(ValType::String));
-                        self.stats.push(Stat::Expr(
-                            Some(msg),
-                            Expr::String("builtin args count mismatch\n".to_string()),
-                        ));
-                        self.stats.push(Stat::Expr(result, Expr::Error(msg)));
+                        self.exprs.push(ExprAssign {
+                            local: Some(msg),
+                            expr: Expr::String("builtin args count mismatch\n".to_string()),
+                        });
+                        self.exprs.push(ExprAssign {
+                            local: result,
+                            expr: Expr::Error(msg),
+                        });
                     } else {
                         let mut arg_locals = Vec::new();
                         for (typ, arg) in builtin_typ.args.iter().zip(args) {
@@ -440,10 +532,10 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                                     let unboxed_arg_local =
                                         self.func_gen.local(Type::Val(*val_type));
                                     // TODO: 動的型チェック
-                                    self.stats.push(Stat::Expr(
-                                        Some(unboxed_arg_local),
-                                        Expr::Unbox(*val_type, boxed_arg_local),
-                                    ));
+                                    self.exprs.push(ExprAssign {
+                                        local: Some(unboxed_arg_local),
+                                        expr: Expr::Unbox(*val_type, boxed_arg_local),
+                                    });
                                     unboxed_arg_local
                                 }
                             };
@@ -454,17 +546,22 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                             Type::Boxed => self.func_gen.local(Type::Boxed),
                             Type::Val(val_type) => self.func_gen.local(Type::Val(val_type)),
                         };
-                        self.stats.push(Stat::Expr(
-                            Some(ret_local),
-                            Expr::Builtin(*builtin, arg_locals),
-                        ));
+                        self.exprs.push(ExprAssign {
+                            local: Some(ret_local),
+                            expr: Expr::Builtin(*builtin, arg_locals),
+                        });
                         match ret_type {
                             Type::Boxed => {
-                                self.stats.push(Stat::Expr(result, Expr::Move(ret_local)));
+                                self.exprs.push(ExprAssign {
+                                    local: result,
+                                    expr: Expr::Move(ret_local),
+                                });
                             }
                             Type::Val(val_type) => {
-                                self.stats
-                                    .push(Stat::Expr(result, Expr::Box(val_type, ret_local)));
+                                self.exprs.push(ExprAssign {
+                                    local: result,
+                                    expr: Expr::Box(val_type, ret_local),
+                                });
                             }
                         }
                     }
@@ -474,10 +571,10 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
 
                     // TODO: funcがクロージャかのチェック
                     let func_local = self.func_gen.local(Type::Val(ValType::Closure));
-                    self.stats.push(Stat::Expr(
-                        Some(func_local),
-                        Expr::Unbox(ValType::Closure, boxed_func_local),
-                    ));
+                    self.exprs.push(ExprAssign {
+                        local: Some(func_local),
+                        expr: Expr::Unbox(ValType::Closure, boxed_func_local),
+                    });
 
                     // TODO: 引数の数が合っているかのチェック
                     let mut arg_locals = Vec::new();
@@ -487,42 +584,45 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                         self.gen_stat(Some(arg_local), arg);
                         arg_locals.push(arg_local);
                     }
-                    self.stats.push(Stat::Expr(
-                        result,
-                        Expr::CallClosure(
+                    self.exprs.push(ExprAssign {
+                        local: result,
+                        expr: Expr::CallClosure(
                             x.get_ref(type_map::key::<TailCall>()).is_tail,
                             func_local,
                             arg_locals,
                         ),
-                    ));
+                    });
                 }
             }
             ast::Expr::Var(x, _) => match &x.get_ref(type_map::key::<Used>()).var_id {
                 ast::VarId::Local(id) => {
                     if self.func_gen.ir_generator.box_vars.contains(id) {
-                        self.stats.push(Stat::Expr(
-                            result,
-                            Expr::DerefMutCell(*self.func_gen.local_ids.get(id).unwrap()),
-                        ));
+                        self.exprs.push(ExprAssign {
+                            local: result,
+                            expr: Expr::DerefMutCell(*self.func_gen.local_ids.get(id).unwrap()),
+                        });
                     } else {
-                        self.stats.push(Stat::Expr(
-                            result,
-                            Expr::Move(*self.func_gen.local_ids.get(id).unwrap()),
-                        ));
+                        self.exprs.push(ExprAssign {
+                            local: result,
+                            expr: Expr::Move(*self.func_gen.local_ids.get(id).unwrap()),
+                        });
                     }
                 }
                 ast::VarId::Global(id) => {
-                    self.stats.push(Stat::Expr(result, Expr::GlobalGet(id.0)));
+                    self.exprs.push(ExprAssign {
+                        local: result,
+                        expr: Expr::GlobalGet(id.0),
+                    });
                 }
                 ast::VarId::Builtin(builtin) => {
-                    self.stats
-                        .push(Stat::Expr(result, Expr::GetBuiltin(*builtin)));
+                    self.exprs.push(ExprAssign {
+                        local: result,
+                        expr: Expr::GetBuiltin(*builtin),
+                    });
                 }
             },
             ast::Expr::Begin(_, ast::Begin { exprs: stats }) => {
-                let mut block_gen = BlockGenerator::new(self.func_gen);
-                block_gen.gen_stats(result, stats);
-                self.stats.extend(block_gen.stats);
+                self.gen_stats(result, stats);
             }
             ast::Expr::Set(x, ast::Set { expr, .. }) => {
                 match &x.get_ref(type_map::key::<Used>()).var_id {
@@ -531,36 +631,57 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                             let boxed_local = self.func_gen.local(Type::Boxed);
                             self.gen_stat(Some(boxed_local), expr);
                             let local = self.func_gen.local_ids.get(id).unwrap();
-                            self.stats
-                                .push(Stat::Expr(None, Expr::SetMutCell(*local, boxed_local)));
-                            self.stats.push(Stat::Expr(result, Expr::Move(boxed_local)));
+                            self.exprs.push(ExprAssign {
+                                local: None,
+                                expr: Expr::SetMutCell(*local, boxed_local),
+                            });
+                            self.exprs.push(ExprAssign {
+                                local: result,
+                                expr: Expr::Move(boxed_local),
+                            });
                         } else {
                             let local = *self.func_gen.local_ids.get(id).unwrap();
                             self.gen_stat(Some(local), expr);
-                            self.stats.push(Stat::Expr(result, Expr::Move(local)));
+                            self.exprs.push(ExprAssign {
+                                local: result,
+                                expr: Expr::Move(local),
+                            });
                         }
                     }
                     ast::VarId::Global(id) => {
                         let local = self.func_gen.local(Type::Boxed);
                         self.gen_stat(Some(local), expr);
-                        self.stats
-                            .push(Stat::Expr(None, Expr::GlobalSet(id.0, local)));
-                        self.stats.push(Stat::Expr(result, Expr::Move(local)));
+                        self.exprs.push(ExprAssign {
+                            local: None,
+                            expr: Expr::GlobalSet(id.0, local),
+                        });
+                        self.exprs.push(ExprAssign {
+                            local: result,
+                            expr: Expr::Move(local),
+                        });
                     }
                     ast::VarId::Builtin(builtin) => {
                         if self.func_gen.ir_generator.config.allow_set_builtin {
                             let local = self.func_gen.local(Type::Boxed);
                             self.gen_stat(Some(local), expr);
-                            self.stats
-                                .push(Stat::Expr(None, Expr::SetBuiltin(*builtin, local)));
-                            self.stats.push(Stat::Expr(result, Expr::Move(local)));
+                            self.exprs.push(ExprAssign {
+                                local: None,
+                                expr: Expr::SetBuiltin(*builtin, local),
+                            });
+                            self.exprs.push(ExprAssign {
+                                local: result,
+                                expr: Expr::Move(local),
+                            });
                         } else {
                             let msg = self.func_gen.local(Type::Val(ValType::String));
-                            self.stats.push(Stat::Expr(
-                                Some(msg),
-                                Expr::String("set! builtin is not allowed\n".to_string()),
-                            ));
-                            self.stats.push(Stat::Expr(result, Expr::Error(msg)));
+                            self.exprs.push(ExprAssign {
+                                local: Some(msg),
+                                expr: Expr::String("set! builtin is not allowed\n".to_string()),
+                            });
+                            self.exprs.push(ExprAssign {
+                                local: result,
+                                expr: Expr::Error(msg),
+                            });
                         }
                     }
                 }
@@ -573,44 +694,74 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
         match &sexpr.kind {
             sexpr::SExprKind::Bool(b) => {
                 let unboxed = self.func_gen.local(Type::Val(ValType::Bool));
-                self.stats.push(Stat::Expr(Some(unboxed), Expr::Bool(*b)));
-                self.stats
-                    .push(Stat::Expr(result, Expr::Box(ValType::Bool, unboxed)));
+                self.exprs.push(ExprAssign {
+                    local: Some(unboxed),
+                    expr: Expr::Bool(*b),
+                });
+                self.exprs.push(ExprAssign {
+                    local: result,
+                    expr: Expr::Box(ValType::Bool, unboxed),
+                });
             }
             sexpr::SExprKind::Int(i) => {
                 let unboxed = self.func_gen.local(Type::Val(ValType::Int));
-                self.stats.push(Stat::Expr(Some(unboxed), Expr::Int(*i)));
-                self.stats
-                    .push(Stat::Expr(result, Expr::Box(ValType::Int, unboxed)));
+                self.exprs.push(ExprAssign {
+                    local: Some(unboxed),
+                    expr: Expr::Int(*i),
+                });
+                self.exprs.push(ExprAssign {
+                    local: result,
+                    expr: Expr::Box(ValType::Int, unboxed),
+                });
             }
             sexpr::SExprKind::String(s) => {
                 let unboxed = self.func_gen.local(Type::Val(ValType::String));
-                self.stats
-                    .push(Stat::Expr(Some(unboxed), Expr::String(s.clone())));
-                self.stats
-                    .push(Stat::Expr(result, Expr::Box(ValType::String, unboxed)));
+                self.exprs.push(ExprAssign {
+                    local: Some(unboxed),
+                    expr: Expr::String(s.clone()),
+                });
+                self.exprs.push(ExprAssign {
+                    local: result,
+                    expr: Expr::Box(ValType::String, unboxed),
+                });
             }
             sexpr::SExprKind::Symbol(s) => {
                 let string = self.func_gen.local(Type::Val(ValType::String));
                 let unboxed = self.func_gen.local(Type::Val(ValType::Symbol));
-                self.stats
-                    .push(Stat::Expr(Some(string), Expr::String(s.clone())));
-                self.stats
-                    .push(Stat::Expr(Some(unboxed), Expr::StringToSymbol(string)));
-                self.stats
-                    .push(Stat::Expr(result, Expr::Box(ValType::Symbol, unboxed)));
+                self.exprs.push(ExprAssign {
+                    local: Some(string),
+                    expr: Expr::String(s.clone()),
+                });
+                self.exprs.push(ExprAssign {
+                    local: Some(unboxed),
+                    expr: Expr::StringToSymbol(string),
+                });
+                self.exprs.push(ExprAssign {
+                    local: result,
+                    expr: Expr::Box(ValType::Symbol, unboxed),
+                });
             }
             sexpr::SExprKind::Nil => {
                 let unboxed = self.func_gen.local(Type::Val(ValType::Nil));
-                self.stats.push(Stat::Expr(Some(unboxed), Expr::Nil));
-                self.stats
-                    .push(Stat::Expr(result, Expr::Box(ValType::Nil, unboxed)));
+                self.exprs.push(ExprAssign {
+                    local: Some(unboxed),
+                    expr: Expr::Nil,
+                });
+                self.exprs.push(ExprAssign {
+                    local: result,
+                    expr: Expr::Box(ValType::Nil, unboxed),
+                });
             }
             sexpr::SExprKind::Char(c) => {
                 let unboxed = self.func_gen.local(Type::Val(ValType::Char));
-                self.stats.push(Stat::Expr(Some(unboxed), Expr::Char(*c)));
-                self.stats
-                    .push(Stat::Expr(result, Expr::Box(ValType::Char, unboxed)));
+                self.exprs.push(ExprAssign {
+                    local: Some(unboxed),
+                    expr: Expr::Char(*c),
+                });
+                self.exprs.push(ExprAssign {
+                    local: result,
+                    expr: Expr::Box(ValType::Char, unboxed),
+                });
             }
             sexpr::SExprKind::Cons(cons) => {
                 let car_local = self.func_gen.local(Type::Boxed);
@@ -619,10 +770,14 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
                 self.quote(Some(cdr_local), &cons.cdr);
 
                 let unboxed = self.func_gen.local(Type::Val(ValType::Cons));
-                self.stats
-                    .push(Stat::Expr(Some(unboxed), Expr::Cons(car_local, cdr_local)));
-                self.stats
-                    .push(Stat::Expr(result, Expr::Box(ValType::Cons, unboxed)));
+                self.exprs.push(ExprAssign {
+                    local: Some(unboxed),
+                    expr: Expr::Cons(car_local, cdr_local),
+                });
+                self.exprs.push(ExprAssign {
+                    local: result,
+                    expr: Expr::Box(ValType::Cons, unboxed),
+                });
             }
         }
     }
@@ -635,10 +790,31 @@ impl<'a, 'b> BlockGenerator<'a, 'b> {
             self.gen_stat(result, last);
         } else {
             let unboxed = self.func_gen.local(Type::Val(ValType::Nil));
-            self.stats.push(Stat::Expr(Some(unboxed), Expr::Nil));
-            self.stats
-                .push(Stat::Expr(result, Expr::Box(ValType::Nil, unboxed)));
+            self.exprs.push(ExprAssign {
+                local: Some(unboxed),
+                expr: Expr::Nil,
+            });
+            self.exprs.push(ExprAssign {
+                local: result,
+                expr: Expr::Box(ValType::Nil, unboxed),
+            });
         }
+    }
+
+    fn close_bb(&mut self, next: Option<BasicBlockNext>) -> usize {
+        let bb_exprs = std::mem::take(&mut self.exprs);
+        let bb_id = self.func_gen.bbs.len();
+        self.func_gen.bbs.push(BasicBlockOptionalNext {
+            exprs: bb_exprs,
+            next,
+        });
+
+        let undecided_bb_ids = std::mem::take(&mut self.func_gen.next_undecided_bb_ids);
+        for undecided_bb_id in undecided_bb_ids {
+            self.func_gen.bbs[undecided_bb_id].next = Some(BasicBlockNext::Jump(bb_id));
+        }
+
+        bb_id
     }
 }
 

@@ -1,7 +1,7 @@
 use rustc_hash::FxHashMap;
 use std::borrow::Cow;
 
-use crate::ast;
+use crate::{ast, ir::BasicBlockNext};
 
 use super::ir;
 use wasm_encoder::{
@@ -548,16 +548,42 @@ impl ModuleGenerator {
                     .collect::<Vec<_>>(),
             );
 
-            // body
-            for stmt in &func.body {
-                self.gen_stat(&mut function, &func.locals, stmt);
-            }
+            // TODO: きちんとrelooperを実装する
+            // 現在の問題点: if (x) { a } else { b } cと生成するべきところを if (x) { a; c } else { b; c }とcを重複して生成してしまうので非効率的End,
+            fn gen_bb(
+                genetator: &mut ModuleGenerator,
+                func: &ir::Func,
+                function: &mut Function,
+                bb_id: usize,
+            ) {
+                let bb = &func.bbs[bb_id];
+                for expr in &bb.exprs {
+                    genetator.gen_assign(function, &func.locals, expr);
+                }
 
-            // return
-            for ret in &func.rets {
-                function.instruction(&Instruction::LocalGet(*ret as u32));
+                match bb.next {
+                    BasicBlockNext::Jump(target) => {
+                        gen_bb(genetator, func, function, target);
+                    }
+                    BasicBlockNext::If(cond, then_target, else_target) => {
+                        function.instruction(&Instruction::LocalGet(cond as u32));
+                        function.instruction(&Instruction::If(BlockType::Empty));
+                        gen_bb(genetator, func, function, then_target);
+                        function.instruction(&Instruction::Else);
+                        gen_bb(genetator, func, function, else_target);
+                        function.instruction(&Instruction::End);
+                    }
+                    BasicBlockNext::Return => {
+                        for ret in &func.rets {
+                            function.instruction(&Instruction::LocalGet(*ret as u32));
+                        }
+                        function.instruction(&Instruction::Return);
+                    }
+                }
             }
-            function.instruction(&Instruction::Return);
+            gen_bb(self, func, &mut function, func.bb_entry);
+
+            function.instruction(&Instruction::Unreachable); // TODO: 型チェックを通すため
             function.instruction(&Instruction::End);
 
             self.func_indices.insert(i, FuncIndex {
@@ -606,28 +632,17 @@ impl ModuleGenerator {
         module
     }
 
-    fn gen_stat(&mut self, function: &mut Function, locals: &Vec<ir::LocalType>, stat: &ir::Stat) {
-        match stat {
-            ir::Stat::If(cond, then_stat, else_stat) => {
-                function.instruction(&Instruction::LocalGet(*cond as u32));
-                function.instruction(&Instruction::If(BlockType::Empty));
-                for stat in then_stat {
-                    self.gen_stat(function, locals, stat);
-                }
-                function.instruction(&Instruction::Else);
-                for stat in else_stat {
-                    self.gen_stat(function, locals, stat);
-                }
-                function.instruction(&Instruction::End);
-            }
-            ir::Stat::Expr(result, expr) => {
-                self.gen_expr(function, locals, expr);
-                if let Some(result) = result {
-                    function.instruction(&Instruction::LocalSet(*result as u32));
-                } else {
-                    function.instruction(&Instruction::Drop);
-                }
-            }
+    fn gen_assign(
+        &mut self,
+        function: &mut Function,
+        locals: &Vec<ir::LocalType>,
+        expr: &ir::ExprAssign,
+    ) {
+        self.gen_expr(function, locals, &expr.expr);
+        if let Some(local) = &expr.local {
+            function.instruction(&Instruction::LocalSet(*local as u32));
+        } else {
+            function.instruction(&Instruction::Drop);
         }
     }
 
