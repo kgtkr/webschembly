@@ -24,7 +24,7 @@ pub struct GlobalVarId(pub usize);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum VarId {
     Global(GlobalVarId),
-    Builtin(Builtin),
+    Builtin(Builtin), // TODO: builtinsと区別するのはir_generatorの責任にするべき
     Local(LocalVarId),
 }
 
