@@ -1,6 +1,6 @@
 use rustc_hash::FxHashMap;
 use std::borrow::Cow;
-use typed_index_collections::TiSlice;
+use typed_index_collections::{TiSlice, ti_vec};
 
 use crate::ir::BasicBlockNext;
 
@@ -69,7 +69,7 @@ struct ModuleGenerator {
     globals: GlobalSection,
     datas: DataSection,
     elements: ElementSection,
-    func_indices: FxHashMap<usize, FuncIndex>,
+    func_indices: FxHashMap<ir::FuncId, FuncIndex>,
     exports: ExportSection,
     // types
     mut_cell_type: u32,
@@ -513,7 +513,7 @@ impl ModuleGenerator {
                 results: vec![],
             });
 
-        for (i, func) in ir.funcs.iter().enumerate() {
+        for (i, func) in ir.funcs.iter_enumerated() {
             let type_idx = self.func_type_from_ir(func.func_type());
 
             let func_idx = self.func_count;
@@ -627,6 +627,10 @@ impl ModuleGenerator {
         usize::from(local) as u32
     }
 
+    fn from_global_id(global: ir::GlobalId) -> i32 {
+        usize::from(global) as i32
+    }
+
     fn gen_assign(
         &mut self,
         function: &mut Function,
@@ -735,7 +739,7 @@ impl ModuleGenerator {
             ir::Expr::CallClosure(tail_call, closure, args) => {
                 let func_type = self.func_type_from_ir(ir::FuncType {
                     args: args.iter().map(|arg| locals[*arg].to_type()).collect(),
-                    rets: vec![ir::Type::Boxed],
+                    rets: ti_vec![ir::Type::Boxed],
                 });
 
                 for arg in args {
@@ -868,11 +872,11 @@ impl ModuleGenerator {
                 });
             }
             ir::Expr::GlobalGet(global) => {
-                function.instruction(&Instruction::I32Const(*global as i32));
+                function.instruction(&Instruction::I32Const(Self::from_global_id(*global)));
                 function.instruction(&Instruction::TableGet(self.global_table));
             }
             ir::Expr::GlobalSet(global, val) => {
-                function.instruction(&Instruction::I32Const(*global as i32));
+                function.instruction(&Instruction::I32Const(Self::from_global_id(*global)));
                 function.instruction(&Instruction::LocalGet(Self::from_local_id(*val)));
                 function.instruction(&Instruction::TableSet(self.global_table));
                 function.instruction(&Instruction::LocalGet(Self::from_local_id(*val)));

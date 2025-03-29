@@ -1,6 +1,6 @@
 use derive_more::{From, Into};
 use strum_macros::{EnumIter, EnumString, FromRepr, IntoStaticStr};
-use typed_index_collections::TiVec;
+use typed_index_collections::{TiVec, ti_vec};
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Hash, EnumIter, FromRepr, EnumString, IntoStaticStr,
@@ -70,88 +70,88 @@ impl Builtin {
     pub fn func_type(self) -> FuncType {
         match self {
             Builtin::Display => FuncType {
-                args: vec![Type::Val(ValType::String)], // TODO: 一旦Stringのみ
-                rets: vec![Type::Val(ValType::Nil)],
+                args: ti_vec![Type::Val(ValType::String)], // TODO: 一旦Stringのみ
+                rets: ti_vec![Type::Val(ValType::Nil)],
             },
             Builtin::Add => FuncType {
-                args: vec![Type::Val(ValType::Int), Type::Val(ValType::Int)],
-                rets: vec![Type::Val(ValType::Int)],
+                args: ti_vec![Type::Val(ValType::Int), Type::Val(ValType::Int)],
+                rets: ti_vec![Type::Val(ValType::Int)],
             },
             Builtin::Sub => FuncType {
-                args: vec![Type::Val(ValType::Int), Type::Val(ValType::Int)],
-                rets: vec![Type::Val(ValType::Int)],
+                args: ti_vec![Type::Val(ValType::Int), Type::Val(ValType::Int)],
+                rets: ti_vec![Type::Val(ValType::Int)],
             },
             Builtin::WriteChar => FuncType {
-                args: vec![Type::Val(ValType::Char)],
-                rets: vec![Type::Val(ValType::Nil)],
+                args: ti_vec![Type::Val(ValType::Char)],
+                rets: ti_vec![Type::Val(ValType::Nil)],
             },
             Builtin::IsPair => FuncType {
-                args: vec![Type::Boxed],
-                rets: vec![Type::Val(ValType::Bool)],
+                args: ti_vec![Type::Boxed],
+                rets: ti_vec![Type::Val(ValType::Bool)],
             },
             Builtin::IsSymbol => FuncType {
-                args: vec![Type::Boxed],
-                rets: vec![Type::Val(ValType::Bool)],
+                args: ti_vec![Type::Boxed],
+                rets: ti_vec![Type::Val(ValType::Bool)],
             },
             Builtin::IsString => FuncType {
-                args: vec![Type::Boxed],
-                rets: vec![Type::Val(ValType::Bool)],
+                args: ti_vec![Type::Boxed],
+                rets: ti_vec![Type::Val(ValType::Bool)],
             },
             Builtin::IsNumber => FuncType {
-                args: vec![Type::Boxed],
-                rets: vec![Type::Val(ValType::Bool)],
+                args: ti_vec![Type::Boxed],
+                rets: ti_vec![Type::Val(ValType::Bool)],
             },
             Builtin::IsBoolean => FuncType {
-                args: vec![Type::Boxed],
-                rets: vec![Type::Val(ValType::Bool)],
+                args: ti_vec![Type::Boxed],
+                rets: ti_vec![Type::Val(ValType::Bool)],
             },
             Builtin::IsProcedure => FuncType {
-                args: vec![Type::Boxed],
-                rets: vec![Type::Val(ValType::Bool)],
+                args: ti_vec![Type::Boxed],
+                rets: ti_vec![Type::Val(ValType::Bool)],
             },
             Builtin::IsChar => FuncType {
-                args: vec![Type::Boxed],
-                rets: vec![Type::Val(ValType::Bool)],
+                args: ti_vec![Type::Boxed],
+                rets: ti_vec![Type::Val(ValType::Bool)],
             },
             Builtin::Eq => FuncType {
-                args: vec![Type::Boxed, Type::Boxed],
-                rets: vec![Type::Val(ValType::Bool)],
+                args: ti_vec![Type::Boxed, Type::Boxed],
+                rets: ti_vec![Type::Val(ValType::Bool)],
             },
             Builtin::Car => FuncType {
-                args: vec![Type::Val(ValType::Cons)],
-                rets: vec![Type::Boxed],
+                args: ti_vec![Type::Val(ValType::Cons)],
+                rets: ti_vec![Type::Boxed],
             },
             Builtin::Cdr => FuncType {
-                args: vec![Type::Val(ValType::Cons)],
-                rets: vec![Type::Boxed],
+                args: ti_vec![Type::Val(ValType::Cons)],
+                rets: ti_vec![Type::Boxed],
             },
             Builtin::SymbolToString => FuncType {
-                args: vec![Type::Val(ValType::Symbol)],
-                rets: vec![Type::Val(ValType::String)],
+                args: ti_vec![Type::Val(ValType::Symbol)],
+                rets: ti_vec![Type::Val(ValType::String)],
             },
             Builtin::NumberToString => FuncType {
-                args: vec![Type::Val(ValType::Int)], // TODO: 一般のnumberに使えるように
-                rets: vec![Type::Val(ValType::String)],
+                args: ti_vec![Type::Val(ValType::Int)], // TODO: 一般のnumberに使えるように
+                rets: ti_vec![Type::Val(ValType::String)],
             },
             Builtin::EqNum => FuncType {
-                args: vec![Type::Val(ValType::Int), Type::Val(ValType::Int)],
-                rets: vec![Type::Val(ValType::Bool)],
+                args: ti_vec![Type::Val(ValType::Int), Type::Val(ValType::Int)],
+                rets: ti_vec![Type::Val(ValType::Bool)],
             },
             Builtin::Lt => FuncType {
-                args: vec![Type::Val(ValType::Int), Type::Val(ValType::Int)],
-                rets: vec![Type::Val(ValType::Bool)],
+                args: ti_vec![Type::Val(ValType::Int), Type::Val(ValType::Int)],
+                rets: ti_vec![Type::Val(ValType::Bool)],
             },
             Builtin::Gt => FuncType {
-                args: vec![Type::Val(ValType::Int), Type::Val(ValType::Int)],
-                rets: vec![Type::Val(ValType::Bool)],
+                args: ti_vec![Type::Val(ValType::Int), Type::Val(ValType::Int)],
+                rets: ti_vec![Type::Val(ValType::Bool)],
             },
             Builtin::Le => FuncType {
-                args: vec![Type::Val(ValType::Int), Type::Val(ValType::Int)],
-                rets: vec![Type::Val(ValType::Bool)],
+                args: ti_vec![Type::Val(ValType::Int), Type::Val(ValType::Int)],
+                rets: ti_vec![Type::Val(ValType::Bool)],
             },
             Builtin::Ge => FuncType {
-                args: vec![Type::Val(ValType::Int), Type::Val(ValType::Int)],
-                rets: vec![Type::Val(ValType::Bool)],
+                args: ti_vec![Type::Val(ValType::Int), Type::Val(ValType::Int)],
+                rets: ti_vec![Type::Val(ValType::Bool)],
             },
         }
     }
@@ -211,6 +211,12 @@ pub enum ValType {
 #[derive(Debug, Clone, Copy, From, Into, Hash, PartialEq, Eq)]
 pub struct LocalId(usize);
 
+#[derive(Debug, Clone, Copy, From, Into, Hash, PartialEq, Eq)]
+pub struct GlobalId(usize);
+
+#[derive(Debug, Clone, Copy, From, Into, Hash, PartialEq, Eq)]
+pub struct FuncId(usize);
+
 #[derive(Debug, Clone)]
 pub enum Expr {
     Bool(bool),
@@ -223,7 +229,7 @@ pub enum Expr {
     CreateMutCell,
     DerefMutCell(LocalId),
     SetMutCell(LocalId /* mutcell */, LocalId /* value */),
-    Closure(Vec<LocalId>, usize),
+    Closure(Vec<LocalId>, FuncId),
     CallClosure(bool, LocalId, Vec<LocalId>),
     Move(LocalId),
     Box(ValType, LocalId),
@@ -233,8 +239,8 @@ pub enum Expr {
         LocalId,        /* closure */
         usize,          /* env index */
     ),
-    GlobalSet(usize, LocalId),
-    GlobalGet(usize),
+    GlobalSet(GlobalId, LocalId),
+    GlobalGet(GlobalId),
     // Builtin = BuiltinClosure + CallClosureだが後から最適化するのは大変なので一旦分けておく
     Builtin(Builtin, Vec<LocalId>), // TODO: astを参照するべきではない
     Error(LocalId),
@@ -277,13 +283,13 @@ pub struct Func {
 }
 
 impl Func {
-    pub fn arg_types(&self) -> Vec<Type> {
+    pub fn arg_types(&self) -> TiVec<FuncId, Type> {
         (0..self.args)
             .map(|i| self.locals[LocalId::from(i)].to_type())
             .collect()
     }
 
-    pub fn ret_types(&self) -> Vec<Type> {
+    pub fn ret_types(&self) -> TiVec<FuncId, Type> {
         self.rets
             .iter()
             .map(|&ret| self.locals[ret].to_type())
@@ -300,12 +306,12 @@ impl Func {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FuncType {
-    pub args: Vec<Type>,
-    pub rets: Vec<Type>,
+    pub args: TiVec<FuncId, Type>,
+    pub rets: TiVec<FuncId, Type>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Ir {
-    pub funcs: Vec<Func>,
-    pub entry: usize,
+    pub funcs: TiVec<FuncId, Func>,
+    pub entry: FuncId,
 }

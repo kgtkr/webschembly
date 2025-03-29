@@ -21,7 +21,7 @@ struct BasicBlockOptionalNext {
 
 #[derive(Debug)]
 struct IrGenerator {
-    funcs: Vec<Func>,
+    funcs: TiVec<FuncId, Func>,
     box_vars: FxHashSet<ast::LocalVarId>,
     config: Config,
 }
@@ -29,7 +29,7 @@ struct IrGenerator {
 impl IrGenerator {
     fn new(config: Config) -> Self {
         Self {
-            funcs: Vec::new(),
+            funcs: TiVec::new(),
             box_vars: FxHashSet::default(),
             config,
         }
@@ -38,8 +38,7 @@ impl IrGenerator {
     fn generate(mut self, ast: &ast::Ast<ast::Final>) -> Ir {
         self.box_vars = ast.x.get_ref(type_map::key::<Used>()).box_vars.clone();
         let func = FuncGenerator::new(&mut self).entry_gen(ast);
-        let func_id = self.funcs.len();
-        self.funcs.push(func);
+        let func_id = self.funcs.push_and_get_key(func);
 
         Ir {
             funcs: self.funcs,
@@ -51,11 +50,9 @@ impl IrGenerator {
         &mut self,
         x: RunX<ast::LambdaX, ast::Final>,
         lambda: &ast::Lambda<ast::Final>,
-    ) -> usize {
+    ) -> FuncId {
         let func = FuncGenerator::new(self).lambda_gen(x, lambda);
-        let func_id = self.funcs.len();
-        self.funcs.push(func);
-        func_id
+        self.funcs.push_and_get_key(func)
     }
 }
 
@@ -266,7 +263,7 @@ impl<'a> FuncGenerator<'a> {
                     .iter()
                     .map(|id| *self.local_ids.get(id).unwrap())
                     .collect::<Vec<_>>();
-                let func_id: usize = self.ir_generator.gen_func(x.clone(), lambda);
+                let func_id = self.ir_generator.gen_func(x.clone(), lambda);
                 let unboxed = self.local(Type::Val(ValType::Closure));
                 self.exprs.push(ExprAssign {
                     local: Some(unboxed),
@@ -316,7 +313,7 @@ impl<'a> FuncGenerator<'a> {
                 {
                     let builtin_typ = builtin.func_type();
                     debug_assert!(builtin_typ.rets.len() == 1);
-                    let ret_type = builtin_typ.rets[0];
+                    let ret_type = *builtin_typ.rets.first().unwrap();
                     if builtin_typ.args.len() != args.len() {
                         let msg = self.local(Type::Val(ValType::String));
                         self.exprs.push(ExprAssign {
@@ -416,7 +413,7 @@ impl<'a> FuncGenerator<'a> {
                 ast::VarId::Global(id) => {
                     self.exprs.push(ExprAssign {
                         local: result,
-                        expr: Expr::GlobalGet(id.0),
+                        expr: Expr::GlobalGet(Self::global_id(*id)),
                     });
                 }
             },
@@ -465,7 +462,7 @@ impl<'a> FuncGenerator<'a> {
                             self.gen_expr(Some(local), expr);
                             self.exprs.push(ExprAssign {
                                 local: None,
-                                expr: Expr::GlobalSet(id.0, local),
+                                expr: Expr::GlobalSet(Self::global_id(*id), local),
                             });
                             self.exprs.push(ExprAssign {
                                 local: result,
@@ -477,6 +474,10 @@ impl<'a> FuncGenerator<'a> {
             }
             ast::Expr::Let(x, _) => *x.get_ref(type_map::key::<Desugared>()),
         }
+    }
+
+    fn global_id(id: ast::GlobalVarId) -> GlobalId {
+        GlobalId::from(id.0)
     }
 
     fn quote(&mut self, result: Option<LocalId>, sexpr: &sexpr::SExpr) {
