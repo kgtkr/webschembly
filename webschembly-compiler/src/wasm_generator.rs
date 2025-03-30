@@ -338,7 +338,7 @@ impl ModuleGenerator {
         self.type_count += 1;
         self.types
             .ty()
-            .array(&StorageType::Val(Self::BOXED_TYPE), false);
+            .array(&StorageType::Val(Self::BOXED_TYPE), true);
 
         self.boxed_func_type = self.type_count;
         self.type_count += 1;

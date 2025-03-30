@@ -162,7 +162,7 @@ impl VarIdGen {
     }
 
     // TODO: 返り値の型を変更
-    fn get_global_var_id(&mut self, name: &str) -> VarId {
+    fn global_var_id(&mut self, name: &str) -> VarId {
         let id = if let Some(id) = self.globals.get(name) {
             *id
         } else {
@@ -172,6 +172,10 @@ impl VarIdGen {
         };
         self.use_globals.insert(id);
         VarId::Global(id)
+    }
+
+    pub fn get_global_id(&self, name: &str) -> Option<GlobalVarId> {
+        self.globals.get(name).copied()
     }
 
     fn flag_mutate(&mut self, id: LocalVarId) {
@@ -221,7 +225,7 @@ impl Expr<Used> {
             Expr::Literal(x, lit) => Expr::Literal(x.add(type_map::key::<Used>(), ()), lit),
             Expr::Var(x, var) => {
                 let var_id = match ctx {
-                    Context::Global => var_id_gen.get_global_var_id(&var),
+                    Context::Global => var_id_gen.global_var_id(&var),
                     Context::Local(LocalContext { env }) => {
                         if let Some(local_var) = env.get(&var) {
                             if local_var.is_captured {
@@ -229,7 +233,7 @@ impl Expr<Used> {
                             }
                             VarId::Local(local_var.id)
                         } else {
-                            var_id_gen.get_global_var_id(&var)
+                            var_id_gen.global_var_id(&var)
                         }
                     }
                 };
@@ -343,7 +347,7 @@ impl Expr<Used> {
             }
             Expr::Set(x, set) => {
                 let var_id = match ctx {
-                    Context::Global => var_id_gen.get_global_var_id(&set.name),
+                    Context::Global => var_id_gen.global_var_id(&set.name),
                     Context::Local(LocalContext { env }) => {
                         if let Some(local_var) = env.get(&set.name) {
                             if local_var.is_captured {
@@ -352,7 +356,7 @@ impl Expr<Used> {
                             var_id_gen.flag_mutate(local_var.id);
                             VarId::Local(local_var.id)
                         } else {
-                            var_id_gen.get_global_var_id(&set.name)
+                            var_id_gen.global_var_id(&set.name)
                         }
                     }
                 };

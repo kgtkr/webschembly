@@ -11,15 +11,13 @@
   (type $String (sub final (struct (field $buf (mut (ref $StringBuf))) (field $len i32) (field $offset i32))))
   (type $Symbol (sub final (struct (field $name (ref $String)))))
   (type $Vector (array (mut eqref)))
-  (type $VariableParams (array (field eqref)))
+  (type $VariableParams (array (mut eqref)))
   (rec
       (type $BoxedFunc (func (param (ref $Closure)) (param (ref $VariableParams)) (result eqref)))
       (type $Closure (sub (struct
           (field $func (ref func))
           (field $boxed_func (ref $BoxedFunc)))))
   )
-  ;; TODO: いらなくなったら削除
-  (type $Func1 (func (param (ref $Closure)) (param eqref) (result eqref)))
   ;;
   (import "runtime" "init" (func $init))
   (import "runtime" "malloc" (func $malloc (param i32) (result i32)))
@@ -29,6 +27,7 @@
   (import "runtime" "_int_to_string" (func $_int_to_string (param i64) (result i64)))
   (import "runtime" "write_buf" (func $write_buf (param i32) (param i32) (param i32)))
   (import "runtime" "write_char" (func $write_char (param i32)))
+  (import "runtime" "get_global_id" (func $get_global_id (param i32) (param i32) (result i32)))
   (global $nil (export "nil") (ref $Nil) (struct.new $Nil))
   (global $true (export "true") (ref $Bool) (struct.new $Bool (i32.const 1)))
   (global $false (export "false") (ref $Bool) (struct.new $Bool (i32.const 0)))
@@ -177,15 +176,30 @@
 
   (start $init)
 
-  (func $print_for_repl (export "print_for_repl") (param $x eqref)
-    ;; TODO: もっと汎用的な方法でJSからschemeのグローバル変数を参照できるようにする
-    (local $write_closure (ref $Closure))
-    (local $write (ref $Func1))
-    ;; writeは今のところ22番目に入っているはず(壊れやすいコードなので要修正)
-    (local.set $write_closure (ref.cast (ref $Closure) (table.get $globals (i32.const 22))))
-    (local.set $write (ref.cast (ref $Func1) (struct.get $Closure $func (local.get $write_closure))))
-    (call_ref $Func1 (local.get $write_closure) (local.get $x) (local.get $write))
-    (drop)
-    (call $write_char (i32.const 10))
+  (func $get_global (export "get_global") (param $buf_ptr i32) (param $buf_len i32) (result eqref)
+    (local $global_id i32)
+    (local.set $global_id (call $get_global_id (local.get $buf_ptr) (local.get $buf_len)))
+    (if (i32.eq (local.get $global_id) (i32.const -1))
+      (then
+        (return (ref.null eq))
+      )
+      (else
+        (return (table.get $globals (local.get $global_id)))
+      )
+    )
+  )
+
+  (func $new_variable_params (export "new_variable_params") (param $size i32) (result (ref $VariableParams))
+    (return (array.new $VariableParams (ref.null eq) (local.get $size)))
+  )
+
+  (func $set_variable_params (export "set_variable_params") (param $params (ref $VariableParams)) (param $index i32) (param $value eqref)
+    (array.set $VariableParams (local.get $params) (local.get $index) (local.get $value))
+  )
+
+  (func $call_closure (export "call_closure") (param $closure (ref $Closure)) (param $params (ref $VariableParams)) (result eqref)
+    (local $func (ref $BoxedFunc))
+    (local.set $func (struct.get $Closure $boxed_func (local.get $closure)))
+    (call_ref $BoxedFunc (local.get $closure) (local.get $params) (local.get $func))
   )
 )

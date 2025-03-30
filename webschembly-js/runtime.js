@@ -19,7 +19,20 @@ export function createRuntime(
       try {
         const result = instance.exports.start();
         if (printEvalResult) {
-          runtimeInstance.exports.print_for_repl(result);
+          const writeClosure = runtimeInstance.exports.get_global(
+            writePtr,
+            writeLen
+          );
+          const writeParams = runtimeInstance.exports.new_variable_params(1);
+          runtimeInstance.exports.set_variable_params(writeParams, 0, result);
+          runtimeInstance.exports.call_closure(writeClosure, writeParams);
+
+          const newlineClosure = runtimeInstance.exports.get_global(
+            newlinePtr,
+            newlineLen
+          );
+          const newlineParams = runtimeInstance.exports.new_variable_params(0);
+          runtimeInstance.exports.call_closure(newlineClosure, newlineParams);
         }
         return 0;
       } catch (e) {
@@ -75,6 +88,16 @@ export function createRuntime(
         }
       }
     };
+
+  function mallocString(s) {
+    const buf = new TextEncoder().encode(s);
+    const bufPtr = runtimeInstance.exports.malloc(buf.length);
+    new Uint8Array(runtimeInstance.exports.memory.buffer).set(buf, bufPtr);
+    return [bufPtr, buf.length];
+  }
+
+  const [writePtr, writeLen] = mallocString("write");
+  const [newlinePtr, newlineLen] = mallocString("newline");
 
   return {
     loadStdlib: errorHandle(() => {

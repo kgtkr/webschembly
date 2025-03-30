@@ -87,23 +87,23 @@ const STDOUT_FD: i32 = 1;
 const STDERR_FD: i32 = 2;
 
 fn load_src_inner(src: String, is_stdlib: bool) {
-    let (error_msg, throw_error) = COMPILER.with(|compiler| {
+    let wasm = COMPILER.with(|compiler| {
         let mut compiler = compiler.borrow_mut();
-        let wasm = compiler.compile(&src, is_stdlib);
-        match wasm {
-            Ok(wasm) => {
-                let result =
-                    unsafe { env::js_instantiate(wasm.as_ptr() as i32, wasm.len() as i32) };
-                drop(wasm);
-                if result == 0 {
-                    (None, false)
-                } else {
-                    (None, true)
-                }
-            }
-            Err(err) => (Some(format!("{}\n", err)), true),
-        }
+        compiler.compile(&src, is_stdlib)
     });
+
+    let (error_msg, throw_error) = match wasm {
+        Ok(wasm) => {
+            let result = unsafe { env::js_instantiate(wasm.as_ptr() as i32, wasm.len() as i32) };
+            drop(wasm);
+            if result == 0 {
+                (None, false)
+            } else {
+                (None, true)
+            }
+        }
+        Err(err) => (Some(format!("{}\n", err)), true),
+    };
 
     if let Some(error_msg) = error_msg {
         WRITERS.with(|writers| {
@@ -256,4 +256,20 @@ fn cons_tuple_i32(a: i32, b: i32) -> i64 {
     buf[..4].copy_from_slice(&a);
     buf[4..].copy_from_slice(&b);
     i64::from_le_bytes(buf)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn get_global_id(buf_ptr: i32, buf_len: i32) -> i32 {
+    let buf_ptr = buf_ptr as *const u8;
+    let mut bytes = Vec::with_capacity(buf_len as usize);
+    for i in 0..buf_len {
+        unsafe {
+            bytes.push(*buf_ptr.offset(i as isize));
+        }
+    }
+    let name = String::from_utf8(bytes).unwrap();
+    COMPILER.with(|compiler| {
+        let compiler = compiler.borrow();
+        compiler.get_global_id(&name).unwrap_or(-1)
+    })
 }

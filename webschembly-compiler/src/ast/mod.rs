@@ -43,4 +43,8 @@ impl ASTGenerator {
         // TODO: 末尾位置解析
         Ok(used)
     }
+
+    pub fn get_global_id(&self, name: &str) -> Option<GlobalVarId> {
+        self.var_id_gen.get_global_id(name)
+    }
 }

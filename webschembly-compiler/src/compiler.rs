@@ -36,4 +36,8 @@ impl Compiler {
         let code = self.wasm_generator.generate(&ir);
         Ok(code)
     }
+
+    pub fn get_global_id(&self, name: &str) -> Option<i32> {
+        self.ast_generator.get_global_id(name).map(|id| id.0 as i32)
+    }
 }
