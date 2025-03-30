@@ -606,8 +606,7 @@ impl ModuleGenerator {
     }
 
     // TODO: きちんとrelooperを実装する
-    // 現在の問題点: if (x) { a } else { b } cと生成するべきところを if (x) { a; c } else { b; c }とcを重複して生成してしまうので非効率的End,
-    // TODO: ModuleGeneratorのメソッドにする
+    // 現在の問題点: if (x) { a } else { b } cと生成するべきところを if (x) { a; c } else { b; c }とcを重複して生成してしまうので非効率的
     fn gen_bb(&mut self, function: &mut Function, func: &ir::Func, bb_id: ir::BasicBlockId) {
         let bb = &func.bbs[bb_id];
         for expr in &bb.exprs {

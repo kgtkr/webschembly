@@ -242,7 +242,7 @@ pub enum Expr {
     GlobalSet(GlobalId, LocalId),
     GlobalGet(GlobalId),
     // Builtin = BuiltinClosure + CallClosureだが後から最適化するのは大変なので一旦分けておく
-    Builtin(Builtin, Vec<LocalId>), // TODO: astを参照するべきではない
+    Builtin(Builtin, Vec<LocalId>),
     Error(LocalId),
     InitGlobals(usize), // global count
 }

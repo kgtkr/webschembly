@@ -40,7 +40,6 @@ impl ASTGenerator {
         let defined = Ast::<Defined>::from_ast(desugared)?;
         let tail_call = Ast::<TailCall>::from_ast(defined);
         let used = Ast::<Used>::from_ast(tail_call, &mut self.var_id_gen);
-        // TODO: 末尾位置解析
         Ok(used)
     }
 
