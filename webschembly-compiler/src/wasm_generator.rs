@@ -514,88 +514,7 @@ impl ModuleGenerator {
             });
 
         for func in ir.funcs.iter() {
-            let type_idx = self.func_type_from_ir(func.func_type());
-
-            let func_idx = self.func_count;
-            self.func_count += 1;
-
-            let boxed_func_idx = self.func_count;
-            self.func_count += 1;
-
-            let mut function = Function::new(
-                func.locals
-                    .iter()
-                    .skip(func.args)
-                    .map(|ty| {
-                        let ty = self.convert_local_type(*ty);
-                        (1, ty)
-                    })
-                    .collect::<Vec<_>>(),
-            );
-
-            // TODO: きちんとrelooperを実装する
-            // 現在の問題点: if (x) { a } else { b } cと生成するべきところを if (x) { a; c } else { b; c }とcを重複して生成してしまうので非効率的End,
-            // TODO: ModuleGeneratorのメソッドにする
-            fn gen_bb(
-                genetator: &mut ModuleGenerator,
-                func: &ir::Func,
-                function: &mut Function,
-                bb_id: ir::BasicBlockId,
-            ) {
-                let bb = &func.bbs[bb_id];
-                for expr in &bb.exprs {
-                    genetator.gen_assign(function, &func.locals, expr);
-                }
-
-                match bb.next {
-                    BasicBlockNext::Jump(target) => {
-                        gen_bb(genetator, func, function, target);
-                    }
-                    BasicBlockNext::If(cond, then_target, else_target) => {
-                        function.instruction(&Instruction::LocalGet(
-                            ModuleGenerator::from_local_id(cond),
-                        ));
-                        function.instruction(&Instruction::If(BlockType::Empty));
-                        gen_bb(genetator, func, function, then_target);
-                        function.instruction(&Instruction::Else);
-                        gen_bb(genetator, func, function, else_target);
-                        function.instruction(&Instruction::End);
-                    }
-                    BasicBlockNext::Return => {
-                        for ret in &func.rets {
-                            function.instruction(&Instruction::LocalGet(
-                                ModuleGenerator::from_local_id(*ret),
-                            ));
-                        }
-                        function.instruction(&Instruction::Return);
-                    }
-                }
-            }
-            gen_bb(self, func, &mut function, func.bb_entry);
-
-            function.instruction(&Instruction::Unreachable); // TODO: 型チェックを通すため
-            function.instruction(&Instruction::End);
-
-            self.func_indices.insert(func.id, FuncIndex {
-                func_idx,
-                boxed_func_idx,
-            });
-            self.elements.declared(Elements::Functions(Cow::Borrowed(&[
-                func_idx,
-                boxed_func_idx,
-            ])));
-
-            self.functions.function(type_idx);
-            self.code.function(&function);
-
-            // TODO: boxed_func
-            self.functions.function(self.boxed_func_type);
-            self.code.function(&{
-                let mut function = Function::new(Vec::new());
-                function.instruction(&Instruction::Unreachable);
-                function.instruction(&Instruction::End);
-                function
-            });
+            self.gen_func(func);
         }
 
         self.exports.export(
@@ -629,6 +548,84 @@ impl ModuleGenerator {
 
     fn from_global_id(global: ir::GlobalId) -> i32 {
         usize::from(global) as i32
+    }
+
+    fn gen_func(&mut self, func: &ir::Func) {
+        let type_idx = self.func_type_from_ir(func.func_type());
+
+        let func_idx = self.func_count;
+        self.func_count += 1;
+
+        let boxed_func_idx = self.func_count;
+        self.func_count += 1;
+
+        let mut function = Function::new(
+            func.locals
+                .iter()
+                .skip(func.args)
+                .map(|ty| {
+                    let ty = self.convert_local_type(*ty);
+                    (1, ty)
+                })
+                .collect::<Vec<_>>(),
+        );
+
+        self.gen_bb(&mut function, func, func.bb_entry);
+
+        function.instruction(&Instruction::Unreachable); // TODO: 型チェックを通すため
+        function.instruction(&Instruction::End);
+
+        self.func_indices.insert(func.id, FuncIndex {
+            func_idx,
+            boxed_func_idx,
+        });
+        self.elements.declared(Elements::Functions(Cow::Borrowed(&[
+            func_idx,
+            boxed_func_idx,
+        ])));
+
+        self.functions.function(type_idx);
+        self.code.function(&function);
+
+        // TODO: boxed_func
+        self.functions.function(self.boxed_func_type);
+        self.code.function(&{
+            let mut function = Function::new(Vec::new());
+            function.instruction(&Instruction::Unreachable);
+            function.instruction(&Instruction::End);
+            function
+        });
+    }
+
+    // TODO: きちんとrelooperを実装する
+    // 現在の問題点: if (x) { a } else { b } cと生成するべきところを if (x) { a; c } else { b; c }とcを重複して生成してしまうので非効率的End,
+    // TODO: ModuleGeneratorのメソッドにする
+    fn gen_bb(&mut self, function: &mut Function, func: &ir::Func, bb_id: ir::BasicBlockId) {
+        let bb = &func.bbs[bb_id];
+        for expr in &bb.exprs {
+            self.gen_assign(function, &func.locals, expr);
+        }
+
+        match bb.next {
+            BasicBlockNext::Jump(target) => {
+                self.gen_bb(function, func, target);
+            }
+            BasicBlockNext::If(cond, then_target, else_target) => {
+                function.instruction(&Instruction::LocalGet(ModuleGenerator::from_local_id(cond)));
+                function.instruction(&Instruction::If(BlockType::Empty));
+                self.gen_bb(function, func, then_target);
+                function.instruction(&Instruction::Else);
+                self.gen_bb(function, func, else_target);
+                function.instruction(&Instruction::End);
+            }
+            BasicBlockNext::Return => {
+                for ret in &func.rets {
+                    function
+                        .instruction(&Instruction::LocalGet(ModuleGenerator::from_local_id(*ret)));
+                }
+                function.instruction(&Instruction::Return);
+            }
+        }
     }
 
     fn gen_assign(
