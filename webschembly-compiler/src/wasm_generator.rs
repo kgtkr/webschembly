@@ -587,11 +587,19 @@ impl ModuleGenerator {
         self.functions.function(type_idx);
         self.code.function(&function);
 
-        // TODO: boxed_func
         self.functions.function(self.boxed_func_type);
         self.code.function(&{
             let mut function = Function::new(Vec::new());
-            function.instruction(&Instruction::Unreachable);
+            // TODO: 引数の数チェック
+            function.instruction(&Instruction::LocalGet(0));
+            for (i, _) in func.arg_types().iter().skip(1).enumerate() {
+                // TODO: 引数の型が[Closure, Boxed, Boxed, ..., Boxed]であることを仮定している
+                function.instruction(&Instruction::LocalGet(1));
+                function.instruction(&Instruction::I32Const(i as i32));
+                function.instruction(&Instruction::ArrayGet(self.variable_params_type));
+            }
+            function.instruction(&Instruction::Call(func_idx));
+            function.instruction(&Instruction::Return);
             function.instruction(&Instruction::End);
             function
         });
