@@ -1,5 +1,4 @@
 (module
-  (type $MutCell (sub final (struct (field (mut eqref)))))
   (type $Nil (sub final (struct)))
   (type $Bool (sub final (struct (field i8))))
   (type $Char (sub final (struct (field i32))))

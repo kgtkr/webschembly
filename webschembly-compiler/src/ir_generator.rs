@@ -159,7 +159,7 @@ impl<'a> FuncGenerator<'a> {
             if self.ir_generator.box_vars.contains(id) {
                 self.exprs.push(ExprAssign {
                     local: Some(local),
-                    expr: Expr::CreateMutCell,
+                    expr: Expr::CreateMutCell(Type::Boxed),
                 });
             }
         }
@@ -191,7 +191,7 @@ impl<'a> FuncGenerator<'a> {
 
     fn define_ast_local(&mut self, id: ast::LocalVarId) -> LocalId {
         let local = self.local(if self.ir_generator.box_vars.contains(&id) {
-            LocalType::MutCell
+            LocalType::MutCell(Type::Boxed)
         } else {
             LocalType::Type(Type::Boxed)
         });
@@ -407,7 +407,7 @@ impl<'a> FuncGenerator<'a> {
                     if self.ir_generator.box_vars.contains(id) {
                         self.exprs.push(ExprAssign {
                             local: result,
-                            expr: Expr::DerefMutCell(*self.local_ids.get(id).unwrap()),
+                            expr: Expr::DerefMutCell(Type::Boxed, *self.local_ids.get(id).unwrap()),
                         });
                     } else {
                         self.exprs.push(ExprAssign {
@@ -435,7 +435,7 @@ impl<'a> FuncGenerator<'a> {
                             let local = self.local_ids.get(id).unwrap();
                             self.exprs.push(ExprAssign {
                                 local: None,
-                                expr: Expr::SetMutCell(*local, boxed_local),
+                                expr: Expr::SetMutCell(Type::Boxed, *local, boxed_local),
                             });
                             self.exprs.push(ExprAssign {
                                 local: result,

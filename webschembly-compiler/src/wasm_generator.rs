@@ -72,7 +72,7 @@ struct ModuleGenerator {
     func_indices: FxHashMap<ir::FuncId, FuncIndex>,
     exports: ExportSection,
     // types
-    mut_cell_type: u32,
+    mut_cell_types: FxHashMap<ir::Type, u32>,
     nil_type: u32,
     bool_type: u32,
     int_type: u32,
@@ -118,7 +118,7 @@ impl ModuleGenerator {
             func_indices: FxHashMap::default(),
             datas: DataSection::new(),
             exports: ExportSection::new(),
-            mut_cell_type: 0,
+            mut_cell_types: FxHashMap::default(),
             nil_type: 0,
             bool_type: 0,
             int_type: 0,
@@ -166,18 +166,17 @@ impl ModuleGenerator {
     }
 
     fn func_type_from_ir(&mut self, ir_func_type: ir::FuncType) -> u32 {
-        self.func_type(WasmFuncType {
-            params: ir_func_type
-                .args
-                .into_iter()
-                .map(|ty| self.convert_type(ty))
-                .collect(),
-            results: ir_func_type
-                .rets
-                .into_iter()
-                .map(|ty| self.convert_type(ty))
-                .collect(),
-        })
+        let params = ir_func_type
+            .args
+            .into_iter()
+            .map(|ty| self.convert_type(ty))
+            .collect();
+        let results = ir_func_type
+            .rets
+            .into_iter()
+            .map(|ty| self.convert_type(ty))
+            .collect();
+        self.func_type(WasmFuncType { params, results })
     }
 
     fn closure_type(&mut self, env_types: Vec<ValType>) -> u32 {
@@ -213,12 +212,11 @@ impl ModuleGenerator {
     }
 
     fn closure_type_from_ir(&mut self, env_types: Vec<ir::LocalType>) -> u32 {
-        self.closure_type(
-            env_types
-                .into_iter()
-                .map(|ty| self.convert_local_type(ty))
-                .collect(),
-        )
+        let types = env_types
+            .into_iter()
+            .map(|ty| self.convert_local_type(ty))
+            .collect();
+        self.closure_type(types)
     }
 
     const BOXED_TYPE: ValType = ValType::Ref(RefType::EQREF);
@@ -239,13 +237,6 @@ impl ModuleGenerator {
     // const STRING_OFFSET_FIELD: u32 = 2;
 
     pub fn generate(&mut self, ir: &ir::Ir) -> Module {
-        self.mut_cell_type = self.type_count;
-        self.type_count += 1;
-        self.types.ty().struct_(vec![FieldType {
-            element_type: StorageType::Val(Self::BOXED_TYPE),
-            mutable: true,
-        }]);
-
         self.nil_type = self.type_count;
         self.type_count += 1;
         self.types.ty().struct_(vec![]);
@@ -704,25 +695,25 @@ impl ModuleGenerator {
                 function.instruction(&Instruction::LocalGet(Self::from_local_id(*cdr)));
                 function.instruction(&Instruction::StructNew(self.cons_type));
             }
-            ir::Expr::CreateMutCell => {
+            ir::Expr::CreateMutCell(typ) => {
                 function.instruction(&Instruction::RefNull(HeapType::Abstract {
                     shared: false,
                     ty: AbstractHeapType::Eq,
                 }));
-                function.instruction(&Instruction::StructNew(self.mut_cell_type));
+                function.instruction(&Instruction::StructNew(self.mut_cell_type(*typ)));
             }
-            ir::Expr::DerefMutCell(cell) => {
+            ir::Expr::DerefMutCell(typ, cell) => {
                 function.instruction(&Instruction::LocalGet(Self::from_local_id(*cell)));
                 function.instruction(&Instruction::StructGet {
-                    struct_type_index: self.mut_cell_type,
+                    struct_type_index: self.mut_cell_type(*typ),
                     field_index: Self::MUT_CELL_VALUE_FIELD,
                 });
             }
-            ir::Expr::SetMutCell(cell, val) => {
+            ir::Expr::SetMutCell(typ, cell, val) => {
                 function.instruction(&Instruction::LocalGet(Self::from_local_id(*cell)));
                 function.instruction(&Instruction::LocalGet(Self::from_local_id(*val)));
                 function.instruction(&Instruction::StructSet {
-                    struct_type_index: self.mut_cell_type,
+                    struct_type_index: self.mut_cell_type(*typ),
                     field_index: Self::MUT_CELL_VALUE_FIELD,
                 });
                 function.instruction(&Instruction::LocalGet(Self::from_local_id(*val)));
@@ -930,12 +921,30 @@ impl ModuleGenerator {
         }
     }
 
-    fn convert_local_type(&self, ty: ir::LocalType) -> ValType {
+    fn mut_cell_type(&mut self, inner_ty: ir::Type) -> u32 {
+        if let Some(mut_cell_type) = self.mut_cell_types.get(&inner_ty) {
+            *mut_cell_type
+        } else {
+            let type_id = self.type_count;
+            self.type_count += 1;
+            let ty = self.convert_type(inner_ty);
+            self.types.ty().struct_(vec![FieldType {
+                element_type: StorageType::Val(ty),
+                mutable: true,
+            }]);
+            type_id
+        }
+    }
+
+    fn convert_local_type(&mut self, ty: ir::LocalType) -> ValType {
         match ty {
-            ir::LocalType::MutCell => ValType::Ref(RefType {
-                nullable: false,
-                heap_type: HeapType::Concrete(self.mut_cell_type),
-            }),
+            ir::LocalType::MutCell(inner_ty) => {
+                let mut_cell_type = self.mut_cell_type(inner_ty);
+                ValType::Ref(RefType {
+                    nullable: false,
+                    heap_type: HeapType::Concrete(mut_cell_type),
+                })
+            }
             ir::LocalType::Type(ty) => self.convert_type(ty),
         }
     }

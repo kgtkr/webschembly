@@ -159,7 +159,7 @@ impl Builtin {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum LocalType {
-    MutCell, // 中身はBoxed固定
+    MutCell(Type),
     Type(Type),
 }
 
@@ -178,7 +178,7 @@ impl From<ValType> for LocalType {
 impl LocalType {
     pub fn to_type(&self) -> Type {
         match self {
-            LocalType::MutCell => Type::Boxed,
+            LocalType::MutCell(inner) => *inner,
             LocalType::Type(typ) => *typ,
         }
     }
@@ -226,9 +226,9 @@ pub enum Expr {
     Nil,
     Char(char),
     Cons(LocalId, LocalId),
-    CreateMutCell,
-    DerefMutCell(LocalId),
-    SetMutCell(LocalId /* mutcell */, LocalId /* value */),
+    CreateMutCell(Type),
+    DerefMutCell(Type, LocalId),
+    SetMutCell(Type, LocalId /* mutcell */, LocalId /* value */),
     Closure(Vec<LocalId>, FuncId),
     CallClosure(bool, LocalId, Vec<LocalId>),
     Move(LocalId),
