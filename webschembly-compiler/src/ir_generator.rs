@@ -36,9 +36,10 @@ impl IrGenerator {
     }
 
     fn generate(mut self, ast: &ast::Ast<ast::Final>) -> Ir {
+        let func_id = self.funcs.next_key();
         self.box_vars = ast.x.get_ref(type_map::key::<Used>()).box_vars.clone();
-        let func = FuncGenerator::new(&mut self).entry_gen(ast);
-        let func_id = self.funcs.push_and_get_key(func);
+        let func = FuncGenerator::new(&mut self).entry_gen(func_id, ast);
+        self.funcs.push(func);
 
         Ir {
             funcs: self.funcs,
@@ -51,8 +52,10 @@ impl IrGenerator {
         x: RunX<ast::LambdaX, ast::Final>,
         lambda: &ast::Lambda<ast::Final>,
     ) -> FuncId {
-        let func = FuncGenerator::new(self).lambda_gen(x, lambda);
-        self.funcs.push_and_get_key(func)
+        let id = self.funcs.next_key();
+        let func = FuncGenerator::new(self).lambda_gen(id, x, lambda);
+        self.funcs.push(func);
+        id
     }
 }
 
@@ -78,7 +81,7 @@ impl<'a> FuncGenerator<'a> {
         }
     }
 
-    fn entry_gen(mut self, ast: &ast::Ast<ast::Final>) -> Func {
+    fn entry_gen(mut self, id: FuncId, ast: &ast::Ast<ast::Final>) -> Func {
         let boxed_local = self.local(Type::Boxed);
 
         self.exprs.push(ExprAssign {
@@ -97,6 +100,7 @@ impl<'a> FuncGenerator<'a> {
         self.gen_exprs(Some(boxed_local), &ast.exprs);
         self.close_bb(Some(BasicBlockNext::Return));
         Func {
+            id,
             args: 0,
             rets: vec![boxed_local],
             locals: self.locals,
@@ -116,6 +120,7 @@ impl<'a> FuncGenerator<'a> {
 
     fn lambda_gen(
         mut self,
+        id: FuncId,
         x: RunX<ast::LambdaX, ast::Final>,
         lambda: &ast::Lambda<ast::Final>,
     ) -> Func {
@@ -163,6 +168,7 @@ impl<'a> FuncGenerator<'a> {
         self.gen_exprs(Some(ret), &lambda.body);
         self.close_bb(Some(BasicBlockNext::Return));
         Func {
+            id,
             args: lambda.args.len() + 1,
             rets: vec![ret],
             locals: self.locals,

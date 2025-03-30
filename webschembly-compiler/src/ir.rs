@@ -273,6 +273,7 @@ pub enum BasicBlockNext {
 
 #[derive(Debug, Clone)]
 pub struct Func {
+    pub id: FuncId,
     pub locals: TiVec<LocalId, LocalType>,
     // localsの先頭何個が引数か
     pub args: usize,

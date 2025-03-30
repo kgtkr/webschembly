@@ -513,7 +513,7 @@ impl ModuleGenerator {
                 results: vec![],
             });
 
-        for (i, func) in ir.funcs.iter_enumerated() {
+        for func in ir.funcs.iter() {
             let type_idx = self.func_type_from_ir(func.func_type());
 
             let func_idx = self.func_count;
@@ -576,7 +576,7 @@ impl ModuleGenerator {
             function.instruction(&Instruction::Unreachable); // TODO: 型チェックを通すため
             function.instruction(&Instruction::End);
 
-            self.func_indices.insert(i, FuncIndex {
+            self.func_indices.insert(func.id, FuncIndex {
                 func_idx,
                 boxed_func_idx,
             });
