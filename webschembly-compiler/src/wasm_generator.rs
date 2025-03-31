@@ -561,6 +561,7 @@ impl ModuleGenerator {
                 .collect::<Vec<_>>(),
         );
 
+        reloop(func.bb_entry, &func.bbs);
         self.gen_bb(&mut function, func, func.bb_entry);
 
         function.instruction(&Instruction::Unreachable); // TODO: 型チェックを通すため
@@ -1069,6 +1070,98 @@ impl ModuleGenerator {
             ir::Builtin::Ge => {
                 function.instruction(&Instruction::I64GeS);
             }
+        }
+    }
+}
+
+#[derive(Debug)]
+enum StructuredBasicBlock {
+    Simple(ir::BasicBlockId),
+    If {
+        cond: ir::LocalId,
+        then: Vec<StructuredBasicBlock>,
+        else_: Vec<StructuredBasicBlock>,
+    },
+    Return,
+}
+
+// relooper algorithmのようなもの。閉路がないので単純
+fn reloop(
+    entry: ir::BasicBlockId,
+    bbs: &TiSlice<ir::BasicBlockId, ir::BasicBlock>,
+) -> Vec<StructuredBasicBlock> {
+    let mut predecessors = FxHashMap::default();
+    for bb in bbs.iter() {
+        for next in bb.next.successors() {
+            predecessors
+                .entry(next)
+                .or_insert_with(Vec::new)
+                .push(bb.id);
+        }
+    }
+
+    let mut dominators = FxHashMap::default();
+    for bb in bbs.iter() {
+        dominators.insert(bb.id, Vec::new());
+    }
+    dominators.insert(entry, vec![entry]);
+    let mut stack = vec![entry];
+    while let Some(cur) = stack.pop() {
+        let bb = &bbs[cur];
+        for next in bb.next.successors() {
+            if let Some(predecessors) = predecessors.get(&next) {
+                if predecessors.len() > 1 {
+                    dominators.entry(next).or_insert_with(Vec::new).push(cur);
+                    stack.push(next);
+                }
+            }
+        }
+    }
+
+    let mut results = Vec::new();
+    let rejoin_point = reloop_rec(entry, bbs, &predecessors, &mut results, false);
+    assert_eq!(rejoin_point, None);
+    results
+}
+
+// rejoin pointを返す
+fn reloop_rec(
+    cur: ir::BasicBlockId,
+    bbs: &TiSlice<ir::BasicBlockId, ir::BasicBlock>,
+    predecessors: &FxHashMap<ir::BasicBlockId, Vec<ir::BasicBlockId>>,
+    results: &mut Vec<StructuredBasicBlock>,
+    stop_rejoin: bool,
+) -> Option<ir::BasicBlockId> {
+    if stop_rejoin
+        && let Some(predecessors) = predecessors.get(&cur)
+        && predecessors.len() > 1
+    {
+        return Some(cur);
+    }
+    results.push(StructuredBasicBlock::Simple(cur));
+    let bb = &bbs[cur];
+    match bb.next {
+        BasicBlockNext::If(cond, then_target, else_target) => {
+            let mut then_bbs = Vec::new();
+            let mut else_bbs = Vec::new();
+            let rejoin_point1 = reloop_rec(then_target, bbs, predecessors, &mut then_bbs, true);
+            let rejoin_point2 = reloop_rec(else_target, bbs, predecessors, &mut else_bbs, true);
+            assert_eq!(rejoin_point1, rejoin_point2);
+            results.push(StructuredBasicBlock::If {
+                cond,
+                then: then_bbs,
+                else_: else_bbs,
+            });
+            if let Some(rejoin_point) = rejoin_point1 {
+                reloop_rec(rejoin_point, bbs, predecessors, results, stop_rejoin)
+            } else {
+                None
+            }
+        }
+        BasicBlockNext::Jump(target) => reloop_rec(target, bbs, predecessors, results, stop_rejoin),
+        BasicBlockNext::Return => {
+            results.push(StructuredBasicBlock::Return);
+            None
         }
     }
 }

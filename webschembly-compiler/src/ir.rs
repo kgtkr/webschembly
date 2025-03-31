@@ -271,6 +271,16 @@ pub enum BasicBlockNext {
     Return,
 }
 
+impl BasicBlockNext {
+    pub fn successors(&self) -> Vec<BasicBlockId> {
+        match self {
+            BasicBlockNext::If(_, t, f) => vec![*t, *f],
+            BasicBlockNext::Jump(bb) => vec![*bb],
+            BasicBlockNext::Return => vec![],
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Func {
     pub id: FuncId,
