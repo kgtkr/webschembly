@@ -1,4 +1,4 @@
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 use std::borrow::Cow;
 use typed_index_collections::{TiSlice, ti_vec};
 
@@ -561,7 +561,10 @@ impl ModuleGenerator {
                 .collect::<Vec<_>>(),
         );
 
-        self.gen_bb(&mut function, func, func.bb_entry);
+        let structured_bbs = reloop(func.bb_entry, &func.bbs);
+        for structured_bb in &structured_bbs {
+            self.gen_bb(&mut function, func, structured_bb);
+        }
 
         function.instruction(&Instruction::Unreachable); // TODO: 型チェックを通すため
         function.instruction(&Instruction::End);
@@ -596,27 +599,34 @@ impl ModuleGenerator {
         });
     }
 
-    // TODO: きちんとrelooperを実装する
-    // 現在の問題点: if (x) { a } else { b } cと生成するべきところを if (x) { a; c } else { b; c }とcを重複して生成してしまうので非効率的
-    fn gen_bb(&mut self, function: &mut Function, func: &ir::Func, bb_id: ir::BasicBlockId) {
-        let bb = &func.bbs[bb_id];
-        for expr in &bb.exprs {
-            self.gen_assign(function, &func.locals, expr);
-        }
-
-        match bb.next {
-            BasicBlockNext::Jump(target) => {
-                self.gen_bb(function, func, target);
+    fn gen_bb(
+        &mut self,
+        function: &mut Function,
+        func: &ir::Func,
+        structured_bb: &StructuredBasicBlock,
+    ) {
+        match structured_bb {
+            StructuredBasicBlock::Simple(bb_id) => {
+                let bb = &func.bbs[*bb_id];
+                for expr in &bb.exprs {
+                    self.gen_assign(function, &func.locals, expr);
+                }
             }
-            BasicBlockNext::If(cond, then_target, else_target) => {
-                function.instruction(&Instruction::LocalGet(ModuleGenerator::from_local_id(cond)));
+            StructuredBasicBlock::If { cond, then, else_ } => {
+                function.instruction(&Instruction::LocalGet(ModuleGenerator::from_local_id(
+                    *cond,
+                )));
                 function.instruction(&Instruction::If(BlockType::Empty));
-                self.gen_bb(function, func, then_target);
+                for structured_bb in then {
+                    self.gen_bb(function, func, structured_bb);
+                }
                 function.instruction(&Instruction::Else);
-                self.gen_bb(function, func, else_target);
+                for structured_bb in else_ {
+                    self.gen_bb(function, func, structured_bb);
+                }
                 function.instruction(&Instruction::End);
             }
-            BasicBlockNext::Return => {
+            StructuredBasicBlock::Return => {
                 for ret in &func.rets {
                     function
                         .instruction(&Instruction::LocalGet(ModuleGenerator::from_local_id(*ret)));
@@ -1069,6 +1079,130 @@ impl ModuleGenerator {
             ir::Builtin::Ge => {
                 function.instruction(&Instruction::I64GeS);
             }
+        }
+    }
+}
+
+#[derive(Debug)]
+enum StructuredBasicBlock {
+    Simple(ir::BasicBlockId),
+    If {
+        cond: ir::LocalId,
+        then: Vec<StructuredBasicBlock>,
+        else_: Vec<StructuredBasicBlock>,
+    },
+    Return,
+}
+
+// relooper algorithmのような動作をするもの
+// 閉路がないので単純
+fn reloop(
+    entry: ir::BasicBlockId,
+    bbs: &TiSlice<ir::BasicBlockId, ir::BasicBlock>,
+) -> Vec<StructuredBasicBlock> {
+    let mut preds = ti_vec![FxHashSet::default(); bbs.len()];
+    for bb in bbs.iter() {
+        for next in bb.next.successors() {
+            preds[next].insert(bb.id);
+        }
+    }
+
+    let all_ids = FxHashSet::from_iter(bbs.iter().map(|bb| bb.id));
+    let mut doms = ti_vec![all_ids.clone(); bbs.len()];
+    doms[entry] = FxHashSet::from_iter(vec![entry]);
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for bb in bbs.iter() {
+            if bb.id == entry {
+                continue;
+            }
+            let mut new_dom = all_ids.clone();
+            for pred in preds[bb.id].iter() {
+                new_dom.retain(|id| doms[*pred].contains(id));
+            }
+            new_dom.insert(bb.id);
+            if new_dom.len() != doms[bb.id].len() {
+                doms[bb.id] = new_dom;
+                changed = true;
+            }
+        }
+    }
+
+    let mut reversed_doms = ti_vec![FxHashSet::default(); bbs.len()];
+    for bb in bbs.iter() {
+        for dom in doms[bb.id].iter() {
+            reversed_doms[*dom].insert(bb.id);
+        }
+    }
+
+    let mut results = Vec::new();
+    let rejoin_point = reloop_rec(
+        entry,
+        bbs,
+        &reversed_doms,
+        &FxHashSet::default(),
+        &mut results,
+    );
+    assert_eq!(rejoin_point, None);
+    results
+}
+
+// rejoin pointを返す
+fn reloop_rec(
+    cur: ir::BasicBlockId,
+    bbs: &TiSlice<ir::BasicBlockId, ir::BasicBlock>,
+    reversed_doms: &TiSlice<ir::BasicBlockId, FxHashSet<ir::BasicBlockId>>,
+    rejoin_points: &FxHashSet<ir::BasicBlockId>,
+    results: &mut Vec<StructuredBasicBlock>,
+) -> Option<ir::BasicBlockId> {
+    if rejoin_points.contains(&cur) {
+        return Some(cur);
+    }
+    results.push(StructuredBasicBlock::Simple(cur));
+    let bb = &bbs[cur];
+    match bb.next {
+        BasicBlockNext::If(cond, then_target, else_target) => {
+            let mut if_rejoin_points = reversed_doms[cur].clone();
+            if_rejoin_points.retain(|bb_id| {
+                !reversed_doms[then_target].contains(bb_id)
+                    && !reversed_doms[else_target].contains(bb_id)
+            });
+
+            let mut then_bbs = Vec::new();
+            let mut else_bbs = Vec::new();
+            let rejoin_point1 = reloop_rec(
+                then_target,
+                bbs,
+                reversed_doms,
+                &if_rejoin_points,
+                &mut then_bbs,
+            );
+            let rejoin_point2 = reloop_rec(
+                else_target,
+                bbs,
+                reversed_doms,
+                &if_rejoin_points,
+                &mut else_bbs,
+            );
+            assert_eq!(rejoin_point1, rejoin_point2);
+            results.push(StructuredBasicBlock::If {
+                cond,
+                then: then_bbs,
+                else_: else_bbs,
+            });
+            if let Some(rejoin_point) = rejoin_point1 {
+                reloop_rec(rejoin_point, bbs, reversed_doms, rejoin_points, results)
+            } else {
+                None
+            }
+        }
+        BasicBlockNext::Jump(target) => {
+            reloop_rec(target, bbs, reversed_doms, rejoin_points, results)
+        }
+        BasicBlockNext::Return => {
+            results.push(StructuredBasicBlock::Return);
+            None
         }
     }
 }
