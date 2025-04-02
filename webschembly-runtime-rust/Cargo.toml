@@ -1,5 +1,8 @@
+cargo-features = ["per-package-target"]
+
 [package]
 edition = "2024"
+forced-target = "wasm32-unknown-unknown"
 name = "webschembly-runtime-rust"
 version = "0.1.0"
 
@@ -9,5 +12,5 @@ rustc-hash = "2.1.1"
 webschembly-compiler = {path = "../webschembly-compiler"}
 
 [lib]
-crate-type = ["cdylib", "rlib"]
+crate-type = ["cdylib"]
 test = false
