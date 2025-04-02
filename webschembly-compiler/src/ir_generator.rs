@@ -108,7 +108,6 @@ impl<'a> FuncGenerator<'a> {
             bbs: self
                 .bbs
                 .into_iter_enumerated()
-                .into_iter()
                 .map(|(id, bb)| BasicBlock {
                     id,
                     exprs: bb.exprs,
@@ -451,7 +450,7 @@ impl<'a> FuncGenerator<'a> {
                         }
                     }
                     ast::VarId::Global(id) => {
-                        if let Some(_) = Builtin::from_name(&name)
+                        if let Some(_) = Builtin::from_name(name)
                             && !self.ir_generator.config.allow_set_builtin
                         {
                             let msg = self.local(Type::Val(ValType::String));
