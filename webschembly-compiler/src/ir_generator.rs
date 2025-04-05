@@ -259,6 +259,24 @@ impl<'a> FuncGenerator<'a> {
                 ast::Literal::Quote(sexpr) => {
                     self.quote(result, sexpr);
                 }
+                ast::Literal::Vector(vec) => {
+                    // TODO: quoteとコードが被っている
+                    let mut vec_locals = Vec::new();
+                    for sexpr in vec {
+                        let boxed_local = self.local(Type::Boxed);
+                        self.quote(Some(boxed_local), sexpr);
+                        vec_locals.push(boxed_local);
+                    }
+                    let unboxed = self.local(Type::Val(ValType::Vector));
+                    self.exprs.push(ExprAssign {
+                        local: Some(unboxed),
+                        expr: Expr::Vector(vec_locals),
+                    });
+                    self.exprs.push(ExprAssign {
+                        local: result,
+                        expr: Expr::Box(ValType::Vector, unboxed),
+                    });
+                }
             },
             ast::Expr::Define(x, _) => *x.get_ref(type_map::key::<Used>()),
             ast::Expr::Lambda(x, lambda) => {
@@ -572,6 +590,23 @@ impl<'a> FuncGenerator<'a> {
                 self.exprs.push(ExprAssign {
                     local: result,
                     expr: Expr::Box(ValType::Cons, unboxed),
+                });
+            }
+            sexpr::SExprKind::Vector(vec) => {
+                let mut vec_locals = Vec::new();
+                for sexpr in vec {
+                    let boxed_local = self.local(Type::Boxed);
+                    self.quote(Some(boxed_local), sexpr);
+                    vec_locals.push(boxed_local);
+                }
+                let unboxed = self.local(Type::Val(ValType::Vector));
+                self.exprs.push(ExprAssign {
+                    local: Some(unboxed),
+                    expr: Expr::Vector(vec_locals),
+                });
+                self.exprs.push(ExprAssign {
+                    local: result,
+                    expr: Expr::Box(ValType::Vector, unboxed),
                 });
             }
         }

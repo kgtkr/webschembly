@@ -65,6 +65,20 @@ fn char(input: Tokens) -> IResult<Tokens, SExpr> {
     .parse(input)
 }
 
+fn vector(input: Tokens) -> IResult<Tokens, SExpr> {
+    let (input, open_token) =
+        satisfy(|t: &Token| t.kind == TokenKind::VectorOpenParen).parse(input)?;
+    let (input, elements) = many0(sexpr)(input)?;
+    let (input, close_token) = satisfy(|t: &Token| t.kind == TokenKind::CloseParen).parse(input)?;
+
+    let vector = SExpr {
+        kind: SExprKind::Vector(elements),
+        span: open_token.span.merge(close_token.span),
+    };
+
+    Ok((input, vector))
+}
+
 fn list(input: Tokens) -> IResult<Tokens, SExpr> {
     let (input, open_token) = satisfy(|t: &Token| t.kind == TokenKind::OpenParen).parse(input)?;
     let (input, elements) = many0(sexpr)(input)?;
@@ -124,7 +138,7 @@ fn quote(input: Tokens) -> IResult<Tokens, SExpr> {
 }
 
 fn sexpr(input: Tokens) -> IResult<Tokens, SExpr> {
-    alt((bool, int, string, symbol, char, list, quote)).parse(input)
+    alt((bool, int, string, symbol, char, list, vector, quote)).parse(input)
 }
 
 fn sexprs(input: Tokens) -> IResult<Tokens, Vec<SExpr>> {

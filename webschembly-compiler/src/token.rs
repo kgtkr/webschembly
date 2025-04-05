@@ -9,6 +9,7 @@ pub enum TokenKind {
     String(String),
     Bool(bool),
     Quote,
+    VectorOpenParen,
     Dot,
     Eof,
     Char(char),

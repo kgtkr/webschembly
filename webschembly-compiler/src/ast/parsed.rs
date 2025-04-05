@@ -164,6 +164,15 @@ impl Expr<Parsed> {
                 type_map::singleton(type_map::key::<Parsed>(), ParsedLiteralR { span }),
                 Literal::Char(c),
             )),
+            SExpr {
+                kind: SExprKind::Vector(vec),
+                span,
+                ..
+            } => Ok(Expr::Literal(
+                type_map::singleton(type_map::key::<Parsed>(), ParsedLiteralR { span }),
+                Literal::Vector(vec),
+            )),
+
             list_pattern![
                 SExpr {
                     kind: SExprKind::Symbol("quote"),

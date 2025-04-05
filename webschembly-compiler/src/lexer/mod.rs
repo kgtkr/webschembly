@@ -96,6 +96,7 @@ fn token_kind<'a, E: ErrorBound<'a>>(
         tag(")").map(|_| TokenKind::CloseParen),
         tag("#t").map(|_| TokenKind::Bool(true)),
         tag("#f").map(|_| TokenKind::Bool(false)),
+        tag("#(").map(|_| TokenKind::VectorOpenParen),
         tag("'").map(|_| TokenKind::Quote),
         string,
         char,

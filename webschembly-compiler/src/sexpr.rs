@@ -8,6 +8,7 @@ pub enum SExprKind {
     Char(char),
     Symbol(String),
     Cons(Box<Cons>),
+    Vector(Vec<SExpr>),
     Nil,
 }
 

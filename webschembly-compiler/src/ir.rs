@@ -28,6 +28,14 @@ pub enum Builtin {
     IsProcedure,
     #[strum(serialize = "char?")]
     IsChar,
+    #[strum(serialize = "vector-length")]
+    VectorLength,
+    #[strum(serialize = "vector-ref")]
+    VectorRef,
+    #[strum(serialize = "vector-set!")]
+    VectorSet,
+    #[strum(serialize = "vector?")]
+    IsVector,
     #[strum(serialize = "eq?")]
     Eq,
     #[strum(serialize = "car")]
@@ -112,6 +120,26 @@ impl Builtin {
             Builtin::IsChar => FuncType {
                 args: ti_vec![Type::Boxed],
                 rets: ti_vec![Type::Val(ValType::Bool)],
+            },
+            Builtin::IsVector => FuncType {
+                args: ti_vec![Type::Boxed],
+                rets: ti_vec![Type::Val(ValType::Bool)],
+            },
+            Builtin::VectorLength => FuncType {
+                args: ti_vec![Type::Val(ValType::Vector)],
+                rets: ti_vec![Type::Val(ValType::Int)],
+            },
+            Builtin::VectorRef => FuncType {
+                args: ti_vec![Type::Val(ValType::Vector), Type::Val(ValType::Int)],
+                rets: ti_vec![Type::Boxed],
+            },
+            Builtin::VectorSet => FuncType {
+                args: ti_vec![
+                    Type::Val(ValType::Vector),
+                    Type::Val(ValType::Int),
+                    Type::Boxed
+                ],
+                rets: ti_vec![Type::Val(ValType::Nil)],
             },
             Builtin::Eq => FuncType {
                 args: ti_vec![Type::Boxed, Type::Boxed],
@@ -206,6 +234,7 @@ pub enum ValType {
     Cons,
     Closure,
     Char,
+    Vector,
 }
 
 #[derive(Debug, Clone, Copy, From, Into, Hash, PartialEq, Eq)]
@@ -225,6 +254,7 @@ pub enum Expr {
     StringToSymbol(LocalId),
     Nil,
     Char(char),
+    Vector(Vec<LocalId>),
     Cons(LocalId, LocalId),
     CreateMutCell(Type),
     DerefMutCell(Type, LocalId),

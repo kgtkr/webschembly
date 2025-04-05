@@ -10,9 +10,8 @@
   (type $String (sub final (struct (field $buf (mut (ref $StringBuf))) (field $len i32) (field $offset i32))))
   (type $Symbol (sub final (struct (field $name (ref $String)))))
   (type $Vector (array (mut eqref)))
-  (type $VariableParams (array (mut eqref)))
   (rec
-      (type $BoxedFunc (func (param (ref $Closure)) (param (ref $VariableParams)) (result eqref)))
+      (type $BoxedFunc (func (param (ref $Closure)) (param (ref $Vector)) (result eqref)))
       (type $Closure (sub (struct
           (field $func (ref func))
           (field $boxed_func (ref $BoxedFunc)))))
@@ -188,15 +187,15 @@
     )
   )
 
-  (func $new_variable_params (export "new_variable_params") (param $size i32) (result (ref $VariableParams))
-    (return (array.new $VariableParams (ref.null eq) (local.get $size)))
+  (func $new_vector (export "new_vector") (param $size i32) (result (ref $Vector))
+    (return (array.new $Vector (ref.null eq) (local.get $size)))
   )
 
-  (func $set_variable_params (export "set_variable_params") (param $params (ref $VariableParams)) (param $index i32) (param $value eqref)
-    (array.set $VariableParams (local.get $params) (local.get $index) (local.get $value))
+  (func $set_vector (export "set_vector") (param $params (ref $Vector)) (param $index i32) (param $value eqref)
+    (array.set $Vector (local.get $params) (local.get $index) (local.get $value))
   )
 
-  (func $call_closure (export "call_closure") (param $closure (ref $Closure)) (param $params (ref $VariableParams)) (result eqref)
+  (func $call_closure (export "call_closure") (param $closure (ref $Closure)) (param $params (ref $Vector)) (result eqref)
     (local $func (ref $BoxedFunc))
     (local.set $func (struct.get $Closure $boxed_func (local.get $closure)))
     (call_ref $BoxedFunc (local.get $closure) (local.get $params) (local.get $func))

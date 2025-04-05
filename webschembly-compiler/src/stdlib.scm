@@ -1,6 +1,14 @@
 (define (newline)
   (write-char #\newline))
 (define (write x)
+  (define (write-vector-inner v i)
+    (write (vector-ref v i))
+    (if (< (+ i 1) (vector-length v))
+        (begin
+          (write-char #\space)
+          (write-vector-inner v (+ i 1)))
+        #f)
+  )
   (if (pair? x)
       (begin
         (write-char #\openparen)
@@ -30,5 +38,13 @@
         (write-char x))
   (if (procedure? x)
       (display "<procedure>")
-  (display "<unknown>"))))))))))
+  (if (vector? x)
+      (begin
+        (write-char #\#)
+        (write-char #\openparen)
+        (if (= (vector-length x) 0)
+            #f
+            (write-vector-inner x 0))
+        (write-char #\closeparen))
+  (display "<unknown>")))))))))))
 )

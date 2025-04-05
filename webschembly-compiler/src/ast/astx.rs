@@ -77,6 +77,7 @@ pub enum Literal {
     Nil,
     Quote(SExpr),
     Char(char),
+    Vector(Vec<SExpr>),
 }
 
 #[derive(Debug, Clone)]

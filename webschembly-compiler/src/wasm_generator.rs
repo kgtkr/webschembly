@@ -82,7 +82,7 @@ struct ModuleGenerator {
     string_buf_type: u32,
     string_type: u32,
     symbol_type: u32,
-    variable_params_type: u32,
+    vector_type: u32,
     boxed_func_type: u32,
     closure_type: u32,
     closure_types: FxHashMap<Vec<ValType>, u32>, // env types -> type index
@@ -128,7 +128,7 @@ impl ModuleGenerator {
             string_buf_type: 0,
             string_type: 0,
             symbol_type: 0,
-            variable_params_type: 0,
+            vector_type: 0,
             boxed_func_type: 0,
             closure_type: 0,
             closure_types: FxHashMap::default(),
@@ -325,7 +325,7 @@ impl ModuleGenerator {
             mutable: false,
         }]);
 
-        self.variable_params_type = self.type_count;
+        self.vector_type = self.type_count;
         self.type_count += 1;
         self.types
             .ty()
@@ -368,7 +368,7 @@ impl ModuleGenerator {
                             }),
                             ValType::Ref(RefType {
                                 nullable: false,
-                                heap_type: HeapType::Concrete(self.variable_params_type),
+                                heap_type: HeapType::Concrete(self.vector_type),
                             }),
                         ],
                         [Self::BOXED_TYPE],
@@ -590,7 +590,7 @@ impl ModuleGenerator {
                 // TODO: 引数の型が[Closure, Boxed, Boxed, ..., Boxed]であることを仮定している
                 function.instruction(&Instruction::LocalGet(1));
                 function.instruction(&Instruction::I32Const(i as i32));
-                function.instruction(&Instruction::ArrayGet(self.variable_params_type));
+                function.instruction(&Instruction::ArrayGet(self.vector_type));
             }
             function.instruction(&Instruction::Call(func_idx));
             function.instruction(&Instruction::Return);
@@ -704,6 +704,15 @@ impl ModuleGenerator {
                 function.instruction(&Instruction::LocalGet(Self::from_local_id(*car)));
                 function.instruction(&Instruction::LocalGet(Self::from_local_id(*cdr)));
                 function.instruction(&Instruction::StructNew(self.cons_type));
+            }
+            ir::Expr::Vector(vec) => {
+                for elem in vec.iter() {
+                    function.instruction(&Instruction::LocalGet(Self::from_local_id(*elem)));
+                }
+                function.instruction(&Instruction::ArrayNewFixed {
+                    array_type_index: self.vector_type,
+                    array_size: vec.len() as u32,
+                });
             }
             ir::Expr::CreateMutCell(typ) => {
                 function.instruction(&Instruction::RefNull(HeapType::Abstract {
@@ -825,6 +834,12 @@ impl ModuleGenerator {
                         self.closure_type,
                     )));
                 }
+                ir::ValType::Vector => {
+                    function.instruction(&Instruction::LocalGet(Self::from_local_id(*val)));
+                    function.instruction(&Instruction::RefCastNonNull(HeapType::Concrete(
+                        self.vector_type,
+                    )));
+                }
             },
             ir::Expr::Box(typ, val) => match typ {
                 ir::ValType::Bool => {
@@ -863,6 +878,9 @@ impl ModuleGenerator {
                 ir::ValType::Closure => {
                     function.instruction(&Instruction::LocalGet(Self::from_local_id(*val)));
                 }
+                ir::ValType::Vector => {
+                    function.instruction(&Instruction::LocalGet(Self::from_local_id(*val)));
+                }
             },
             ir::Expr::ClosureEnv(env_types, closure, env_index) => {
                 let closure_type = self.closure_type_from_ir(env_types.clone());
@@ -898,10 +916,7 @@ impl ModuleGenerator {
                 }));
             }
             ir::Expr::Builtin(builtin, args) => {
-                for arg in args {
-                    function.instruction(&Instruction::LocalGet(Self::from_local_id(*arg)));
-                }
-                self.gen_builtin(*builtin, function);
+                self.gen_builtin(*builtin, function, args);
             }
             ir::Expr::InitGlobals(n) => {
                 // 必要なサイズになるまで2倍に拡張
@@ -983,78 +998,125 @@ impl ModuleGenerator {
                     nullable: false,
                     heap_type: HeapType::Concrete(self.closure_type),
                 }),
+                ir::ValType::Vector => ValType::Ref(RefType {
+                    nullable: false,
+                    heap_type: HeapType::Concrete(self.vector_type),
+                }),
             },
         }
     }
 
-    fn gen_builtin(&self, builtin: ir::Builtin, function: &mut Function) {
+    fn gen_builtin(&self, builtin: ir::Builtin, function: &mut Function, args: &[ir::LocalId]) {
         match builtin {
             ir::Builtin::Display => {
+                function.instruction(&Instruction::LocalGet(Self::from_local_id(args[0])));
                 function.instruction(&Instruction::Call(self.display_func));
                 function.instruction(&Instruction::I32Const(0));
             }
             ir::Builtin::Add => {
+                function.instruction(&Instruction::LocalGet(Self::from_local_id(args[0])));
+                function.instruction(&Instruction::LocalGet(Self::from_local_id(args[1])));
                 function.instruction(&Instruction::I64Add);
             }
             ir::Builtin::Sub => {
+                function.instruction(&Instruction::LocalGet(Self::from_local_id(args[0])));
+                function.instruction(&Instruction::LocalGet(Self::from_local_id(args[1])));
                 function.instruction(&Instruction::I64Sub);
             }
             ir::Builtin::WriteChar => {
+                function.instruction(&Instruction::LocalGet(Self::from_local_id(args[0])));
                 function.instruction(&Instruction::Call(self.write_char_func));
                 function.instruction(&Instruction::I32Const(0));
             }
             ir::Builtin::IsPair => {
+                function.instruction(&Instruction::LocalGet(Self::from_local_id(args[0])));
                 function.instruction(&Instruction::RefTestNonNull(HeapType::Concrete(
                     self.cons_type,
                 )));
             }
             ir::Builtin::IsSymbol => {
+                function.instruction(&Instruction::LocalGet(Self::from_local_id(args[0])));
                 function.instruction(&Instruction::RefTestNonNull(HeapType::Concrete(
                     self.symbol_type,
                 )));
             }
             ir::Builtin::IsString => {
+                function.instruction(&Instruction::LocalGet(Self::from_local_id(args[0])));
                 function.instruction(&Instruction::RefTestNonNull(HeapType::Concrete(
                     self.string_type,
                 )));
             }
             ir::Builtin::IsChar => {
+                function.instruction(&Instruction::LocalGet(Self::from_local_id(args[0])));
                 function.instruction(&Instruction::RefTestNonNull(HeapType::Concrete(
                     self.char_type,
                 )));
             }
             ir::Builtin::IsNumber => {
                 // TODO: 一般のnumberかを判定
+                function.instruction(&Instruction::LocalGet(Self::from_local_id(args[0])));
                 function.instruction(&Instruction::RefTestNonNull(HeapType::Concrete(
                     self.int_type,
                 )));
             }
             ir::Builtin::IsBoolean => {
+                function.instruction(&Instruction::LocalGet(Self::from_local_id(args[0])));
                 function.instruction(&Instruction::RefTestNonNull(HeapType::Concrete(
                     self.bool_type,
                 )));
             }
             ir::Builtin::IsProcedure => {
+                function.instruction(&Instruction::LocalGet(Self::from_local_id(args[0])));
                 function.instruction(&Instruction::RefTestNonNull(HeapType::Concrete(
                     self.closure_type,
                 )));
             }
+            ir::Builtin::IsVector => {
+                function.instruction(&Instruction::LocalGet(Self::from_local_id(args[0])));
+                function.instruction(&Instruction::RefTestNonNull(HeapType::Concrete(
+                    self.vector_type,
+                )));
+            }
+            ir::Builtin::VectorLength => {
+                function.instruction(&Instruction::LocalGet(Self::from_local_id(args[0])));
+                function.instruction(&Instruction::ArrayLen);
+                function.instruction(&Instruction::I64ExtendI32U);
+            }
+            ir::Builtin::VectorRef => {
+                function.instruction(&Instruction::LocalGet(Self::from_local_id(args[0])));
+                function.instruction(&Instruction::LocalGet(Self::from_local_id(args[1])));
+                function.instruction(&Instruction::I32WrapI64);
+                function.instruction(&Instruction::ArrayGet(self.vector_type));
+            }
+            ir::Builtin::VectorSet => {
+                function.instruction(&Instruction::LocalGet(Self::from_local_id(args[0])));
+                function.instruction(&Instruction::LocalGet(Self::from_local_id(args[1])));
+                function.instruction(&Instruction::I32WrapI64);
+                function.instruction(&Instruction::LocalGet(Self::from_local_id(args[2])));
+                function.instruction(&Instruction::ArraySet(self.vector_type));
+                function.instruction(&Instruction::I32Const(0));
+            }
             ir::Builtin::Eq => {
+                function.instruction(&Instruction::LocalGet(Self::from_local_id(args[0])));
+                function.instruction(&Instruction::LocalGet(Self::from_local_id(args[1])));
                 function.instruction(&Instruction::RefEq);
             }
             ir::Builtin::Car => {
+                function.instruction(&Instruction::LocalGet(Self::from_local_id(args[0])));
                 function.instruction(&Instruction::StructGet {
                     struct_type_index: self.cons_type,
                     field_index: Self::CONS_CAR_FIELD,
                 });
             }
             ir::Builtin::Cdr => {
+                function.instruction(&Instruction::LocalGet(Self::from_local_id(args[0])));
                 function.instruction(&Instruction::StructGet {
                     struct_type_index: self.cons_type,
                     field_index: Self::CONS_CDR_FIELD,
                 });
             }
             ir::Builtin::SymbolToString => {
+                function.instruction(&Instruction::LocalGet(Self::from_local_id(args[0])));
                 function.instruction(&Instruction::StructGet {
                     struct_type_index: self.symbol_type,
                     field_index: Self::SYMBOL_STRING_FIELD,
@@ -1062,21 +1124,32 @@ impl ModuleGenerator {
             }
             ir::Builtin::NumberToString => {
                 // TODO: 一般のnumberに対応
+                function.instruction(&Instruction::LocalGet(Self::from_local_id(args[0])));
                 function.instruction(&Instruction::Call(self.int_to_string_func));
             }
             ir::Builtin::EqNum => {
+                function.instruction(&Instruction::LocalGet(Self::from_local_id(args[0])));
+                function.instruction(&Instruction::LocalGet(Self::from_local_id(args[1])));
                 function.instruction(&Instruction::I64Eq);
             }
             ir::Builtin::Lt => {
+                function.instruction(&Instruction::LocalGet(Self::from_local_id(args[0])));
+                function.instruction(&Instruction::LocalGet(Self::from_local_id(args[1])));
                 function.instruction(&Instruction::I64LtS);
             }
             ir::Builtin::Gt => {
+                function.instruction(&Instruction::LocalGet(Self::from_local_id(args[0])));
+                function.instruction(&Instruction::LocalGet(Self::from_local_id(args[1])));
                 function.instruction(&Instruction::I64GtS);
             }
             ir::Builtin::Le => {
+                function.instruction(&Instruction::LocalGet(Self::from_local_id(args[0])));
+                function.instruction(&Instruction::LocalGet(Self::from_local_id(args[1])));
                 function.instruction(&Instruction::I64LeS);
             }
             ir::Builtin::Ge => {
+                function.instruction(&Instruction::LocalGet(Self::from_local_id(args[0])));
+                function.instruction(&Instruction::LocalGet(Self::from_local_id(args[1])));
                 function.instruction(&Instruction::I64GeS);
             }
         }
