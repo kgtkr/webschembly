@@ -1,7 +1,11 @@
 [package]
-edition = "2024"
+authors.workspace = true
+description.workspace = true
+edition.workspace = true
+homepage.workspace = true
 name = "webschembly-compiler-cli"
-version = "0.1.0"
+repository.workspace = true
+version.workspace = true
 
 [dependencies]
 anyhow = "1.0.95"

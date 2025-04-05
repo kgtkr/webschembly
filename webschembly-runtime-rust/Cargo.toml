@@ -1,7 +1,11 @@
 [package]
-edition = "2024"
+authors.workspace = true
+description.workspace = true
+edition.workspace = true
+homepage.workspace = true
 name = "webschembly-runtime-rust"
-version = "0.1.0"
+repository.workspace = true
+version.workspace = true
 
 [dependencies]
 log = {version = "0.4.26", features = ["release_max_level_warn"]}
