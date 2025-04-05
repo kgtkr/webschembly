@@ -9,5 +9,5 @@ rustc-hash = "2.1.1"
 webschembly-compiler = {path = "../webschembly-compiler"}
 
 [lib]
-crate-type = ["cdylib", "rlib"]
+crate-type = ["cdylib"]
 test = false
