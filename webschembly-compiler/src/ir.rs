@@ -235,6 +235,7 @@ pub enum ValType {
     Closure,
     Char,
     Vector,
+    FuncRef,
 }
 
 #[derive(Debug, Clone, Copy, From, Into, Hash, PartialEq, Eq)]
@@ -259,7 +260,12 @@ pub enum Expr {
     CreateMutCell(Type),
     DerefMutCell(Type, LocalId),
     SetMutCell(Type, LocalId /* mutcell */, LocalId /* value */),
-    Closure(Vec<LocalId>, FuncId),
+    FuncRef(FuncId),
+    Closure {
+        envs: Vec<LocalId>,
+        func: LocalId,
+        boxed_func: LocalId,
+    },
     CallClosure(bool, LocalId, Vec<LocalId>),
     Move(LocalId),
     Box(ValType, LocalId),

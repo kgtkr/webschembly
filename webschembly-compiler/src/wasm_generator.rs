@@ -8,9 +8,9 @@ use super::ir;
 use wasm_encoder::{
     AbstractHeapType, BlockType, CodeSection, CompositeInnerType, CompositeType, DataCountSection,
     DataSection, ElementSection, Elements, EntityType, ExportKind, ExportSection, FieldType,
-    FuncType, Function, FunctionSection, GlobalSection, GlobalType, HeapType, ImportSection,
-    Instruction, MemoryType, Module, RefType, StorageType, StructType, SubType, TableSection,
-    TableType, TypeSection, ValType,
+    Function, FunctionSection, GlobalSection, GlobalType, HeapType, ImportSection, Instruction,
+    MemoryType, Module, RefType, StorageType, StructType, SubType, TableSection, TableType,
+    TypeSection, ValType,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -83,7 +83,6 @@ struct ModuleGenerator {
     string_type: u32,
     symbol_type: u32,
     vector_type: u32,
-    boxed_func_type: u32,
     closure_type: u32,
     closure_types: FxHashMap<Vec<ValType>, u32>, // env types -> type index
     func_types: FxHashMap<WasmFuncType, u32>,
@@ -129,7 +128,6 @@ impl ModuleGenerator {
             string_type: 0,
             symbol_type: 0,
             vector_type: 0,
-            boxed_func_type: 0,
             closure_type: 0,
             closure_types: FxHashMap::default(),
             func_types: FxHashMap::default(),
@@ -331,8 +329,6 @@ impl ModuleGenerator {
             .ty()
             .array(&StorageType::Val(Self::BOXED_TYPE), true);
 
-        self.boxed_func_type = self.type_count;
-        self.type_count += 1;
         self.closure_type = self.type_count;
         self.type_count += 1;
         self.closure_type_fields = vec![
@@ -349,43 +345,24 @@ impl ModuleGenerator {
             FieldType {
                 element_type: StorageType::Val(ValType::Ref(RefType {
                     nullable: false,
-                    heap_type: HeapType::Concrete(self.boxed_func_type),
+                    heap_type: HeapType::Abstract {
+                        shared: false,
+                        ty: AbstractHeapType::Func,
+                    },
                 })),
                 mutable: false,
             },
         ];
-        self.types.ty().rec(vec![
-            SubType {
-                is_final: true,
-                supertype_idx: None,
-                composite_type: CompositeType {
-                    shared: false,
-                    inner: CompositeInnerType::Func(FuncType::new(
-                        [
-                            ValType::Ref(RefType {
-                                nullable: false,
-                                heap_type: HeapType::Concrete(self.closure_type),
-                            }),
-                            ValType::Ref(RefType {
-                                nullable: false,
-                                heap_type: HeapType::Concrete(self.vector_type),
-                            }),
-                        ],
-                        [Self::BOXED_TYPE],
-                    )),
-                },
+        self.types.ty().subtype(&SubType {
+            is_final: false,
+            supertype_idx: None,
+            composite_type: CompositeType {
+                shared: false,
+                inner: CompositeInnerType::Struct(StructType {
+                    fields: self.closure_type_fields.clone().into_boxed_slice(),
+                }),
             },
-            SubType {
-                is_final: false,
-                supertype_idx: None,
-                composite_type: CompositeType {
-                    shared: false,
-                    inner: CompositeInnerType::Struct(StructType {
-                        fields: self.closure_type_fields.clone().into_boxed_slice(),
-                    }),
-                },
-            },
-        ]);
+        });
 
         self.imports.import(
             "runtime",

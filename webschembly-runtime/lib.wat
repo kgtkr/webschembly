@@ -10,12 +10,12 @@
   (type $String (sub final (struct (field $buf (mut (ref $StringBuf))) (field $len i32) (field $offset i32))))
   (type $Symbol (sub final (struct (field $name (ref $String)))))
   (type $Vector (array (mut eqref)))
-  (rec
-      (type $BoxedFunc (func (param (ref $Closure)) (param (ref $Vector)) (result eqref)))
-      (type $Closure (sub (struct
+  (type $BoxedFunc (func (param (ref $Closure)) (param (ref $Vector)) (result eqref)))
+  (type $Closure (sub (struct
+          ;; (Closure, Boxed, Boxed, ..., Boxed) -> Boxed
           (field $func (ref func))
-          (field $boxed_func (ref $BoxedFunc)))))
-  )
+          ;; (Closure, Vector) -> Boxed
+          (field $boxed_func (ref func)))))
   ;;
   (import "runtime" "init" (func $init))
   (import "runtime" "malloc" (func $malloc (param i32) (result i32)))

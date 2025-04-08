@@ -287,10 +287,18 @@ impl<'a> FuncGenerator<'a> {
                     .map(|id| *self.local_ids.get(id).unwrap())
                     .collect::<Vec<_>>();
                 let func_id = self.ir_generator.gen_func(x.clone(), lambda);
+                let func_local = self.local(Type::Val(ValType::FuncRef));
                 let unboxed = self.local(Type::Val(ValType::Closure));
                 self.exprs.push(ExprAssign {
+                    local: Some(func_ref),
+                    expr: Expr::FuncRef(func_id),
+                });
+                self.exprs.push(ExprAssign {
                     local: Some(unboxed),
-                    expr: Expr::Closure(captures, func_id),
+                    expr: Expr::Closure {
+                        envs: captures,
+                        func: func_local,
+                    },
                 });
                 self.exprs.push(ExprAssign {
                     local: result,
