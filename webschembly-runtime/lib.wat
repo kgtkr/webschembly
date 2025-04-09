@@ -10,13 +10,12 @@
   (type $String (sub final (struct (field $buf (mut (ref $StringBuf))) (field $len i32) (field $offset i32))))
   (type $Symbol (sub final (struct (field $name (ref $String)))))
   (type $Vector (array (mut eqref)))
-  (rec
-      (type $BoxedFunc (func (param (ref $Closure)) (param (ref $Vector)) (result eqref)))
-      (type $Closure (sub (struct
+  (type $Closure (sub (struct
+          ;; (Closure, Boxed, Boxed, ..., Boxed) -> Boxed
           (field $func (ref func))
-          (field $boxed_func (ref $BoxedFunc)))))
-  )
-  ;;
+          ;; (Closure, Vector) -> Boxed
+          (field $boxed_func (ref func)))))
+  (type $BoxedFunc (func (param (ref $Closure)) (param (ref $Vector)) (result eqref)))
   (import "runtime" "init" (func $init))
   (import "runtime" "malloc" (func $malloc (param i32) (result i32)))
   (import "runtime" "free" (func $free (param i32)))
@@ -197,7 +196,9 @@
 
   (func $call_closure (export "call_closure") (param $closure (ref $Closure)) (param $params (ref $Vector)) (result eqref)
     (local $func (ref $BoxedFunc))
-    (local.set $func (struct.get $Closure $boxed_func (local.get $closure)))
+    (local.set $func (ref.cast (ref $BoxedFunc) (struct.get $Closure $boxed_func (local.get $closure))))
+
+
     (call_ref $BoxedFunc (local.get $closure) (local.get $params) (local.get $func))
   )
 )

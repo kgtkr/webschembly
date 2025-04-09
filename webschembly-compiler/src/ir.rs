@@ -235,6 +235,7 @@ pub enum ValType {
     Closure,
     Char,
     Vector,
+    FuncRef,
 }
 
 #[derive(Debug, Clone, Copy, From, Into, Hash, PartialEq, Eq)]
@@ -259,8 +260,14 @@ pub enum Expr {
     CreateMutCell(Type),
     DerefMutCell(Type, LocalId),
     SetMutCell(Type, LocalId /* mutcell */, LocalId /* value */),
-    Closure(Vec<LocalId>, FuncId),
-    CallClosure(bool, LocalId, Vec<LocalId>),
+    FuncRef(FuncId),
+    Call(bool, FuncId, Vec<LocalId>),
+    Closure {
+        envs: Vec<LocalId>,
+        func: LocalId,
+        boxed_func: LocalId,
+    },
+    CallRef(bool, LocalId, Vec<LocalId>),
     Move(LocalId),
     Box(ValType, LocalId),
     Unbox(ValType, LocalId),
@@ -269,9 +276,11 @@ pub enum Expr {
         LocalId,        /* closure */
         usize,          /* env index */
     ),
+    ClosureFuncRef(LocalId),
+    ClosureBoxedFuncRef(LocalId),
     GlobalSet(GlobalId, LocalId),
     GlobalGet(GlobalId),
-    // Builtin = BuiltinClosure + CallClosureだが後から最適化するのは大変なので一旦分けておく
+    // TODO: irがbuiltinを持つべきではなくASTの役割では？
     Builtin(Builtin, Vec<LocalId>),
     Error(LocalId),
     InitGlobals(usize), // global count
