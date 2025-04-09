@@ -261,6 +261,7 @@ pub enum Expr {
     DerefMutCell(Type, LocalId),
     SetMutCell(Type, LocalId /* mutcell */, LocalId /* value */),
     FuncRef(FuncId),
+    Call(bool, FuncId, Vec<LocalId>),
     Closure {
         envs: Vec<LocalId>,
         func: LocalId,

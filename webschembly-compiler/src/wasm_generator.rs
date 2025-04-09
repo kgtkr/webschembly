@@ -19,13 +19,6 @@ pub struct WasmFuncType {
     pub results: Vec<ValType>,
 }
 
-#[derive(Debug, Clone, Copy)]
-
-struct FuncIndex {
-    func_idx: u32,
-    boxed_func_idx: u32,
-}
-
 #[derive(Debug)]
 pub struct WasmGenerator {}
 
@@ -69,7 +62,7 @@ struct ModuleGenerator {
     globals: GlobalSection,
     datas: DataSection,
     elements: ElementSection,
-    func_indices: FxHashMap<ir::FuncId, FuncIndex>,
+    func_indices: FxHashMap<ir::FuncId, u32>,
     exports: ExportSection,
     // types
     mut_cell_types: FxHashMap<ir::Type, u32>,
@@ -485,11 +478,8 @@ impl ModuleGenerator {
             self.gen_func(func);
         }
 
-        self.exports.export(
-            "start",
-            ExportKind::Func,
-            self.func_indices[&ir.entry].func_idx,
-        );
+        self.exports
+            .export("start", ExportKind::Func, self.func_indices[&ir.entry]);
 
         let mut module = Module::new();
         module
@@ -524,9 +514,6 @@ impl ModuleGenerator {
         let func_idx = self.func_count;
         self.func_count += 1;
 
-        let boxed_func_idx = self.func_count;
-        self.func_count += 1;
-
         let mut function = Function::new(
             func.locals
                 .iter()
@@ -546,34 +533,12 @@ impl ModuleGenerator {
         function.instruction(&Instruction::Unreachable); // TODO: 型チェックを通すため
         function.instruction(&Instruction::End);
 
-        self.func_indices.insert(func.id, FuncIndex {
-            func_idx,
-            boxed_func_idx,
-        });
-        self.elements.declared(Elements::Functions(Cow::Borrowed(&[
-            func_idx,
-            boxed_func_idx,
-        ])));
+        self.func_indices.insert(func.id, func_idx);
+        self.elements
+            .declared(Elements::Functions(Cow::Borrowed(&[func_idx])));
 
         self.functions.function(type_idx);
         self.code.function(&function);
-
-        self.functions.function(self.boxed_func_type);
-        self.code.function(&{
-            let mut function = Function::new(Vec::new());
-            // TODO: 引数の数チェック
-            function.instruction(&Instruction::LocalGet(0));
-            for (i, _) in func.arg_types().iter().skip(1).enumerate() {
-                // TODO: 引数の型が[Closure, Boxed, Boxed, ..., Boxed]であることを仮定している
-                function.instruction(&Instruction::LocalGet(1));
-                function.instruction(&Instruction::I32Const(i as i32));
-                function.instruction(&Instruction::ArrayGet(self.vector_type));
-            }
-            function.instruction(&Instruction::Call(func_idx));
-            function.instruction(&Instruction::Return);
-            function.instruction(&Instruction::End);
-            function
-        });
     }
 
     fn gen_bb(
@@ -714,11 +679,17 @@ impl ModuleGenerator {
                 });
                 function.instruction(&Instruction::LocalGet(Self::from_local_id(*val)));
             }
-            ir::Expr::Closure(envs, func) => {
+            ir::Expr::FuncRef(func) => {
                 let func_idx = self.func_indices[func];
-
-                function.instruction(&Instruction::RefFunc(func_idx.func_idx));
-                function.instruction(&Instruction::RefFunc(func_idx.boxed_func_idx));
+                function.instruction(&Instruction::RefFunc(func_idx));
+            }
+            ir::Expr::Closure {
+                envs,
+                func,
+                boxed_func,
+            } => {
+                function.instruction(&Instruction::LocalGet(Self::from_local_id(*func)));
+                function.instruction(&Instruction::LocalGet(Self::from_local_id(*boxed_func)));
                 for env in envs.iter() {
                     function.instruction(&Instruction::LocalGet(Self::from_local_id(*env)));
                 }
@@ -747,6 +718,17 @@ impl ModuleGenerator {
                     function.instruction(&Instruction::ReturnCallRef(func_type));
                 } else {
                     function.instruction(&Instruction::CallRef(func_type));
+                }
+            }
+            ir::Expr::Call(tail_call, func, args) => {
+                let func_idx = self.func_indices[func];
+                for arg in args {
+                    function.instruction(&Instruction::LocalGet(Self::from_local_id(*arg)));
+                }
+                if *tail_call {
+                    function.instruction(&Instruction::ReturnCall(func_idx));
+                } else {
+                    function.instruction(&Instruction::Call(func_idx));
                 }
             }
             ir::Expr::Move(val) => {
@@ -817,6 +799,10 @@ impl ModuleGenerator {
                         self.vector_type,
                     )));
                 }
+                ir::ValType::FuncRef => {
+                    function.instruction(&Instruction::LocalGet(Self::from_local_id(*val)));
+                    function.instruction(&Instruction::RefCastNonNull(HeapType::FUNC));
+                }
             },
             ir::Expr::Box(typ, val) => match typ {
                 ir::ValType::Bool => {
@@ -856,6 +842,9 @@ impl ModuleGenerator {
                     function.instruction(&Instruction::LocalGet(Self::from_local_id(*val)));
                 }
                 ir::ValType::Vector => {
+                    function.instruction(&Instruction::LocalGet(Self::from_local_id(*val)));
+                }
+                ir::ValType::FuncRef => {
                     function.instruction(&Instruction::LocalGet(Self::from_local_id(*val)));
                 }
             },
@@ -978,6 +967,10 @@ impl ModuleGenerator {
                 ir::ValType::Vector => ValType::Ref(RefType {
                     nullable: false,
                     heap_type: HeapType::Concrete(self.vector_type),
+                }),
+                ir::ValType::FuncRef => ValType::Ref(RefType {
+                    nullable: false,
+                    heap_type: HeapType::FUNC,
                 }),
             },
         }
