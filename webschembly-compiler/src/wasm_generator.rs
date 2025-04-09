@@ -219,7 +219,7 @@ impl ModuleGenerator {
     const CONS_CDR_FIELD: u32 = 1;
     const SYMBOL_STRING_FIELD: u32 = 0;
     const CLOSURE_FUNC_FIELD: u32 = 0;
-    // const CLOSURE_BOXED_FUNC_FIELD: u32 = 1;
+    const CLOSURE_BOXED_FUNC_FIELD: u32 = 1;
     const CLOSURE_ENVS_FIELD_OFFSET: u32 = 2;
     // const STRING_BUF_BUF_FIELD: u32 = 0;
     // const STRING_BUF_SHARED_FIELD: u32 = 1;
@@ -698,7 +698,7 @@ impl ModuleGenerator {
                     self.closure_type_from_ir(envs.iter().map(|env| locals[*env]).collect()),
                 ));
             }
-            ir::Expr::CallClosure(tail_call, closure, args) => {
+            ir::Expr::CallRef(tail_call, func_ref, args) => {
                 let func_type = self.func_type_from_ir(ir::FuncType {
                     args: args.iter().map(|arg| locals[*arg].to_type()).collect(),
                     rets: ti_vec![ir::Type::Boxed],
@@ -708,17 +708,27 @@ impl ModuleGenerator {
                     function.instruction(&Instruction::LocalGet(Self::from_local_id(*arg)));
                 }
 
-                function.instruction(&Instruction::LocalGet(Self::from_local_id(*closure)));
-                function.instruction(&Instruction::StructGet {
-                    struct_type_index: self.closure_type,
-                    field_index: Self::CLOSURE_FUNC_FIELD,
-                });
+                function.instruction(&Instruction::LocalGet(Self::from_local_id(*func_ref)));
                 function.instruction(&Instruction::RefCastNonNull(HeapType::Concrete(func_type)));
                 if *tail_call {
                     function.instruction(&Instruction::ReturnCallRef(func_type));
                 } else {
                     function.instruction(&Instruction::CallRef(func_type));
                 }
+            }
+            ir::Expr::ClosureFuncRef(closure) => {
+                function.instruction(&Instruction::LocalGet(Self::from_local_id(*closure)));
+                function.instruction(&Instruction::StructGet {
+                    struct_type_index: self.closure_type,
+                    field_index: Self::CLOSURE_FUNC_FIELD,
+                });
+            }
+            ir::Expr::ClosureBoxedFuncRef(closure) => {
+                function.instruction(&Instruction::LocalGet(Self::from_local_id(*closure)));
+                function.instruction(&Instruction::StructGet {
+                    struct_type_index: self.closure_type,
+                    field_index: Self::CLOSURE_BOXED_FUNC_FIELD,
+                });
             }
             ir::Expr::Call(tail_call, func, args) => {
                 let func_idx = self.func_indices[func];

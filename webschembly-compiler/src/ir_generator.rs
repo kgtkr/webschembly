@@ -456,15 +456,19 @@ impl<'a> FuncGenerator<'a> {
                     self.gen_expr(Some(boxed_func_local), func);
 
                     // TODO: funcがクロージャかのチェック
-                    let func_local = self.local(Type::Val(ValType::Closure));
+                    let closure_local = self.local(Type::Val(ValType::Closure));
+                    let func_local = self.local(Type::Val(ValType::FuncRef));
                     self.exprs.push(ExprAssign {
-                        local: Some(func_local),
+                        local: Some(closure_local),
                         expr: Expr::Unbox(ValType::Closure, boxed_func_local),
                     });
-
+                    self.exprs.push(ExprAssign {
+                        local: Some(func_local),
+                        expr: Expr::ClosureFuncRef(closure_local),
+                    });
                     // TODO: 引数の数が合っているかのチェック
                     let mut arg_locals = Vec::new();
-                    arg_locals.push(func_local); // 第一引数にクロージャを渡す
+                    arg_locals.push(closure_local); // 第一引数にクロージャを渡す
                     for arg in args {
                         let arg_local = self.local(Type::Boxed);
                         self.gen_expr(Some(arg_local), arg);
@@ -472,7 +476,7 @@ impl<'a> FuncGenerator<'a> {
                     }
                     self.exprs.push(ExprAssign {
                         local: result,
-                        expr: Expr::CallClosure(
+                        expr: Expr::CallRef(
                             x.get_ref(type_map::key::<TailCall>()).is_tail,
                             func_local,
                             arg_locals,
