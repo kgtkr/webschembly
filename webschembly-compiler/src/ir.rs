@@ -1,189 +1,5 @@
 use derive_more::{From, Into};
-use strum_macros::{EnumIter, EnumString, FromRepr, IntoStaticStr};
-use typed_index_collections::{TiVec, ti_vec};
-
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Hash, EnumIter, FromRepr, EnumString, IntoStaticStr,
-)]
-pub enum Builtin {
-    #[strum(serialize = "display")]
-    Display, // TODO: 将来的には組み込み関数ではなくしたい
-    #[strum(serialize = "+")]
-    Add,
-    #[strum(serialize = "-")]
-    Sub,
-    #[strum(serialize = "write-char")]
-    WriteChar,
-    #[strum(serialize = "pair?")]
-    IsPair,
-    #[strum(serialize = "symbol?")]
-    IsSymbol,
-    #[strum(serialize = "string?")]
-    IsString,
-    #[strum(serialize = "number?")]
-    IsNumber,
-    #[strum(serialize = "boolean?")]
-    IsBoolean,
-    #[strum(serialize = "procedure?")]
-    IsProcedure,
-    #[strum(serialize = "char?")]
-    IsChar,
-    #[strum(serialize = "vector-length")]
-    VectorLength,
-    #[strum(serialize = "vector-ref")]
-    VectorRef,
-    #[strum(serialize = "vector-set!")]
-    VectorSet,
-    #[strum(serialize = "vector?")]
-    IsVector,
-    #[strum(serialize = "eq?")]
-    Eq,
-    #[strum(serialize = "car")]
-    Car,
-    #[strum(serialize = "cdr")]
-    Cdr,
-    #[strum(serialize = "symbol->string")]
-    SymbolToString,
-    #[strum(serialize = "number->string")]
-    NumberToString,
-    #[strum(serialize = "=")]
-    EqNum,
-    #[strum(serialize = "<")]
-    Lt,
-    #[strum(serialize = ">")]
-    Gt,
-    #[strum(serialize = "<=")]
-    Le,
-    #[strum(serialize = ">=")]
-    Ge,
-}
-
-impl Builtin {
-    pub fn name(self) -> &'static str {
-        self.into()
-    }
-
-    pub fn from_name(name: &str) -> Option<Self> {
-        Self::try_from(name).ok()
-    }
-
-    pub fn id(self) -> i32 {
-        self as usize as i32
-    }
-
-    pub fn from_id(id: i32) -> Option<Self> {
-        Self::from_repr(id as usize)
-    }
-
-    pub fn func_type(self) -> FuncType {
-        match self {
-            Builtin::Display => FuncType {
-                args: ti_vec![Type::Val(ValType::String)], // TODO: 一旦Stringのみ
-                rets: ti_vec![Type::Val(ValType::Nil)],
-            },
-            Builtin::Add => FuncType {
-                args: ti_vec![Type::Val(ValType::Int), Type::Val(ValType::Int)],
-                rets: ti_vec![Type::Val(ValType::Int)],
-            },
-            Builtin::Sub => FuncType {
-                args: ti_vec![Type::Val(ValType::Int), Type::Val(ValType::Int)],
-                rets: ti_vec![Type::Val(ValType::Int)],
-            },
-            Builtin::WriteChar => FuncType {
-                args: ti_vec![Type::Val(ValType::Char)],
-                rets: ti_vec![Type::Val(ValType::Nil)],
-            },
-            Builtin::IsPair => FuncType {
-                args: ti_vec![Type::Boxed],
-                rets: ti_vec![Type::Val(ValType::Bool)],
-            },
-            Builtin::IsSymbol => FuncType {
-                args: ti_vec![Type::Boxed],
-                rets: ti_vec![Type::Val(ValType::Bool)],
-            },
-            Builtin::IsString => FuncType {
-                args: ti_vec![Type::Boxed],
-                rets: ti_vec![Type::Val(ValType::Bool)],
-            },
-            Builtin::IsNumber => FuncType {
-                args: ti_vec![Type::Boxed],
-                rets: ti_vec![Type::Val(ValType::Bool)],
-            },
-            Builtin::IsBoolean => FuncType {
-                args: ti_vec![Type::Boxed],
-                rets: ti_vec![Type::Val(ValType::Bool)],
-            },
-            Builtin::IsProcedure => FuncType {
-                args: ti_vec![Type::Boxed],
-                rets: ti_vec![Type::Val(ValType::Bool)],
-            },
-            Builtin::IsChar => FuncType {
-                args: ti_vec![Type::Boxed],
-                rets: ti_vec![Type::Val(ValType::Bool)],
-            },
-            Builtin::IsVector => FuncType {
-                args: ti_vec![Type::Boxed],
-                rets: ti_vec![Type::Val(ValType::Bool)],
-            },
-            Builtin::VectorLength => FuncType {
-                args: ti_vec![Type::Val(ValType::Vector)],
-                rets: ti_vec![Type::Val(ValType::Int)],
-            },
-            Builtin::VectorRef => FuncType {
-                args: ti_vec![Type::Val(ValType::Vector), Type::Val(ValType::Int)],
-                rets: ti_vec![Type::Boxed],
-            },
-            Builtin::VectorSet => FuncType {
-                args: ti_vec![
-                    Type::Val(ValType::Vector),
-                    Type::Val(ValType::Int),
-                    Type::Boxed
-                ],
-                rets: ti_vec![Type::Val(ValType::Nil)],
-            },
-            Builtin::Eq => FuncType {
-                args: ti_vec![Type::Boxed, Type::Boxed],
-                rets: ti_vec![Type::Val(ValType::Bool)],
-            },
-            Builtin::Car => FuncType {
-                args: ti_vec![Type::Val(ValType::Cons)],
-                rets: ti_vec![Type::Boxed],
-            },
-            Builtin::Cdr => FuncType {
-                args: ti_vec![Type::Val(ValType::Cons)],
-                rets: ti_vec![Type::Boxed],
-            },
-            Builtin::SymbolToString => FuncType {
-                args: ti_vec![Type::Val(ValType::Symbol)],
-                rets: ti_vec![Type::Val(ValType::String)],
-            },
-            Builtin::NumberToString => FuncType {
-                args: ti_vec![Type::Val(ValType::Int)], // TODO: 一般のnumberに使えるように
-                rets: ti_vec![Type::Val(ValType::String)],
-            },
-            Builtin::EqNum => FuncType {
-                args: ti_vec![Type::Val(ValType::Int), Type::Val(ValType::Int)],
-                rets: ti_vec![Type::Val(ValType::Bool)],
-            },
-            Builtin::Lt => FuncType {
-                args: ti_vec![Type::Val(ValType::Int), Type::Val(ValType::Int)],
-                rets: ti_vec![Type::Val(ValType::Bool)],
-            },
-            Builtin::Gt => FuncType {
-                args: ti_vec![Type::Val(ValType::Int), Type::Val(ValType::Int)],
-                rets: ti_vec![Type::Val(ValType::Bool)],
-            },
-            Builtin::Le => FuncType {
-                args: ti_vec![Type::Val(ValType::Int), Type::Val(ValType::Int)],
-                rets: ti_vec![Type::Val(ValType::Bool)],
-            },
-            Builtin::Ge => FuncType {
-                args: ti_vec![Type::Val(ValType::Int), Type::Val(ValType::Int)],
-                rets: ti_vec![Type::Val(ValType::Bool)],
-            },
-        }
-    }
-}
+use typed_index_collections::TiVec;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum LocalType {
@@ -280,10 +96,34 @@ pub enum Expr {
     ClosureBoxedFuncRef(LocalId),
     GlobalSet(GlobalId, LocalId),
     GlobalGet(GlobalId),
-    // TODO: irがbuiltinを持つべきではなくASTの役割では？
-    Builtin(Builtin, Vec<LocalId>),
     Error(LocalId),
     InitGlobals(usize), // global count
+    // builtins
+    Display(LocalId),
+    Add(LocalId, LocalId),
+    Sub(LocalId, LocalId),
+    WriteChar(LocalId),
+    IsPair(LocalId),
+    IsSymbol(LocalId),
+    IsString(LocalId),
+    IsNumber(LocalId),
+    IsBoolean(LocalId),
+    IsProcedure(LocalId),
+    IsChar(LocalId),
+    IsVector(LocalId),
+    VectorLength(LocalId),
+    VectorRef(LocalId, LocalId),
+    VectorSet(LocalId, LocalId, LocalId),
+    Eq(LocalId, LocalId),
+    Car(LocalId),
+    Cdr(LocalId),
+    SymbolToString(LocalId),
+    NumberToString(LocalId),
+    EqNum(LocalId, LocalId),
+    Lt(LocalId, LocalId),
+    Gt(LocalId, LocalId),
+    Le(LocalId, LocalId),
+    Ge(LocalId, LocalId),
 }
 
 #[derive(Debug, Clone)]

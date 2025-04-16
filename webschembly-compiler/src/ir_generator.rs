@@ -6,7 +6,7 @@ use crate::{
     sexpr,
     x::{RunX, TypeMap, type_map},
 };
-use typed_index_collections::TiVec;
+use typed_index_collections::{TiVec, ti_vec};
 
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -203,7 +203,7 @@ impl<'a> FuncGenerator<'a> {
             });
             self.exprs.push(ExprAssign {
                 local: Some(arg),
-                expr: Expr::Builtin(Builtin::VectorRef, vec![vector, arg_i]),
+                expr: Expr::VectorRef(vector, arg_i),
             });
             args.push(arg);
         }
@@ -393,9 +393,9 @@ impl<'a> FuncGenerator<'a> {
                     && let ast::UsedVarR {
                         var_id: ast::VarId::Global(_),
                     } = x.get_ref(type_map::key::<Used>())
-                    && let Some(builtin) = Builtin::from_name(name)
+                    && let Some(builtin) = ast::Builtin::from_name(name)
                 {
-                    let builtin_typ = builtin.func_type();
+                    let builtin_typ = builtin_func_type(builtin);
                     debug_assert!(builtin_typ.rets.len() == 1);
                     let ret_type = *builtin_typ.rets.first().unwrap();
                     if builtin_typ.args.len() != args.len() {
@@ -432,9 +432,41 @@ impl<'a> FuncGenerator<'a> {
                             Type::Boxed => self.local(Type::Boxed),
                             Type::Val(val_type) => self.local(Type::Val(val_type)),
                         };
+                        // TODO: きれいに書き直す
+                        let expr = match builtin {
+                            ast::Builtin::Display => Expr::Display(arg_locals[0]),
+                            ast::Builtin::Add => Expr::Add(arg_locals[0], arg_locals[1]),
+                            ast::Builtin::Sub => Expr::Sub(arg_locals[0], arg_locals[1]),
+                            ast::Builtin::WriteChar => Expr::WriteChar(arg_locals[0]),
+                            ast::Builtin::IsPair => Expr::IsPair(arg_locals[0]),
+                            ast::Builtin::IsSymbol => Expr::IsSymbol(arg_locals[0]),
+                            ast::Builtin::IsString => Expr::IsString(arg_locals[0]),
+                            ast::Builtin::IsNumber => Expr::IsNumber(arg_locals[0]),
+                            ast::Builtin::IsBoolean => Expr::IsBoolean(arg_locals[0]),
+                            ast::Builtin::IsProcedure => Expr::IsProcedure(arg_locals[0]),
+                            ast::Builtin::IsChar => Expr::IsChar(arg_locals[0]),
+                            ast::Builtin::IsVector => Expr::IsVector(arg_locals[0]),
+                            ast::Builtin::VectorLength => Expr::VectorLength(arg_locals[0]),
+                            ast::Builtin::VectorRef => {
+                                Expr::VectorRef(arg_locals[0], arg_locals[1])
+                            }
+                            ast::Builtin::VectorSet => {
+                                Expr::VectorSet(arg_locals[0], arg_locals[1], arg_locals[2])
+                            }
+                            ast::Builtin::Eq => Expr::Eq(arg_locals[0], arg_locals[1]),
+                            ast::Builtin::Car => Expr::Car(arg_locals[0]),
+                            ast::Builtin::Cdr => Expr::Cdr(arg_locals[0]),
+                            ast::Builtin::SymbolToString => Expr::SymbolToString(arg_locals[0]),
+                            ast::Builtin::NumberToString => Expr::NumberToString(arg_locals[0]),
+                            ast::Builtin::EqNum => Expr::EqNum(arg_locals[0], arg_locals[1]),
+                            ast::Builtin::Lt => Expr::Lt(arg_locals[0], arg_locals[1]),
+                            ast::Builtin::Gt => Expr::Gt(arg_locals[0], arg_locals[1]),
+                            ast::Builtin::Le => Expr::Le(arg_locals[0], arg_locals[1]),
+                            ast::Builtin::Ge => Expr::Ge(arg_locals[0], arg_locals[1]),
+                        };
                         self.exprs.push(ExprAssign {
                             local: Some(ret_local),
-                            expr: Expr::Builtin(builtin, arg_locals),
+                            expr,
                         });
                         match ret_type {
                             Type::Boxed => {
@@ -533,7 +565,7 @@ impl<'a> FuncGenerator<'a> {
                         }
                     }
                     ast::VarId::Global(id) => {
-                        if let Some(_) = Builtin::from_name(name)
+                        if let Some(_) = ast::Builtin::from_name(name)
                             && !self.ir_generator.config.allow_set_builtin
                         {
                             let msg = self.local(Type::Val(ValType::String));
@@ -715,4 +747,115 @@ pub fn generate_ir(ast: &ast::Ast<ast::Final>, config: Config) -> Ir {
     let ir_gen = IrGenerator::new(config);
 
     ir_gen.generate(ast)
+}
+
+// TODO: ここに置くか微妙。stdlibのためにpubにしている
+pub fn builtin_func_type(builtin: ast::Builtin) -> FuncType {
+    use ast::Builtin;
+    match builtin {
+        Builtin::Display => FuncType {
+            args: ti_vec![Type::Val(ValType::String)], // TODO: 一旦Stringのみ
+            rets: ti_vec![Type::Val(ValType::Nil)],
+        },
+        Builtin::Add => FuncType {
+            args: ti_vec![Type::Val(ValType::Int), Type::Val(ValType::Int)],
+            rets: ti_vec![Type::Val(ValType::Int)],
+        },
+        Builtin::Sub => FuncType {
+            args: ti_vec![Type::Val(ValType::Int), Type::Val(ValType::Int)],
+            rets: ti_vec![Type::Val(ValType::Int)],
+        },
+        Builtin::WriteChar => FuncType {
+            args: ti_vec![Type::Val(ValType::Char)],
+            rets: ti_vec![Type::Val(ValType::Nil)],
+        },
+        Builtin::IsPair => FuncType {
+            args: ti_vec![Type::Boxed],
+            rets: ti_vec![Type::Val(ValType::Bool)],
+        },
+        Builtin::IsSymbol => FuncType {
+            args: ti_vec![Type::Boxed],
+            rets: ti_vec![Type::Val(ValType::Bool)],
+        },
+        Builtin::IsString => FuncType {
+            args: ti_vec![Type::Boxed],
+            rets: ti_vec![Type::Val(ValType::Bool)],
+        },
+        Builtin::IsNumber => FuncType {
+            args: ti_vec![Type::Boxed],
+            rets: ti_vec![Type::Val(ValType::Bool)],
+        },
+        Builtin::IsBoolean => FuncType {
+            args: ti_vec![Type::Boxed],
+            rets: ti_vec![Type::Val(ValType::Bool)],
+        },
+        Builtin::IsProcedure => FuncType {
+            args: ti_vec![Type::Boxed],
+            rets: ti_vec![Type::Val(ValType::Bool)],
+        },
+        Builtin::IsChar => FuncType {
+            args: ti_vec![Type::Boxed],
+            rets: ti_vec![Type::Val(ValType::Bool)],
+        },
+        Builtin::IsVector => FuncType {
+            args: ti_vec![Type::Boxed],
+            rets: ti_vec![Type::Val(ValType::Bool)],
+        },
+        Builtin::VectorLength => FuncType {
+            args: ti_vec![Type::Val(ValType::Vector)],
+            rets: ti_vec![Type::Val(ValType::Int)],
+        },
+        Builtin::VectorRef => FuncType {
+            args: ti_vec![Type::Val(ValType::Vector), Type::Val(ValType::Int)],
+            rets: ti_vec![Type::Boxed],
+        },
+        Builtin::VectorSet => FuncType {
+            args: ti_vec![
+                Type::Val(ValType::Vector),
+                Type::Val(ValType::Int),
+                Type::Boxed
+            ],
+            rets: ti_vec![Type::Val(ValType::Nil)],
+        },
+        Builtin::Eq => FuncType {
+            args: ti_vec![Type::Boxed, Type::Boxed],
+            rets: ti_vec![Type::Val(ValType::Bool)],
+        },
+        Builtin::Car => FuncType {
+            args: ti_vec![Type::Val(ValType::Cons)],
+            rets: ti_vec![Type::Boxed],
+        },
+        Builtin::Cdr => FuncType {
+            args: ti_vec![Type::Val(ValType::Cons)],
+            rets: ti_vec![Type::Boxed],
+        },
+        Builtin::SymbolToString => FuncType {
+            args: ti_vec![Type::Val(ValType::Symbol)],
+            rets: ti_vec![Type::Val(ValType::String)],
+        },
+        Builtin::NumberToString => FuncType {
+            args: ti_vec![Type::Val(ValType::Int)], // TODO: 一般のnumberに使えるように
+            rets: ti_vec![Type::Val(ValType::String)],
+        },
+        Builtin::EqNum => FuncType {
+            args: ti_vec![Type::Val(ValType::Int), Type::Val(ValType::Int)],
+            rets: ti_vec![Type::Val(ValType::Bool)],
+        },
+        Builtin::Lt => FuncType {
+            args: ti_vec![Type::Val(ValType::Int), Type::Val(ValType::Int)],
+            rets: ti_vec![Type::Val(ValType::Bool)],
+        },
+        Builtin::Gt => FuncType {
+            args: ti_vec![Type::Val(ValType::Int), Type::Val(ValType::Int)],
+            rets: ti_vec![Type::Val(ValType::Bool)],
+        },
+        Builtin::Le => FuncType {
+            args: ti_vec![Type::Val(ValType::Int), Type::Val(ValType::Int)],
+            rets: ti_vec![Type::Val(ValType::Bool)],
+        },
+        Builtin::Ge => FuncType {
+            args: ti_vec![Type::Val(ValType::Int), Type::Val(ValType::Int)],
+            rets: ti_vec![Type::Val(ValType::Bool)],
+        },
+    }
 }
