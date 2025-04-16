@@ -1,7 +1,5 @@
-use strum_macros::{EnumIter, EnumString, FromRepr, IntoStaticStr};
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Hash, EnumIter, FromRepr, EnumString, IntoStaticStr,
-)]
+use strum_macros::{EnumIter, EnumString, IntoStaticStr};
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumIter, EnumString, IntoStaticStr)]
 pub enum Builtin {
     #[strum(serialize = "display")]
     Display, // TODO: 将来的には組み込み関数ではなくしたい
@@ -62,13 +60,5 @@ impl Builtin {
 
     pub fn from_name(name: &str) -> Option<Self> {
         Self::try_from(name).ok()
-    }
-
-    pub fn id(self) -> i32 {
-        self as usize as i32
-    }
-
-    pub fn from_id(id: i32) -> Option<Self> {
-        Self::from_repr(id as usize)
     }
 }
