@@ -1,19 +1,33 @@
+use std::fmt;
+
 use derive_more::{From, Into};
 use rustc_hash::FxHashMap;
 use typed_index_collections::TiVec;
 
-use crate::ast;
+const DISPLAY_INDENT: &str = "  ";
 
 #[derive(Debug, Clone)]
-pub struct WithMeta<T> {
-    pub value: T,
-    pub local_metas: FxHashMap<ast::LocalVarId, ast::VarMeta>,
-    pub global_metas: FxHashMap<ast::GlobalVarId, ast::VarMeta>,
+pub struct VarMeta {
+    pub name: String,
+}
+#[derive(Debug, Clone)]
+
+pub struct Meta {
+    local_metas: FxHashMap<LocalId, VarMeta>,
+    global_metas: FxHashMap<GlobalId, VarMeta>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
+#[derive(Debug, Clone)]
+pub struct Display<'a, T> {
+    value: T,
+    meta: &'a Meta,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, derive_more::Display)]
 pub enum LocalType {
+    #[display("mut_cell({})", _0)]
     MutCell(Type),
+    #[display("{}", _0)]
     Type(Type),
 }
 
@@ -38,9 +52,11 @@ impl LocalType {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, derive_more::Display)]
 pub enum Type {
+    #[display("boxed")]
     Boxed,
+    #[display("{}", _0)]
     Val(ValType),
 }
 
@@ -50,28 +66,87 @@ impl From<ValType> for Type {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, derive_more::Display)]
 pub enum ValType {
+    #[display("bool")]
     Bool,
+    #[display("int")]
     Int,
+    #[display("string")]
     String,
+    #[display("symbol")]
     Symbol,
+    #[display("nil")]
     Nil,
+    #[display("cons")]
     Cons,
+    #[display("closure")]
     Closure,
+    #[display("char")]
     Char,
+    #[display("vector")]
     Vector,
+    #[display("func_ref")]
     FuncRef,
 }
 
 #[derive(Debug, Clone, Copy, From, Into, Hash, PartialEq, Eq)]
 pub struct LocalId(usize);
 
+impl LocalId {
+    pub fn display<'a>(&self, meta: &'a Meta) -> Display<'a, LocalId> {
+        Display { value: *self, meta }
+    }
+}
+
+impl fmt::Display for Display<'_, LocalId> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "l{}", self.value.0)?;
+        if let Some(meta) = self.meta.local_metas.get(&self.value) {
+            write!(f, "_{}", meta.name)?;
+        }
+
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, Copy, From, Into, Hash, PartialEq, Eq)]
 pub struct GlobalId(usize);
 
+impl GlobalId {
+    pub fn display<'a>(&self, meta: &'a Meta) -> Display<'a, GlobalId> {
+        Display { value: *self, meta }
+    }
+}
+
+impl fmt::Display for Display<'_, GlobalId> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "g{}", self.value.0)?;
+        if let Some(meta) = self.meta.global_metas.get(&self.value) {
+            write!(f, "_{}", meta.name)?;
+        }
+
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, Copy, From, Into, Hash, PartialEq, Eq)]
 pub struct FuncId(usize);
+
+impl FuncId {
+    pub fn display<'a>(&self, meta: &'a Meta) -> Display<'a, FuncId> {
+        Display { value: *self, meta }
+    }
+}
+
+impl fmt::Display for Display<'_, FuncId> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "f{}", self.value.0)?;
+        // TODO: add function name
+
+        Ok(())
+    }
+}
 
 #[derive(Debug, Clone)]
 pub enum Expr {
@@ -136,10 +211,197 @@ pub enum Expr {
     Ge(LocalId, LocalId),
 }
 
+impl Expr {
+    pub fn display<'a>(&self, meta: &'a Meta) -> Display<'a, &'_ Expr> {
+        Display { value: self, meta }
+    }
+}
+
+impl fmt::Display for Display<'_, &'_ Expr> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.value {
+            Expr::Bool(b) => write!(f, "{}", b),
+            Expr::Int(i) => write!(f, "{}", i),
+            Expr::String(s) => write!(f, "\"{}\"", s),
+            Expr::StringToSymbol(id) => write!(f, "string_to_symbol({})", id.display(self.meta)),
+            Expr::Nil => write!(f, "nil"),
+            Expr::Char(c) => write!(f, "'{}'", c),
+            Expr::Vector(v) => {
+                write!(f, "[")?;
+                for (i, id) in v.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ",")?;
+                    }
+                    write!(f, "{}", id.display(self.meta))?;
+                }
+                write!(f, "]")
+            }
+            Expr::Cons(a, b) => {
+                write!(f, "({} . {})", a.display(self.meta), b.display(self.meta))
+            }
+            Expr::CreateMutCell(typ) => write!(f, "create_mut_cell<{}>", typ),
+            Expr::DerefMutCell(typ, id) => {
+                write!(f, "deref_mut_cell<{}>({})", typ, id.display(self.meta))
+            }
+            Expr::SetMutCell(typ, id, value) => {
+                write!(
+                    f,
+                    "set_mut_cell<{}>({}, {})",
+                    typ,
+                    id.display(self.meta),
+                    value.display(self.meta)
+                )
+            }
+            Expr::FuncRef(id) => write!(f, "func_ref({})", id.display(self.meta)),
+            Expr::Call(is_tail, id, args) => {
+                if *is_tail {
+                    write!(f, "return_")?;
+                }
+                write!(f, "call({})", id.display(self.meta))?;
+                if !args.is_empty() {
+                    write!(f, "(")?;
+                    for (i, arg) in args.iter().enumerate() {
+                        if i > 0 {
+                            write!(f, ",")?;
+                        }
+                        write!(f, "{}", arg.display(self.meta))?;
+                    }
+                    write!(f, ")")?;
+                }
+                Ok(())
+            }
+            Expr::Closure {
+                envs,
+                func,
+                boxed_func,
+            } => {
+                write!(
+                    f,
+                    "closure(func={}, boxed_func={}",
+                    func.display(self.meta),
+                    boxed_func.display(self.meta)
+                )?;
+                for env in envs {
+                    write!(f, ", {}", env.display(self.meta))?;
+                }
+                write!(f, ")")
+            }
+            Expr::CallRef(is_tail, id, args) => {
+                if *is_tail {
+                    write!(f, "return_")?;
+                }
+                write!(f, "call_ref({})", id.display(self.meta))?;
+                if !args.is_empty() {
+                    write!(f, "(")?;
+                    for (i, arg) in args.iter().enumerate() {
+                        if i > 0 {
+                            write!(f, ",")?;
+                        }
+                        write!(f, "{}", arg.display(self.meta))?;
+                    }
+                    write!(f, ")")?;
+                }
+                Ok(())
+            }
+            Expr::Move(id) => write!(f, "move({})", id.display(self.meta)),
+            Expr::Box(typ, id) => write!(f, "box<{}>({})", typ, id.display(self.meta)),
+            Expr::Unbox(typ, id) => write!(f, "unbox<{}>({})", typ, id.display(self.meta)),
+            Expr::ClosureEnv(env_types, closure, index) => {
+                write!(f, "closure_env<")?;
+                for (i, typ) in env_types.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ",")?;
+                    }
+                    write!(f, "{}", typ)?;
+                }
+                write!(f, ">({}, {}]", closure.display(self.meta), index)?;
+                Ok(())
+            }
+            Expr::ClosureFuncRef(id) => write!(f, "closure_func_ref({})", id.display(self.meta)),
+            Expr::ClosureBoxedFuncRef(id) => {
+                write!(f, "closure_boxed_func_ref({})", id.display(self.meta))
+            }
+            Expr::GlobalSet(id, value) => {
+                write!(
+                    f,
+                    "global_set({}, {})",
+                    id.display(self.meta),
+                    value.display(self.meta)
+                )
+            }
+            Expr::GlobalGet(id) => write!(f, "global_get({})", id.display(self.meta)),
+            Expr::Error(id) => write!(f, "error({})", id.display(self.meta)),
+            Expr::InitGlobals(count) => write!(f, "init_globals({})", count),
+            Expr::Display(id) => write!(f, "display({})", id.display(self.meta)),
+            Expr::Add(a, b) => write!(f, "add({}, {})", a.display(self.meta), b.display(self.meta)),
+            Expr::Sub(a, b) => write!(f, "sub({}, {})", a.display(self.meta), b.display(self.meta)),
+            Expr::WriteChar(id) => write!(f, "write_char({})", id.display(self.meta)),
+            Expr::IsPair(id) => write!(f, "is_pair({})", id.display(self.meta)),
+            Expr::IsSymbol(id) => write!(f, "is_symbol({})", id.display(self.meta)),
+            Expr::IsString(id) => write!(f, "is_string({})", id.display(self.meta)),
+            Expr::IsNumber(id) => write!(f, "is_number({})", id.display(self.meta)),
+            Expr::IsBoolean(id) => write!(f, "is_boolean({})", id.display(self.meta)),
+            Expr::IsProcedure(id) => write!(f, "is_procedure({})", id.display(self.meta)),
+            Expr::IsChar(id) => write!(f, "is_char({})", id.display(self.meta)),
+            Expr::IsVector(id) => write!(f, "is_vector({})", id.display(self.meta)),
+            Expr::VectorLength(id) => write!(f, "vector_length({})", id.display(self.meta)),
+            Expr::VectorRef(id, index) => {
+                write!(
+                    f,
+                    "vector_ref({}, {})",
+                    id.display(self.meta),
+                    index.display(self.meta)
+                )
+            }
+            Expr::VectorSet(id, index, value) => {
+                write!(
+                    f,
+                    "vector_set({}, {}, {})",
+                    id.display(self.meta),
+                    index.display(self.meta),
+                    value.display(self.meta)
+                )
+            }
+            Expr::Eq(a, b) => write!(f, "eq({}, {})", a.display(self.meta), b.display(self.meta)),
+            Expr::Car(id) => write!(f, "car({})", id.display(self.meta)),
+            Expr::Cdr(id) => write!(f, "cdr({})", id.display(self.meta)),
+            Expr::SymbolToString(id) => write!(f, "symbol_to_string({})", id.display(self.meta)),
+            Expr::NumberToString(id) => write!(f, "number_to_string({})", id.display(self.meta)),
+            Expr::EqNum(a, b) => write!(
+                f,
+                "eq_num({}, {})",
+                a.display(self.meta),
+                b.display(self.meta)
+            ),
+            Expr::Lt(a, b) => write!(f, "lt({}, {})", a.display(self.meta), b.display(self.meta)),
+            Expr::Gt(a, b) => write!(f, "gt({}, {})", a.display(self.meta), b.display(self.meta)),
+            Expr::Le(a, b) => write!(f, "le({}, {})", a.display(self.meta), b.display(self.meta)),
+            Expr::Ge(a, b) => write!(f, "ge({}, {})", a.display(self.meta), b.display(self.meta)),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ExprAssign {
     pub local: Option<LocalId>,
     pub expr: Expr,
+}
+
+impl ExprAssign {
+    pub fn display<'a>(&self, meta: &'a Meta) -> Display<'a, &'_ ExprAssign> {
+        Display { value: self, meta }
+    }
+}
+
+impl fmt::Display for Display<'_, &'_ ExprAssign> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(local) = self.value.local {
+            write!(f, "{}", local.display(self.meta))?;
+        } else {
+            write!(f, "_")?;
+        }
+        write!(f, " = {}", self.value.expr.display(self.meta))
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -149,8 +411,56 @@ pub struct BasicBlock {
     pub next: BasicBlockNext,
 }
 
+impl BasicBlock {
+    pub fn display<'a>(&self, meta: &'a Meta) -> Display<'a, &'_ BasicBlock> {
+        Display { value: self, meta }
+    }
+}
+impl fmt::Display for Display<'_, &'_ BasicBlock> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // きれいな実装ではないがインデントは決め打ちする
+        write!(
+            f,
+            "{}{}:\n",
+            DISPLAY_INDENT,
+            self.value.id.display(self.meta)
+        )?;
+        for expr in &self.value.exprs {
+            write!(
+                f,
+                "{}{}{}\n",
+                DISPLAY_INDENT,
+                DISPLAY_INDENT,
+                expr.display(self.meta)
+            )?;
+        }
+        write!(
+            f,
+            "{}{}{}\n",
+            DISPLAY_INDENT,
+            DISPLAY_INDENT,
+            self.value.next.display(self.meta)
+        )?;
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, Copy, From, Into, Hash, PartialEq, Eq)]
 pub struct BasicBlockId(usize);
+
+impl BasicBlockId {
+    pub fn display<'a>(&self, meta: &'a Meta) -> Display<'a, BasicBlockId> {
+        Display { value: *self, meta }
+    }
+}
+
+impl fmt::Display for Display<'_, BasicBlockId> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "bb{}", self.value.0)?;
+        // TODO: add basic block name
+        Ok(())
+    }
+}
 
 // 閉路を作ってはいけない
 #[derive(Debug, Clone, Copy)]
@@ -158,6 +468,30 @@ pub enum BasicBlockNext {
     If(LocalId, BasicBlockId, BasicBlockId),
     Jump(BasicBlockId),
     Return,
+}
+
+impl BasicBlockNext {
+    pub fn display<'a>(&self, meta: &'a Meta) -> Display<'a, BasicBlockNext> {
+        Display { value: *self, meta }
+    }
+}
+
+impl fmt::Display for Display<'_, BasicBlockNext> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.value {
+            BasicBlockNext::If(cond, bb1, bb2) => {
+                write!(
+                    f,
+                    "if {} then {} else {}",
+                    cond.display(self.meta),
+                    bb1.display(self.meta),
+                    bb2.display(self.meta)
+                )
+            }
+            BasicBlockNext::Jump(bb) => write!(f, "jump {}", bb.display(self.meta)),
+            BasicBlockNext::Return => write!(f, "return"),
+        }
+    }
 }
 
 impl BasicBlockNext {
@@ -183,6 +517,10 @@ pub struct Func {
 }
 
 impl Func {
+    pub fn display<'a>(&self, meta: &'a Meta) -> Display<'a, &'_ Func> {
+        Display { value: self, meta }
+    }
+
     pub fn arg_types(&self) -> TiVec<FuncId, Type> {
         (0..self.args)
             .map(|i| self.locals[LocalId::from(i)].to_type())
@@ -204,6 +542,47 @@ impl Func {
     }
 }
 
+impl fmt::Display for Display<'_, &'_ Func> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}:\n", self.value.id.display(self.meta))?;
+        for (local_id, local_type) in self.value.locals.iter_enumerated() {
+            write!(
+                f,
+                "local {}{}: {}\n",
+                DISPLAY_INDENT,
+                local_id.display(self.meta),
+                local_type
+            )?;
+        }
+        write!(f, "{}args: ", DISPLAY_INDENT)?;
+        for i in 0..self.value.args {
+            write!(f, "{}", LocalId::from(i).display(self.meta))?;
+            if i < self.value.args - 1 {
+                write!(f, ",")?;
+            }
+        }
+        write!(f, "\n")?;
+        write!(f, "{}rets: ", DISPLAY_INDENT)?;
+        for (i, ret) in self.value.rets.iter().enumerate() {
+            write!(f, "{}", ret.display(self.meta))?;
+            if i < self.value.rets.len() - 1 {
+                write!(f, ",")?;
+            }
+        }
+        write!(f, "\n")?;
+        write!(
+            f,
+            "{}entry: {}\n",
+            DISPLAY_INDENT,
+            self.value.bb_entry.display(self.meta)
+        )?;
+        for bb in self.value.bbs.iter() {
+            write!(f, "{}", bb.display(self.meta))?;
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FuncType {
     pub args: TiVec<FuncId, Type>,
@@ -214,4 +593,19 @@ pub struct FuncType {
 pub struct Ir {
     pub funcs: TiVec<FuncId, Func>,
     pub entry: FuncId,
+}
+
+impl Ir {
+    pub fn display<'a>(&self, meta: &'a Meta) -> Display<'a, &'_ Ir> {
+        Display { value: self, meta }
+    }
+}
+impl fmt::Display for Display<'_, &'_ Ir> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "entry: {}\n", self.value.entry.display(self.meta))?;
+        for func in self.value.funcs.iter() {
+            write!(f, "{}", func.display(self.meta))?;
+        }
+        Ok(())
+    }
 }

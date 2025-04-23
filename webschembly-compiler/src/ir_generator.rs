@@ -19,11 +19,6 @@ struct BasicBlockOptionalNext {
     pub next: Option<BasicBlockNext>,
 }
 
-#[derive(Debug, Clone)]
-pub struct VarMeta {
-    pub name: String,
-}
-
 #[derive(Debug)]
 struct IrGenerator {
     funcs: TiVec<FuncId, Func>,
