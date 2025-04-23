@@ -120,6 +120,11 @@ impl State {
 }
 
 #[derive(Debug, Clone)]
+pub struct VarMeta {
+    pub name: String,
+}
+
+#[derive(Debug, Clone)]
 pub struct VarIdGen {
     global_count: usize,
     local_count: usize,
@@ -129,6 +134,8 @@ pub struct VarIdGen {
     // 以下はモジュールごとにリセットされる状態
     // このモジュールで使ったグローバル変数
     use_globals: FxHashSet<GlobalVarId>,
+    local_metas: FxHashMap<LocalVarId, VarMeta>,
+    global_metas: FxHashMap<GlobalVarId, VarMeta>,
 }
 
 impl Default for VarIdGen {
@@ -146,26 +153,34 @@ impl VarIdGen {
             mutated_vars: FxHashSet::default(),
             captured_vars: FxHashSet::default(),
             use_globals: FxHashSet::default(),
+            local_metas: FxHashMap::default(),
+            global_metas: FxHashMap::default(),
         }
     }
 
-    fn gen_global(&mut self) -> GlobalVarId {
+    fn gen_global(&mut self, meta: VarMeta) -> GlobalVarId {
         let id = self.global_count;
         self.global_count += 1;
-        GlobalVarId(id)
+        let id = GlobalVarId(id);
+        self.global_metas.insert(id, meta);
+        id
     }
 
-    fn gen_local(&mut self) -> LocalVarId {
+    fn gen_local(&mut self, meta: VarMeta) -> LocalVarId {
         let id = self.local_count;
         self.local_count += 1;
-        LocalVarId(id)
+        let id = LocalVarId(id);
+        self.local_metas.insert(id, meta);
+        id
     }
 
     fn global_var_id(&mut self, name: &str) -> GlobalVarId {
         let id = if let Some(id) = self.globals.get(name) {
             *id
         } else {
-            let id = self.gen_global();
+            let id = self.gen_global(VarMeta {
+                name: name.to_string(),
+            });
             self.globals.insert(name.to_string(), id);
             id
         };
@@ -256,7 +271,7 @@ impl Expr<Used> {
                     .args
                     .iter()
                     .map(|arg| {
-                        let id = var_id_gen.gen_local();
+                        let id = var_id_gen.gen_local(VarMeta { name: arg.clone() });
                         new_env.insert(arg.clone(), EnvLocalVar {
                             id,
                             is_captured: false,
@@ -270,7 +285,7 @@ impl Expr<Used> {
                     .defines
                     .iter()
                     .map(|def| {
-                        let id = var_id_gen.gen_local();
+                        let id = var_id_gen.gen_local(VarMeta { name: def.clone() });
                         new_env.insert(def.clone(), EnvLocalVar {
                             id,
                             is_captured: false,
