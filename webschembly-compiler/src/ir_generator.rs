@@ -19,19 +19,37 @@ struct BasicBlockOptionalNext {
     pub next: Option<BasicBlockNext>,
 }
 
+#[derive(Debug, Clone)]
+pub struct VarMeta {
+    pub name: String,
+}
+
 #[derive(Debug)]
 struct IrGenerator {
     funcs: TiVec<FuncId, Func>,
     box_vars: FxHashSet<ast::LocalVarId>,
     config: Config,
+    // メタ情報
+    local_metas: FxHashMap<LocalId, VarMeta>,
+    global_metas: FxHashMap<GlobalId, VarMeta>,
+    ast_local_metas: FxHashMap<ast::LocalVarId, ast::VarMeta>,
+    ast_global_metas: FxHashMap<ast::GlobalVarId, ast::VarMeta>,
 }
 
 impl IrGenerator {
-    fn new(config: Config) -> Self {
+    fn new(
+        config: Config,
+        ast_local_metas: FxHashMap<ast::LocalVarId, ast::VarMeta>,
+        ast_global_metas: FxHashMap<ast::GlobalVarId, ast::VarMeta>,
+    ) -> Self {
         Self {
             funcs: TiVec::new(),
             box_vars: FxHashSet::default(),
             config,
+            local_metas: FxHashMap::default(),
+            global_metas: FxHashMap::default(),
+            ast_local_metas,
+            ast_global_metas,
         }
     }
 
@@ -236,12 +254,18 @@ impl<'a> FuncGenerator<'a> {
     }
 
     fn define_ast_local(&mut self, id: ast::LocalVarId) -> LocalId {
+        let ast_meta = self.ir_generator.ast_local_metas.get(&id).cloned();
         let local = self.local(if self.ir_generator.box_vars.contains(&id) {
             LocalType::MutCell(Type::Boxed)
         } else {
             LocalType::Type(Type::Boxed)
         });
         self.local_ids.insert(id, local);
+        if let Some(ast_meta) = ast_meta {
+            self.ir_generator.local_metas.insert(local, VarMeta {
+                name: ast_meta.name,
+            });
+        }
         local
     }
 
@@ -531,9 +555,10 @@ impl<'a> FuncGenerator<'a> {
                     }
                 }
                 ast::VarId::Global(id) => {
+                    let global = self.global_id(*id);
                     self.exprs.push(ExprAssign {
                         local: result,
-                        expr: Expr::GlobalGet(Self::global_id(*id)),
+                        expr: Expr::GlobalGet(global),
                     });
                 }
             },
@@ -580,9 +605,10 @@ impl<'a> FuncGenerator<'a> {
                         } else {
                             let local = self.local(Type::Boxed);
                             self.gen_expr(Some(local), expr);
+                            let global = self.global_id(*id);
                             self.exprs.push(ExprAssign {
                                 local: None,
-                                expr: Expr::GlobalSet(Self::global_id(*id), local),
+                                expr: Expr::GlobalSet(global, local),
                             });
                             self.exprs.push(ExprAssign {
                                 local: result,
@@ -596,8 +622,15 @@ impl<'a> FuncGenerator<'a> {
         }
     }
 
-    fn global_id(id: ast::GlobalVarId) -> GlobalId {
-        GlobalId::from(id.0)
+    fn global_id(&mut self, id: ast::GlobalVarId) -> GlobalId {
+        let ast_meta = self.ir_generator.ast_global_metas.get(&id);
+        let id = GlobalId::from(id.0);
+        if let Some(ast_meta) = ast_meta {
+            self.ir_generator.global_metas.insert(id, VarMeta {
+                name: ast_meta.name.clone(),
+            });
+        }
+        id
     }
 
     fn quote(&mut self, result: Option<LocalId>, sexpr: &sexpr::SExpr) {
@@ -743,8 +776,13 @@ impl<'a> FuncGenerator<'a> {
     }
 }
 
-pub fn generate_ir(ast: &ast::Ast<ast::Final>, config: Config) -> Ir {
-    let ir_gen = IrGenerator::new(config);
+pub fn generate_ir(
+    ast: &ast::Ast<ast::Final>,
+    config: Config,
+    ast_local_metas: FxHashMap<ast::LocalVarId, ast::VarMeta>,
+    ast_global_metas: FxHashMap<ast::GlobalVarId, ast::VarMeta>,
+) -> Ir {
+    let ir_gen = IrGenerator::new(config, ast_local_metas, ast_global_metas);
 
     ir_gen.generate(ast)
 }

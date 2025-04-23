@@ -1,5 +1,15 @@
 use derive_more::{From, Into};
+use rustc_hash::FxHashMap;
 use typed_index_collections::TiVec;
+
+use crate::ast;
+
+#[derive(Debug, Clone)]
+pub struct WithMeta<T> {
+    pub value: T,
+    pub local_metas: FxHashMap<ast::LocalVarId, ast::VarMeta>,
+    pub global_metas: FxHashMap<ast::GlobalVarId, ast::VarMeta>,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum LocalType {

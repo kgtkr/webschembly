@@ -30,9 +30,14 @@ impl Compiler {
         let sexprs =
             sexpr_parser::parse(tokens.as_slice()).map_err(|e| compiler_error!("{}", e))?;
         let ast = self.ast_generator.gen_ast(sexprs)?;
-        let ir = ir_generator::generate_ir(&ast, ir_generator::Config {
-            allow_set_builtin: is_stdlib,
-        });
+        let ir = ir_generator::generate_ir(
+            &ast,
+            ir_generator::Config {
+                allow_set_builtin: is_stdlib,
+            },
+            self.ast_generator.local_metas().clone(),
+            self.ast_generator.global_metas().clone(),
+        );
         let code = self.wasm_generator.generate(&ir);
         Ok(code)
     }

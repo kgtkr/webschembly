@@ -134,8 +134,8 @@ pub struct VarIdGen {
     // 以下はモジュールごとにリセットされる状態
     // このモジュールで使ったグローバル変数
     use_globals: FxHashSet<GlobalVarId>,
-    local_metas: FxHashMap<LocalVarId, VarMeta>,
-    global_metas: FxHashMap<GlobalVarId, VarMeta>,
+    pub local_metas: FxHashMap<LocalVarId, VarMeta>,
+    pub global_metas: FxHashMap<GlobalVarId, VarMeta>,
 }
 
 impl Default for VarIdGen {
