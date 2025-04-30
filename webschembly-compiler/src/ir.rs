@@ -11,15 +11,35 @@ pub struct VarMeta {
     pub name: String,
 }
 #[derive(Debug, Clone)]
-
 pub struct Meta {
-    pub local_metas: FxHashMap<LocalId, VarMeta>,
+    pub local_metas: FxHashMap<(FuncId, LocalId), VarMeta>,
     pub global_metas: FxHashMap<GlobalId, VarMeta>,
+}
+
+impl Meta {
+    fn in_func(&self, func_id: FuncId) -> MetaInFunc {
+        MetaInFunc {
+            func_id,
+            meta: self,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct Display<'a, T> {
     value: T,
+    meta: &'a Meta,
+}
+
+#[derive(Debug, Clone)]
+pub struct DisplayInFunc<'a, T> {
+    value: T,
+    meta: MetaInFunc<'a>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct MetaInFunc<'a> {
+    func_id: FuncId,
     meta: &'a Meta,
 }
 
@@ -94,15 +114,20 @@ pub enum ValType {
 pub struct LocalId(usize);
 
 impl LocalId {
-    pub fn display<'a>(&self, meta: &'a Meta) -> Display<'a, LocalId> {
-        Display { value: *self, meta }
+    pub fn display<'a>(&self, meta: MetaInFunc<'a>) -> DisplayInFunc<'a, LocalId> {
+        DisplayInFunc { value: *self, meta }
     }
 }
 
-impl fmt::Display for Display<'_, LocalId> {
+impl fmt::Display for DisplayInFunc<'_, LocalId> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "l{}", self.value.0)?;
-        if let Some(meta) = self.meta.local_metas.get(&self.value) {
+        if let Some(meta) = self
+            .meta
+            .meta
+            .local_metas
+            .get(&(self.meta.func_id, self.value))
+        {
             write!(f, "_{}", meta.name)?;
         }
 
@@ -212,12 +237,12 @@ pub enum Expr {
 }
 
 impl Expr {
-    pub fn display<'a>(&self, meta: &'a Meta) -> Display<'a, &'_ Expr> {
-        Display { value: self, meta }
+    pub fn display<'a>(&self, meta: MetaInFunc<'a>) -> DisplayInFunc<'a, &'_ Expr> {
+        DisplayInFunc { value: self, meta }
     }
 }
 
-impl fmt::Display for Display<'_, &'_ Expr> {
+impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.value {
             Expr::Bool(b) => write!(f, "{}", b),
@@ -252,12 +277,12 @@ impl fmt::Display for Display<'_, &'_ Expr> {
                     value.display(self.meta)
                 )
             }
-            Expr::FuncRef(id) => write!(f, "func_ref({})", id.display(self.meta)),
+            Expr::FuncRef(id) => write!(f, "func_ref({})", id.display(self.meta.meta)),
             Expr::Call(is_tail, id, args) => {
                 if *is_tail {
                     write!(f, "return_")?;
                 }
-                write!(f, "call({})", id.display(self.meta))?;
+                write!(f, "call({})", id.display(self.meta.meta))?;
                 if !args.is_empty() {
                     write!(f, "(")?;
                     for (i, arg) in args.iter().enumerate() {
@@ -325,11 +350,11 @@ impl fmt::Display for Display<'_, &'_ Expr> {
                 write!(
                     f,
                     "global_set({}, {})",
-                    id.display(self.meta),
+                    id.display(self.meta.meta),
                     value.display(self.meta)
                 )
             }
-            Expr::GlobalGet(id) => write!(f, "global_get({})", id.display(self.meta)),
+            Expr::GlobalGet(id) => write!(f, "global_get({})", id.display(self.meta.meta)),
             Expr::Error(id) => write!(f, "error({})", id.display(self.meta)),
             Expr::InitGlobals(count) => write!(f, "init_globals({})", count),
             Expr::Display(id) => write!(f, "display({})", id.display(self.meta)),
@@ -388,12 +413,12 @@ pub struct ExprAssign {
 }
 
 impl ExprAssign {
-    pub fn display<'a>(&self, meta: &'a Meta) -> Display<'a, &'_ ExprAssign> {
-        Display { value: self, meta }
+    pub fn display<'a>(&self, meta: MetaInFunc<'a>) -> DisplayInFunc<'a, &'_ ExprAssign> {
+        DisplayInFunc { value: self, meta }
     }
 }
 
-impl fmt::Display for Display<'_, &'_ ExprAssign> {
+impl fmt::Display for DisplayInFunc<'_, &'_ ExprAssign> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Some(local) = self.value.local {
             write!(f, "{}", local.display(self.meta))?;
@@ -412,18 +437,18 @@ pub struct BasicBlock {
 }
 
 impl BasicBlock {
-    pub fn display<'a>(&self, meta: &'a Meta) -> Display<'a, &'_ BasicBlock> {
-        Display { value: self, meta }
+    pub fn display<'a>(&self, meta: MetaInFunc<'a>) -> DisplayInFunc<'a, &'_ BasicBlock> {
+        DisplayInFunc { value: self, meta }
     }
 }
-impl fmt::Display for Display<'_, &'_ BasicBlock> {
+impl fmt::Display for DisplayInFunc<'_, &'_ BasicBlock> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // きれいな実装ではないがインデントは決め打ちする
         write!(
             f,
             "{}{}:\n",
             DISPLAY_INDENT,
-            self.value.id.display(self.meta)
+            self.value.id.display(self.meta.meta)
         )?;
         for expr in &self.value.exprs {
             write!(
@@ -471,12 +496,12 @@ pub enum BasicBlockNext {
 }
 
 impl BasicBlockNext {
-    pub fn display<'a>(&self, meta: &'a Meta) -> Display<'a, BasicBlockNext> {
-        Display { value: *self, meta }
+    pub fn display<'a>(&self, meta: MetaInFunc<'a>) -> DisplayInFunc<'a, BasicBlockNext> {
+        DisplayInFunc { value: *self, meta }
     }
 }
 
-impl fmt::Display for Display<'_, BasicBlockNext> {
+impl fmt::Display for DisplayInFunc<'_, BasicBlockNext> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.value {
             BasicBlockNext::If(cond, bb1, bb2) => {
@@ -484,11 +509,11 @@ impl fmt::Display for Display<'_, BasicBlockNext> {
                     f,
                     "if {} then {} else {}",
                     cond.display(self.meta),
-                    bb1.display(self.meta),
-                    bb2.display(self.meta)
+                    bb1.display(self.meta.meta),
+                    bb2.display(self.meta.meta)
                 )
             }
-            BasicBlockNext::Jump(bb) => write!(f, "jump {}", bb.display(self.meta)),
+            BasicBlockNext::Jump(bb) => write!(f, "jump {}", bb.display(self.meta.meta)),
             BasicBlockNext::Return => write!(f, "return"),
         }
     }
@@ -550,13 +575,17 @@ impl fmt::Display for Display<'_, &'_ Func> {
                 f,
                 "{}local {}: {}\n",
                 DISPLAY_INDENT,
-                local_id.display(self.meta),
+                local_id.display(self.meta.in_func(self.value.id)),
                 local_type
             )?;
         }
         write!(f, "{}args: ", DISPLAY_INDENT)?;
         for i in 0..self.value.args {
-            write!(f, "{}", LocalId::from(i).display(self.meta))?;
+            write!(
+                f,
+                "{}",
+                LocalId::from(i).display(self.meta.in_func(self.value.id))
+            )?;
             if i < self.value.args - 1 {
                 write!(f, ",")?;
             }
@@ -564,7 +593,7 @@ impl fmt::Display for Display<'_, &'_ Func> {
         write!(f, "\n")?;
         write!(f, "{}rets: ", DISPLAY_INDENT)?;
         for (i, ret) in self.value.rets.iter().enumerate() {
-            write!(f, "{}", ret.display(self.meta))?;
+            write!(f, "{}", ret.display(self.meta.in_func(self.value.id)))?;
             if i < self.value.rets.len() - 1 {
                 write!(f, ",")?;
             }
@@ -577,7 +606,7 @@ impl fmt::Display for Display<'_, &'_ Func> {
             self.value.bb_entry.display(self.meta)
         )?;
         for bb in self.value.bbs.iter() {
-            write!(f, "{}", bb.display(self.meta))?;
+            write!(f, "{}", bb.display(self.meta.in_func(self.value.id)))?;
         }
         Ok(())
     }

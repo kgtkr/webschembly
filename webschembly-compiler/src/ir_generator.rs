@@ -25,7 +25,7 @@ struct IrGenerator {
     box_vars: FxHashSet<ast::LocalVarId>,
     config: Config,
     // メタ情報
-    local_metas: FxHashMap<LocalId, VarMeta>,
+    local_metas: FxHashMap<(FuncId, LocalId), VarMeta>,
     global_metas: FxHashMap<GlobalId, VarMeta>,
     ast_local_metas: FxHashMap<ast::LocalVarId, ast::VarMeta>,
     ast_global_metas: FxHashMap<ast::GlobalVarId, ast::VarMeta>,
@@ -51,7 +51,7 @@ impl IrGenerator {
     fn generate(mut self, ast: &ast::Ast<ast::Final>) -> (Ir, Meta) {
         let func_id = self.funcs.next_key();
         self.box_vars = ast.x.get_ref(type_map::key::<Used>()).box_vars.clone();
-        let func = FuncGenerator::new(&mut self).entry_gen(func_id, ast);
+        let func = FuncGenerator::new(&mut self, func_id).entry_gen(ast);
         self.funcs.push(func);
 
         let meta = self.meta();
@@ -70,11 +70,11 @@ impl IrGenerator {
         lambda: &ast::Lambda<ast::Final>,
     ) -> (FuncId, FuncId) {
         let id = self.funcs.next_key();
-        let func = FuncGenerator::new(self).lambda_gen(id, x, lambda);
+        let func = FuncGenerator::new(self, id).lambda_gen(x, lambda);
         self.funcs.push(func);
 
         let boxed_id = self.funcs.next_key();
-        let boxed_func = FuncGenerator::new(self).boxed_func_gen(boxed_id, id, lambda.args.len());
+        let boxed_func = FuncGenerator::new(self, boxed_id).boxed_func_gen(id, lambda.args.len());
         self.funcs.push(boxed_func);
 
         (id, boxed_id)
@@ -90,6 +90,7 @@ impl IrGenerator {
 
 #[derive(Debug)]
 struct FuncGenerator<'a> {
+    id: FuncId,
     locals: TiVec<LocalId, LocalType>,
     local_ids: FxHashMap<ast::LocalVarId, LocalId>,
     bbs: TiVec<BasicBlockId, BasicBlockOptionalNext>,
@@ -99,8 +100,9 @@ struct FuncGenerator<'a> {
 }
 
 impl<'a> FuncGenerator<'a> {
-    fn new(ir_generator: &'a mut IrGenerator) -> Self {
+    fn new(ir_generator: &'a mut IrGenerator, id: FuncId) -> Self {
         Self {
+            id,
             locals: TiVec::new(),
             local_ids: FxHashMap::default(),
             bbs: TiVec::new(),
@@ -110,7 +112,7 @@ impl<'a> FuncGenerator<'a> {
         }
     }
 
-    fn entry_gen(mut self, id: FuncId, ast: &ast::Ast<ast::Final>) -> Func {
+    fn entry_gen(mut self, ast: &ast::Ast<ast::Final>) -> Func {
         let boxed_local = self.local(Type::Boxed);
 
         self.exprs.push(ExprAssign {
@@ -129,7 +131,7 @@ impl<'a> FuncGenerator<'a> {
         self.gen_exprs(Some(boxed_local), &ast.exprs);
         self.close_bb(Some(BasicBlockNext::Return));
         Func {
-            id,
+            id: self.id,
             args: 0,
             rets: vec![boxed_local],
             locals: self.locals,
@@ -148,7 +150,6 @@ impl<'a> FuncGenerator<'a> {
 
     fn lambda_gen(
         mut self,
-        id: FuncId,
         x: RunX<ast::LambdaX, ast::Final>,
         lambda: &ast::Lambda<ast::Final>,
     ) -> Func {
@@ -196,7 +197,7 @@ impl<'a> FuncGenerator<'a> {
         self.gen_exprs(Some(ret), &lambda.body);
         self.close_bb(Some(BasicBlockNext::Return));
         Func {
-            id,
+            id: self.id,
             args: lambda.args.len() + 1,
             rets: vec![ret],
             locals: self.locals,
@@ -213,7 +214,7 @@ impl<'a> FuncGenerator<'a> {
         }
     }
 
-    fn boxed_func_gen(mut self, id: FuncId, target_func_id: FuncId, args_len: usize) -> Func {
+    fn boxed_func_gen(mut self, target_func_id: FuncId, args_len: usize) -> Func {
         let self_closure = self.local(Type::Val(ValType::Closure));
         let vector = self.local(Type::Val(ValType::Vector));
         let mut args = Vec::new();
@@ -238,7 +239,7 @@ impl<'a> FuncGenerator<'a> {
         });
         self.close_bb(Some(BasicBlockNext::Return));
         Func {
-            id,
+            id: self.id,
             args: 2,
             rets: vec![ret],
             locals: self.locals,
@@ -268,9 +269,11 @@ impl<'a> FuncGenerator<'a> {
         });
         self.local_ids.insert(id, local);
         if let Some(ast_meta) = ast_meta {
-            self.ir_generator.local_metas.insert(local, VarMeta {
-                name: ast_meta.name,
-            });
+            self.ir_generator
+                .local_metas
+                .insert((self.id, local), VarMeta {
+                    name: ast_meta.name,
+                });
         }
         local
     }
