@@ -10,8 +10,10 @@ use webschembly_compiler::compiler::Compiler;
 struct Args {
     #[arg(short, long)]
     output: Option<String>,
-    #[arg(short, long, default_value = "false")]
+    #[arg(long, default_value = "false")]
     no_stdlib: bool,
+    #[arg(long, default_value = "false")]
+    ir: bool,
     #[arg(required = true)]
     inputs: Vec<String>,
 }
@@ -24,7 +26,8 @@ fn main() -> anyhow::Result<()> {
         .unwrap_or_else(|| {
             let first_input = Path::new(args.inputs.first().unwrap());
 
-            first_input.with_extension("wasm")
+            let ext = if args.ir { "ir" } else { "wasm" };
+            first_input.with_extension(ext)
         });
     let output_stem = output.file_stem().unwrap_or_default();
     let output_extension = output.extension().unwrap_or_default();
@@ -42,8 +45,6 @@ fn main() -> anyhow::Result<()> {
     }
 
     for (i, (src, is_stdlib)) in srcs.into_iter().enumerate() {
-        let bs = compiler.compile(&src, is_stdlib)?;
-
         let mut output = output.clone();
         output.set_file_name(output_stem);
         if i != 0 {
@@ -51,9 +52,17 @@ fn main() -> anyhow::Result<()> {
         }
 
         output.add_extension(output_extension);
-
         let mut o = std::fs::File::create(output)?;
-        o.write_all(&bs)?;
+
+        if args.ir {
+            let (ir, meta) = compiler.compile_ir(&src, is_stdlib)?;
+            let s = ir.display(&meta).to_string();
+            let bs = s.as_bytes();
+            o.write_all(bs)?;
+        } else {
+            let bs: Vec<u8> = compiler.compile(&src, is_stdlib)?;
+            o.write_all(&bs)?;
+        }
     }
 
     Ok(())

@@ -4,4 +4,4 @@
 *.wat
 bin/*
 /log/
-
+*.ir

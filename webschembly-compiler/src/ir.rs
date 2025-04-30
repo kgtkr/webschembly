@@ -13,8 +13,8 @@ pub struct VarMeta {
 #[derive(Debug, Clone)]
 
 pub struct Meta {
-    local_metas: FxHashMap<LocalId, VarMeta>,
-    global_metas: FxHashMap<GlobalId, VarMeta>,
+    pub local_metas: FxHashMap<LocalId, VarMeta>,
+    pub global_metas: FxHashMap<GlobalId, VarMeta>,
 }
 
 #[derive(Debug, Clone)]
@@ -548,7 +548,7 @@ impl fmt::Display for Display<'_, &'_ Func> {
         for (local_id, local_type) in self.value.locals.iter_enumerated() {
             write!(
                 f,
-                "local {}{}: {}\n",
+                "{}local {}: {}\n",
                 DISPLAY_INDENT,
                 local_id.display(self.meta),
                 local_type
