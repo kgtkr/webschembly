@@ -17,12 +17,12 @@ impl FamilyX<Parsed> for AstX {
 }
 
 #[derive(Debug, Clone)]
-pub struct ParsedLiteralR {
+pub struct ParsedConstR {
     pub span: Span,
 }
 
-impl FamilyX<Parsed> for LiteralX {
-    type R = ParsedLiteralR;
+impl FamilyX<Parsed> for ConstX {
+    type R = ParsedConstR;
 }
 
 #[derive(Debug, Clone)]
@@ -101,6 +101,29 @@ impl FamilyX<Parsed> for LetX {
     type R = ParsedLetR;
 }
 
+#[derive(Debug, Clone)]
+pub struct ParsedVectorR {
+    pub span: Span,
+}
+impl FamilyX<Parsed> for VectorX {
+    type R = ParsedVectorR;
+}
+#[derive(Debug, Clone)]
+pub struct ParsedQuoteR {
+    pub span: Span,
+}
+impl FamilyX<Parsed> for QuoteX {
+    type R = ParsedQuoteR;
+}
+
+#[derive(Debug, Clone)]
+pub struct ParsedConsR {
+    pub span: Span,
+}
+impl FamilyX<Parsed> for ConsX {
+    type R = ParsedConsR;
+}
+
 impl Ast<Parsed> {
     pub fn from_sexprs(exprs: Vec<SExpr>) -> Result<Self> {
         let exprs = exprs
@@ -121,25 +144,25 @@ impl Expr<Parsed> {
                 kind: SExprKind::Bool(b),
                 span,
                 ..
-            } => Ok(Expr::Literal(
-                type_map::singleton(type_map::key::<Parsed>(), ParsedLiteralR { span }),
-                Literal::Bool(b),
+            } => Ok(Expr::Const(
+                type_map::singleton(type_map::key::<Parsed>(), ParsedConstR { span }),
+                Const::Bool(b),
             )),
             SExpr {
                 kind: SExprKind::Int(i),
                 span,
                 ..
-            } => Ok(Expr::Literal(
-                type_map::singleton(type_map::key::<Parsed>(), ParsedLiteralR { span }),
-                Literal::Int(i),
+            } => Ok(Expr::Const(
+                type_map::singleton(type_map::key::<Parsed>(), ParsedConstR { span }),
+                Const::Int(i),
             )),
             SExpr {
                 kind: SExprKind::String(s),
                 span,
                 ..
-            } => Ok(Expr::Literal(
-                type_map::singleton(type_map::key::<Parsed>(), ParsedLiteralR { span }),
-                Literal::String(s),
+            } => Ok(Expr::Const(
+                type_map::singleton(type_map::key::<Parsed>(), ParsedConstR { span }),
+                Const::String(s),
             )),
             SExpr {
                 kind: SExprKind::Symbol(s),
@@ -152,27 +175,31 @@ impl Expr<Parsed> {
                 kind: SExprKind::Nil,
                 span,
                 ..
-            } => Ok(Expr::Literal(
-                type_map::singleton(type_map::key::<Parsed>(), ParsedLiteralR { span }),
-                Literal::Nil,
+            } => Ok(Expr::Const(
+                type_map::singleton(type_map::key::<Parsed>(), ParsedConstR { span }),
+                Const::Nil,
             )),
             SExpr {
                 kind: SExprKind::Char(c),
                 span,
                 ..
-            } => Ok(Expr::Literal(
-                type_map::singleton(type_map::key::<Parsed>(), ParsedLiteralR { span }),
-                Literal::Char(c),
+            } => Ok(Expr::Const(
+                type_map::singleton(type_map::key::<Parsed>(), ParsedConstR { span }),
+                Const::Char(c),
             )),
-            SExpr {
-                kind: SExprKind::Vector(vec),
+            sexpr @ SExpr {
+                kind: SExprKind::Vector(_),
                 span,
                 ..
-            } => Ok(Expr::Literal(
-                type_map::singleton(type_map::key::<Parsed>(), ParsedLiteralR { span }),
-                Literal::Vector(vec),
-            )),
-
+            } =>
+            // #(...) は一旦 '#() として解釈して後で処理する
+            // TODO: 少し汚い。unquoteなどを実装したときに問題が起きないか
+            {
+                Ok(Expr::Quote(
+                    type_map::singleton(type_map::key::<Parsed>(), ParsedQuoteR { span }),
+                    sexpr,
+                ))
+            }
             list_pattern![
                 SExpr {
                     kind: SExprKind::Symbol("quote"),
@@ -181,9 +208,9 @@ impl Expr<Parsed> {
                 },
                 ..cdr
             ] => match cdr {
-                list_pattern![sexpr,] => Ok(Expr::Literal(
-                    type_map::singleton(type_map::key::<Parsed>(), ParsedLiteralR { span }),
-                    Literal::Quote(sexpr),
+                list_pattern![sexpr,] => Ok(Expr::Quote(
+                    type_map::singleton(type_map::key::<Parsed>(), ParsedQuoteR { span }),
+                    sexpr,
                 )),
                 _ => Err(compiler_error!("Invalid quote expression")),
             },

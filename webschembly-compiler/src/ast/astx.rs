@@ -6,7 +6,7 @@ use crate::x::{FamilyRunX, Phase, RunX};
 #[derive(Debug, Clone)]
 pub enum AstX {}
 #[derive(Debug, Clone)]
-pub enum LiteralX {}
+pub enum ConstX {}
 #[derive(Debug, Clone)]
 
 pub enum DefineX {}
@@ -31,10 +31,21 @@ pub enum SetX {}
 
 pub enum LetX {}
 
+#[derive(Debug, Clone)]
+
+pub enum VectorX {}
+
+#[derive(Debug, Clone)]
+
+pub enum QuoteX {}
+
+#[derive(Debug, Clone)]
+pub enum ConsX {}
+
 pub trait XBound = Sized + Phase + Clone + Debug
 where
     AstX: FamilyRunX<Self>,
-    LiteralX: FamilyRunX<Self>,
+    ConstX: FamilyRunX<Self>,
     DefineX: FamilyRunX<Self>,
     LambdaX: FamilyRunX<Self>,
     IfX: FamilyRunX<Self>,
@@ -42,7 +53,10 @@ where
     VarX: FamilyRunX<Self>,
     BeginX: FamilyRunX<Self>,
     SetX: FamilyRunX<Self>,
-    LetX: FamilyRunX<Self>;
+    LetX: FamilyRunX<Self>,
+    VectorX: FamilyRunX<Self>,
+    QuoteX: FamilyRunX<Self>,
+    ConsX: FamilyRunX<Self>;
 
 #[derive(Debug, Clone)]
 pub struct Ast<X>
@@ -58,7 +72,7 @@ pub enum Expr<X>
 where
     X: XBound,
 {
-    Literal(RunX<LiteralX, X>, Literal),
+    Const(RunX<ConstX, X>, Const),
     Var(RunX<VarX, X>, String),
     Define(RunX<DefineX, X>, Define<X>),
     Lambda(RunX<LambdaX, X>, Lambda<X>),
@@ -67,17 +81,19 @@ where
     Begin(RunX<BeginX, X>, Begin<X>),
     Set(RunX<SetX, X>, Set<X>),
     Let(RunX<LetX, X>, Let<X>),
+    Vector(RunX<VectorX, X>, Vec<Expr<X>>),
+    Quote(RunX<QuoteX, X>, SExpr),
+    Cons(RunX<ConsX, X>, Cons<X>),
 }
 
 #[derive(Debug, Clone)]
-pub enum Literal {
+pub enum Const {
     Bool(bool),
     Int(i64),
     String(String),
     Nil,
-    Quote(SExpr),
     Char(char),
-    Vector(Vec<SExpr>),
+    Symbol(String),
 }
 
 #[derive(Debug, Clone)]
@@ -141,4 +157,13 @@ where
 {
     pub bindings: Vec<(String, Expr<X>)>,
     pub body: Vec<Expr<X>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Cons<X>
+where
+    X: XBound,
+{
+    pub car: Box<Expr<X>>,
+    pub cdr: Box<Expr<X>>,
 }

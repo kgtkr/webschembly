@@ -53,7 +53,7 @@ pub struct UsedSetR {
 impl FamilyX<Used> for AstX {
     type R = UsedAstR;
 }
-impl FamilyX<Used> for LiteralX {
+impl FamilyX<Used> for ConstX {
     type R = ();
 }
 
@@ -86,6 +86,17 @@ impl FamilyX<Used> for SetX {
 }
 
 impl FamilyX<Used> for LetX {
+    type R = ();
+}
+
+impl FamilyX<Used> for VectorX {
+    type R = ();
+}
+impl FamilyX<Used> for QuoteX {
+    type R = ();
+}
+
+impl FamilyX<Used> for ConsX {
     type R = ();
 }
 
@@ -236,7 +247,7 @@ impl Expr<Used> {
         state: &mut State,
     ) -> Self {
         match expr {
-            Expr::Literal(x, lit) => Expr::Literal(x.add(type_map::key::<Used>(), ()), lit),
+            Expr::Const(x, lit) => Expr::Const(x.add(type_map::key::<Used>(), ()), lit),
             Expr::Var(x, var) => {
                 let var_id = match ctx {
                     Context::Global => VarId::Global(var_id_gen.global_var_id(&var)),
@@ -381,6 +392,22 @@ impl Expr<Used> {
                 })
             }
             Expr::Let(x, _) => x.get_owned(type_map::key::<Desugared>()),
+            Expr::Vector(x, vec) => {
+                let new_vec = vec
+                    .into_iter()
+                    .map(|expr| Self::from_expr(expr, ctx, var_id_gen, state))
+                    .collect();
+                Expr::Vector(x.add(type_map::key::<Used>(), ()), new_vec)
+            }
+            Expr::Quote(x, _) => x.get_owned(type_map::key::<Desugared>()),
+            Expr::Cons(x, cons) => {
+                let new_car = Box::new(Self::from_expr(*cons.car, ctx, var_id_gen, state));
+                let new_cdr = Box::new(Self::from_expr(*cons.cdr, ctx, var_id_gen, state));
+                Expr::Cons(x.add(type_map::key::<Used>(), ()), Cons {
+                    car: new_car,
+                    cdr: new_cdr,
+                })
+            }
         }
     }
 }

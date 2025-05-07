@@ -3,7 +3,6 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use crate::ir::*;
 use crate::{
     ast::{self, Desugared, TailCall, Used},
-    sexpr,
     x::{RunX, TypeMap, type_map},
 };
 use typed_index_collections::{TiVec, ti_vec};
@@ -280,8 +279,8 @@ impl<'a> FuncGenerator<'a> {
 
     fn gen_expr(&mut self, result: Option<LocalId>, ast: &ast::Expr<ast::Final>) {
         match ast {
-            ast::Expr::Literal(_, lit) => match lit {
-                ast::Literal::Bool(b) => {
+            ast::Expr::Const(_, lit) => match lit {
+                ast::Const::Bool(b) => {
                     let unboxed = self.local(Type::Val(ValType::Bool));
                     self.exprs.push(ExprAssign {
                         local: Some(unboxed),
@@ -292,7 +291,7 @@ impl<'a> FuncGenerator<'a> {
                         expr: Expr::Box(ValType::Bool, unboxed),
                     });
                 }
-                ast::Literal::Int(i) => {
+                ast::Const::Int(i) => {
                     let unboxed = self.local(Type::Val(ValType::Int));
                     self.exprs.push(ExprAssign {
                         local: Some(unboxed),
@@ -303,7 +302,7 @@ impl<'a> FuncGenerator<'a> {
                         expr: Expr::Box(ValType::Int, unboxed),
                     });
                 }
-                ast::Literal::String(s) => {
+                ast::Const::String(s) => {
                     let unboxed = self.local(Type::Val(ValType::String));
                     self.exprs.push(ExprAssign {
                         local: Some(unboxed),
@@ -314,7 +313,7 @@ impl<'a> FuncGenerator<'a> {
                         expr: Expr::Box(ValType::String, unboxed),
                     });
                 }
-                ast::Literal::Nil => {
+                ast::Const::Nil => {
                     let unboxed = self.local(Type::Val(ValType::Nil));
                     self.exprs.push(ExprAssign {
                         local: Some(unboxed),
@@ -325,7 +324,7 @@ impl<'a> FuncGenerator<'a> {
                         expr: Expr::Box(ValType::Nil, unboxed),
                     });
                 }
-                ast::Literal::Char(c) => {
+                ast::Const::Char(c) => {
                     let unboxed = self.local(Type::Val(ValType::Char));
                     self.exprs.push(ExprAssign {
                         local: Some(unboxed),
@@ -336,25 +335,20 @@ impl<'a> FuncGenerator<'a> {
                         expr: Expr::Box(ValType::Char, unboxed),
                     });
                 }
-                ast::Literal::Quote(sexpr) => {
-                    self.quote(result, sexpr);
-                }
-                ast::Literal::Vector(vec) => {
-                    // TODO: quoteとコードが被っている
-                    let mut vec_locals = Vec::new();
-                    for sexpr in vec {
-                        let boxed_local = self.local(Type::Boxed);
-                        self.quote(Some(boxed_local), sexpr);
-                        vec_locals.push(boxed_local);
-                    }
-                    let unboxed = self.local(Type::Val(ValType::Vector));
+                ast::Const::Symbol(s) => {
+                    let string = self.local(Type::Val(ValType::String));
+                    let unboxed = self.local(Type::Val(ValType::Symbol));
+                    self.exprs.push(ExprAssign {
+                        local: Some(string),
+                        expr: Expr::String(s.clone()),
+                    });
                     self.exprs.push(ExprAssign {
                         local: Some(unboxed),
-                        expr: Expr::Vector(vec_locals),
+                        expr: Expr::StringToSymbol(string),
                     });
                     self.exprs.push(ExprAssign {
                         local: result,
-                        expr: Expr::Box(ValType::Vector, unboxed),
+                        expr: Expr::Box(ValType::Symbol, unboxed),
                     });
                 }
             },
@@ -628,114 +622,11 @@ impl<'a> FuncGenerator<'a> {
                 }
             }
             ast::Expr::Let(x, _) => *x.get_ref(type_map::key::<Desugared>()),
-        }
-    }
-
-    fn global_id(&mut self, id: ast::GlobalVarId) -> GlobalId {
-        let ast_meta = self.ir_generator.ast_global_metas.get(&id);
-        let id = GlobalId::from(id.0);
-        if let Some(ast_meta) = ast_meta {
-            self.ir_generator.global_metas.insert(id, VarMeta {
-                name: ast_meta.name.clone(),
-            });
-        }
-        id
-    }
-
-    fn quote(&mut self, result: Option<LocalId>, sexpr: &sexpr::SExpr) {
-        match &sexpr.kind {
-            sexpr::SExprKind::Bool(b) => {
-                let unboxed = self.local(Type::Val(ValType::Bool));
-                self.exprs.push(ExprAssign {
-                    local: Some(unboxed),
-                    expr: Expr::Bool(*b),
-                });
-                self.exprs.push(ExprAssign {
-                    local: result,
-                    expr: Expr::Box(ValType::Bool, unboxed),
-                });
-            }
-            sexpr::SExprKind::Int(i) => {
-                let unboxed = self.local(Type::Val(ValType::Int));
-                self.exprs.push(ExprAssign {
-                    local: Some(unboxed),
-                    expr: Expr::Int(*i),
-                });
-                self.exprs.push(ExprAssign {
-                    local: result,
-                    expr: Expr::Box(ValType::Int, unboxed),
-                });
-            }
-            sexpr::SExprKind::String(s) => {
-                let unboxed = self.local(Type::Val(ValType::String));
-                self.exprs.push(ExprAssign {
-                    local: Some(unboxed),
-                    expr: Expr::String(s.clone()),
-                });
-                self.exprs.push(ExprAssign {
-                    local: result,
-                    expr: Expr::Box(ValType::String, unboxed),
-                });
-            }
-            sexpr::SExprKind::Symbol(s) => {
-                let string = self.local(Type::Val(ValType::String));
-                let unboxed = self.local(Type::Val(ValType::Symbol));
-                self.exprs.push(ExprAssign {
-                    local: Some(string),
-                    expr: Expr::String(s.clone()),
-                });
-                self.exprs.push(ExprAssign {
-                    local: Some(unboxed),
-                    expr: Expr::StringToSymbol(string),
-                });
-                self.exprs.push(ExprAssign {
-                    local: result,
-                    expr: Expr::Box(ValType::Symbol, unboxed),
-                });
-            }
-            sexpr::SExprKind::Nil => {
-                let unboxed = self.local(Type::Val(ValType::Nil));
-                self.exprs.push(ExprAssign {
-                    local: Some(unboxed),
-                    expr: Expr::Nil,
-                });
-                self.exprs.push(ExprAssign {
-                    local: result,
-                    expr: Expr::Box(ValType::Nil, unboxed),
-                });
-            }
-            sexpr::SExprKind::Char(c) => {
-                let unboxed = self.local(Type::Val(ValType::Char));
-                self.exprs.push(ExprAssign {
-                    local: Some(unboxed),
-                    expr: Expr::Char(*c),
-                });
-                self.exprs.push(ExprAssign {
-                    local: result,
-                    expr: Expr::Box(ValType::Char, unboxed),
-                });
-            }
-            sexpr::SExprKind::Cons(cons) => {
-                let car_local = self.local(Type::Boxed);
-                self.quote(Some(car_local), &cons.car);
-                let cdr_local = self.local(Type::Boxed);
-                self.quote(Some(cdr_local), &cons.cdr);
-
-                let unboxed = self.local(Type::Val(ValType::Cons));
-                self.exprs.push(ExprAssign {
-                    local: Some(unboxed),
-                    expr: Expr::Cons(car_local, cdr_local),
-                });
-                self.exprs.push(ExprAssign {
-                    local: result,
-                    expr: Expr::Box(ValType::Cons, unboxed),
-                });
-            }
-            sexpr::SExprKind::Vector(vec) => {
+            ast::Expr::Vector(_, vec) => {
                 let mut vec_locals = Vec::new();
                 for sexpr in vec {
                     let boxed_local = self.local(Type::Boxed);
-                    self.quote(Some(boxed_local), sexpr);
+                    self.gen_expr(Some(boxed_local), sexpr);
                     vec_locals.push(boxed_local);
                 }
                 let unboxed = self.local(Type::Val(ValType::Vector));
@@ -748,7 +639,35 @@ impl<'a> FuncGenerator<'a> {
                     expr: Expr::Box(ValType::Vector, unboxed),
                 });
             }
+            ast::Expr::Cons(_, cons) => {
+                let car_local = self.local(Type::Boxed);
+                self.gen_expr(Some(car_local), &cons.car);
+                let cdr_local = self.local(Type::Boxed);
+                self.gen_expr(Some(cdr_local), &cons.cdr);
+
+                let unboxed = self.local(Type::Val(ValType::Cons));
+                self.exprs.push(ExprAssign {
+                    local: Some(unboxed),
+                    expr: Expr::Cons(car_local, cdr_local),
+                });
+                self.exprs.push(ExprAssign {
+                    local: result,
+                    expr: Expr::Box(ValType::Cons, unboxed),
+                });
+            }
+            ast::Expr::Quote(x, _) => *x.get_ref(type_map::key::<Desugared>()),
         }
+    }
+
+    fn global_id(&mut self, id: ast::GlobalVarId) -> GlobalId {
+        let ast_meta = self.ir_generator.ast_global_metas.get(&id);
+        let id = GlobalId::from(id.0);
+        if let Some(ast_meta) = ast_meta {
+            self.ir_generator.global_metas.insert(id, VarMeta {
+                name: ast_meta.name.clone(),
+            });
+        }
+        id
     }
 
     fn gen_exprs(&mut self, result: Option<LocalId>, exprs: &[ast::Expr<ast::Final>]) {

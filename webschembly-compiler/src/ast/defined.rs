@@ -26,7 +26,7 @@ pub struct DefinedLambdaR {
 impl FamilyX<Defined> for AstX {
     type R = ();
 }
-impl FamilyX<Defined> for LiteralX {
+impl FamilyX<Defined> for ConstX {
     type R = ();
 }
 impl FamilyX<Defined> for DefineX {
@@ -52,6 +52,17 @@ impl FamilyX<Defined> for SetX {
 }
 
 impl FamilyX<Defined> for LetX {
+    type R = ();
+}
+
+impl FamilyX<Defined> for VectorX {
+    type R = ();
+}
+impl FamilyX<Defined> for QuoteX {
+    type R = ();
+}
+
+impl FamilyX<Defined> for ConsX {
     type R = ();
 }
 
@@ -90,9 +101,9 @@ impl Expr<Defined> {
         names: &mut Vec<String>,
     ) -> Result<(DefineContext, Self)> {
         match expr {
-            Expr::Literal(x, lit) => Ok((
+            Expr::Const(x, lit) => Ok((
                 ctx.to_undefinable_if_local(),
-                Expr::Literal(x.add(type_map::key::<Defined>(), ()), lit),
+                Expr::Const(x.add(type_map::key::<Defined>(), ()), lit),
             )),
             Expr::Var(x, var) => Ok((
                 ctx.to_undefinable_if_local(),
@@ -205,6 +216,32 @@ impl Expr<Defined> {
                 ))
             }
             Expr::Let(x, _) => x.get_owned(type_map::key::<Desugared>()),
+            Expr::Vector(x, vec) => Ok((
+                ctx.to_undefinable_if_local(),
+                Expr::Vector(
+                    x.add(type_map::key::<Defined>(), ()),
+                    vec.into_iter()
+                        .map(|v| {
+                            Self::from_expr(v, ctx.to_undefinable_if_local(), names)
+                                .map(|(_, expr)| expr)
+                        })
+                        .collect::<Result<Vec<_>>>()?,
+                ),
+            )),
+            Expr::Quote(x, _) => x.get_owned(type_map::key::<Desugared>()),
+            Expr::Cons(x, cons) => Ok((
+                ctx.to_undefinable_if_local(),
+                Expr::Cons(x.add(type_map::key::<Defined>(), ()), Cons {
+                    car: Box::new(
+                        Self::from_expr(*cons.car, ctx.to_undefinable_if_local(), names)
+                            .map(|(_, expr)| expr)?,
+                    ),
+                    cdr: Box::new(
+                        Self::from_expr(*cons.cdr, ctx.to_undefinable_if_local(), names)
+                            .map(|(_, expr)| expr)?,
+                    ),
+                }),
+            )),
         }
     }
 

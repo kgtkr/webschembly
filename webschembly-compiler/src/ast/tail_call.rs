@@ -16,7 +16,7 @@ impl Phase for TailCall {
 impl FamilyX<TailCall> for AstX {
     type R = ();
 }
-impl FamilyX<TailCall> for LiteralX {
+impl FamilyX<TailCall> for ConstX {
     type R = ();
 }
 impl FamilyX<TailCall> for DefineX {
@@ -50,6 +50,17 @@ impl FamilyX<TailCall> for LetX {
     type R = ();
 }
 
+impl FamilyX<TailCall> for VectorX {
+    type R = ();
+}
+impl FamilyX<TailCall> for QuoteX {
+    type R = ();
+}
+
+impl FamilyX<TailCall> for ConsX {
+    type R = ();
+}
+
 impl Ast<TailCall> {
     pub fn from_ast(ast: Ast<<TailCall as Phase>::Prev>) -> Self {
         Ast {
@@ -66,7 +77,7 @@ impl Ast<TailCall> {
 impl Expr<TailCall> {
     fn from_expr(expr: Expr<<TailCall as Phase>::Prev>, is_tail: bool) -> Self {
         match expr {
-            Expr::Literal(x, lit) => Expr::Literal(x.add(type_map::key::<TailCall>(), ()), lit),
+            Expr::Const(x, lit) => Expr::Const(x.add(type_map::key::<TailCall>(), ()), lit),
             Expr::Var(x, var) => Expr::Var(x.add(type_map::key::<TailCall>(), ()), var),
             Expr::Define(x, _) => x.get_owned(type_map::key::<Defined>()),
             Expr::Lambda(x, lambda) => {
@@ -95,6 +106,16 @@ impl Expr<TailCall> {
                 expr: Box::new(Self::from_expr(*set.expr, false)),
             }),
             Expr::Let(x, _) => x.get_owned(type_map::key::<Desugared>()),
+            Expr::Vector(x, vec) => Expr::Vector(x.add(type_map::key::<TailCall>(), ()), {
+                vec.into_iter()
+                    .map(|expr| Self::from_expr(expr, false))
+                    .collect()
+            }),
+            Expr::Quote(x, _) => x.get_owned(type_map::key::<Desugared>()),
+            Expr::Cons(x, cons) => Expr::Cons(x.add(type_map::key::<TailCall>(), ()), Cons {
+                car: Box::new(Self::from_expr(*cons.car, false)),
+                cdr: Box::new(Self::from_expr(*cons.cdr, false)),
+            }),
         }
     }
 
