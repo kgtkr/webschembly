@@ -444,24 +444,24 @@ impl BasicBlock {
 impl fmt::Display for DisplayInFunc<'_, &'_ BasicBlock> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // きれいな実装ではないがインデントは決め打ちする
-        write!(
+        writeln!(
             f,
-            "{}{}:\n",
+            "{}{}:",
             DISPLAY_INDENT,
             self.value.id.display(self.meta.meta)
         )?;
         for expr in &self.value.exprs {
-            write!(
+            writeln!(
                 f,
-                "{}{}{}\n",
+                "{}{}{}",
                 DISPLAY_INDENT,
                 DISPLAY_INDENT,
                 expr.display(self.meta)
             )?;
         }
-        write!(
+        writeln!(
             f,
-            "{}{}{}\n",
+            "{}{}{}",
             DISPLAY_INDENT,
             DISPLAY_INDENT,
             self.value.next.display(self.meta)
@@ -569,11 +569,11 @@ impl Func {
 
 impl fmt::Display for Display<'_, &'_ Func> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}:\n", self.value.id.display(self.meta))?;
+        writeln!(f, "{}:", self.value.id.display(self.meta))?;
         for (local_id, local_type) in self.value.locals.iter_enumerated() {
-            write!(
+            writeln!(
                 f,
-                "{}local {}: {}\n",
+                "{}local {}: {}",
                 DISPLAY_INDENT,
                 local_id.display(self.meta.in_func(self.value.id)),
                 local_type
@@ -590,7 +590,7 @@ impl fmt::Display for Display<'_, &'_ Func> {
                 write!(f, ",")?;
             }
         }
-        write!(f, "\n")?;
+        writeln!(f)?;
         write!(f, "{}rets: ", DISPLAY_INDENT)?;
         for (i, ret) in self.value.rets.iter().enumerate() {
             write!(f, "{}", ret.display(self.meta.in_func(self.value.id)))?;
@@ -598,10 +598,10 @@ impl fmt::Display for Display<'_, &'_ Func> {
                 write!(f, ",")?;
             }
         }
-        write!(f, "\n")?;
-        write!(
+        writeln!(f)?;
+        writeln!(
             f,
-            "{}entry: {}\n",
+            "{}entry: {}",
             DISPLAY_INDENT,
             self.value.bb_entry.display(self.meta)
         )?;
@@ -631,7 +631,7 @@ impl Ir {
 }
 impl fmt::Display for Display<'_, &'_ Ir> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "entry: {}\n", self.value.entry.display(self.meta))?;
+        writeln!(f, "entry: {}", self.value.entry.display(self.meta))?;
         for func in self.value.funcs.iter() {
             write!(f, "{}", func.display(self.meta))?;
         }
