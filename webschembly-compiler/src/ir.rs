@@ -536,7 +536,7 @@ pub struct Func {
     // localsの先頭何個が引数か
     pub args: usize,
     // localsのうちどれが返り値か
-    pub rets: Vec<LocalId>,
+    pub ret: LocalId,
     pub bb_entry: BasicBlockId,
     pub bbs: TiVec<BasicBlockId, BasicBlock>,
 }
@@ -546,23 +546,20 @@ impl Func {
         Display { value: self, meta }
     }
 
-    pub fn arg_types(&self) -> TiVec<FuncId, Type> {
+    pub fn arg_types(&self) -> Vec<Type> {
         (0..self.args)
             .map(|i| self.locals[LocalId::from(i)].to_type())
             .collect()
     }
 
-    pub fn ret_types(&self) -> TiVec<FuncId, Type> {
-        self.rets
-            .iter()
-            .map(|&ret| self.locals[ret].to_type())
-            .collect()
+    pub fn ret_type(&self) -> Type {
+        self.locals[self.ret].to_type()
     }
 
     pub fn func_type(&self) -> FuncType {
         FuncType {
             args: self.arg_types(),
-            rets: self.ret_types(),
+            ret: self.ret_type(),
         }
     }
 }
@@ -591,14 +588,12 @@ impl fmt::Display for Display<'_, &'_ Func> {
             }
         }
         writeln!(f)?;
-        write!(f, "{}rets: ", DISPLAY_INDENT)?;
-        for (i, ret) in self.value.rets.iter().enumerate() {
-            write!(f, "{}", ret.display(self.meta.in_func(self.value.id)))?;
-            if i < self.value.rets.len() - 1 {
-                write!(f, ",")?;
-            }
-        }
-        writeln!(f)?;
+        writeln!(
+            f,
+            "{}rets: {}",
+            DISPLAY_INDENT,
+            self.value.ret.display(self.meta.in_func(self.value.id))
+        )?;
         writeln!(
             f,
             "{}entry: {}",
@@ -614,8 +609,8 @@ impl fmt::Display for Display<'_, &'_ Func> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FuncType {
-    pub args: TiVec<FuncId, Type>,
-    pub rets: TiVec<FuncId, Type>,
+    pub args: Vec<Type>,
+    pub ret: Type,
 }
 
 #[derive(Debug, Clone)]

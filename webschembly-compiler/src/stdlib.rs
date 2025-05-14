@@ -14,7 +14,6 @@ pub fn generate_stdlib() -> String {
 
 fn generate_builtin(builtin: Builtin) -> String {
     let builtin_typ = builtin_func_type(builtin);
-    debug_assert_eq!(builtin_typ.rets.len(), 1);
     let args = builtin_typ
         .args
         .iter()

@@ -162,11 +162,7 @@ impl ModuleGenerator {
             .into_iter()
             .map(|ty| self.convert_type(ty))
             .collect();
-        let results = ir_func_type
-            .rets
-            .into_iter()
-            .map(|ty| self.convert_type(ty))
-            .collect();
+        let results = vec![self.convert_type(ir_func_type.ret)];
         self.func_type(WasmFuncType { params, results })
     }
 
@@ -569,10 +565,9 @@ impl ModuleGenerator {
                 function.instruction(&Instruction::End);
             }
             StructuredBasicBlock::Return => {
-                for ret in &func.rets {
-                    function
-                        .instruction(&Instruction::LocalGet(ModuleGenerator::from_local_id(*ret)));
-                }
+                function.instruction(&Instruction::LocalGet(ModuleGenerator::from_local_id(
+                    func.ret,
+                )));
                 function.instruction(&Instruction::Return);
             }
         }
@@ -701,7 +696,7 @@ impl ModuleGenerator {
             ir::Expr::CallRef(tail_call, func_ref, args) => {
                 let func_type = self.func_type_from_ir(ir::FuncType {
                     args: args.iter().map(|arg| locals[*arg].to_type()).collect(),
-                    rets: ti_vec![ir::Type::Boxed],
+                    ret: ir::Type::Boxed,
                 });
 
                 for arg in args {
