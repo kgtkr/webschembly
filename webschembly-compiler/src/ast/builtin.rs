@@ -61,4 +61,40 @@ impl Builtin {
     pub fn from_name(name: &str) -> Option<Self> {
         Self::try_from(name).ok()
     }
+
+    pub fn typ(self) -> BuiltinType {
+        match self {
+            Builtin::Display => BuiltinType { args_count: 1 },
+            Builtin::Add => BuiltinType { args_count: 2 },
+            Builtin::Sub => BuiltinType { args_count: 2 },
+            Builtin::WriteChar => BuiltinType { args_count: 1 },
+            Builtin::IsPair => BuiltinType { args_count: 1 },
+            Builtin::IsSymbol => BuiltinType { args_count: 1 },
+            Builtin::IsString => BuiltinType { args_count: 1 },
+            Builtin::IsNumber => BuiltinType { args_count: 1 },
+            Builtin::IsBoolean => BuiltinType { args_count: 1 },
+            Builtin::IsProcedure => BuiltinType { args_count: 1 },
+            Builtin::IsChar => BuiltinType { args_count: 1 },
+            Builtin::VectorLength => BuiltinType { args_count: 1 },
+            Builtin::VectorRef => BuiltinType { args_count: 2 },
+            Builtin::VectorSet => BuiltinType { args_count: 3 },
+            Builtin::IsVector => BuiltinType { args_count: 1 },
+            Builtin::Eq => BuiltinType { args_count: 2 },
+            Builtin::Car => BuiltinType { args_count: 1 },
+            Builtin::Cdr => BuiltinType { args_count: 1 },
+            Builtin::SymbolToString => BuiltinType { args_count: 1 },
+            Builtin::NumberToString => BuiltinType { args_count: 1 },
+            Builtin::EqNum => BuiltinType { args_count: 2 },
+            Builtin::Lt => BuiltinType { args_count: 2 },
+            Builtin::Gt => BuiltinType { args_count: 2 },
+            Builtin::Le => BuiltinType { args_count: 2 },
+            Builtin::Ge => BuiltinType { args_count: 2 },
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct BuiltinType {
+    pub args_count: usize,
+    // TODO: 可変長引数の処理
 }
