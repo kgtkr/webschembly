@@ -1,7 +1,7 @@
 use strum::IntoEnumIterator;
 
 use crate::ast::Builtin;
-use crate::ir_generator::builtin_func_type;
+use crate::ir_generator::BuiltinConversionRule;
 
 pub fn generate_stdlib() -> String {
     let mut result = String::new();
@@ -13,12 +13,9 @@ pub fn generate_stdlib() -> String {
 }
 
 fn generate_builtin(builtin: Builtin) -> String {
-    let builtin_typ = builtin_func_type(builtin);
-    let args = builtin_typ
-        .args
-        .iter()
-        .enumerate()
-        .map(|(i, _)| format!("x{}", i))
+    let rule = BuiltinConversionRule::from_builtin(builtin);
+    let args = (0..rule.args_count())
+        .map(|i| format!("x{}", i))
         .collect::<Vec<_>>()
         .join(" ");
     format!(

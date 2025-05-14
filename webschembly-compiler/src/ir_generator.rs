@@ -422,8 +422,8 @@ impl<'a> FuncGenerator<'a> {
                     } = x.get_ref(type_map::key::<Used>())
                     && let Some(builtin) = ast::Builtin::from_name(name)
                 {
-                    let builtin_typ = builtin_func_type(builtin);
-                    if builtin_typ.args.len() != args.len() {
+                    let rule = BuiltinConversionRule::from_builtin(builtin);
+                    if rule.args_count() != args.len() {
                         let msg = self.local(Type::Val(ValType::String));
                         self.exprs.push(ExprAssign {
                             local: Some(msg),
@@ -435,7 +435,7 @@ impl<'a> FuncGenerator<'a> {
                         });
                     } else {
                         let mut arg_locals = Vec::new();
-                        for (typ, arg) in builtin_typ.args.iter().zip(args) {
+                        for (typ, arg) in rule.arg_types().iter().zip(args) {
                             let boxed_arg_local = self.local(Type::Boxed);
                             self.gen_expr(Some(boxed_arg_local), arg);
                             let arg_local = match typ {
@@ -453,47 +453,24 @@ impl<'a> FuncGenerator<'a> {
                             arg_locals.push(arg_local);
                         }
 
-                        let ret_local = match builtin_typ.ret {
+                        let ret_local = match rule.ret_type() {
                             Type::Boxed => self.local(Type::Boxed),
                             Type::Val(val_type) => self.local(Type::Val(val_type)),
                         };
-                        // TODO: きれいに書き直す
-                        let expr = match builtin {
-                            ast::Builtin::Display => Expr::Display(arg_locals[0]),
-                            ast::Builtin::Add => Expr::Add(arg_locals[0], arg_locals[1]),
-                            ast::Builtin::Sub => Expr::Sub(arg_locals[0], arg_locals[1]),
-                            ast::Builtin::WriteChar => Expr::WriteChar(arg_locals[0]),
-                            ast::Builtin::IsPair => Expr::IsPair(arg_locals[0]),
-                            ast::Builtin::IsSymbol => Expr::IsSymbol(arg_locals[0]),
-                            ast::Builtin::IsString => Expr::IsString(arg_locals[0]),
-                            ast::Builtin::IsNumber => Expr::IsNumber(arg_locals[0]),
-                            ast::Builtin::IsBoolean => Expr::IsBoolean(arg_locals[0]),
-                            ast::Builtin::IsProcedure => Expr::IsProcedure(arg_locals[0]),
-                            ast::Builtin::IsChar => Expr::IsChar(arg_locals[0]),
-                            ast::Builtin::IsVector => Expr::IsVector(arg_locals[0]),
-                            ast::Builtin::VectorLength => Expr::VectorLength(arg_locals[0]),
-                            ast::Builtin::VectorRef => {
-                                Expr::VectorRef(arg_locals[0], arg_locals[1])
+                        let expr = match rule {
+                            BuiltinConversionRule::Unary { to_ir, .. } => to_ir(arg_locals[0]),
+                            BuiltinConversionRule::Binary { to_ir, .. } => {
+                                to_ir(arg_locals[0], arg_locals[1])
                             }
-                            ast::Builtin::VectorSet => {
-                                Expr::VectorSet(arg_locals[0], arg_locals[1], arg_locals[2])
+                            BuiltinConversionRule::Ternary { to_ir, .. } => {
+                                to_ir(arg_locals[0], arg_locals[1], arg_locals[2])
                             }
-                            ast::Builtin::Eq => Expr::Eq(arg_locals[0], arg_locals[1]),
-                            ast::Builtin::Car => Expr::Car(arg_locals[0]),
-                            ast::Builtin::Cdr => Expr::Cdr(arg_locals[0]),
-                            ast::Builtin::SymbolToString => Expr::SymbolToString(arg_locals[0]),
-                            ast::Builtin::NumberToString => Expr::NumberToString(arg_locals[0]),
-                            ast::Builtin::EqNum => Expr::EqNum(arg_locals[0], arg_locals[1]),
-                            ast::Builtin::Lt => Expr::Lt(arg_locals[0], arg_locals[1]),
-                            ast::Builtin::Gt => Expr::Gt(arg_locals[0], arg_locals[1]),
-                            ast::Builtin::Le => Expr::Le(arg_locals[0], arg_locals[1]),
-                            ast::Builtin::Ge => Expr::Ge(arg_locals[0], arg_locals[1]),
                         };
                         self.exprs.push(ExprAssign {
                             local: Some(ret_local),
                             expr,
                         });
-                        match builtin_typ.ret {
+                        match rule.ret_type() {
                             Type::Boxed => {
                                 self.exprs.push(ExprAssign {
                                     local: result,
@@ -713,113 +690,199 @@ pub fn generate_ir(
     ir_gen.generate(ast)
 }
 
-// TODO: ここに置くか微妙。stdlibのためにpubにしている
-pub fn builtin_func_type(builtin: ast::Builtin) -> FuncType {
-    use ast::Builtin;
-    match builtin {
-        Builtin::Display => FuncType {
-            args: vec![Type::Val(ValType::String)], // TODO: 一旦Stringのみ
-            ret: Type::Val(ValType::Nil),
-        },
-        Builtin::Add => FuncType {
-            args: vec![Type::Val(ValType::Int), Type::Val(ValType::Int)],
-            ret: Type::Val(ValType::Int),
-        },
-        Builtin::Sub => FuncType {
-            args: vec![Type::Val(ValType::Int), Type::Val(ValType::Int)],
-            ret: Type::Val(ValType::Int),
-        },
-        Builtin::WriteChar => FuncType {
-            args: vec![Type::Val(ValType::Char)],
-            ret: Type::Val(ValType::Nil),
-        },
-        Builtin::IsPair => FuncType {
-            args: vec![Type::Boxed],
-            ret: Type::Val(ValType::Bool),
-        },
-        Builtin::IsSymbol => FuncType {
-            args: vec![Type::Boxed],
-            ret: Type::Val(ValType::Bool),
-        },
-        Builtin::IsString => FuncType {
-            args: vec![Type::Boxed],
-            ret: Type::Val(ValType::Bool),
-        },
-        Builtin::IsNumber => FuncType {
-            args: vec![Type::Boxed],
-            ret: Type::Val(ValType::Bool),
-        },
-        Builtin::IsBoolean => FuncType {
-            args: vec![Type::Boxed],
-            ret: Type::Val(ValType::Bool),
-        },
-        Builtin::IsProcedure => FuncType {
-            args: vec![Type::Boxed],
-            ret: Type::Val(ValType::Bool),
-        },
-        Builtin::IsChar => FuncType {
-            args: vec![Type::Boxed],
-            ret: Type::Val(ValType::Bool),
-        },
-        Builtin::IsVector => FuncType {
-            args: vec![Type::Boxed],
-            ret: Type::Val(ValType::Bool),
-        },
-        Builtin::VectorLength => FuncType {
-            args: vec![Type::Val(ValType::Vector)],
-            ret: Type::Val(ValType::Int),
-        },
-        Builtin::VectorRef => FuncType {
-            args: vec![Type::Val(ValType::Vector), Type::Val(ValType::Int)],
-            ret: Type::Boxed,
-        },
-        Builtin::VectorSet => FuncType {
-            args: vec![
-                Type::Val(ValType::Vector),
-                Type::Val(ValType::Int),
-                Type::Boxed,
-            ],
-            ret: Type::Val(ValType::Nil),
-        },
-        Builtin::Eq => FuncType {
-            args: vec![Type::Boxed, Type::Boxed],
-            ret: Type::Val(ValType::Bool),
-        },
-        Builtin::Car => FuncType {
-            args: vec![Type::Val(ValType::Cons)],
-            ret: Type::Boxed,
-        },
-        Builtin::Cdr => FuncType {
-            args: vec![Type::Val(ValType::Cons)],
-            ret: Type::Boxed,
-        },
-        Builtin::SymbolToString => FuncType {
-            args: vec![Type::Val(ValType::Symbol)],
-            ret: Type::Val(ValType::String),
-        },
-        Builtin::NumberToString => FuncType {
-            args: vec![Type::Val(ValType::Int)], // TODO: 一般のnumberに使えるように
-            ret: Type::Val(ValType::String),
-        },
-        Builtin::EqNum => FuncType {
-            args: vec![Type::Val(ValType::Int), Type::Val(ValType::Int)],
-            ret: Type::Val(ValType::Bool),
-        },
-        Builtin::Lt => FuncType {
-            args: vec![Type::Val(ValType::Int), Type::Val(ValType::Int)],
-            ret: Type::Val(ValType::Bool),
-        },
-        Builtin::Gt => FuncType {
-            args: vec![Type::Val(ValType::Int), Type::Val(ValType::Int)],
-            ret: Type::Val(ValType::Bool),
-        },
-        Builtin::Le => FuncType {
-            args: vec![Type::Val(ValType::Int), Type::Val(ValType::Int)],
-            ret: Type::Val(ValType::Bool),
-        },
-        Builtin::Ge => FuncType {
-            args: vec![Type::Val(ValType::Int), Type::Val(ValType::Int)],
-            ret: Type::Val(ValType::Bool),
-        },
+#[derive(Debug, Clone, Copy)]
+pub enum BuiltinConversionRule {
+    Unary {
+        arg0: Type,
+        ret: Type,
+        to_ir: fn(LocalId) -> Expr,
+    },
+    Binary {
+        arg0: Type,
+        arg1: Type,
+        ret: Type,
+        to_ir: fn(LocalId, LocalId) -> Expr,
+    },
+    Ternary {
+        arg0: Type,
+        arg1: Type,
+        arg2: Type,
+        ret: Type,
+        to_ir: fn(LocalId, LocalId, LocalId) -> Expr,
+    },
+    // TODO: 可変長
+}
+
+impl BuiltinConversionRule {
+    pub fn ret_type(self) -> Type {
+        match self {
+            BuiltinConversionRule::Unary { ret, .. } => ret,
+            BuiltinConversionRule::Binary { ret, .. } => ret,
+            BuiltinConversionRule::Ternary { ret, .. } => ret,
+        }
+    }
+
+    // TODO: 可変長引数が関わると返り値を変える必要あり
+    pub fn args_count(self) -> usize {
+        match self {
+            BuiltinConversionRule::Unary { .. } => 1,
+            BuiltinConversionRule::Binary { .. } => 2,
+            BuiltinConversionRule::Ternary { .. } => 3,
+        }
+    }
+
+    pub fn arg_types(self) -> Vec<Type> {
+        match self {
+            BuiltinConversionRule::Unary { arg0, .. } => vec![arg0],
+            BuiltinConversionRule::Binary { arg0, arg1, .. } => vec![arg0, arg1],
+            BuiltinConversionRule::Ternary {
+                arg0, arg1, arg2, ..
+            } => vec![arg0, arg1, arg2],
+        }
+    }
+
+    pub fn from_builtin(builtin: ast::Builtin) -> BuiltinConversionRule {
+        use ast::Builtin;
+
+        match builtin {
+            Builtin::Display => BuiltinConversionRule::Unary {
+                // TODO: 一旦Stringのみ
+                arg0: Type::Val(ValType::String),
+                ret: Type::Val(ValType::Nil),
+                to_ir: Expr::Display,
+            },
+            Builtin::Add => BuiltinConversionRule::Binary {
+                arg0: Type::Val(ValType::Int),
+                arg1: Type::Val(ValType::Int),
+                ret: Type::Val(ValType::Int),
+                to_ir: Expr::Add,
+            },
+            Builtin::Sub => BuiltinConversionRule::Binary {
+                arg0: Type::Val(ValType::Int),
+                arg1: Type::Val(ValType::Int),
+                ret: Type::Val(ValType::Int),
+                to_ir: Expr::Sub,
+            },
+            Builtin::WriteChar => BuiltinConversionRule::Unary {
+                arg0: Type::Val(ValType::Char),
+                ret: Type::Val(ValType::Nil),
+                to_ir: Expr::WriteChar,
+            },
+            Builtin::IsPair => BuiltinConversionRule::Unary {
+                arg0: Type::Boxed,
+                ret: Type::Val(ValType::Bool),
+                to_ir: Expr::IsPair,
+            },
+            Builtin::IsSymbol => BuiltinConversionRule::Unary {
+                arg0: Type::Boxed,
+                ret: Type::Val(ValType::Bool),
+                to_ir: Expr::IsSymbol,
+            },
+            Builtin::IsString => BuiltinConversionRule::Unary {
+                arg0: Type::Boxed,
+                ret: Type::Val(ValType::Bool),
+                to_ir: Expr::IsString,
+            },
+            Builtin::IsNumber => BuiltinConversionRule::Unary {
+                arg0: Type::Boxed,
+                ret: Type::Val(ValType::Bool),
+                to_ir: Expr::IsNumber,
+            },
+            Builtin::IsBoolean => BuiltinConversionRule::Unary {
+                arg0: Type::Boxed,
+                ret: Type::Val(ValType::Bool),
+                to_ir: Expr::IsBoolean,
+            },
+            Builtin::IsProcedure => BuiltinConversionRule::Unary {
+                arg0: Type::Boxed,
+                ret: Type::Val(ValType::Bool),
+                to_ir: Expr::IsProcedure,
+            },
+            Builtin::IsChar => BuiltinConversionRule::Unary {
+                arg0: Type::Boxed,
+                ret: Type::Val(ValType::Bool),
+                to_ir: Expr::IsChar,
+            },
+            Builtin::IsVector => BuiltinConversionRule::Unary {
+                arg0: Type::Boxed,
+                ret: Type::Val(ValType::Bool),
+                to_ir: Expr::IsVector,
+            },
+            Builtin::VectorLength => BuiltinConversionRule::Unary {
+                arg0: Type::Val(ValType::Vector),
+                ret: Type::Val(ValType::Int),
+                to_ir: Expr::VectorLength,
+            },
+            Builtin::VectorRef => BuiltinConversionRule::Binary {
+                arg0: Type::Val(ValType::Vector),
+                arg1: Type::Val(ValType::Int),
+                ret: Type::Boxed,
+                to_ir: Expr::VectorRef,
+            },
+            Builtin::VectorSet => BuiltinConversionRule::Ternary {
+                arg0: Type::Val(ValType::Vector),
+                arg1: Type::Val(ValType::Int),
+                arg2: Type::Boxed,
+                ret: Type::Val(ValType::Nil),
+                to_ir: Expr::VectorSet,
+            },
+            Builtin::Eq => BuiltinConversionRule::Binary {
+                arg0: Type::Boxed,
+                arg1: Type::Boxed,
+                ret: Type::Val(ValType::Bool),
+                to_ir: Expr::Eq,
+            },
+            Builtin::Car => BuiltinConversionRule::Unary {
+                arg0: Type::Val(ValType::Cons),
+                ret: Type::Boxed,
+                to_ir: Expr::Car,
+            },
+            Builtin::Cdr => BuiltinConversionRule::Unary {
+                arg0: Type::Val(ValType::Cons),
+                ret: Type::Boxed,
+                to_ir: Expr::Cdr,
+            },
+            Builtin::SymbolToString => BuiltinConversionRule::Unary {
+                arg0: Type::Val(ValType::Symbol),
+                ret: Type::Val(ValType::String),
+                to_ir: Expr::SymbolToString,
+            },
+            Builtin::NumberToString => BuiltinConversionRule::Unary {
+                // TODO: 一般のnumberに使えるように
+                arg0: Type::Val(ValType::Int),
+                ret: Type::Val(ValType::String),
+                to_ir: Expr::NumberToString,
+            },
+            Builtin::EqNum => BuiltinConversionRule::Binary {
+                arg0: Type::Val(ValType::Int),
+                arg1: Type::Val(ValType::Int),
+                ret: Type::Val(ValType::Bool),
+                to_ir: Expr::EqNum,
+            },
+            Builtin::Lt => BuiltinConversionRule::Binary {
+                arg0: Type::Val(ValType::Int),
+                arg1: Type::Val(ValType::Int),
+                ret: Type::Val(ValType::Bool),
+                to_ir: Expr::Lt,
+            },
+            Builtin::Gt => BuiltinConversionRule::Binary {
+                arg0: Type::Val(ValType::Int),
+                arg1: Type::Val(ValType::Int),
+                ret: Type::Val(ValType::Bool),
+                to_ir: Expr::Gt,
+            },
+            Builtin::Le => BuiltinConversionRule::Binary {
+                arg0: Type::Val(ValType::Int),
+                arg1: Type::Val(ValType::Int),
+                ret: Type::Val(ValType::Bool),
+                to_ir: Expr::Le,
+            },
+            Builtin::Ge => BuiltinConversionRule::Binary {
+                arg0: Type::Val(ValType::Int),
+                arg1: Type::Val(ValType::Int),
+                ret: Type::Val(ValType::Bool),
+                to_ir: Expr::Ge,
+            },
+        }
     }
 }
