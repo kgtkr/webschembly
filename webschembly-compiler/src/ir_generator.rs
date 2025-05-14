@@ -713,8 +713,8 @@ pub fn generate_ir(
     ir_gen.generate(ast)
 }
 
-// TODO: ここに置くか微妙
-fn builtin_func_type(builtin: ast::Builtin) -> FuncType {
+// TODO: ここに置くか微妙。stdlibのためにpubにしている
+pub fn builtin_func_type(builtin: ast::Builtin) -> FuncType {
     use ast::Builtin;
     match builtin {
         Builtin::Display => FuncType {
