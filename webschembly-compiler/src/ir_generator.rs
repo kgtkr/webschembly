@@ -423,7 +423,7 @@ impl<'a> FuncGenerator<'a> {
                     && let Some(builtin) = ast::Builtin::from_name(name)
                 {
                     let rule = BuiltinConversionRule::from_builtin(builtin);
-                    if rule.args_count() != args.len() {
+                    if rule.arg_count() != args.len() {
                         let msg = self.local(Type::Val(ValType::String));
                         self.exprs.push(ExprAssign {
                             local: Some(msg),
@@ -693,20 +693,17 @@ pub fn generate_ir(
 #[derive(Debug, Clone, Copy)]
 pub enum BuiltinConversionRule {
     Unary {
-        arg0: Type,
+        args: [Type; 1],
         ret: Type,
         to_ir: fn(LocalId) -> Expr,
     },
     Binary {
-        arg0: Type,
-        arg1: Type,
+        args: [Type; 2],
         ret: Type,
         to_ir: fn(LocalId, LocalId) -> Expr,
     },
     Ternary {
-        arg0: Type,
-        arg1: Type,
-        arg2: Type,
+        args: [Type; 3],
         ret: Type,
         to_ir: fn(LocalId, LocalId, LocalId) -> Expr,
     },
@@ -723,21 +720,15 @@ impl BuiltinConversionRule {
     }
 
     // TODO: 可変長引数が関わると返り値を変える必要あり
-    pub fn args_count(self) -> usize {
-        match self {
-            BuiltinConversionRule::Unary { .. } => 1,
-            BuiltinConversionRule::Binary { .. } => 2,
-            BuiltinConversionRule::Ternary { .. } => 3,
-        }
+    pub fn arg_count(self) -> usize {
+        self.arg_types().len()
     }
 
-    pub fn arg_types(self) -> Vec<Type> {
+    pub fn arg_types(&self) -> &[Type] {
         match self {
-            BuiltinConversionRule::Unary { arg0, .. } => vec![arg0],
-            BuiltinConversionRule::Binary { arg0, arg1, .. } => vec![arg0, arg1],
-            BuiltinConversionRule::Ternary {
-                arg0, arg1, arg2, ..
-            } => vec![arg0, arg1, arg2],
+            BuiltinConversionRule::Unary { args, .. } => args,
+            BuiltinConversionRule::Binary { args, .. } => args,
+            BuiltinConversionRule::Ternary { args, .. } => args,
         }
     }
 
@@ -747,139 +738,132 @@ impl BuiltinConversionRule {
         match builtin {
             Builtin::Display => BuiltinConversionRule::Unary {
                 // TODO: 一旦Stringのみ
-                arg0: Type::Val(ValType::String),
+                args: [Type::Val(ValType::String)],
                 ret: Type::Val(ValType::Nil),
                 to_ir: Expr::Display,
             },
             Builtin::Add => BuiltinConversionRule::Binary {
-                arg0: Type::Val(ValType::Int),
-                arg1: Type::Val(ValType::Int),
+                args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
                 ret: Type::Val(ValType::Int),
                 to_ir: Expr::Add,
             },
             Builtin::Sub => BuiltinConversionRule::Binary {
-                arg0: Type::Val(ValType::Int),
-                arg1: Type::Val(ValType::Int),
+                args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
                 ret: Type::Val(ValType::Int),
                 to_ir: Expr::Sub,
             },
             Builtin::WriteChar => BuiltinConversionRule::Unary {
-                arg0: Type::Val(ValType::Char),
+                args: [Type::Val(ValType::Char)],
                 ret: Type::Val(ValType::Nil),
                 to_ir: Expr::WriteChar,
             },
             Builtin::IsPair => BuiltinConversionRule::Unary {
-                arg0: Type::Boxed,
+                args: [Type::Boxed],
                 ret: Type::Val(ValType::Bool),
                 to_ir: Expr::IsPair,
             },
             Builtin::IsSymbol => BuiltinConversionRule::Unary {
-                arg0: Type::Boxed,
+                args: [Type::Boxed],
                 ret: Type::Val(ValType::Bool),
                 to_ir: Expr::IsSymbol,
             },
             Builtin::IsString => BuiltinConversionRule::Unary {
-                arg0: Type::Boxed,
+                args: [Type::Boxed],
                 ret: Type::Val(ValType::Bool),
                 to_ir: Expr::IsString,
             },
             Builtin::IsNumber => BuiltinConversionRule::Unary {
-                arg0: Type::Boxed,
+                args: [Type::Boxed],
                 ret: Type::Val(ValType::Bool),
                 to_ir: Expr::IsNumber,
             },
             Builtin::IsBoolean => BuiltinConversionRule::Unary {
-                arg0: Type::Boxed,
+                args: [Type::Boxed],
                 ret: Type::Val(ValType::Bool),
                 to_ir: Expr::IsBoolean,
             },
             Builtin::IsProcedure => BuiltinConversionRule::Unary {
-                arg0: Type::Boxed,
+                args: [Type::Boxed],
                 ret: Type::Val(ValType::Bool),
                 to_ir: Expr::IsProcedure,
             },
             Builtin::IsChar => BuiltinConversionRule::Unary {
-                arg0: Type::Boxed,
+                args: [Type::Boxed],
                 ret: Type::Val(ValType::Bool),
                 to_ir: Expr::IsChar,
             },
             Builtin::IsVector => BuiltinConversionRule::Unary {
-                arg0: Type::Boxed,
+                args: [Type::Boxed],
                 ret: Type::Val(ValType::Bool),
                 to_ir: Expr::IsVector,
             },
             Builtin::VectorLength => BuiltinConversionRule::Unary {
-                arg0: Type::Val(ValType::Vector),
+                args: [Type::Val(ValType::Vector)],
                 ret: Type::Val(ValType::Int),
                 to_ir: Expr::VectorLength,
             },
             Builtin::VectorRef => BuiltinConversionRule::Binary {
-                arg0: Type::Val(ValType::Vector),
-                arg1: Type::Val(ValType::Int),
+                args: [Type::Val(ValType::Vector), Type::Val(ValType::Int)],
                 ret: Type::Boxed,
                 to_ir: Expr::VectorRef,
             },
             Builtin::VectorSet => BuiltinConversionRule::Ternary {
-                arg0: Type::Val(ValType::Vector),
-                arg1: Type::Val(ValType::Int),
-                arg2: Type::Boxed,
+                args: [
+                    Type::Val(ValType::Vector),
+                    Type::Val(ValType::Int),
+                    Type::Boxed,
+                ],
                 ret: Type::Val(ValType::Nil),
                 to_ir: Expr::VectorSet,
             },
             Builtin::Eq => BuiltinConversionRule::Binary {
-                arg0: Type::Boxed,
-                arg1: Type::Boxed,
+                args: [Type::Boxed, Type::Boxed],
                 ret: Type::Val(ValType::Bool),
                 to_ir: Expr::Eq,
             },
             Builtin::Car => BuiltinConversionRule::Unary {
-                arg0: Type::Val(ValType::Cons),
+                args: [Type::Val(ValType::Cons)],
                 ret: Type::Boxed,
                 to_ir: Expr::Car,
             },
             Builtin::Cdr => BuiltinConversionRule::Unary {
-                arg0: Type::Val(ValType::Cons),
+                args: [Type::Val(ValType::Cons)],
                 ret: Type::Boxed,
                 to_ir: Expr::Cdr,
             },
             Builtin::SymbolToString => BuiltinConversionRule::Unary {
-                arg0: Type::Val(ValType::Symbol),
+                args: [Type::Val(ValType::Symbol)],
                 ret: Type::Val(ValType::String),
                 to_ir: Expr::SymbolToString,
             },
             Builtin::NumberToString => BuiltinConversionRule::Unary {
                 // TODO: 一般のnumberに使えるように
-                arg0: Type::Val(ValType::Int),
+                args: [Type::Val(ValType::Int)],
                 ret: Type::Val(ValType::String),
                 to_ir: Expr::NumberToString,
             },
             Builtin::EqNum => BuiltinConversionRule::Binary {
-                arg0: Type::Val(ValType::Int),
-                arg1: Type::Val(ValType::Int),
+                args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
                 ret: Type::Val(ValType::Bool),
                 to_ir: Expr::EqNum,
             },
             Builtin::Lt => BuiltinConversionRule::Binary {
-                arg0: Type::Val(ValType::Int),
-                arg1: Type::Val(ValType::Int),
+                args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
                 ret: Type::Val(ValType::Bool),
                 to_ir: Expr::Lt,
             },
             Builtin::Gt => BuiltinConversionRule::Binary {
-                arg0: Type::Val(ValType::Int),
-                arg1: Type::Val(ValType::Int),
+                args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
                 ret: Type::Val(ValType::Bool),
                 to_ir: Expr::Gt,
             },
             Builtin::Le => BuiltinConversionRule::Binary {
-                arg0: Type::Val(ValType::Int),
-                arg1: Type::Val(ValType::Int),
+                args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
                 ret: Type::Val(ValType::Bool),
                 to_ir: Expr::Le,
             },
             Builtin::Ge => BuiltinConversionRule::Binary {
-                arg0: Type::Val(ValType::Int),
-                arg1: Type::Val(ValType::Int),
+                args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
                 ret: Type::Val(ValType::Bool),
                 to_ir: Expr::Ge,
             },

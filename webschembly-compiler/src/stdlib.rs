@@ -14,7 +14,7 @@ pub fn generate_stdlib() -> String {
 
 fn generate_builtin(builtin: Builtin) -> String {
     let rule = BuiltinConversionRule::from_builtin(builtin);
-    let args = (0..rule.args_count())
+    let args = (0..rule.arg_count())
         .map(|i| format!("x{}", i))
         .collect::<Vec<_>>()
         .join(" ");
