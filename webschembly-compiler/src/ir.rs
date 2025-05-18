@@ -49,6 +49,8 @@ pub enum LocalType {
     MutCell(Type),
     #[display("{}", _0)]
     Type(Type),
+    #[display("func_ref")]
+    FuncRef,
 }
 
 impl From<Type> for LocalType {
@@ -64,10 +66,10 @@ impl From<ValType> for LocalType {
 }
 
 impl LocalType {
-    pub fn to_type(&self) -> Type {
+    pub fn to_type(&self) -> Option<Type> {
         match self {
-            LocalType::MutCell(inner) => *inner,
-            LocalType::Type(typ) => *typ,
+            LocalType::Type(typ) => Some(*typ),
+            _ => None,
         }
     }
 }
@@ -106,8 +108,6 @@ pub enum ValType {
     Char,
     #[display("vector")]
     Vector,
-    #[display("func_ref")]
-    FuncRef,
 }
 
 #[derive(Debug, Clone, Copy, From, Into, Hash, PartialEq, Eq)]
@@ -193,7 +193,7 @@ pub enum Expr {
         func: LocalId,
         boxed_func: LocalId,
     },
-    CallRef(bool, LocalId, Vec<LocalId>),
+    CallRef(bool, LocalId, Vec<LocalId>, FuncType),
     Move(LocalId),
     Box(ValType, LocalId),
     Unbox(ValType, LocalId),
@@ -311,7 +311,8 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                 }
                 write!(f, ")")
             }
-            Expr::CallRef(is_tail, id, args) => {
+            Expr::CallRef(is_tail, id, args, _func_type) => {
+                // TODO: func_typeを表示する
                 if *is_tail {
                     write!(f, "return_")?;
                 }
@@ -533,6 +534,7 @@ impl BasicBlockNext {
 pub struct Func {
     pub id: FuncId,
     pub locals: TiVec<LocalId, LocalType>,
+    // argsとretで指定されたローカル変数の型は LocalType::Type でなければならない
     // localsの先頭何個が引数か
     pub args: usize,
     // localsのうちどれが返り値か
@@ -548,12 +550,12 @@ impl Func {
 
     pub fn arg_types(&self) -> Vec<Type> {
         (0..self.args)
-            .map(|i| self.locals[LocalId::from(i)].to_type())
+            .map(|i| self.locals[LocalId::from(i)].to_type().unwrap())
             .collect()
     }
 
     pub fn ret_type(&self) -> Type {
-        self.locals[self.ret].to_type()
+        self.locals[self.ret].to_type().unwrap()
     }
 
     pub fn func_type(&self) -> FuncType {

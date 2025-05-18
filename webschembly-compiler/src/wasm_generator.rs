@@ -693,11 +693,8 @@ impl ModuleGenerator {
                     self.closure_type_from_ir(envs.iter().map(|env| locals[*env]).collect()),
                 ));
             }
-            ir::Expr::CallRef(tail_call, func_ref, args) => {
-                let func_type = self.func_type_from_ir(ir::FuncType {
-                    args: args.iter().map(|arg| locals[*arg].to_type()).collect(),
-                    ret: ir::Type::Boxed,
-                });
+            ir::Expr::CallRef(tail_call, func_ref, args, func_type) => {
+                let func_type = self.func_type_from_ir(func_type.clone());
 
                 for arg in args {
                     function.instruction(&Instruction::LocalGet(Self::from_local_id(*arg)));
@@ -804,10 +801,6 @@ impl ModuleGenerator {
                         self.vector_type,
                     )));
                 }
-                ir::ValType::FuncRef => {
-                    function.instruction(&Instruction::LocalGet(Self::from_local_id(*val)));
-                    function.instruction(&Instruction::RefCastNonNull(HeapType::FUNC));
-                }
             },
             ir::Expr::Box(typ, val) => match typ {
                 ir::ValType::Bool => {
@@ -847,9 +840,6 @@ impl ModuleGenerator {
                     function.instruction(&Instruction::LocalGet(Self::from_local_id(*val)));
                 }
                 ir::ValType::Vector => {
-                    function.instruction(&Instruction::LocalGet(Self::from_local_id(*val)));
-                }
-                ir::ValType::FuncRef => {
                     function.instruction(&Instruction::LocalGet(Self::from_local_id(*val)));
                 }
             },
@@ -1084,6 +1074,10 @@ impl ModuleGenerator {
                 })
             }
             ir::LocalType::Type(ty) => self.convert_type(ty),
+            ir::LocalType::FuncRef => ValType::Ref(RefType {
+                nullable: false,
+                heap_type: HeapType::FUNC,
+            }),
         }
     }
 
@@ -1114,10 +1108,6 @@ impl ModuleGenerator {
                 ir::ValType::Vector => ValType::Ref(RefType {
                     nullable: false,
                     heap_type: HeapType::Concrete(self.vector_type),
-                }),
-                ir::ValType::FuncRef => ValType::Ref(RefType {
-                    nullable: false,
-                    heap_type: HeapType::FUNC,
                 }),
             },
         }

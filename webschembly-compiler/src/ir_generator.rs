@@ -361,8 +361,8 @@ impl<'a> FuncGenerator<'a> {
                     .map(|id| *self.local_ids.get(id).unwrap())
                     .collect::<Vec<_>>();
                 let (func_id, boxed_func_id) = self.ir_generator.gen_func(x.clone(), lambda);
-                let func_local = self.local(Type::Val(ValType::FuncRef));
-                let boxed_func_local = self.local(Type::Val(ValType::FuncRef));
+                let func_local = self.local(LocalType::FuncRef);
+                let boxed_func_local = self.local(LocalType::FuncRef);
                 let unboxed = self.local(Type::Val(ValType::Closure));
                 self.exprs.push(ExprAssign {
                     local: Some(func_local),
@@ -491,7 +491,7 @@ impl<'a> FuncGenerator<'a> {
 
                     // TODO: funcがクロージャかのチェック
                     let closure_local = self.local(Type::Val(ValType::Closure));
-                    let func_local = self.local(Type::Val(ValType::FuncRef));
+                    let func_local = self.local(LocalType::FuncRef);
                     self.exprs.push(ExprAssign {
                         local: Some(closure_local),
                         expr: Expr::Unbox(ValType::Closure, boxed_func_local),
@@ -502,11 +502,14 @@ impl<'a> FuncGenerator<'a> {
                     });
                     // TODO: 引数の数が合っているかのチェック
                     let mut arg_locals = Vec::new();
+                    let mut args_types = Vec::new();
                     arg_locals.push(closure_local); // 第一引数にクロージャを渡す
+                    args_types.push(Type::Val(ValType::Closure));
                     for arg in args {
                         let arg_local = self.local(Type::Boxed);
                         self.gen_expr(Some(arg_local), arg);
                         arg_locals.push(arg_local);
+                        args_types.push(Type::Boxed);
                     }
                     self.exprs.push(ExprAssign {
                         local: result,
@@ -514,6 +517,10 @@ impl<'a> FuncGenerator<'a> {
                             x.get_ref(type_map::key::<TailCall>()).is_tail,
                             func_local,
                             arg_locals,
+                            FuncType {
+                                ret: Type::Boxed,
+                                args: args_types,
+                            },
                         ),
                     });
                 }
