@@ -153,8 +153,33 @@ impl<'a> FuncGenerator<'a> {
         lambda: &ast::Lambda<ast::Final>,
     ) -> Func {
         let self_closure = self.local(Type::Val(ValType::Closure));
-        for arg in &x.get_ref(type_map::key::<Used>()).args {
-            self.define_ast_local(*arg);
+        let mut arg_locals = Vec::new();
+        for _ in &x.get_ref(type_map::key::<Used>()).args {
+            // 引数にMutCellは使えないので一旦全てBoxedで定義
+            let arg_local = self.local(Type::Boxed);
+            arg_locals.push(arg_local);
+        }
+        for (arg_local, arg) in arg_locals
+            .into_iter()
+            .zip(&x.get_ref(type_map::key::<Used>()).args)
+        {
+            let local = self.define_ast_local(*arg);
+            if self.ir_generator.box_vars.contains(arg) {
+                self.exprs.push(ExprAssign {
+                    local: Some(local),
+                    expr: Expr::CreateMutCell(Type::Boxed),
+                });
+
+                self.exprs.push(ExprAssign {
+                    local: None,
+                    expr: Expr::SetMutCell(Type::Boxed, local, arg_local),
+                });
+            } else {
+                self.exprs.push(ExprAssign {
+                    local: Some(local),
+                    expr: Expr::Move(arg_local),
+                });
+            }
         }
 
         // 環境を復元するためのローカル変数を定義

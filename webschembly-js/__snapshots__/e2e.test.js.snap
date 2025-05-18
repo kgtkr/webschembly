@@ -156,6 +156,17 @@ exports[`E2E test > local_duplication2.scm > snapshot test 1`] = `
 }
 `;
 
+exports[`E2E test > mut_cell_args.scm > snapshot test 1`] = `
+{
+  "exitCode": 0,
+  "stderr": "",
+  "stdout": "1
+2
+2
+",
+}
+`;
+
 exports[`E2E test > num_cmp.scm > snapshot test 1`] = `
 {
   "exitCode": 0,
