@@ -156,13 +156,13 @@ impl ModuleGenerator {
         }
     }
 
-    fn func_type_from_ir(&mut self, ir_func_type: ir::FuncType) -> u32 {
+    fn func_type_from_ir(&mut self, ir_func_type: &ir::FuncType) -> u32 {
         let params = ir_func_type
             .args
-            .into_iter()
+            .iter()
             .map(|ty| self.convert_type(ty))
             .collect();
-        let results = vec![self.convert_type(ir_func_type.ret)];
+        let results = vec![self.convert_type(&ir_func_type.ret)];
         self.func_type(WasmFuncType { params, results })
     }
 
@@ -198,7 +198,7 @@ impl ModuleGenerator {
         }
     }
 
-    fn closure_type_from_ir(&mut self, env_types: Vec<ir::LocalType>) -> u32 {
+    fn closure_type_from_ir(&mut self, env_types: &Vec<ir::LocalType>) -> u32 {
         let types = env_types
             .into_iter()
             .map(|ty| self.convert_local_type(ty))
@@ -505,7 +505,7 @@ impl ModuleGenerator {
     }
 
     fn gen_func(&mut self, func: &ir::Func) {
-        let type_idx = self.func_type_from_ir(func.func_type());
+        let type_idx = self.func_type_from_ir(&func.func_type());
 
         let func_idx = self.func_count;
         self.func_count += 1;
@@ -515,7 +515,7 @@ impl ModuleGenerator {
                 .iter()
                 .skip(func.args)
                 .map(|ty| {
-                    let ty = self.convert_local_type(*ty);
+                    let ty = self.convert_local_type(ty);
                     (1, ty)
                 })
                 .collect::<Vec<_>>(),
@@ -656,12 +656,12 @@ impl ModuleGenerator {
                     shared: false,
                     ty: AbstractHeapType::Eq,
                 }));
-                function.instruction(&Instruction::StructNew(self.mut_cell_type(*typ)));
+                function.instruction(&Instruction::StructNew(self.mut_cell_type(typ)));
             }
             ir::Expr::DerefMutCell(typ, cell) => {
                 function.instruction(&Instruction::LocalGet(Self::from_local_id(*cell)));
                 function.instruction(&Instruction::StructGet {
-                    struct_type_index: self.mut_cell_type(*typ),
+                    struct_type_index: self.mut_cell_type(typ),
                     field_index: Self::MUT_CELL_VALUE_FIELD,
                 });
             }
@@ -669,7 +669,7 @@ impl ModuleGenerator {
                 function.instruction(&Instruction::LocalGet(Self::from_local_id(*cell)));
                 function.instruction(&Instruction::LocalGet(Self::from_local_id(*val)));
                 function.instruction(&Instruction::StructSet {
-                    struct_type_index: self.mut_cell_type(*typ),
+                    struct_type_index: self.mut_cell_type(typ),
                     field_index: Self::MUT_CELL_VALUE_FIELD,
                 });
                 function.instruction(&Instruction::LocalGet(Self::from_local_id(*val)));
@@ -690,11 +690,11 @@ impl ModuleGenerator {
                 }
 
                 function.instruction(&Instruction::StructNew(
-                    self.closure_type_from_ir(envs.iter().map(|env| locals[*env]).collect()),
+                    self.closure_type_from_ir(&envs.iter().map(|env| locals[*env]).collect()),
                 ));
             }
             ir::Expr::CallRef(tail_call, func_ref, args, func_type) => {
-                let func_type = self.func_type_from_ir(func_type.clone());
+                let func_type = self.func_type_from_ir(&func_type);
 
                 for arg in args {
                     function.instruction(&Instruction::LocalGet(Self::from_local_id(*arg)));
@@ -851,7 +851,7 @@ impl ModuleGenerator {
                 }
             },
             ir::Expr::ClosureEnv(env_types, closure, env_index) => {
-                let closure_type = self.closure_type_from_ir(env_types.clone());
+                let closure_type = self.closure_type_from_ir(env_types);
                 function.instruction(&Instruction::LocalGet(Self::from_local_id(*closure)));
                 // TODO: irでキャストするべき
                 function.instruction(&Instruction::RefCastNonNull(HeapType::Concrete(
@@ -1056,7 +1056,7 @@ impl ModuleGenerator {
         }
     }
 
-    fn mut_cell_type(&mut self, inner_ty: ir::Type) -> u32 {
+    fn mut_cell_type(&mut self, inner_ty: &ir::Type) -> u32 {
         if let Some(mut_cell_type) = self.mut_cell_types.get(&inner_ty) {
             *mut_cell_type
         } else {
@@ -1071,7 +1071,7 @@ impl ModuleGenerator {
         }
     }
 
-    fn convert_local_type(&mut self, ty: ir::LocalType) -> ValType {
+    fn convert_local_type(&mut self, ty: &ir::LocalType) -> ValType {
         match ty {
             ir::LocalType::MutCell(inner_ty) => {
                 let mut_cell_type = self.mut_cell_type(inner_ty);
@@ -1084,7 +1084,7 @@ impl ModuleGenerator {
         }
     }
 
-    fn convert_type(&self, ty: ir::Type) -> ValType {
+    fn convert_type(&self, ty: &ir::Type) -> ValType {
         match ty {
             ir::Type::Boxed => Self::BOXED_TYPE,
             ir::Type::Val(val) => match val {

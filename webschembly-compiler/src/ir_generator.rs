@@ -68,7 +68,10 @@ impl<'a> ModuleGenerator<'a> {
         let func = FuncGenerator::new(&mut self, func_id).entry_gen();
         self.funcs.push(func);
 
-        let meta = self.meta();
+        let meta = Meta {
+            local_metas: self.local_metas,
+            global_metas: self.global_metas,
+        };
         Module {
             id,
             funcs: self.funcs,
@@ -79,7 +82,7 @@ impl<'a> ModuleGenerator<'a> {
 
     fn gen_func(
         &mut self,
-        x: RunX<ast::LambdaX, ast::Final>,
+        x: &RunX<ast::LambdaX, ast::Final>,
         lambda: &ast::Lambda<ast::Final>,
     ) -> (FuncId, FuncId) {
         let id = self.funcs.next_key();
@@ -91,13 +94,6 @@ impl<'a> ModuleGenerator<'a> {
         self.funcs.push(boxed_func);
 
         (id, boxed_id)
-    }
-
-    fn meta(&self) -> Meta {
-        Meta {
-            local_metas: self.local_metas.clone(),
-            global_metas: self.global_metas.clone(),
-        }
     }
 }
 
@@ -165,7 +161,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
 
     fn lambda_gen(
         mut self,
-        x: RunX<ast::LambdaX, ast::Final>,
+        x: &RunX<ast::LambdaX, ast::Final>,
         lambda: &ast::Lambda<ast::Final>,
     ) -> Func {
         let self_closure = self.local(Type::Val(ValType::Closure));
@@ -226,6 +222,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             let env_local = *self.local_ids.get(var_id).unwrap();
             self.exprs.push(ExprAssign {
                 local: Some(env_local),
+                // TODO: 無駄なclone。Irの設計を見直す
                 expr: Expr::ClosureEnv(env_types.clone(), self_closure, i),
             });
         }
@@ -321,8 +318,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             .x
             .get_ref(type_map::key::<Used>())
             .local_metas
-            .get(&id)
-            .cloned();
+            .get(&id);
         let local = self.local(
             if self
                 .module_generator
@@ -342,7 +338,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             self.module_generator
                 .local_metas
                 .insert((self.id, local), VarMeta {
-                    name: ast_meta.name,
+                    name: ast_meta.name.clone(),
                 });
         }
         local
@@ -431,7 +427,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     .iter()
                     .map(|id| *self.local_ids.get(id).unwrap())
                     .collect::<Vec<_>>();
-                let (func_id, boxed_func_id) = self.module_generator.gen_func(x.clone(), lambda);
+                let (func_id, boxed_func_id) = self.module_generator.gen_func(x, lambda);
                 let func_local = self.local(ValType::FuncRef);
                 let boxed_func_local = self.local(ValType::FuncRef);
                 let unboxed = self.local(Type::Val(ValType::Closure));
