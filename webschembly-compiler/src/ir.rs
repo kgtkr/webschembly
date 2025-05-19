@@ -617,8 +617,26 @@ pub struct FuncType {
     pub ret: Type,
 }
 
+#[derive(Debug, Clone, Copy, From, Into, Hash, PartialEq, Eq)]
+pub struct ModuleId(usize);
+
+impl ModuleId {
+    pub fn display<'a>(&self, meta: &'a Meta) -> Display<'a, ModuleId> {
+        Display { value: *self, meta }
+    }
+}
+
+impl fmt::Display for Display<'_, ModuleId> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "module{}", self.value.0)?;
+
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Module {
+    pub id: ModuleId,
     pub funcs: TiVec<FuncId, Func>,
     pub entry: FuncId,
 }
@@ -630,6 +648,7 @@ impl Module {
 }
 impl fmt::Display for Display<'_, &'_ Module> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "module: {}", self.value.id.display(self.meta))?;
         writeln!(f, "entry: {}", self.value.entry.display(self.meta))?;
         for func in self.value.funcs.iter() {
             write!(f, "{}", func.display(self.meta))?;

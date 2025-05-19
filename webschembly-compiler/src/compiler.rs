@@ -10,6 +10,7 @@ use crate::wasm_generator;
 pub struct Compiler {
     ast_generator: ast::ASTGenerator,
     wasm_generator: wasm_generator::WasmGenerator,
+    ir_generator: ir_generator::IrGenerator,
 }
 
 impl Default for Compiler {
@@ -23,6 +24,7 @@ impl Compiler {
         Self {
             ast_generator: ast::ASTGenerator::new(),
             wasm_generator: wasm_generator::WasmGenerator::new(),
+            ir_generator: ir_generator::IrGenerator::new(),
         }
     }
 
@@ -35,14 +37,15 @@ impl Compiler {
         let sexprs =
             sexpr_parser::parse(tokens.as_slice()).map_err(|e| compiler_error!("{}", e))?;
         let ast = self.ast_generator.gen_ast(sexprs)?;
-        Ok(ir_generator::generate_ir(
+        let ir = self.ir_generator.generate_ir(
             &ast,
             ir_generator::Config {
                 allow_set_builtin: is_stdlib,
             },
             self.ast_generator.local_metas().clone(),
             self.ast_generator.global_metas().clone(),
-        ))
+        );
+        Ok(ir)
     }
 
     pub fn compile(&mut self, input: &str, is_stdlib: bool) -> crate::error::Result<Vec<u8>> {

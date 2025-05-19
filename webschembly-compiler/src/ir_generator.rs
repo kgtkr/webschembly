@@ -19,7 +19,37 @@ struct BasicBlockOptionalNext {
 }
 
 #[derive(Debug)]
-struct IrGenerator {
+pub struct IrGenerator {
+    module_counter: usize,
+}
+
+impl Default for IrGenerator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl IrGenerator {
+    pub fn new() -> Self {
+        Self { module_counter: 0 }
+    }
+
+    pub fn generate_ir(
+        &mut self,
+        ast: &ast::Ast<ast::Final>,
+        config: Config,
+        ast_local_metas: FxHashMap<ast::LocalVarId, ast::VarMeta>,
+        ast_global_metas: FxHashMap<ast::GlobalVarId, ast::VarMeta>,
+    ) -> (Module, Meta) {
+        let id = ModuleId::from(self.module_counter);
+        self.module_counter += 1;
+        let module_gen = ModuleGenerator::new(config, ast_local_metas, ast_global_metas);
+        module_gen.generate(id, ast)
+    }
+}
+
+#[derive(Debug)]
+struct ModuleGenerator {
     funcs: TiVec<FuncId, Func>,
     box_vars: FxHashSet<ast::LocalVarId>,
     config: Config,
@@ -30,7 +60,7 @@ struct IrGenerator {
     ast_global_metas: FxHashMap<ast::GlobalVarId, ast::VarMeta>,
 }
 
-impl IrGenerator {
+impl ModuleGenerator {
     fn new(
         config: Config,
         ast_local_metas: FxHashMap<ast::LocalVarId, ast::VarMeta>,
@@ -47,7 +77,7 @@ impl IrGenerator {
         }
     }
 
-    fn generate(mut self, ast: &ast::Ast<ast::Final>) -> (Module, Meta) {
+    fn generate(mut self, id: ModuleId, ast: &ast::Ast<ast::Final>) -> (Module, Meta) {
         let func_id = self.funcs.next_key();
         self.box_vars = ast.x.get_ref(type_map::key::<Used>()).box_vars.clone();
         let func = FuncGenerator::new(&mut self, func_id).entry_gen(ast);
@@ -56,6 +86,7 @@ impl IrGenerator {
         let meta = self.meta();
         (
             Module {
+                id,
                 funcs: self.funcs,
                 entry: func_id,
             },
@@ -94,19 +125,19 @@ struct FuncGenerator<'a> {
     local_ids: FxHashMap<ast::LocalVarId, LocalId>,
     bbs: TiVec<BasicBlockId, BasicBlockOptionalNext>,
     next_undecided_bb_ids: FxHashSet<BasicBlockId>,
-    ir_generator: &'a mut IrGenerator,
+    module_generator: &'a mut ModuleGenerator,
     exprs: Vec<ExprAssign>,
 }
 
 impl<'a> FuncGenerator<'a> {
-    fn new(ir_generator: &'a mut IrGenerator, id: FuncId) -> Self {
+    fn new(module_generator: &'a mut ModuleGenerator, id: FuncId) -> Self {
         Self {
             id,
             locals: TiVec::new(),
             local_ids: FxHashMap::default(),
             bbs: TiVec::new(),
             next_undecided_bb_ids: FxHashSet::default(),
-            ir_generator,
+            module_generator,
             exprs: Vec::new(),
         }
     }
@@ -164,7 +195,7 @@ impl<'a> FuncGenerator<'a> {
             .zip(&x.get_ref(type_map::key::<Used>()).args)
         {
             let local = self.define_ast_local(*arg);
-            if self.ir_generator.box_vars.contains(arg) {
+            if self.module_generator.box_vars.contains(arg) {
                 self.exprs.push(ExprAssign {
                     local: Some(local),
                     expr: Expr::CreateMutCell(Type::Boxed),
@@ -209,7 +240,7 @@ impl<'a> FuncGenerator<'a> {
 
         for id in &x.get_ref(type_map::key::<Used>()).defines {
             let local = self.define_ast_local(*id);
-            if self.ir_generator.box_vars.contains(id) {
+            if self.module_generator.box_vars.contains(id) {
                 self.exprs.push(ExprAssign {
                     local: Some(local),
                     expr: Expr::CreateMutCell(Type::Boxed),
@@ -285,15 +316,15 @@ impl<'a> FuncGenerator<'a> {
     }
 
     fn define_ast_local(&mut self, id: ast::LocalVarId) -> LocalId {
-        let ast_meta = self.ir_generator.ast_local_metas.get(&id).cloned();
-        let local = self.local(if self.ir_generator.box_vars.contains(&id) {
+        let ast_meta = self.module_generator.ast_local_metas.get(&id).cloned();
+        let local = self.local(if self.module_generator.box_vars.contains(&id) {
             LocalType::MutCell(Type::Boxed)
         } else {
             LocalType::Type(Type::Boxed)
         });
         self.local_ids.insert(id, local);
         if let Some(ast_meta) = ast_meta {
-            self.ir_generator
+            self.module_generator
                 .local_metas
                 .insert((self.id, local), VarMeta {
                     name: ast_meta.name,
@@ -385,7 +416,7 @@ impl<'a> FuncGenerator<'a> {
                     .iter()
                     .map(|id| *self.local_ids.get(id).unwrap())
                     .collect::<Vec<_>>();
-                let (func_id, boxed_func_id) = self.ir_generator.gen_func(x.clone(), lambda);
+                let (func_id, boxed_func_id) = self.module_generator.gen_func(x.clone(), lambda);
                 let func_local = self.local(ValType::FuncRef);
                 let boxed_func_local = self.local(ValType::FuncRef);
                 let unboxed = self.local(Type::Val(ValType::Closure));
@@ -552,7 +583,7 @@ impl<'a> FuncGenerator<'a> {
             }
             ast::Expr::Var(x, _) => match &x.get_ref(type_map::key::<Used>()).var_id {
                 ast::VarId::Local(id) => {
-                    if self.ir_generator.box_vars.contains(id) {
+                    if self.module_generator.box_vars.contains(id) {
                         self.exprs.push(ExprAssign {
                             local: result,
                             expr: Expr::DerefMutCell(Type::Boxed, *self.local_ids.get(id).unwrap()),
@@ -578,7 +609,7 @@ impl<'a> FuncGenerator<'a> {
             ast::Expr::Set(x, ast::Set { name, expr, .. }) => {
                 match &x.get_ref(type_map::key::<Used>()).var_id {
                     ast::VarId::Local(id) => {
-                        if self.ir_generator.box_vars.contains(id) {
+                        if self.module_generator.box_vars.contains(id) {
                             let boxed_local = self.local(Type::Boxed);
                             self.gen_expr(Some(boxed_local), expr);
                             let local = self.local_ids.get(id).unwrap();
@@ -601,7 +632,7 @@ impl<'a> FuncGenerator<'a> {
                     }
                     ast::VarId::Global(id) => {
                         if let Some(_) = ast::Builtin::from_name(name)
-                            && !self.ir_generator.config.allow_set_builtin
+                            && !self.module_generator.config.allow_set_builtin
                         {
                             let msg = self.local(Type::Val(ValType::String));
                             self.exprs.push(ExprAssign {
@@ -667,10 +698,10 @@ impl<'a> FuncGenerator<'a> {
     }
 
     fn global_id(&mut self, id: ast::GlobalVarId) -> GlobalId {
-        let ast_meta = self.ir_generator.ast_global_metas.get(&id);
+        let ast_meta = self.module_generator.ast_global_metas.get(&id);
         let id = GlobalId::from(id.0);
         if let Some(ast_meta) = ast_meta {
-            self.ir_generator.global_metas.insert(id, VarMeta {
+            self.module_generator.global_metas.insert(id, VarMeta {
                 name: ast_meta.name.clone(),
             });
         }
@@ -709,17 +740,6 @@ impl<'a> FuncGenerator<'a> {
         }
         bb_id
     }
-}
-
-pub fn generate_ir(
-    ast: &ast::Ast<ast::Final>,
-    config: Config,
-    ast_local_metas: FxHashMap<ast::LocalVarId, ast::VarMeta>,
-    ast_global_metas: FxHashMap<ast::GlobalVarId, ast::VarMeta>,
-) -> (Module, Meta) {
-    let ir_gen = IrGenerator::new(config, ast_local_metas, ast_global_metas);
-
-    ir_gen.generate(ast)
 }
 
 #[derive(Debug, Clone, Copy)]
