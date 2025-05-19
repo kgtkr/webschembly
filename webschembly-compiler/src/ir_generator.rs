@@ -19,9 +19,7 @@ struct BasicBlockOptionalNext {
 }
 
 #[derive(Debug)]
-pub struct IrGenerator {
-    module_counter: usize,
-}
+pub struct IrGenerator {}
 
 impl Default for IrGenerator {
     fn default() -> Self {
@@ -31,14 +29,12 @@ impl Default for IrGenerator {
 
 impl IrGenerator {
     pub fn new() -> Self {
-        Self { module_counter: 0 }
+        Self {}
     }
 
     pub fn generate_ir(&mut self, ast: &ast::Ast<ast::Final>, config: Config) -> Module {
-        let id = ModuleId::from(self.module_counter);
-        self.module_counter += 1;
         let module_gen = ModuleGenerator::new(config, ast);
-        module_gen.generate(id)
+        module_gen.generate()
     }
 }
 
@@ -63,7 +59,7 @@ impl<'a> ModuleGenerator<'a> {
         }
     }
 
-    fn generate(mut self, id: ModuleId) -> Module {
+    fn generate(mut self) -> Module {
         let func_id = self.funcs.next_key();
         let func = FuncGenerator::new(&mut self, func_id).entry_gen();
         self.funcs.push(func);
@@ -73,7 +69,6 @@ impl<'a> ModuleGenerator<'a> {
             global_metas: self.global_metas,
         };
         Module {
-            id,
             funcs: self.funcs,
             entry: func_id,
             meta,
