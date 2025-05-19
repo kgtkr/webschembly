@@ -86,6 +86,8 @@ impl From<ValType> for Type {
     }
 }
 
+// Box化可能な型
+// 基本的にSchemeの型に対応するがFuncRefなど例外もある
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, derive_more::Display)]
 pub enum ValType {
     #[display("bool")]
