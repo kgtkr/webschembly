@@ -49,8 +49,6 @@ pub enum LocalType {
     MutCell(Type),
     #[display("{}", _0)]
     Type(Type),
-    #[display("func_ref")]
-    FuncRef,
 }
 
 impl From<Type> for LocalType {
@@ -108,6 +106,8 @@ pub enum ValType {
     Char,
     #[display("vector")]
     Vector,
+    #[display("func_ref")]
+    FuncRef,
 }
 
 #[derive(Debug, Clone, Copy, From, Into, Hash, PartialEq, Eq)]

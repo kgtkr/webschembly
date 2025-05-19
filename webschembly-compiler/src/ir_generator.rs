@@ -386,8 +386,8 @@ impl<'a> FuncGenerator<'a> {
                     .map(|id| *self.local_ids.get(id).unwrap())
                     .collect::<Vec<_>>();
                 let (func_id, boxed_func_id) = self.ir_generator.gen_func(x.clone(), lambda);
-                let func_local = self.local(LocalType::FuncRef);
-                let boxed_func_local = self.local(LocalType::FuncRef);
+                let func_local = self.local(ValType::FuncRef);
+                let boxed_func_local = self.local(ValType::FuncRef);
                 let unboxed = self.local(Type::Val(ValType::Closure));
                 self.exprs.push(ExprAssign {
                     local: Some(func_local),
@@ -515,8 +515,8 @@ impl<'a> FuncGenerator<'a> {
                     self.gen_expr(Some(boxed_func_local), func);
 
                     // TODO: funcがクロージャかのチェック
-                    let closure_local = self.local(Type::Val(ValType::Closure));
-                    let func_local = self.local(LocalType::FuncRef);
+                    let closure_local = self.local(ValType::Closure);
+                    let func_local = self.local(ValType::FuncRef);
                     self.exprs.push(ExprAssign {
                         local: Some(closure_local),
                         expr: Expr::Unbox(ValType::Closure, boxed_func_local),

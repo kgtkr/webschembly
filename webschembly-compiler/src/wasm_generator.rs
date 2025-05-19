@@ -801,6 +801,10 @@ impl ModuleGenerator {
                         self.vector_type,
                     )));
                 }
+                ir::ValType::FuncRef => {
+                    function.instruction(&Instruction::LocalGet(Self::from_local_id(*val)));
+                    function.instruction(&Instruction::RefCastNonNull(HeapType::FUNC));
+                }
             },
             ir::Expr::Box(typ, val) => match typ {
                 ir::ValType::Bool => {
@@ -840,6 +844,9 @@ impl ModuleGenerator {
                     function.instruction(&Instruction::LocalGet(Self::from_local_id(*val)));
                 }
                 ir::ValType::Vector => {
+                    function.instruction(&Instruction::LocalGet(Self::from_local_id(*val)));
+                }
+                ir::ValType::FuncRef => {
                     function.instruction(&Instruction::LocalGet(Self::from_local_id(*val)));
                 }
             },
@@ -1074,10 +1081,6 @@ impl ModuleGenerator {
                 })
             }
             ir::LocalType::Type(ty) => self.convert_type(ty),
-            ir::LocalType::FuncRef => ValType::Ref(RefType {
-                nullable: false,
-                heap_type: HeapType::FUNC,
-            }),
         }
     }
 
@@ -1108,6 +1111,10 @@ impl ModuleGenerator {
                 ir::ValType::Vector => ValType::Ref(RefType {
                     nullable: false,
                     heap_type: HeapType::Concrete(self.vector_type),
+                }),
+                ir::ValType::FuncRef => ValType::Ref(RefType {
+                    nullable: false,
+                    heap_type: HeapType::FUNC,
                 }),
             },
         }
