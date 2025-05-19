@@ -19,25 +19,10 @@ pub struct WasmFuncType {
     pub results: Vec<ValType>,
 }
 
-#[derive(Debug)]
-pub struct WasmGenerator {}
-
-impl Default for WasmGenerator {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl WasmGenerator {
-    pub fn new() -> Self {
-        Self {}
-    }
-
-    pub fn generate(&mut self, module: &ir::Module) -> Vec<u8> {
-        let mut module_gen = ModuleGenerator::new();
-        let module = module_gen.generate(module);
-        module.finish()
-    }
+pub fn generate(module: &ir::Module) -> Vec<u8> {
+    let mut module_gen = ModuleGenerator::new();
+    let module = module_gen.generate(module);
+    module.finish()
 }
 
 #[derive(Debug)]
@@ -47,6 +32,7 @@ struct ModuleGenerator {
     global_count: u32,
     table_count: u32,
     // runtime functions
+    instantiate_module_func: u32,
     display_func: u32,
     display_fd_func: u32,
     string_to_symbol_func: u32,
@@ -94,6 +80,7 @@ impl ModuleGenerator {
             type_count: 0,
             func_count: 0,
             global_count: 0,
+            instantiate_module_func: 0,
             display_func: 0,
             display_fd_func: 0,
             string_to_symbol_func: 0,
@@ -424,6 +411,12 @@ impl ModuleGenerator {
             }),
         );
 
+        self.instantiate_module_func =
+            self.add_runtime_function("instantiate_module", WasmFuncType {
+                params: vec![ValType::I32],
+                results: vec![],
+            });
+
         self.display_func = self.add_runtime_function("display", WasmFuncType {
             params: vec![ValType::Ref(RefType {
                 nullable: false,
@@ -594,6 +587,10 @@ impl ModuleGenerator {
         expr: &ir::Expr,
     ) {
         match expr {
+            ir::Expr::InstantiateModule(id) => {
+                function.instruction(&Instruction::I32Const(usize::from(*id) as i32));
+                function.instruction(&Instruction::Call(self.instantiate_module_func));
+            }
             ir::Expr::Bool(b) => {
                 function.instruction(&Instruction::I32Const(if *b { 1 } else { 0 }));
             }

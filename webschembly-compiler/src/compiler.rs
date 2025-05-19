@@ -1,3 +1,5 @@
+use typed_index_collections::TiVec;
+
 use crate::ast;
 use crate::compiler_error;
 use crate::ir;
@@ -9,8 +11,8 @@ use crate::wasm_generator;
 #[derive(Debug)]
 pub struct Compiler {
     ast_generator: ast::ASTGenerator,
-    wasm_generator: wasm_generator::WasmGenerator,
     ir_generator: ir_generator::IrGenerator,
+    modules: TiVec<ir::ModuleId, ir::Module>,
 }
 
 impl Default for Compiler {
@@ -23,8 +25,8 @@ impl Compiler {
     pub fn new() -> Self {
         Self {
             ast_generator: ast::ASTGenerator::new(),
-            wasm_generator: wasm_generator::WasmGenerator::new(),
             ir_generator: ir_generator::IrGenerator::new(),
+            modules: TiVec::new(),
         }
     }
 
@@ -32,7 +34,7 @@ impl Compiler {
         &mut self,
         input: &str,
         is_stdlib: bool,
-    ) -> crate::error::Result<ir::Module> {
+    ) -> crate::error::Result<&ir::Module> {
         let tokens = lexer::lex(input)?;
         let sexprs =
             sexpr_parser::parse(tokens.as_slice()).map_err(|e| compiler_error!("{}", e))?;
@@ -40,16 +42,22 @@ impl Compiler {
         let module = self.ir_generator.generate_ir(&ast, ir_generator::Config {
             allow_set_builtin: is_stdlib,
         });
-        Ok(module)
+        self.modules.push(module);
+        Ok(self.modules.last().unwrap())
     }
 
     pub fn compile(&mut self, input: &str, is_stdlib: bool) -> crate::error::Result<Vec<u8>> {
         let module = self.compile_module(input, is_stdlib)?;
-        let code = self.wasm_generator.generate(&module);
+        let code = wasm_generator::generate(&module);
         Ok(code)
     }
 
     pub fn get_global_id(&self, name: &str) -> Option<i32> {
         self.ast_generator.get_global_id(name).map(|id| id.0 as i32)
+    }
+
+    pub fn instantiate_module(&self, module_id: ir::ModuleId) -> Vec<u8> {
+        let module = &self.modules[module_id];
+        wasm_generator::generate(module)
     }
 }

@@ -177,6 +177,7 @@ impl fmt::Display for Display<'_, FuncId> {
 
 #[derive(Debug, Clone)]
 pub enum Expr {
+    InstantiateModule(ModuleId),
     Bool(bool),
     Int(i64),
     String(String),
@@ -247,6 +248,9 @@ impl Expr {
 impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.value {
+            Expr::InstantiateModule(id) => {
+                write!(f, "instantiate_module({})", id.display(self.meta.meta))
+            }
             Expr::Bool(b) => write!(f, "{}", b),
             Expr::Int(i) => write!(f, "{}", i),
             Expr::String(s) => write!(f, "\"{}\"", s),

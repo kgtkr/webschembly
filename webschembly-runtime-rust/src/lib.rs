@@ -273,3 +273,25 @@ pub extern "C" fn get_global_id(buf_ptr: i32, buf_len: i32) -> i32 {
         compiler.get_global_id(&name).unwrap_or(-1)
     })
 }
+
+#[unsafe(no_mangle)]
+pub extern "C" fn instantiate_module(module_id: i32) {
+    let wasm = COMPILER.with(|compiler| {
+        let compiler = compiler.borrow();
+        compiler.instantiate_module(webschembly_compiler::ir::ModuleId::from(module_id as usize))
+    });
+
+    // TODO: load_src_innerと重複
+    // そもそもこんな処理いらないかも
+    let throw_error = {
+        let result = unsafe { env::js_instantiate(wasm.as_ptr() as i32, wasm.len() as i32) };
+        drop(wasm);
+        result != 0
+    };
+
+    if throw_error {
+        unsafe {
+            runtime::throw_webassembly_exception();
+        }
+    }
+}
