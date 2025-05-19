@@ -10,7 +10,6 @@ pub use builtin::*;
 pub use defined::*;
 pub use desugared::*;
 pub use parsed::*;
-use rustc_hash::FxHashMap;
 pub use tail_call::*;
 pub use used::*;
 
@@ -48,13 +47,5 @@ impl ASTGenerator {
 
     pub fn get_global_id(&self, name: &str) -> Option<GlobalVarId> {
         self.var_id_gen.get_global_id(name)
-    }
-
-    pub fn local_metas(&self) -> &FxHashMap<LocalVarId, VarMeta> {
-        &self.var_id_gen.local_metas
-    }
-
-    pub fn global_metas(&self) -> &FxHashMap<GlobalVarId, VarMeta> {
-        &self.var_id_gen.global_metas
     }
 }

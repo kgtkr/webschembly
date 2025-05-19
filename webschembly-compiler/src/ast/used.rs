@@ -31,6 +31,8 @@ pub enum VarId {
 pub struct UsedAstR {
     pub box_vars: FxHashSet<LocalVarId>,
     pub global_vars: FxHashSet<GlobalVarId>,
+    pub local_metas: FxHashMap<LocalVarId, VarMeta>,
+    pub global_metas: FxHashMap<GlobalVarId, VarMeta>,
 }
 
 #[derive(Debug, Clone)]
@@ -233,6 +235,8 @@ impl Ast<Used> {
                     .copied()
                     .collect(),
                 global_vars: var_id_gen.use_globals.clone(),
+                local_metas: var_id_gen.local_metas.clone(),
+                global_metas: var_id_gen.global_metas.clone(),
             }),
             exprs: new_exprs,
         }

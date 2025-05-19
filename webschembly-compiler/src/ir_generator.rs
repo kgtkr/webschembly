@@ -34,53 +34,41 @@ impl IrGenerator {
         Self { module_counter: 0 }
     }
 
-    pub fn generate_ir(
-        &mut self,
-        ast: &ast::Ast<ast::Final>,
-        config: Config,
-        ast_local_metas: FxHashMap<ast::LocalVarId, ast::VarMeta>,
-        ast_global_metas: FxHashMap<ast::GlobalVarId, ast::VarMeta>,
-    ) -> Module {
+    pub fn generate_ir(&mut self, ast: &ast::Ast<ast::Final>, config: Config) -> Module {
         let id = ModuleId::from(self.module_counter);
         self.module_counter += 1;
-        let module_gen = ModuleGenerator::new(config, ast_local_metas, ast_global_metas);
-        module_gen.generate(id, ast)
+        let module_gen = ModuleGenerator::new(config, ast);
+        module_gen.generate(id)
     }
 }
 
 #[derive(Debug)]
-struct ModuleGenerator {
+struct ModuleGenerator<'a> {
+    ast: &'a ast::Ast<ast::Final>,
     funcs: TiVec<FuncId, Func>,
     box_vars: FxHashSet<ast::LocalVarId>,
     config: Config,
     // メタ情報
     local_metas: FxHashMap<(FuncId, LocalId), VarMeta>,
     global_metas: FxHashMap<GlobalId, VarMeta>,
-    ast_local_metas: FxHashMap<ast::LocalVarId, ast::VarMeta>,
-    ast_global_metas: FxHashMap<ast::GlobalVarId, ast::VarMeta>,
 }
 
-impl ModuleGenerator {
-    fn new(
-        config: Config,
-        ast_local_metas: FxHashMap<ast::LocalVarId, ast::VarMeta>,
-        ast_global_metas: FxHashMap<ast::GlobalVarId, ast::VarMeta>,
-    ) -> Self {
+impl<'a> ModuleGenerator<'a> {
+    fn new(config: Config, ast: &'a ast::Ast<ast::Final>) -> Self {
         Self {
+            ast,
             funcs: TiVec::new(),
             box_vars: FxHashSet::default(),
             config,
             local_metas: FxHashMap::default(),
             global_metas: FxHashMap::default(),
-            ast_local_metas,
-            ast_global_metas,
         }
     }
 
-    fn generate(mut self, id: ModuleId, ast: &ast::Ast<ast::Final>) -> Module {
+    fn generate(mut self, id: ModuleId) -> Module {
         let func_id = self.funcs.next_key();
-        self.box_vars = ast.x.get_ref(type_map::key::<Used>()).box_vars.clone();
-        let func = FuncGenerator::new(&mut self, func_id).entry_gen(ast);
+        self.box_vars = self.ast.x.get_ref(type_map::key::<Used>()).box_vars.clone();
+        let func = FuncGenerator::new(&mut self, func_id).entry_gen();
         self.funcs.push(func);
 
         let meta = self.meta();
@@ -117,18 +105,18 @@ impl ModuleGenerator {
 }
 
 #[derive(Debug)]
-struct FuncGenerator<'a> {
+struct FuncGenerator<'a, 'b> {
     id: FuncId,
     locals: TiVec<LocalId, LocalType>,
     local_ids: FxHashMap<ast::LocalVarId, LocalId>,
     bbs: TiVec<BasicBlockId, BasicBlockOptionalNext>,
     next_undecided_bb_ids: FxHashSet<BasicBlockId>,
-    module_generator: &'a mut ModuleGenerator,
+    module_generator: &'a mut ModuleGenerator<'b>,
     exprs: Vec<ExprAssign>,
 }
 
-impl<'a> FuncGenerator<'a> {
-    fn new(module_generator: &'a mut ModuleGenerator, id: FuncId) -> Self {
+impl<'a, 'b> FuncGenerator<'a, 'b> {
+    fn new(module_generator: &'a mut ModuleGenerator<'b>, id: FuncId) -> Self {
         Self {
             id,
             locals: TiVec::new(),
@@ -140,13 +128,15 @@ impl<'a> FuncGenerator<'a> {
         }
     }
 
-    fn entry_gen(mut self, ast: &ast::Ast<ast::Final>) -> Func {
+    fn entry_gen(mut self) -> Func {
         let boxed_local = self.local(Type::Boxed);
 
         self.exprs.push(ExprAssign {
             local: None,
             expr: Expr::InitGlobals(
-                ast.x
+                self.module_generator
+                    .ast
+                    .x
                     .get_ref(type_map::key::<Used>())
                     .global_vars
                     .iter()
@@ -156,7 +146,7 @@ impl<'a> FuncGenerator<'a> {
                     .unwrap_or(0),
             ),
         });
-        self.gen_exprs(Some(boxed_local), &ast.exprs);
+        self.gen_exprs(Some(boxed_local), &self.module_generator.ast.exprs);
         self.close_bb(Some(BasicBlockNext::Return));
         Func {
             id: self.id,
@@ -314,7 +304,14 @@ impl<'a> FuncGenerator<'a> {
     }
 
     fn define_ast_local(&mut self, id: ast::LocalVarId) -> LocalId {
-        let ast_meta = self.module_generator.ast_local_metas.get(&id).cloned();
+        let ast_meta = self
+            .module_generator
+            .ast
+            .x
+            .get_ref(type_map::key::<Used>())
+            .local_metas
+            .get(&id)
+            .cloned();
         let local = self.local(if self.module_generator.box_vars.contains(&id) {
             LocalType::MutCell(Type::Boxed)
         } else {
@@ -696,7 +693,13 @@ impl<'a> FuncGenerator<'a> {
     }
 
     fn global_id(&mut self, id: ast::GlobalVarId) -> GlobalId {
-        let ast_meta = self.module_generator.ast_global_metas.get(&id);
+        let ast_meta = self
+            .module_generator
+            .ast
+            .x
+            .get_ref(type_map::key::<Used>())
+            .global_metas
+            .get(&id);
         let id = GlobalId::from(id.0);
         if let Some(ast_meta) = ast_meta {
             self.module_generator.global_metas.insert(id, VarMeta {
