@@ -28,16 +28,16 @@ impl Compiler {
         }
     }
 
-    pub fn compile_ir(
+    pub fn compile_module(
         &mut self,
         input: &str,
         is_stdlib: bool,
-    ) -> crate::error::Result<(ir::Module, ir::Meta)> {
+    ) -> crate::error::Result<ir::Module> {
         let tokens = lexer::lex(input)?;
         let sexprs =
             sexpr_parser::parse(tokens.as_slice()).map_err(|e| compiler_error!("{}", e))?;
         let ast = self.ast_generator.gen_ast(sexprs)?;
-        let ir = self.ir_generator.generate_ir(
+        let module = self.ir_generator.generate_ir(
             &ast,
             ir_generator::Config {
                 allow_set_builtin: is_stdlib,
@@ -45,12 +45,12 @@ impl Compiler {
             self.ast_generator.local_metas().clone(),
             self.ast_generator.global_metas().clone(),
         );
-        Ok(ir)
+        Ok(module)
     }
 
     pub fn compile(&mut self, input: &str, is_stdlib: bool) -> crate::error::Result<Vec<u8>> {
-        let (ir, _) = self.compile_ir(input, is_stdlib)?;
-        let code = self.wasm_generator.generate(&ir);
+        let module = self.compile_module(input, is_stdlib)?;
+        let code = self.wasm_generator.generate(&module);
         Ok(code)
     }
 

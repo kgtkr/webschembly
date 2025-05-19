@@ -55,8 +55,8 @@ fn main() -> anyhow::Result<()> {
         let mut o = std::fs::File::create(output)?;
 
         if args.ir {
-            let (ir, meta) = compiler.compile_ir(&src, is_stdlib)?;
-            let s = ir.display(&meta).to_string();
+            let module = compiler.compile_module(&src, is_stdlib)?;
+            let s = module.display().to_string();
             let bs = s.as_bytes();
             o.write_all(bs)?;
         } else {

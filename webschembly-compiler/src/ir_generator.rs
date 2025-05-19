@@ -40,7 +40,7 @@ impl IrGenerator {
         config: Config,
         ast_local_metas: FxHashMap<ast::LocalVarId, ast::VarMeta>,
         ast_global_metas: FxHashMap<ast::GlobalVarId, ast::VarMeta>,
-    ) -> (Module, Meta) {
+    ) -> Module {
         let id = ModuleId::from(self.module_counter);
         self.module_counter += 1;
         let module_gen = ModuleGenerator::new(config, ast_local_metas, ast_global_metas);
@@ -77,21 +77,19 @@ impl ModuleGenerator {
         }
     }
 
-    fn generate(mut self, id: ModuleId, ast: &ast::Ast<ast::Final>) -> (Module, Meta) {
+    fn generate(mut self, id: ModuleId, ast: &ast::Ast<ast::Final>) -> Module {
         let func_id = self.funcs.next_key();
         self.box_vars = ast.x.get_ref(type_map::key::<Used>()).box_vars.clone();
         let func = FuncGenerator::new(&mut self, func_id).entry_gen(ast);
         self.funcs.push(func);
 
         let meta = self.meta();
-        (
-            Module {
-                id,
-                funcs: self.funcs,
-                entry: func_id,
-            },
+        Module {
+            id,
+            funcs: self.funcs,
+            entry: func_id,
             meta,
-        )
+        }
     }
 
     fn gen_func(

@@ -639,11 +639,15 @@ pub struct Module {
     pub id: ModuleId,
     pub funcs: TiVec<FuncId, Func>,
     pub entry: FuncId,
+    pub meta: Meta,
 }
 
 impl Module {
-    pub fn display<'a>(&self, meta: &'a Meta) -> Display<'a, &'_ Module> {
-        Display { value: self, meta }
+    pub fn display(&self) -> Display<'_, &Module> {
+        Display {
+            value: self,
+            meta: &self.meta,
+        }
     }
 }
 impl fmt::Display for Display<'_, &'_ Module> {
