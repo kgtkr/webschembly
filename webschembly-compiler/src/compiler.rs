@@ -1,5 +1,3 @@
-use typed_index_collections::TiVec;
-
 use crate::ast;
 use crate::compiler_error;
 use crate::ir;
@@ -12,7 +10,6 @@ use crate::wasm_generator;
 pub struct Compiler {
     ast_generator: ast::ASTGenerator,
     ir_generator: ir_generator::IrGenerator,
-    modules: TiVec<ir::ModuleId, ir::Module>,
 }
 
 impl Default for Compiler {
@@ -26,7 +23,6 @@ impl Compiler {
         Self {
             ast_generator: ast::ASTGenerator::new(),
             ir_generator: ir_generator::IrGenerator::new(),
-            modules: TiVec::new(),
         }
     }
 
@@ -39,11 +35,13 @@ impl Compiler {
         let sexprs =
             sexpr_parser::parse(tokens.as_slice()).map_err(|e| compiler_error!("{}", e))?;
         let ast = self.ast_generator.gen_ast(sexprs)?;
-        let module = self.ir_generator.generate_ir(&ast, ir_generator::Config {
-            allow_set_builtin: is_stdlib,
-        });
-        self.modules.push(module);
-        Ok(self.modules.last().unwrap())
+        let module = self
+            .ir_generator
+            .generate_and_register_module(&ast, ir_generator::Config {
+                allow_set_builtin: is_stdlib,
+            });
+
+        Ok(module)
     }
 
     pub fn compile(&mut self, input: &str, is_stdlib: bool) -> crate::error::Result<Vec<u8>> {
@@ -57,7 +55,7 @@ impl Compiler {
     }
 
     pub fn instantiate_module(&self, module_id: ir::ModuleId) -> Vec<u8> {
-        let module = &self.modules[module_id];
+        let module = self.ir_generator.get_module(module_id);
         wasm_generator::generate(module)
     }
 }

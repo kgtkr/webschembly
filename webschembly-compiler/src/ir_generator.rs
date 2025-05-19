@@ -19,7 +19,13 @@ struct BasicBlockOptionalNext {
 }
 
 #[derive(Debug)]
-pub struct IrGenerator {}
+pub struct IrGenerator {
+    modules: TiVec<ModuleId, Module>,
+    global_count: usize,
+    // GlobalIdのうち、ast::GlobalVarIdに対応するもの
+    // 全てのGlobalIdがast::GlobalVarIdに対応するわけではない
+    global_ids: FxHashMap<ast::GlobalVarId, GlobalId>,
+}
 
 impl Default for IrGenerator {
     fn default() -> Self {
@@ -29,17 +35,44 @@ impl Default for IrGenerator {
 
 impl IrGenerator {
     pub fn new() -> Self {
-        Self {}
+        Self {
+            modules: TiVec::new(),
+            global_count: 0,
+            global_ids: FxHashMap::default(),
+        }
     }
 
-    pub fn generate_ir(&mut self, ast: &ast::Ast<ast::Final>, config: Config) -> Module {
-        let module_gen = ModuleGenerator::new(config, ast);
-        module_gen.generate()
+    pub fn generate_and_register_module(
+        &mut self,
+        ast: &ast::Ast<ast::Final>,
+        config: Config,
+    ) -> &Module {
+        let module = self.generate_module(ast, config);
+
+        self.modules.push(module);
+        self.modules.last().unwrap()
+    }
+
+    fn generate_module(&mut self, ast: &ast::Ast<ast::Final>, config: Config) -> Module {
+        let module_gen = ModuleGenerator::new(config, self, ast);
+        let module = module_gen.generate();
+        module
+    }
+
+    pub fn get_module(&self, id: ModuleId) -> &Module {
+        self.modules.get(id).unwrap()
+    }
+
+    fn gen_global_id(&mut self) -> GlobalId {
+        let id = GlobalId::from(self.global_count);
+        self.global_count += 1;
+        id
     }
 }
 
 #[derive(Debug)]
 struct ModuleGenerator<'a> {
+    ir_generator: &'a mut IrGenerator,
     ast: &'a ast::Ast<ast::Final>,
     funcs: TiVec<FuncId, Func>,
     config: Config,
@@ -49,9 +82,14 @@ struct ModuleGenerator<'a> {
 }
 
 impl<'a> ModuleGenerator<'a> {
-    fn new(config: Config, ast: &'a ast::Ast<ast::Final>) -> Self {
+    fn new(
+        config: Config,
+        ir_generator: &'a mut IrGenerator,
+        ast: &'a ast::Ast<ast::Final>,
+    ) -> Self {
         Self {
             ast,
+            ir_generator,
             funcs: TiVec::new(),
             config,
             local_metas: FxHashMap::default(),
@@ -718,20 +756,30 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
     }
 
     fn global_id(&mut self, id: ast::GlobalVarId) -> GlobalId {
-        let ast_meta = self
-            .module_generator
-            .ast
-            .x
-            .get_ref(type_map::key::<Used>())
-            .global_metas
-            .get(&id);
-        let id = GlobalId::from(id.0);
-        if let Some(ast_meta) = ast_meta {
-            self.module_generator.global_metas.insert(id, VarMeta {
-                name: ast_meta.name.clone(),
-            });
+        if let Some(&global_id) = self.module_generator.ir_generator.global_ids.get(&id) {
+            global_id
+        } else {
+            let ast_meta = self
+                .module_generator
+                .ast
+                .x
+                .get_ref(type_map::key::<Used>())
+                .global_metas
+                .get(&id);
+            let global_id = self.module_generator.ir_generator.gen_global_id();
+            self.module_generator
+                .ir_generator
+                .global_ids
+                .insert(id, global_id);
+            if let Some(ast_meta) = ast_meta {
+                self.module_generator
+                    .global_metas
+                    .insert(global_id, VarMeta {
+                        name: ast_meta.name.clone(),
+                    });
+            }
+            global_id
         }
-        id
     }
 
     fn gen_exprs(&mut self, result: Option<LocalId>, exprs: &[ast::Expr<ast::Final>]) {
