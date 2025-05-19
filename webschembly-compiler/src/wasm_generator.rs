@@ -33,9 +33,9 @@ impl WasmGenerator {
         Self {}
     }
 
-    pub fn generate(&mut self, ir: &ir::Ir) -> Vec<u8> {
+    pub fn generate(&mut self, module: &ir::Module) -> Vec<u8> {
         let mut module_gen = ModuleGenerator::new();
-        let module = module_gen.generate(ir);
+        let module = module_gen.generate(module);
         module.finish()
     }
 }
@@ -223,7 +223,7 @@ impl ModuleGenerator {
     // const STRING_LEN_FIELD: u32 = 1;
     // const STRING_OFFSET_FIELD: u32 = 2;
 
-    pub fn generate(&mut self, ir: &ir::Ir) -> Module {
+    pub fn generate(&mut self, module: &ir::Module) -> Module {
         self.nil_type = self.type_count;
         self.type_count += 1;
         self.types.ty().struct_(vec![]);
@@ -470,12 +470,12 @@ impl ModuleGenerator {
                 results: vec![],
             });
 
-        for func in ir.funcs.iter() {
+        for func in module.funcs.iter() {
             self.gen_func(func);
         }
 
         self.exports
-            .export("start", ExportKind::Func, self.func_indices[&ir.entry]);
+            .export("start", ExportKind::Func, self.func_indices[&module.entry]);
 
         let mut module = Module::new();
         module

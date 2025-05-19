@@ -47,7 +47,7 @@ impl IrGenerator {
         }
     }
 
-    fn generate(mut self, ast: &ast::Ast<ast::Final>) -> (Ir, Meta) {
+    fn generate(mut self, ast: &ast::Ast<ast::Final>) -> (Module, Meta) {
         let func_id = self.funcs.next_key();
         self.box_vars = ast.x.get_ref(type_map::key::<Used>()).box_vars.clone();
         let func = FuncGenerator::new(&mut self, func_id).entry_gen(ast);
@@ -55,7 +55,7 @@ impl IrGenerator {
 
         let meta = self.meta();
         (
-            Ir {
+            Module {
                 funcs: self.funcs,
                 entry: func_id,
             },
@@ -716,7 +716,7 @@ pub fn generate_ir(
     config: Config,
     ast_local_metas: FxHashMap<ast::LocalVarId, ast::VarMeta>,
     ast_global_metas: FxHashMap<ast::GlobalVarId, ast::VarMeta>,
-) -> (Ir, Meta) {
+) -> (Module, Meta) {
     let ir_gen = IrGenerator::new(config, ast_local_metas, ast_global_metas);
 
     ir_gen.generate(ast)

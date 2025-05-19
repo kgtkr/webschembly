@@ -30,7 +30,7 @@ impl Compiler {
         &mut self,
         input: &str,
         is_stdlib: bool,
-    ) -> crate::error::Result<(ir::Ir, ir::Meta)> {
+    ) -> crate::error::Result<(ir::Module, ir::Meta)> {
         let tokens = lexer::lex(input)?;
         let sexprs =
             sexpr_parser::parse(tokens.as_slice()).map_err(|e| compiler_error!("{}", e))?;

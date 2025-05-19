@@ -616,17 +616,17 @@ pub struct FuncType {
 }
 
 #[derive(Debug, Clone)]
-pub struct Ir {
+pub struct Module {
     pub funcs: TiVec<FuncId, Func>,
     pub entry: FuncId,
 }
 
-impl Ir {
-    pub fn display<'a>(&self, meta: &'a Meta) -> Display<'a, &'_ Ir> {
+impl Module {
+    pub fn display<'a>(&self, meta: &'a Meta) -> Display<'a, &'_ Module> {
         Display { value: self, meta }
     }
 }
-impl fmt::Display for Display<'_, &'_ Ir> {
+impl fmt::Display for Display<'_, &'_ Module> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "entry: {}", self.value.entry.display(self.meta))?;
         for func in self.value.funcs.iter() {
