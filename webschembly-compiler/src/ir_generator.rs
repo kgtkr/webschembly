@@ -46,7 +46,6 @@ impl IrGenerator {
 struct ModuleGenerator<'a> {
     ast: &'a ast::Ast<ast::Final>,
     funcs: TiVec<FuncId, Func>,
-    box_vars: FxHashSet<ast::LocalVarId>,
     config: Config,
     // メタ情報
     local_metas: FxHashMap<(FuncId, LocalId), VarMeta>,
@@ -58,7 +57,6 @@ impl<'a> ModuleGenerator<'a> {
         Self {
             ast,
             funcs: TiVec::new(),
-            box_vars: FxHashSet::default(),
             config,
             local_metas: FxHashMap::default(),
             global_metas: FxHashMap::default(),
@@ -67,7 +65,6 @@ impl<'a> ModuleGenerator<'a> {
 
     fn generate(mut self, id: ModuleId) -> Module {
         let func_id = self.funcs.next_key();
-        self.box_vars = self.ast.x.get_ref(type_map::key::<Used>()).box_vars.clone();
         let func = FuncGenerator::new(&mut self, func_id).entry_gen();
         self.funcs.push(func);
 
@@ -183,7 +180,14 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             .zip(&x.get_ref(type_map::key::<Used>()).args)
         {
             let local = self.define_ast_local(*arg);
-            if self.module_generator.box_vars.contains(arg) {
+            if self
+                .module_generator
+                .ast
+                .x
+                .get_ref(type_map::key::<Used>())
+                .box_vars
+                .contains(arg)
+            {
                 self.exprs.push(ExprAssign {
                     local: Some(local),
                     expr: Expr::CreateMutCell(Type::Boxed),
@@ -228,7 +232,14 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
 
         for id in &x.get_ref(type_map::key::<Used>()).defines {
             let local = self.define_ast_local(*id);
-            if self.module_generator.box_vars.contains(id) {
+            if self
+                .module_generator
+                .ast
+                .x
+                .get_ref(type_map::key::<Used>())
+                .box_vars
+                .contains(id)
+            {
                 self.exprs.push(ExprAssign {
                     local: Some(local),
                     expr: Expr::CreateMutCell(Type::Boxed),
@@ -312,11 +323,20 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             .local_metas
             .get(&id)
             .cloned();
-        let local = self.local(if self.module_generator.box_vars.contains(&id) {
-            LocalType::MutCell(Type::Boxed)
-        } else {
-            LocalType::Type(Type::Boxed)
-        });
+        let local = self.local(
+            if self
+                .module_generator
+                .ast
+                .x
+                .get_ref(type_map::key::<Used>())
+                .box_vars
+                .contains(&id)
+            {
+                LocalType::MutCell(Type::Boxed)
+            } else {
+                LocalType::Type(Type::Boxed)
+            },
+        );
         self.local_ids.insert(id, local);
         if let Some(ast_meta) = ast_meta {
             self.module_generator
@@ -578,7 +598,14 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             }
             ast::Expr::Var(x, _) => match &x.get_ref(type_map::key::<Used>()).var_id {
                 ast::VarId::Local(id) => {
-                    if self.module_generator.box_vars.contains(id) {
+                    if self
+                        .module_generator
+                        .ast
+                        .x
+                        .get_ref(type_map::key::<Used>())
+                        .box_vars
+                        .contains(id)
+                    {
                         self.exprs.push(ExprAssign {
                             local: result,
                             expr: Expr::DerefMutCell(Type::Boxed, *self.local_ids.get(id).unwrap()),
@@ -604,7 +631,14 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             ast::Expr::Set(x, ast::Set { name, expr, .. }) => {
                 match &x.get_ref(type_map::key::<Used>()).var_id {
                     ast::VarId::Local(id) => {
-                        if self.module_generator.box_vars.contains(id) {
+                        if self
+                            .module_generator
+                            .ast
+                            .x
+                            .get_ref(type_map::key::<Used>())
+                            .box_vars
+                            .contains(id)
+                        {
                             let boxed_local = self.local(Type::Boxed);
                             self.gen_expr(Some(boxed_local), expr);
                             let local = self.local_ids.get(id).unwrap();
