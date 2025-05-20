@@ -414,7 +414,7 @@ impl ModuleGenerator {
         self.instantiate_module_func =
             self.add_runtime_function("instantiate_module", WasmFuncType {
                 params: vec![ValType::I32],
-                results: vec![],
+                results: vec![ValType::I32],
             });
 
         self.display_func = self.add_runtime_function("display", WasmFuncType {
@@ -464,6 +464,13 @@ impl ModuleGenerator {
             });
 
         for func in module.funcs.iter() {
+            let func_idx = self.func_count;
+            self.func_count += 1;
+            self.func_indices.insert(func.id, func_idx);
+            self.elements
+                .declared(Elements::Functions(Cow::Borrowed(&[func_idx])));
+        }
+        for func in module.funcs.iter() {
             self.gen_func(func);
         }
 
@@ -500,9 +507,6 @@ impl ModuleGenerator {
     fn gen_func(&mut self, func: &ir::Func) {
         let type_idx = self.func_type_from_ir(&func.func_type());
 
-        let func_idx = self.func_count;
-        self.func_count += 1;
-
         let mut function = Function::new(
             func.locals
                 .iter()
@@ -521,10 +525,6 @@ impl ModuleGenerator {
 
         function.instruction(&Instruction::Unreachable); // TODO: 型チェックを通すため
         function.instruction(&Instruction::End);
-
-        self.func_indices.insert(func.id, func_idx);
-        self.elements
-            .declared(Elements::Functions(Cow::Borrowed(&[func_idx])));
 
         self.functions.function(type_idx);
         self.code.function(&function);
@@ -972,6 +972,11 @@ impl ModuleGenerator {
                 function.instruction(&Instruction::LocalGet(Self::from_local_id(*lhs)));
                 function.instruction(&Instruction::LocalGet(Self::from_local_id(*rhs)));
                 function.instruction(&Instruction::RefEq);
+            }
+            ir::Expr::Not(val) => {
+                function.instruction(&Instruction::LocalGet(Self::from_local_id(*val)));
+                function.instruction(&Instruction::I32Const(1));
+                function.instruction(&Instruction::I32Xor);
             }
             ir::Expr::Car(val) => {
                 function.instruction(&Instruction::LocalGet(Self::from_local_id(*val)));

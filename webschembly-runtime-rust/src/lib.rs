@@ -263,11 +263,13 @@ pub extern "C" fn get_global_id(buf_ptr: i32, buf_len: i32) -> i32 {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn instantiate_module(module_id: i32) {
+pub extern "C" fn instantiate_module(module_id: i32) -> i32 {
     let wasm = COMPILER.with(|compiler| {
         let compiler = compiler.borrow();
         compiler.instantiate_module(webschembly_compiler::ir::ModuleId::from(module_id as usize))
     });
 
     unsafe { env::js_instantiate(wasm.as_ptr() as i32, wasm.len() as i32) }
+
+    0
 }

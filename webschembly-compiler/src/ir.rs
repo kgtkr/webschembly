@@ -228,6 +228,7 @@ pub enum Expr {
     VectorRef(LocalId, LocalId),
     VectorSet(LocalId, LocalId, LocalId),
     Eq(LocalId, LocalId),
+    Not(LocalId),
     Car(LocalId),
     Cdr(LocalId),
     SymbolToString(LocalId),
@@ -395,6 +396,7 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                 )
             }
             Expr::Eq(a, b) => write!(f, "eq({}, {})", a.display(self.meta), b.display(self.meta)),
+            Expr::Not(id) => write!(f, "not({})", id.display(self.meta)),
             Expr::Car(id) => write!(f, "car({})", id.display(self.meta)),
             Expr::Cdr(id) => write!(f, "cdr({})", id.display(self.meta)),
             Expr::SymbolToString(id) => write!(f, "symbol_to_string({})", id.display(self.meta)),
