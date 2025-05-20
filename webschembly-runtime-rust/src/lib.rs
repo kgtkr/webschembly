@@ -92,28 +92,16 @@ fn load_src_inner(src: String, is_stdlib: bool) {
         compiler.compile(&src, is_stdlib)
     });
 
-    let (error_msg, throw_error) = match wasm {
-        Ok(wasm) => {
-            let result = unsafe { env::js_instantiate(wasm.as_ptr() as i32, wasm.len() as i32) };
-            drop(wasm);
-            if result == 0 {
-                (None, false)
-            } else {
-                (None, true)
+    match wasm {
+        Ok(wasm) => unsafe { env::js_instantiate(wasm.as_ptr() as i32, wasm.len() as i32) },
+        Err(err) => {
+            let error_msg = format!("{}\n", err);
+            WRITERS.with(|writers| {
+                get_writer(&mut writers.borrow_mut(), STDERR_FD).write_buf(error_msg.as_bytes())
+            });
+            unsafe {
+                runtime::throw_webassembly_exception();
             }
-        }
-        Err(err) => (Some(format!("{}\n", err)), true),
-    };
-
-    if let Some(error_msg) = error_msg {
-        WRITERS.with(|writers| {
-            get_writer(&mut writers.borrow_mut(), STDERR_FD).write_buf(error_msg.as_bytes())
-        });
-    }
-
-    if throw_error {
-        unsafe {
-            runtime::throw_webassembly_exception();
         }
     }
 }
@@ -281,17 +269,5 @@ pub extern "C" fn instantiate_module(module_id: i32) {
         compiler.instantiate_module(webschembly_compiler::ir::ModuleId::from(module_id as usize))
     });
 
-    // TODO: load_src_innerと重複
-    // そもそもこんな処理いらないかも
-    let throw_error = {
-        let result = unsafe { env::js_instantiate(wasm.as_ptr() as i32, wasm.len() as i32) };
-        drop(wasm);
-        result != 0
-    };
-
-    if throw_error {
-        unsafe {
-            runtime::throw_webassembly_exception();
-        }
-    }
+    unsafe { env::js_instantiate(wasm.as_ptr() as i32, wasm.len() as i32) }
 }

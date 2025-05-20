@@ -16,34 +16,22 @@ export function createRuntime(
         importObject
       );
 
-      try {
-        const result = instance.exports.start();
-        if (printEvalResult) {
-          const writeClosure = runtimeInstance.exports.get_global(
-            writePtr,
-            writeLen
-          );
-          const writeParams = runtimeInstance.exports.new_vector(1);
-          runtimeInstance.exports.set_vector(writeParams, 0, result);
-          runtimeInstance.exports.call_closure(writeClosure, writeParams);
+      const result = instance.exports.start();
+      if (printEvalResult) {
+        const writeClosure = runtimeInstance.exports.get_global(
+          writePtr,
+          writeLen
+        );
+        const writeParams = runtimeInstance.exports.new_vector(1);
+        runtimeInstance.exports.set_vector(writeParams, 0, result);
+        runtimeInstance.exports.call_closure(writeClosure, writeParams);
 
-          const newlineClosure = runtimeInstance.exports.get_global(
-            newlinePtr,
-            newlineLen
-          );
-          const newlineParams = runtimeInstance.exports.new_vector(0);
-          runtimeInstance.exports.call_closure(newlineClosure, newlineParams);
-        }
-        return 0;
-      } catch (e) {
-        if (
-          e instanceof WebAssembly.Exception &&
-          e.is(runtimeInstance.exports.WEBSCHEMBLY_EXCEPTION)
-        ) {
-          return -1;
-        } else {
-          throw e;
-        }
+        const newlineClosure = runtimeInstance.exports.get_global(
+          newlinePtr,
+          newlineLen
+        );
+        const newlineParams = runtimeInstance.exports.new_vector(0);
+        runtimeInstance.exports.call_closure(newlineClosure, newlineParams);
       }
     },
     js_webschembly_log: (bufPtr, bufLen) => {
