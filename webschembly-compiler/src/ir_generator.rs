@@ -429,7 +429,7 @@ impl IrGenerator {
 struct ModuleGenerator<'a> {
     ir_generator: &'a mut IrGenerator,
     ast: &'a ast::Ast<ast::Final>,
-    funcs: TiVec<FuncId, Func>,
+    funcs: TiVec<FuncId, Option<Func>>,
     config: Config,
     // メタ情報
     local_metas: FxHashMap<(FuncId, LocalId), VarMeta>,
@@ -453,16 +453,16 @@ impl<'a> ModuleGenerator<'a> {
     }
 
     fn generate(mut self) -> Module {
-        let func_id = self.funcs.next_key();
+        let func_id = self.funcs.push_and_get_key(None);
         let func = FuncGenerator::new(&mut self, func_id).entry_gen();
-        self.funcs.push(func);
+        self.funcs[func_id] = Some(func);
 
         let meta = Meta {
             local_metas: self.local_metas,
             global_metas: self.global_metas,
         };
         Module {
-            funcs: self.funcs,
+            funcs: self.funcs.into_iter().map(|f| f.unwrap()).collect(),
             entry: func_id,
             meta,
         }
@@ -473,13 +473,13 @@ impl<'a> ModuleGenerator<'a> {
         x: &RunX<ast::LambdaX, ast::Final>,
         lambda: &ast::Lambda<ast::Final>,
     ) -> (FuncId, FuncId) {
-        let id = self.funcs.next_key();
+        let id = self.funcs.push_and_get_key(None);
         let func = FuncGenerator::new(self, id).lambda_gen(x, lambda);
-        self.funcs.push(func);
+        self.funcs[id] = Some(func);
 
-        let boxed_id = self.funcs.next_key();
+        let boxed_id = self.funcs.push_and_get_key(None);
         let boxed_func = FuncGenerator::new(self, boxed_id).boxed_func_gen(id, lambda.args.len());
-        self.funcs.push(boxed_func);
+        self.funcs[boxed_id] = Some(boxed_func);
 
         (id, boxed_id)
     }

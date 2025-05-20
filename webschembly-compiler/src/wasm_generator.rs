@@ -66,6 +66,7 @@ struct ModuleGenerator {
     closure_types: FxHashMap<Vec<ValType>, u32>, // env types -> type index
     func_types: FxHashMap<WasmFuncType, u32>,
     closure_type_fields: Vec<FieldType>,
+    func_ref_type: u32,
     // table
     global_table: u32,
     // const
@@ -112,6 +113,7 @@ impl ModuleGenerator {
             closure_types: FxHashMap::default(),
             func_types: FxHashMap::default(),
             closure_type_fields: Vec::new(),
+            func_ref_type: 0,
             global_table: 0,
             nil_global: None,
             true_global: None,
@@ -209,6 +211,7 @@ impl ModuleGenerator {
     // const STRING_BUF_FIELD: u32 = 0;
     // const STRING_LEN_FIELD: u32 = 1;
     // const STRING_OFFSET_FIELD: u32 = 2;
+    const FUNC_REF_FIELD_FUNC: u32 = 0;
 
     pub fn generate(&mut self, module: &ir::Module) -> Module {
         self.nil_type = self.type_count;
@@ -305,26 +308,27 @@ impl ModuleGenerator {
             .ty()
             .array(&StorageType::Val(Self::BOXED_TYPE), true);
 
+        self.func_ref_type = self.type_count;
+        self.type_count += 1;
+        self.types.ty().struct_(vec![FieldType {
+            element_type: StorageType::Val(ValType::FUNCREF),
+            mutable: false,
+        }]);
+
         self.closure_type = self.type_count;
         self.type_count += 1;
         self.closure_type_fields = vec![
             FieldType {
                 element_type: StorageType::Val(ValType::Ref(RefType {
                     nullable: false,
-                    heap_type: HeapType::Abstract {
-                        shared: false,
-                        ty: AbstractHeapType::Func,
-                    },
+                    heap_type: HeapType::Concrete(self.func_ref_type),
                 })),
                 mutable: false,
             },
             FieldType {
                 element_type: StorageType::Val(ValType::Ref(RefType {
                     nullable: false,
-                    heap_type: HeapType::Abstract {
-                        shared: false,
-                        ty: AbstractHeapType::Func,
-                    },
+                    heap_type: HeapType::Concrete(self.func_ref_type),
                 })),
                 mutable: false,
             },
@@ -466,6 +470,7 @@ impl ModuleGenerator {
         for func in module.funcs.iter() {
             let func_idx = self.func_count;
             self.func_count += 1;
+
             self.func_indices.insert(func.id, func_idx);
             self.elements
                 .declared(Elements::Functions(Cow::Borrowed(&[func_idx])));
@@ -674,6 +679,7 @@ impl ModuleGenerator {
             ir::Expr::FuncRef(func) => {
                 let func_idx = self.func_indices[func];
                 function.instruction(&Instruction::RefFunc(func_idx));
+                function.instruction(&Instruction::StructNew(self.func_ref_type));
             }
             ir::Expr::Closure {
                 envs,
@@ -698,6 +704,10 @@ impl ModuleGenerator {
                 }
 
                 function.instruction(&Instruction::LocalGet(Self::from_local_id(*func_ref)));
+                function.instruction(&Instruction::StructGet {
+                    struct_type_index: self.func_ref_type,
+                    field_index: Self::FUNC_REF_FIELD_FUNC,
+                });
                 function.instruction(&Instruction::RefCastNonNull(HeapType::Concrete(func_type)));
                 if *tail_call {
                     function.instruction(&Instruction::ReturnCallRef(func_type));
@@ -800,7 +810,9 @@ impl ModuleGenerator {
                 }
                 ir::ValType::FuncRef => {
                     function.instruction(&Instruction::LocalGet(Self::from_local_id(*val)));
-                    function.instruction(&Instruction::RefCastNonNull(HeapType::FUNC));
+                    function.instruction(&Instruction::RefCastNonNull(HeapType::Concrete(
+                        self.func_ref_type,
+                    )));
                 }
             },
             ir::Expr::Box(typ, val) => match typ {
@@ -1116,7 +1128,7 @@ impl ModuleGenerator {
                 }),
                 ir::ValType::FuncRef => ValType::Ref(RefType {
                     nullable: false,
-                    heap_type: HeapType::FUNC,
+                    heap_type: HeapType::Concrete(self.func_ref_type),
                 }),
             },
         }
