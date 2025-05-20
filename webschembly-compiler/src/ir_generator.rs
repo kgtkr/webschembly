@@ -86,6 +86,14 @@ impl IrGenerator {
             .map(|_| self.gen_global_id())
             .collect::<TiVec<FuncId, _>>();
 
+        // eqのためにstubのfunc_refをcacheする
+        // TODO: FuncRefは何度生成しても同じ参照になるようにwasm generatorで対応するべき
+        let stub_func_ref_globals = module
+            .funcs
+            .iter()
+            .map(|_| self.gen_global_id())
+            .collect::<TiVec<FuncId, _>>();
+
         let func_types = module
             .funcs
             .iter()
@@ -153,6 +161,13 @@ impl IrGenerator {
                                     LocalId::from(2),
                                 ),
                             });
+                            exprs.push(ExprAssign {
+                                local: None,
+                                expr: Expr::GlobalSet(
+                                    stub_func_ref_globals[func_id.id],
+                                    LocalId::from(2),
+                                ),
+                            });
                         }
                         exprs.push(ExprAssign {
                             local: Some(LocalId::from(0)),
@@ -168,7 +183,7 @@ impl IrGenerator {
                 /*
                 以下のようなスタブを生成
                 func f0_stub(x1, x2) {
-                    if f0_ref != f0_stub
+                    if f0_ref == f0_stub
                         instantiate_module(f0_module);
                     f0 <- get_global f0_ref
                     f0(x1, x2)
@@ -185,7 +200,7 @@ impl IrGenerator {
                             LocalType::Type(func.ret_type()),
                             LocalType::Type(Type::Boxed), // boxed f0_ref
                             LocalType::Type(Type::Val(ValType::FuncRef)), // f0_ref
-                            LocalType::Type(Type::Val(ValType::FuncRef)), // f0_stub
+                            LocalType::Type(Type::Boxed), // f0_stub
                             LocalType::Type(Type::Val(ValType::Bool)), // f0_ref != f0_stub
                         ]);
                         locals
@@ -201,26 +216,15 @@ impl IrGenerator {
                                     expr: Expr::GlobalGet(func_ref_globals[func.id]),
                                 });
                                 exprs.push(ExprAssign {
-                                    local: Some(LocalId::from(func.args + 2)),
-                                    expr: Expr::Unbox(
-                                        ValType::FuncRef,
-                                        LocalId::from(func.args + 1),
-                                    ),
-                                });
-                                exprs.push(ExprAssign {
                                     local: Some(LocalId::from(func.args + 3)),
-                                    expr: Expr::FuncRef(stub_func_ids[func.id]),
+                                    expr: Expr::GlobalGet(stub_func_ref_globals[func.id]),
                                 });
                                 exprs.push(ExprAssign {
                                     local: Some(LocalId::from(func.args + 4)),
                                     expr: Expr::Eq(
-                                        LocalId::from(func.args + 2),
+                                        LocalId::from(func.args + 1),
                                         LocalId::from(func.args + 3),
                                     ),
-                                });
-                                exprs.push(ExprAssign {
-                                    local: Some(LocalId::from(func.args + 4)),
-                                    expr: Expr::Not(LocalId::from(func.args + 4)),
                                 });
                                 exprs
                             },
