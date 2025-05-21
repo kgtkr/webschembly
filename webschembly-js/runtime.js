@@ -3,7 +3,7 @@ export function createRuntime(
   { exitWhenException = true, printEvalResult = false }
 ) {
   const runtimeImportObjects = {
-    js_instantiate: (bufPtr, bufSize) => {
+    js_instantiate: (bufPtr, bufSize, fromSrc) => {
       const buf = new Uint8Array(
         runtimeInstance.exports.memory.buffer,
         bufPtr,
@@ -17,7 +17,7 @@ export function createRuntime(
       );
 
       const result = instance.exports.start();
-      if (printEvalResult) {
+      if (printEvalResult && fromSrc !== 0) {
         const writeClosure = runtimeInstance.exports.get_global(
           writePtr,
           writeLen

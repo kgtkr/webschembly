@@ -95,7 +95,7 @@ fn load_src_inner(src: String, is_stdlib: bool) {
     });
 
     match wasm {
-        Ok(wasm) => unsafe { env::js_instantiate(wasm.as_ptr() as i32, wasm.len() as i32) },
+        Ok(wasm) => unsafe { env::js_instantiate(wasm.as_ptr() as i32, wasm.len() as i32, 1) },
         Err(err) => {
             let error_msg = format!("{}\n", err);
             WRITERS.with(|writers| {
@@ -271,7 +271,7 @@ pub extern "C" fn instantiate_module(module_id: i32) -> i32 {
         compiler.instantiate_module(webschembly_compiler::ir::ModuleId::from(module_id as usize))
     });
 
-    unsafe { env::js_instantiate(wasm.as_ptr() as i32, wasm.len() as i32) }
+    unsafe { env::js_instantiate(wasm.as_ptr() as i32, wasm.len() as i32, 0) }
 
     0
 }
