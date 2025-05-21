@@ -10,19 +10,20 @@ use crate::wasm_generator;
 pub struct Compiler {
     ast_generator: ast::ASTGenerator,
     ir_generator: ir_generator::IrGenerator,
+    config: Config,
 }
 
-impl Default for Compiler {
-    fn default() -> Self {
-        Self::new()
-    }
+#[derive(Debug, Clone)]
+pub struct Config {
+    pub enable_jit: bool,
 }
 
 impl Compiler {
-    pub fn new() -> Self {
+    pub fn new(config: Config) -> Self {
         Self {
             ast_generator: ast::ASTGenerator::new(),
             ir_generator: ir_generator::IrGenerator::new(),
+            config,
         }
     }
 
@@ -35,11 +36,17 @@ impl Compiler {
         let sexprs =
             sexpr_parser::parse(tokens.as_slice()).map_err(|e| compiler_error!("{}", e))?;
         let ast = self.ast_generator.gen_ast(sexprs)?;
-        let module =
+        let module = if self.config.enable_jit {
             self.ir_generator
                 .generate_and_split_and_register_module(&ast, ir_generator::Config {
                     allow_set_builtin: is_stdlib,
-                });
+                })
+        } else {
+            self.ir_generator
+                .generate_and_register_module(&ast, ir_generator::Config {
+                    allow_set_builtin: is_stdlib,
+                })
+        };
         Ok(module)
     }
 
