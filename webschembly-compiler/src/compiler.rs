@@ -36,18 +36,17 @@ impl Compiler {
         let sexprs =
             sexpr_parser::parse(tokens.as_slice()).map_err(|e| compiler_error!("{}", e))?;
         let ast = self.ast_generator.gen_ast(sexprs)?;
-        let module = if self.config.enable_jit {
-            self.ir_generator
-                .generate_and_split_and_register_module(&ast, ir_generator::Config {
-                    allow_set_builtin: is_stdlib,
-                })
+        let module = self
+            .ir_generator
+            .generate_module(&ast, ir_generator::Config {
+                allow_set_builtin: is_stdlib,
+            });
+        let module_id = if self.config.enable_jit {
+            self.ir_generator.split_and_register_module(module)
         } else {
-            self.ir_generator
-                .generate_and_register_module(&ast, ir_generator::Config {
-                    allow_set_builtin: is_stdlib,
-                })
+            self.ir_generator.register_module(module)
         };
-        Ok(module)
+        Ok(self.ir_generator.get_module(module_id))
     }
 
     pub fn compile(&mut self, input: &str, is_stdlib: bool) -> crate::error::Result<Vec<u8>> {

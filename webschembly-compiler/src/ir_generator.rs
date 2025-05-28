@@ -42,18 +42,11 @@ impl IrGenerator {
         }
     }
 
-    pub fn generate_and_register_module(
-        &mut self,
-        ast: &ast::Ast<ast::Final>,
-        config: Config,
-    ) -> &Module {
-        let module = self.generate_module(ast, config);
-
-        self.modules.push(module);
-        self.modules.last().unwrap()
+    pub fn register_module(&mut self, module: Module) -> ModuleId {
+        self.modules.push_and_get_key(module)
     }
 
-    fn generate_module(&mut self, ast: &ast::Ast<ast::Final>, config: Config) -> Module {
+    pub fn generate_module(&mut self, ast: &ast::Ast<ast::Final>, config: Config) -> Module {
         let module_gen = ModuleGenerator::new(config, self, ast);
         let module = module_gen.generate();
         module
@@ -63,23 +56,13 @@ impl IrGenerator {
         self.modules.get(id).unwrap()
     }
 
-    fn gen_global_id(&mut self) -> GlobalId {
+    pub fn gen_global_id(&mut self) -> GlobalId {
         let id = GlobalId::from(self.global_count);
         self.global_count += 1;
         id
     }
 
-    pub fn generate_and_split_and_register_module(
-        &mut self,
-        ast: &ast::Ast<ast::Final>,
-        config: Config,
-    ) -> &Module {
-        let module = self.generate_module(ast, config);
-
-        self.split_module(module)
-    }
-
-    fn split_module(&mut self, module: Module) -> &Module {
+    pub fn split_and_register_module(&mut self, module: Module) -> ModuleId {
         let func_ref_globals = module
             .funcs
             .iter()
@@ -425,7 +408,7 @@ impl IrGenerator {
             self.modules.push(module);
         }
 
-        &self.modules[entry_module_id]
+        entry_module_id
     }
 }
 
