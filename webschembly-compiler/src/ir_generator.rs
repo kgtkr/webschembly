@@ -20,7 +20,7 @@ struct BasicBlockOptionalNext {
 
 #[derive(Debug)]
 pub struct IrGenerator {
-    modules: TiVec<ModuleId, Module>,
+    modules: TiVec<ModuleId, Option<Module>>,
     global_count: usize,
     // GlobalIdのうち、ast::GlobalVarIdに対応するもの
     // 全てのGlobalIdがast::GlobalVarIdに対応するわけではない
@@ -43,7 +43,20 @@ impl IrGenerator {
     }
 
     pub fn register_module(&mut self, module: Module) -> ModuleId {
-        self.modules.push_and_get_key(module)
+        self.modules.push_and_get_key(Some(module))
+    }
+
+    pub fn alloc_module_id(&mut self) -> ModuleId {
+        self.modules.push_and_get_key(None)
+    }
+
+    pub fn set_module(&mut self, id: ModuleId, module: Module) {
+        assert!(
+            self.modules[id].is_none(),
+            "Module with id {:?} already exists",
+            id
+        );
+        self.modules[id] = Some(module);
     }
 
     pub fn generate_module(&mut self, ast: &ast::Ast<ast::Final>, config: Config) -> Module {
@@ -53,7 +66,7 @@ impl IrGenerator {
     }
 
     pub fn get_module(&self, id: ModuleId) -> &Module {
-        self.modules.get(id).unwrap()
+        self.modules[id].as_ref().unwrap()
     }
 
     pub fn gen_global_id(&mut self) -> GlobalId {
@@ -84,12 +97,13 @@ impl IrGenerator {
             .collect::<TiVec<FuncId, _>>();
 
         let global_count = self.global_count;
+        let entry_module_id = self.alloc_module_id();
         let module_ids = module
             .funcs
             .iter()
-            .enumerate()
-            .map(|(i, _)| ModuleId::from(1 + i + self.modules.len()))
+            .map(|_| self.alloc_module_id())
             .collect::<TiVec<FuncId, _>>();
+
         // エントリーモジュール
         let entry_module = {
             // entry関数もあるので+1してる
@@ -275,8 +289,7 @@ impl IrGenerator {
             }
         };
 
-        let entry_module_id = self.modules.next_key();
-        self.modules.push(entry_module);
+        self.set_module(entry_module_id, entry_module);
 
         // 各関数のモジュール
         for func in module.funcs {
@@ -405,7 +418,7 @@ impl IrGenerator {
                 },
             };
 
-            self.modules.push(module);
+            self.set_module(module_ids[func.id], module);
         }
 
         entry_module_id
