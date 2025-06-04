@@ -1,7 +1,7 @@
 use std::fmt;
 
 use derive_more::{From, Into};
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 use typed_index_collections::TiVec;
 
 const DISPLAY_INDENT: &str = "  ";
@@ -644,7 +644,7 @@ impl fmt::Display for Display<'_, ModuleId> {
 
 #[derive(Debug, Clone)]
 pub struct Module {
-    pub globals: Vec<GlobalId>,
+    pub globals: FxHashSet<GlobalId>,
     pub funcs: TiVec<FuncId, Func>,
     pub entry: FuncId,
     pub meta: Meta,

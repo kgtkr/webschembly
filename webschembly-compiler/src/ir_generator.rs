@@ -473,7 +473,7 @@ impl<'a> ModuleGenerator<'a> {
             .clone()
             .into_iter()
             .map(|id| self.global_id(id))
-            .collect::<Vec<_>>();
+            .collect::<FxHashSet<_>>();
         let meta = Meta {
             local_metas: self.local_metas,
             global_metas: self.global_metas,
