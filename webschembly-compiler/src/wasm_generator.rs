@@ -704,6 +704,8 @@ fn reloop_rec(
 struct FuncGenerator<'a, 'b> {
     module_generator: &'a mut ModuleGenerator<'b>,
     func: &'a ir::Func,
+    local_count: u32,
+    local_ids: FxHashMap<ir::LocalId, u32>,
 }
 
 impl<'a, 'b> FuncGenerator<'a, 'b> {
@@ -711,19 +713,27 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         Self {
             module_generator,
             func,
+            local_count: 0,
+            local_ids: FxHashMap::default(),
         }
     }
 
-    // TODO: きちんとHashMapなどで管理
     fn from_local_id(&mut self, local: ir::LocalId) -> u32 {
-        usize::from(local) as u32
+        *self.local_ids.get(&local).unwrap()
     }
 
     fn gen_func(mut self) {
+        for (local_id, _) in self.func.locals.iter_enumerated() {
+            let idx = self.local_count;
+            self.local_ids.insert(local_id, idx);
+            self.local_count += 1;
+        }
+
         let type_idx = self
             .module_generator
             .func_type_from_ir(&self.func.func_type());
 
+        // TODO: ここでローカル変数を定義していたらgen_exprでローカル変数を追加できない
         let mut function = Function::new(
             self.func
                 .locals
