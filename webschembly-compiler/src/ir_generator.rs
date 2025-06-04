@@ -90,13 +90,19 @@ impl IrGenerator {
             .map(|_| self.gen_global_id())
             .collect::<TiVec<FuncId, _>>();
 
+        let globals = {
+            let mut globals = module.globals;
+            globals.extend(func_ref_globals.iter());
+            globals.extend(stub_func_ref_globals.iter());
+            globals
+        };
+
         let func_types = module
             .funcs
             .iter()
             .map(|func| func.func_type())
             .collect::<TiVec<FuncId, _>>();
 
-        let global_count = self.global_count;
         let entry_module_id = self.alloc_module_id();
         let module_ids = module
             .funcs
@@ -140,7 +146,7 @@ impl IrGenerator {
                         let mut exprs = Vec::new();
                         exprs.push(ExprAssign {
                             local: None,
-                            expr: Expr::InitModule { global_count },
+                            expr: Expr::InitModule,
                         });
                         for func_id in &module.funcs {
                             exprs.push(ExprAssign {
@@ -279,6 +285,7 @@ impl IrGenerator {
             }
 
             Module {
+                globals: globals.clone(),
                 funcs,
                 entry: FuncId::from(0),
                 meta: Meta {
@@ -322,7 +329,7 @@ impl IrGenerator {
                         let mut exprs = Vec::new();
                         exprs.push(ExprAssign {
                             local: None,
-                            expr: Expr::InitModule { global_count },
+                            expr: Expr::InitModule,
                         });
                         exprs.push(ExprAssign {
                             local: Some(LocalId::from(0)),
@@ -409,6 +416,7 @@ impl IrGenerator {
             funcs.push(body_func);
 
             let module = Module {
+                globals: globals.clone(),
                 funcs,
                 entry: FuncId::from(0),
                 meta: Meta {
@@ -457,14 +465,46 @@ impl<'a> ModuleGenerator<'a> {
         let func = FuncGenerator::new(&mut self, func_id).entry_gen();
         self.funcs[func_id] = Some(func);
 
+        let globals = self
+            .ast
+            .x
+            .get_ref(type_map::key::<Used>())
+            .global_vars
+            .clone()
+            .into_iter()
+            .map(|id| self.global_id(id))
+            .collect::<Vec<_>>();
         let meta = Meta {
             local_metas: self.local_metas,
             global_metas: self.global_metas,
         };
+
         Module {
+            globals,
             funcs: self.funcs.into_iter().map(|f| f.unwrap()).collect(),
             entry: func_id,
             meta,
+        }
+    }
+
+    fn global_id(&mut self, id: ast::GlobalVarId) -> GlobalId {
+        if let Some(&global_id) = self.ir_generator.global_ids.get(&id) {
+            global_id
+        } else {
+            let ast_meta = self
+                .ast
+                .x
+                .get_ref(type_map::key::<Used>())
+                .global_metas
+                .get(&id);
+            let global_id: GlobalId = self.ir_generator.gen_global_id();
+            self.ir_generator.global_ids.insert(id, global_id);
+            if let Some(ast_meta) = ast_meta {
+                self.global_metas.insert(global_id, VarMeta {
+                    name: ast_meta.name.clone(),
+                });
+            }
+            global_id
         }
     }
 
@@ -514,19 +554,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
 
         self.exprs.push(ExprAssign {
             local: None,
-            expr: Expr::InitModule {
-                global_count: self
-                    .module_generator
-                    .ast
-                    .x
-                    .get_ref(type_map::key::<Used>())
-                    .global_vars
-                    .iter()
-                    .map(|x| x.0)
-                    .max()
-                    .map(|n| n + 1)
-                    .unwrap_or(0),
-            },
+            expr: Expr::InitModule,
         });
         self.gen_exprs(Some(boxed_local), &self.module_generator.ast.exprs);
         self.close_bb(Some(BasicBlockNext::Return));
@@ -1003,7 +1031,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     }
                 }
                 ast::VarId::Global(id) => {
-                    let global = self.global_id(*id);
+                    let global = self.module_generator.global_id(*id);
                     self.exprs.push(ExprAssign {
                         local: result,
                         expr: Expr::GlobalGet(global),
@@ -1060,7 +1088,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                         } else {
                             let local = self.local(Type::Boxed);
                             self.gen_expr(Some(local), expr);
-                            let global = self.global_id(*id);
+                            let global = self.module_generator.global_id(*id);
                             self.exprs.push(ExprAssign {
                                 local: None,
                                 expr: Expr::GlobalSet(global, local),
@@ -1108,33 +1136,6 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 });
             }
             ast::Expr::Quote(x, _) => *x.get_ref(type_map::key::<Desugared>()),
-        }
-    }
-
-    fn global_id(&mut self, id: ast::GlobalVarId) -> GlobalId {
-        if let Some(&global_id) = self.module_generator.ir_generator.global_ids.get(&id) {
-            global_id
-        } else {
-            let ast_meta = self
-                .module_generator
-                .ast
-                .x
-                .get_ref(type_map::key::<Used>())
-                .global_metas
-                .get(&id);
-            let global_id = self.module_generator.ir_generator.gen_global_id();
-            self.module_generator
-                .ir_generator
-                .global_ids
-                .insert(id, global_id);
-            if let Some(ast_meta) = ast_meta {
-                self.module_generator
-                    .global_metas
-                    .insert(global_id, VarMeta {
-                        name: ast_meta.name.clone(),
-                    });
-            }
-            global_id
         }
     }
 

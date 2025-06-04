@@ -27,6 +27,7 @@ pub fn generate(module: &ir::Module) -> Vec<u8> {
 
 #[derive(Debug)]
 struct ModuleGenerator {
+    ir_global_count: Option<usize>,
     type_count: u32,
     func_count: u32,
     global_count: u32,
@@ -78,6 +79,7 @@ struct ModuleGenerator {
 impl ModuleGenerator {
     fn new() -> Self {
         Self {
+            ir_global_count: None,
             type_count: 0,
             func_count: 0,
             global_count: 0,
@@ -214,6 +216,15 @@ impl ModuleGenerator {
     const FUNC_REF_FIELD_FUNC: u32 = 0;
 
     pub fn generate(&mut self, module: &ir::Module) -> Module {
+        self.ir_global_count = Some(
+            module
+                .globals
+                .iter()
+                .map(|&id| usize::from(id) + 1)
+                .max()
+                .unwrap_or(0),
+        );
+
         self.nil_type = self.type_count;
         self.type_count += 1;
         self.types.ty().struct_(vec![]);
@@ -1042,12 +1053,12 @@ impl ModuleGenerator {
                 function.instruction(&Instruction::I64GeS);
             }
 
-            ir::Expr::InitModule { global_count } => {
+            ir::Expr::InitModule => {
                 // 必要なサイズになるまで2倍に拡張
                 function.instruction(&Instruction::Block(BlockType::Empty));
                 function.instruction(&Instruction::Loop(BlockType::Empty));
                 function.instruction(&Instruction::TableSize(self.global_table));
-                function.instruction(&Instruction::I32Const(*global_count as i32));
+                function.instruction(&Instruction::I32Const(self.ir_global_count.unwrap() as i32));
                 function.instruction(&Instruction::I32GeU);
                 function.instruction(&Instruction::BrIf(1));
                 function.instruction(&Instruction::RefNull(HeapType::Abstract {

@@ -210,9 +210,7 @@ pub enum Expr {
     GlobalSet(GlobalId, LocalId),
     GlobalGet(GlobalId),
     Error(LocalId),
-    InitModule {
-        global_count: usize,
-    },
+    InitModule,
     // builtins
     Display(LocalId),
     Add(LocalId, LocalId),
@@ -366,8 +364,8 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
             }
             Expr::GlobalGet(id) => write!(f, "global_get({})", id.display(self.meta.meta)),
             Expr::Error(id) => write!(f, "error({})", id.display(self.meta)),
-            Expr::InitModule { global_count } => {
-                write!(f, "init_module(global_count={})", global_count)
+            Expr::InitModule => {
+                write!(f, "init_module")
             }
             Expr::Display(id) => write!(f, "display({})", id.display(self.meta)),
             Expr::Add(a, b) => write!(f, "add({}, {})", a.display(self.meta), b.display(self.meta)),
@@ -646,6 +644,7 @@ impl fmt::Display for Display<'_, ModuleId> {
 
 #[derive(Debug, Clone)]
 pub struct Module {
+    pub globals: Vec<GlobalId>,
     pub funcs: TiVec<FuncId, Func>,
     pub entry: FuncId,
     pub meta: Meta,
@@ -661,6 +660,14 @@ impl Module {
 }
 impl fmt::Display for Display<'_, &'_ Module> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "globals:")?;
+        for (i, global) in self.value.globals.iter().enumerate() {
+            if i > 0 {
+                write!(f, ",")?;
+            }
+            write!(f, " {}", global.display(self.meta))?;
+        }
+        writeln!(f)?;
         writeln!(f, "entry: {}", self.value.entry.display(self.meta))?;
         for func in self.value.funcs.iter() {
             write!(f, "{}", func.display(self.meta))?;
