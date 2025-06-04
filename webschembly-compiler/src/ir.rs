@@ -210,7 +210,9 @@ pub enum Expr {
     GlobalSet(GlobalId, LocalId),
     GlobalGet(GlobalId),
     Error(LocalId),
-    InitGlobals(usize), // global count
+    InitModule {
+        global_count: usize,
+    },
     // builtins
     Display(LocalId),
     Add(LocalId, LocalId),
@@ -364,7 +366,9 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
             }
             Expr::GlobalGet(id) => write!(f, "global_get({})", id.display(self.meta.meta)),
             Expr::Error(id) => write!(f, "error({})", id.display(self.meta)),
-            Expr::InitGlobals(count) => write!(f, "init_globals({})", count),
+            Expr::InitModule { global_count } => {
+                write!(f, "init_module(global_count={})", global_count)
+            }
             Expr::Display(id) => write!(f, "display({})", id.display(self.meta)),
             Expr::Add(a, b) => write!(f, "add({}, {})", a.display(self.meta), b.display(self.meta)),
             Expr::Sub(a, b) => write!(f, "sub({}, {})", a.display(self.meta), b.display(self.meta)),

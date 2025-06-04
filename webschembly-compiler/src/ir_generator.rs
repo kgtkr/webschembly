@@ -140,7 +140,7 @@ impl IrGenerator {
                         let mut exprs = Vec::new();
                         exprs.push(ExprAssign {
                             local: None,
-                            expr: Expr::InitGlobals(global_count),
+                            expr: Expr::InitModule { global_count },
                         });
                         for func_id in &module.funcs {
                             exprs.push(ExprAssign {
@@ -322,7 +322,7 @@ impl IrGenerator {
                         let mut exprs = Vec::new();
                         exprs.push(ExprAssign {
                             local: None,
-                            expr: Expr::InitGlobals(global_count),
+                            expr: Expr::InitModule { global_count },
                         });
                         exprs.push(ExprAssign {
                             local: Some(LocalId::from(0)),
@@ -514,8 +514,9 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
 
         self.exprs.push(ExprAssign {
             local: None,
-            expr: Expr::InitGlobals(
-                self.module_generator
+            expr: Expr::InitModule {
+                global_count: self
+                    .module_generator
                     .ast
                     .x
                     .get_ref(type_map::key::<Used>())
@@ -525,7 +526,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     .max()
                     .map(|n| n + 1)
                     .unwrap_or(0),
-            ),
+            },
         });
         self.gen_exprs(Some(boxed_local), &self.module_generator.ast.exprs);
         self.close_bb(Some(BasicBlockNext::Return));
