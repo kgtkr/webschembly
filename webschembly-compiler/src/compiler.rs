@@ -42,7 +42,7 @@ impl Compiler {
                 allow_set_builtin: is_stdlib,
             });
         let module_id = if self.config.enable_jit {
-            self.ir_generator.split_and_register_module(module)
+            ir_generator::split_and_register_module(&mut self.ir_generator, module)
         } else {
             self.ir_generator.register_module(module)
         };
