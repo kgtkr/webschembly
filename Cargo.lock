@@ -138,6 +138,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "derive-where"
+version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "510c292c8cf384b1a340b816a9a6cf2599eb8f566a44949024af88418000c50b"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "derive_more"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -365,6 +376,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "refl"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f5fe2c8ee36d7d4f60a0574c7116a0614e3bf48bfa249062698b228bddee5026"
+
+[[package]]
 name = "rustc-hash"
 version = "2.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -502,6 +519,7 @@ dependencies = [
 name = "webschembly-compiler"
 version = "0.1.0"
 dependencies = [
+ "derive-where",
  "derive_more",
  "frunk",
  "frunk_core",
@@ -509,6 +527,7 @@ dependencies = [
  "log",
  "nom",
  "nom_locate",
+ "refl",
  "rustc-hash",
  "strum",
  "strum_macros",

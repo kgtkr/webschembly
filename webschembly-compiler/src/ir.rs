@@ -1,6 +1,8 @@
-use std::fmt;
+use std::{fmt, marker::PhantomData};
 
 use derive_more::{From, Into};
+use derive_where::derive_where;
+use refl::{Id, refl};
 use rustc_hash::{FxHashMap, FxHashSet};
 use typed_index_collections::TiVec;
 
@@ -43,6 +45,14 @@ pub struct MetaInFunc<'a> {
     meta: &'a Meta,
 }
 
+pub trait LocalTypeS {}
+
+pub struct MutCellC<T: TypeS>(T);
+impl<T: TypeS> LocalTypeS for MutCellC<T> {}
+
+pub struct TypeC<T: TypeS>(T);
+impl<T: TypeS> LocalTypeS for TypeC<T> {}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, derive_more::Display)]
 pub enum LocalType {
     #[display("mut_cell({})", _0)]
@@ -72,6 +82,14 @@ impl LocalType {
     }
 }
 
+pub trait TypeS {}
+
+pub struct BoxedC;
+impl TypeS for BoxedC {}
+
+pub struct ValC<T: ValTypeS>(T);
+impl<T: ValTypeS> TypeS for ValC<T> {}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, derive_more::Display)]
 pub enum Type {
     #[display("boxed")]
@@ -85,6 +103,38 @@ impl From<ValType> for Type {
         Self::Val(typ)
     }
 }
+
+pub trait ValTypeS {}
+
+pub struct BoolC;
+impl ValTypeS for BoolC {}
+
+pub struct IntC;
+impl ValTypeS for IntC {}
+
+pub struct StringC;
+impl ValTypeS for StringC {}
+
+pub struct SymbolC;
+impl ValTypeS for SymbolC {}
+
+pub struct NilC;
+impl ValTypeS for NilC {}
+
+pub struct ConsC;
+impl ValTypeS for ConsC {}
+
+pub struct ClosureC;
+impl ValTypeS for ClosureC {}
+
+pub struct CharC;
+impl ValTypeS for CharC {}
+
+pub struct VectorC;
+impl ValTypeS for VectorC {}
+
+pub struct FuncRefC;
+impl ValTypeS for FuncRefC {}
 
 // Box化可能な型
 // 基本的にSchemeの型に対応するがFuncRefなど例外もある
@@ -112,16 +162,17 @@ pub enum ValType {
     FuncRef,
 }
 
-#[derive(Debug, Clone, Copy, From, Into, Hash, PartialEq, Eq)]
-pub struct LocalId(usize);
+#[derive(From, Into, Hash, PartialEq, Eq)]
+#[derive_where(Clone, Copy, Debug)]
+pub struct LocalId<T: LocalTypeS>(usize, PhantomData<T>);
 
-impl LocalId {
-    pub fn display<'a>(&self, meta: MetaInFunc<'a>) -> DisplayInFunc<'a, LocalId> {
+impl<T: LocalTypeS> LocalId<T> {
+    pub fn display<'a>(&self, meta: MetaInFunc<'a>) -> DisplayInFunc<'a, LocalId<T>> {
         DisplayInFunc { value: *self, meta }
     }
 }
 
-impl fmt::Display for DisplayInFunc<'_, LocalId> {
+impl<T: LocalTypeS> fmt::Display for DisplayInFunc<'_, LocalId<T>> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "l{}", self.value.0)?;
         if let Some(meta) = self
@@ -176,17 +227,27 @@ impl fmt::Display for Display<'_, FuncId> {
 }
 
 #[derive(Debug, Clone)]
-pub enum Expr {
-    InstantiateModule(ModuleId),
-    Bool(bool),
-    Int(i64),
-    String(String),
-    StringToSymbol(LocalId),
-    Nil,
-    Char(char),
-    Vector(Vec<LocalId>),
-    Cons(LocalId, LocalId),
-    CreateMutCell(Type),
+pub enum Expr<T: LocalTypeS> {
+    InstantiateModule(refl::Id<TypeC<ValC<NilC>>, T>, ModuleId),
+    Bool(refl::Id<TypeC<ValC<BoolC>>, T>, bool),
+    Int(refl::Id<TypeC<ValC<IntC>>, T>, i64),
+    String(refl::Id<TypeC<ValC<StringC>>, T>, String),
+    StringToSymbol(
+        refl::Id<TypeC<ValC<StringC>>, T>,
+        LocalId<TypeC<ValC<StringC>>>,
+    ),
+    Nil(refl::Id<TypeC<ValC<NilC>>, T>),
+    Char(refl::Id<TypeC<ValC<CharC>>, T>, char),
+    Vector(
+        refl::Id<TypeC<ValC<VectorC>>, T>,
+        Vec<LocalId<TypeC<BoxedC>>>,
+    ),
+    Cons(
+        refl::Id<TypeC<ValC<ConsC>>, T>,
+        LocalId<TypeC<BoxedC>>,
+        LocalId<TypeC<BoxedC>>,
+    ),
+    CreateMutCell(refl::Id<MutCellC<_>, T>),
     DerefMutCell(Type, LocalId),
     SetMutCell(Type, LocalId /* mutcell */, LocalId /* value */),
     FuncRef(FuncId),
