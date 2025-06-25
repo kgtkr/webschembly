@@ -45,14 +45,6 @@ pub struct MetaInFunc<'a> {
     meta: &'a Meta,
 }
 
-pub trait LocalTypeS {}
-
-pub struct MutCellC<T: TypeS>(T);
-impl<T: TypeS> LocalTypeS for MutCellC<T> {}
-
-pub struct TypeC<T: TypeS>(T);
-impl<T: TypeS> LocalTypeS for TypeC<T> {}
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, derive_more::Display)]
 pub enum LocalType {
     #[display("mut_cell({})", _0)]
@@ -81,14 +73,6 @@ impl LocalType {
         }
     }
 }
-
-pub trait TypeS {}
-
-pub struct BoxedC;
-impl TypeS for BoxedC {}
-
-pub struct ValC<T: ValTypeS>(T);
-impl<T: ValTypeS> TypeS for ValC<T> {}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, derive_more::Display)]
 pub enum Type {
@@ -247,8 +231,10 @@ pub enum Expr<T: LocalTypeS> {
         LocalId<TypeC<BoxedC>>,
         LocalId<TypeC<BoxedC>>,
     ),
+    // forall S. (refl::Id<MutCellC<S>, T>)
     CreateMutCell(refl::Id<MutCellC<_>, T>),
-    DerefMutCell(Type, LocalId),
+    DerefMutCell(Type, LocalId<MutCellC<T>>),
+    // forall S. (refl::Id<MutCellC<Nil>, LocalId<MutCellC<S>>, LocalId<S>) -> ()
     SetMutCell(Type, LocalId /* mutcell */, LocalId /* value */),
     FuncRef(FuncId),
     Call(bool, FuncId, Vec<LocalId>),
