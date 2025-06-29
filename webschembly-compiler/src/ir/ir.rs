@@ -1,8 +1,8 @@
 use std::{fmt, marker::PhantomData};
 
+use super::types::*;
 use derive_more::{From, Into};
 use derive_where::derive_where;
-use refl::{Id, refl};
 use rustc_hash::{FxHashMap, FxHashSet};
 use typed_index_collections::TiVec;
 
@@ -87,38 +87,6 @@ impl From<ValType> for Type {
         Self::Val(typ)
     }
 }
-
-pub trait ValTypeS {}
-
-pub struct BoolC;
-impl ValTypeS for BoolC {}
-
-pub struct IntC;
-impl ValTypeS for IntC {}
-
-pub struct StringC;
-impl ValTypeS for StringC {}
-
-pub struct SymbolC;
-impl ValTypeS for SymbolC {}
-
-pub struct NilC;
-impl ValTypeS for NilC {}
-
-pub struct ConsC;
-impl ValTypeS for ConsC {}
-
-pub struct ClosureC;
-impl ValTypeS for ClosureC {}
-
-pub struct CharC;
-impl ValTypeS for CharC {}
-
-pub struct VectorC;
-impl ValTypeS for VectorC {}
-
-pub struct FuncRefC;
-impl ValTypeS for FuncRefC {}
 
 // Box化可能な型
 // 基本的にSchemeの型に対応するがFuncRefなど例外もある
@@ -231,13 +199,16 @@ pub enum Expr<T: LocalTypeS> {
         LocalId<TypeC<BoxedC>>,
         LocalId<TypeC<BoxedC>>,
     ),
-    // forall S. (refl::Id<MutCellC<S>, T>)
-    CreateMutCell(refl::Id<MutCellC<_>, T>),
-    DerefMutCell(Type, LocalId<MutCellC<T>>),
+    CreateMutCell(TypeEq<MutCellC<Erased>, T>),
+    DerefMutCell(LocalId<MutCellC<T>>),
     // forall S. (refl::Id<MutCellC<Nil>, LocalId<MutCellC<S>>, LocalId<S>) -> ()
-    SetMutCell(Type, LocalId /* mutcell */, LocalId /* value */),
-    FuncRef(FuncId),
-    Call(bool, FuncId, Vec<LocalId>),
+    SetMutCell(
+        TypeEq<TypeC<ValC<NilC>>, T>,
+        LocalId<MutCellC<Erased>>, /* mutcell */
+        LocalId<TypeC<Erased>>,    /* value */
+    ),
+    FuncRef(TypeEq<TypeC<ValC<FuncRefC>>, T>, FuncId),
+    Call(bool, FuncId, Vec<LocalId<Erased>>),
     Closure {
         envs: Vec<LocalId>,
         func: LocalId,

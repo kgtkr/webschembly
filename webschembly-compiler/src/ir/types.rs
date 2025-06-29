@@ -1,11 +1,24 @@
-use refl::Id;
+use derive_where::derive_where;
 use std::marker::PhantomData;
 
-// T = MutCellC<_>
-pub struct IdMutCellC<T: ?Sized>(PhantomData<(fn(T) -> T)>);
+// 型消去された型を表す
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct Erased;
 
-pub const fn refl_mut_cell<T: ?Sized>() -> IdMutCellC<MutCellC<T>> {
-    IdMutCellC(PhantomData)
+// refl crateのIdと似たようなもの
+// ただし、Id<T, T>だけでなくId<S, Erased>の値も存在する
+// castは不可能
+#[derive_where(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct TypeEq<S: ?Sized, T: ?Sized>(PhantomData<(fn(S) -> S, fn(T) -> T)>);
+
+impl<S: ?Sized, T: ?Sized> TypeEq<S, T> {
+    pub fn erase(self) -> TypeEq<S, Erased> {
+        TypeEq(PhantomData)
+    }
+}
+
+pub fn type_eq<T: ?Sized>() -> TypeEq<T, T> {
+    TypeEq(PhantomData)
 }
 
 pub trait LocalTypeS {}
