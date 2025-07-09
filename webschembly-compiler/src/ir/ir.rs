@@ -1,6 +1,8 @@
-use std::fmt;
+use std::{fmt, marker::PhantomData};
 
+use super::types::*;
 use derive_more::{From, Into};
+use derive_where::derive_where;
 use rustc_hash::{FxHashMap, FxHashSet};
 use typed_index_collections::TiVec;
 
@@ -112,16 +114,17 @@ pub enum ValType {
     FuncRef,
 }
 
-#[derive(Debug, Clone, Copy, From, Into, Hash, PartialEq, Eq)]
-pub struct LocalId(usize);
+#[derive(From, Into, Hash, PartialEq, Eq)]
+#[derive_where(Clone, Copy, Debug)]
+pub struct LocalId<T: LocalTypeS>(usize, PhantomData<T>);
 
-impl LocalId {
-    pub fn display<'a>(&self, meta: MetaInFunc<'a>) -> DisplayInFunc<'a, LocalId> {
+impl<T: LocalTypeS> LocalId<T> {
+    pub fn display<'a>(&self, meta: MetaInFunc<'a>) -> DisplayInFunc<'a, LocalId<T>> {
         DisplayInFunc { value: *self, meta }
     }
 }
 
-impl fmt::Display for DisplayInFunc<'_, LocalId> {
+impl<T: LocalTypeS> fmt::Display for DisplayInFunc<'_, LocalId<T>> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "l{}", self.value.0)?;
         if let Some(meta) = self
@@ -176,21 +179,36 @@ impl fmt::Display for Display<'_, FuncId> {
 }
 
 #[derive(Debug, Clone)]
-pub enum Expr {
-    InstantiateModule(ModuleId),
-    Bool(bool),
-    Int(i64),
-    String(String),
-    StringToSymbol(LocalId),
-    Nil,
-    Char(char),
-    Vector(Vec<LocalId>),
-    Cons(LocalId, LocalId),
-    CreateMutCell(Type),
-    DerefMutCell(Type, LocalId),
-    SetMutCell(Type, LocalId /* mutcell */, LocalId /* value */),
-    FuncRef(FuncId),
-    Call(bool, FuncId, Vec<LocalId>),
+pub enum Expr<T: LocalTypeS> {
+    InstantiateModule(refl::Id<TypeC<ValC<NilC>>, T>, ModuleId),
+    Bool(refl::Id<TypeC<ValC<BoolC>>, T>, bool),
+    Int(refl::Id<TypeC<ValC<IntC>>, T>, i64),
+    String(refl::Id<TypeC<ValC<StringC>>, T>, String),
+    StringToSymbol(
+        refl::Id<TypeC<ValC<StringC>>, T>,
+        LocalId<TypeC<ValC<StringC>>>,
+    ),
+    Nil(refl::Id<TypeC<ValC<NilC>>, T>),
+    Char(refl::Id<TypeC<ValC<CharC>>, T>, char),
+    Vector(
+        refl::Id<TypeC<ValC<VectorC>>, T>,
+        Vec<LocalId<TypeC<BoxedC>>>,
+    ),
+    Cons(
+        refl::Id<TypeC<ValC<ConsC>>, T>,
+        LocalId<TypeC<BoxedC>>,
+        LocalId<TypeC<BoxedC>>,
+    ),
+    CreateMutCell(TypeEq<MutCellC<Erased>, T>),
+    DerefMutCell(LocalId<MutCellC<T>>),
+    // forall S. (refl::Id<MutCellC<Nil>, LocalId<MutCellC<S>>, LocalId<S>) -> ()
+    SetMutCell(
+        TypeEq<TypeC<ValC<NilC>>, T>,
+        LocalId<MutCellC<Erased>>, /* mutcell */
+        LocalId<TypeC<Erased>>,    /* value */
+    ),
+    FuncRef(TypeEq<TypeC<ValC<FuncRefC>>, T>, FuncId),
+    Call(bool, FuncId, Vec<LocalId<Erased>>),
     Closure {
         envs: Vec<LocalId>,
         func: LocalId,
