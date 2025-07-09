@@ -1,0 +1,10 @@
+((lambda ()
+    (define x 1)
+    (write x)(newline)
+    (let
+        ((y 2))
+        (define z 3)
+        (write y)(newline)
+        (write z)(newline)
+    )
+))
