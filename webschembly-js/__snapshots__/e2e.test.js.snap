@@ -119,6 +119,34 @@ exports[`E2E test > large_rec.scm > snapshot test 1`] = `
 }
 `;
 
+exports[`E2E test > let_in_global.scm > snapshot test 1`] = `
+{
+  "exitCode": 0,
+  "stderr": "",
+  "stdout": "1
+2
+3
+4
+1
+2
+",
+}
+`;
+
+exports[`E2E test > let_in_local.scm > snapshot test 1`] = `
+{
+  "exitCode": 0,
+  "stderr": "",
+  "stdout": "1
+2
+3
+4
+1
+2
+",
+}
+`;
+
 exports[`E2E test > list_syntax.scm > snapshot test 1`] = `
 {
   "exitCode": 0,
@@ -164,6 +192,15 @@ exports[`E2E test > mut_cell_args.scm > snapshot test 1`] = `
 2
 2
 ",
+}
+`;
+
+exports[`E2E test > not_definable.scm > snapshot test 1`] = `
+{
+  "exitCode": 1,
+  "stderr": "CompilerError: Define is not allowed in this context: b
+",
+  "stdout": "",
 }
 `;
 

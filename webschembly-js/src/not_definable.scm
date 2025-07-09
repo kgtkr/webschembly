@@ -1,0 +1,5 @@
+((lambda ()
+    (define a 1)
+    (write a)(newline)
+    (define b 1)
+))

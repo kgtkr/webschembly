@@ -306,7 +306,7 @@ impl Expr<Parsed> {
                         .map(|binding| match binding {
                             list_pattern![
                                 SExpr {
-                                    kind: SExprKind::String(name),
+                                    kind: SExprKind::Symbol(name),
                                     ..
                                 },
                                 expr,
