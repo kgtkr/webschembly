@@ -11,18 +11,9 @@ pub fn split_and_register_module(ir_generator: &mut IrGenerator, module: Module)
         .map(|_| ir_generator.gen_global_id())
         .collect::<TiVec<FuncId, _>>();
 
-    // eqのためにstubのfunc_refをcacheする
-    // TODO: FuncRefは何度生成しても同じ参照になるようにwasm generatorで対応するべき
-    let stub_func_ref_globals = module
-        .funcs
-        .iter()
-        .map(|_| ir_generator.gen_global_id())
-        .collect::<TiVec<FuncId, _>>();
-
     let globals = {
         let mut globals = module.globals;
         globals.extend(func_ref_globals.iter());
-        globals.extend(stub_func_ref_globals.iter());
         globals
     };
 
@@ -90,13 +81,6 @@ pub fn split_and_register_module(ir_generator: &mut IrGenerator, module: Module)
                             local: None,
                             expr: Expr::GlobalSet(func_ref_globals[func_id.id], LocalId::from(2)),
                         });
-                        exprs.push(ExprAssign {
-                            local: None,
-                            expr: Expr::GlobalSet(
-                                stub_func_ref_globals[func_id.id],
-                                LocalId::from(2),
-                            ),
-                        });
                     }
                     exprs.push(ExprAssign {
                         local: Some(LocalId::from(0)),
@@ -146,7 +130,7 @@ pub fn split_and_register_module(ir_generator: &mut IrGenerator, module: Module)
                             });
                             exprs.push(ExprAssign {
                                 local: Some(LocalId::from(func.args + 3)),
-                                expr: Expr::GlobalGet(stub_func_ref_globals[func.id]),
+                                expr: Expr::FuncRef(stub_func_ids[func.id]),
                             });
                             exprs.push(ExprAssign {
                                 local: Some(LocalId::from(func.args + 4)),
