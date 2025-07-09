@@ -2,10 +2,13 @@ use super::Desugared;
 use super::TailCall;
 use super::astx::*;
 use super::defined::*;
+use crate::ast::defined;
+use crate::ast::parsed;
 use crate::x::FamilyX;
 use crate::x::Phase;
 use crate::x::TypeMap;
 use crate::x::type_map;
+use crate::x::type_map::IntoTypeMap;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 #[derive(Debug, Clone)]
@@ -87,8 +90,20 @@ impl FamilyX<Used> for SetX {
     type R = UsedSetR;
 }
 
+impl From<parsed::ParsedLetR> for parsed::ParsedBeginR {
+    fn from(val: parsed::ParsedLetR) -> Self {
+        parsed::ParsedBeginR { span: val.span }
+    }
+}
+
+impl From<defined::DefinedLetR> for () {
+    fn from(_: defined::DefinedLetR) -> Self {
+        ()
+    }
+}
+
 impl FamilyX<Used> for LetX {
-    type R = ();
+    type R = !;
 }
 
 impl FamilyX<Used> for VectorX {
@@ -395,7 +410,59 @@ impl Expr<Used> {
                     expr: Box::new(new_expr),
                 })
             }
-            Expr::Let(x, _) => x.get_owned(type_map::key::<Desugared>()),
+            Expr::Let(x, let_) => {
+                // TODO: lambdaと重複するのでAst::Scopedみたいなものがほしい
+                let mut new_env = FxHashMap::default();
+                match ctx {
+                    Context::Global => {}
+                    Context::Local(LocalContext { env }) => {
+                        for (name, local_var) in env.iter() {
+                            new_env.insert(name.clone(), EnvLocalVar {
+                                id: local_var.id,
+                                is_captured: true,
+                            });
+                        }
+                    }
+                }
+                let bindings = let_
+                    .bindings
+                    .iter()
+                    .map(|(name, expr)| {
+                        let id = var_id_gen.gen_local(VarMeta { name: name.clone() });
+                        new_env.insert(name.clone(), EnvLocalVar {
+                            id,
+                            is_captured: false,
+                        });
+                        let expr = Self::from_expr(expr.clone(), ctx, var_id_gen, state);
+                        (id, expr)
+                    })
+                    .collect::<Vec<_>>();
+
+                for def in x.get_ref(type_map::key::<Defined>()).defines.iter() {
+                    let id = var_id_gen.gen_local(VarMeta { name: def.clone() });
+                    new_env.insert(def.clone(), EnvLocalVar {
+                        id,
+                        is_captured: false,
+                    });
+                }
+
+                let new_ctx = Context::Local(LocalContext { env: new_env });
+
+                let new_body = let_
+                    .body
+                    .into_iter()
+                    // stateは親のものを引き継ぐ
+                    .map(|expr| Self::from_expr(expr, &new_ctx, var_id_gen, state))
+                    .collect::<Vec<_>>();
+
+                let mut exprs = vec![];
+                // TODO: exprs.push(set! x 1)
+                exprs.extend(new_body);
+
+                Expr::Begin(x.into_type_map().add(type_map::key::<Used>(), ()), Begin {
+                    exprs,
+                })
+            }
             Expr::Vector(x, vec) => {
                 let new_vec = vec
                     .into_iter()
