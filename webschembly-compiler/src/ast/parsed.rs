@@ -297,7 +297,6 @@ impl Expr<Parsed> {
                 } => span,
                 ..cdr
             ] => match cdr {
-                // TODO: 効率が悪いが一旦ラムダ式に変換
                 list_pattern![bindings, ..body] => {
                     let (bindings, binding_spans) = bindings
                         .to_vec()

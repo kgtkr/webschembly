@@ -105,7 +105,14 @@ impl Expr<TailCall> {
                 name: set.name,
                 expr: Box::new(Self::from_expr(*set.expr, false)),
             }),
-            Expr::Let(x, _) => x.get_owned(type_map::key::<Desugared>()),
+            Expr::Let(x, let_) => Expr::Let(x.add(type_map::key::<TailCall>(), ()), Let {
+                bindings: let_
+                    .bindings
+                    .into_iter()
+                    .map(|(name, expr)| (name, Self::from_expr(expr, false)))
+                    .collect(),
+                body: Self::from_exprs(let_.body, is_tail),
+            }),
             Expr::Vector(x, vec) => Expr::Vector(x.add(type_map::key::<TailCall>(), ()), {
                 vec.into_iter()
                     .map(|expr| Self::from_expr(expr, false))

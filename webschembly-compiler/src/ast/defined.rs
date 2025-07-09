@@ -51,8 +51,13 @@ impl FamilyX<Defined> for SetX {
     type R = ();
 }
 
+#[derive(Debug, Clone)]
+pub struct DefinedLetR {
+    pub defines: Vec<String>,
+}
+
 impl FamilyX<Defined> for LetX {
-    type R = ();
+    type R = DefinedLetR;
 }
 
 impl FamilyX<Defined> for VectorX {
@@ -215,7 +220,30 @@ impl Expr<Defined> {
                     }),
                 ))
             }
-            Expr::Let(x, _) => x.get_owned(type_map::key::<Desugared>()),
+            Expr::Let(x, let_) => {
+                let mut new_names = Vec::new();
+                let new_body =
+                    Self::from_block(let_.body, DefineContext::LocalDefinable, &mut new_names)?;
+                Ok((
+                    ctx.to_undefinable_if_local(),
+                    Expr::Let(
+                        x.add(type_map::key::<Defined>(), DefinedLetR {
+                            defines: new_names,
+                        }),
+                        Let {
+                            bindings: let_
+                                .bindings
+                                .into_iter()
+                                .map(|(name, expr)| {
+                                    Self::from_expr(expr, ctx.to_undefinable_if_local(), names)
+                                        .map(|(_, expr)| (name, expr))
+                                })
+                                .collect::<Result<Vec<_>>>()?,
+                            body: new_body,
+                        },
+                    ),
+                ))
+            }
             Expr::Vector(x, vec) => Ok((
                 ctx.to_undefinable_if_local(),
                 Expr::Vector(

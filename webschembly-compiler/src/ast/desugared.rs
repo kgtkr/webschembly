@@ -45,7 +45,7 @@ impl FamilyX<Desugared> for SetX {
 }
 
 impl FamilyX<Desugared> for LetX {
-    type R = !;
+    type R = ();
 }
 
 impl FamilyX<Desugared> for VectorX {
@@ -141,24 +141,18 @@ impl Expr<Desugared> {
                 name: set.name,
                 expr: Box::new(Self::from_expr(*set.expr)),
             }),
-            Expr::Let(x, let_) => {
-                let (names, exprs) = let_.bindings.into_iter().collect::<(Vec<_>, Vec<_>)>();
-                Expr::Call(
-                    x.clone()
-                        .into_type_map()
-                        .add(type_map::key::<Desugared>(), ()),
-                    Call {
-                        func: Box::new(Expr::Lambda(
-                            x.into_type_map().add(type_map::key::<Desugared>(), ()),
-                            Lambda {
-                                args: names,
-                                body: let_.body.into_iter().map(Self::from_expr).collect(),
-                            },
-                        )),
-                        args: exprs.into_iter().map(Self::from_expr).collect(),
-                    },
-                )
-            }
+            Expr::Let(x, let_) => Expr::Let(x.add(type_map::key::<Desugared>(), ()), Let {
+                bindings: let_
+                    .bindings
+                    .into_iter()
+                    .map(|(name, expr)| (name, Self::from_expr(expr)))
+                    .collect(),
+                body: let_
+                    .body
+                    .into_iter()
+                    .map(Self::from_expr)
+                    .collect::<Vec<_>>(),
+            }),
             Expr::Vector(x, vec) => Expr::Vector(
                 x.add(type_map::key::<Desugared>(), ()),
                 vec.into_iter().map(Self::from_expr).collect(),
