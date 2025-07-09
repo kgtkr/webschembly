@@ -6,11 +6,11 @@ use crate::ir::BasicBlockNext;
 
 use super::ir;
 use wasm_encoder::{
-    AbstractHeapType, BlockType, CodeSection, CompositeInnerType, CompositeType, DataCountSection,
-    DataSection, ElementSection, Elements, EntityType, ExportKind, ExportSection, FieldType,
-    Function, FunctionSection, GlobalSection, GlobalType, HeapType, ImportSection, Instruction,
-    MemoryType, Module, RefType, StorageType, StructType, SubType, TableSection, TableType,
-    TypeSection, ValType,
+    AbstractHeapType, BlockType, CodeSection, CompositeInnerType, CompositeType, ConstExpr,
+    DataCountSection, DataSection, ElementSection, Elements, EntityType, ExportKind, ExportSection,
+    FieldType, Function, FunctionSection, GlobalSection, GlobalType, HeapType, ImportSection,
+    Instruction, MemoryType, Module, RefType, StorageType, StructType, SubType, TableSection,
+    TableType, TypeSection, ValType,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -74,6 +74,7 @@ struct ModuleGenerator<'a> {
     nil_global: Option<u32>,
     true_global: Option<u32>,
     false_global: Option<u32>,
+    func_ref_globals: FxHashMap<ir::FuncId, u32>,
 }
 
 impl<'a> ModuleGenerator<'a> {
@@ -121,6 +122,7 @@ impl<'a> ModuleGenerator<'a> {
             true_global: None,
             false_global: None,
             table_count: 0,
+            func_ref_globals: FxHashMap::default(),
         }
     }
 
@@ -476,6 +478,20 @@ impl<'a> ModuleGenerator<'a> {
             self.func_indices.insert(func.id, func_idx);
             self.elements
                 .declared(Elements::Functions(Cow::Borrowed(&[func_idx])));
+
+            self.func_ref_globals.insert(func.id, self.global_count);
+            self.globals.global(
+                GlobalType {
+                    val_type: ValType::Ref(RefType {
+                        nullable: true,
+                        heap_type: HeapType::Concrete(self.func_ref_type),
+                    }),
+                    mutable: true,
+                    shared: false,
+                },
+                &ConstExpr::ref_null(HeapType::Concrete(self.func_ref_type)),
+            );
+            self.global_count += 1;
         }
         for func in self.module.funcs.iter() {
             FuncGenerator::new(&mut self, func).gen_func();
@@ -904,9 +920,11 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 function.instruction(&Instruction::LocalGet(self.from_local_id(*val)));
             }
             ir::Expr::FuncRef(func) => {
-                let func_idx = self.module_generator.func_indices[func];
-                function.instruction(&Instruction::RefFunc(func_idx));
-                function.instruction(&Instruction::StructNew(self.module_generator.func_ref_type));
+                let global_idx = self.module_generator.func_ref_globals[func];
+                function.instruction(&Instruction::GlobalGet(global_idx));
+                function.instruction(&Instruction::RefCastNonNull(HeapType::Concrete(
+                    self.module_generator.func_ref_type,
+                )));
             }
             ir::Expr::Closure {
                 envs,
@@ -1283,6 +1301,15 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             }
 
             ir::Expr::InitModule => {
+                for func in self.module_generator.module.funcs.iter() {
+                    let global_idx = self.module_generator.func_ref_globals[&func.id];
+                    let func_idx = self.module_generator.func_indices[&func.id];
+                    function.instruction(&Instruction::RefFunc(func_idx));
+                    function
+                        .instruction(&Instruction::StructNew(self.module_generator.func_ref_type));
+                    function.instruction(&Instruction::GlobalSet(global_idx));
+                }
+                // init globals
                 let global_count = self
                     .module_generator
                     .module
