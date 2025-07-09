@@ -146,6 +146,31 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             local: None,
             expr: Expr::InitModule,
         });
+
+        // TODO: lambda_genと被っている
+        for id in &self
+            .module_generator
+            .ast
+            .x
+            .get_ref(type_map::key::<Used>())
+            .defines
+        {
+            let local = self.define_ast_local(*id);
+            if self
+                .module_generator
+                .ast
+                .x
+                .get_ref(type_map::key::<Used>())
+                .box_vars
+                .contains(id)
+            {
+                self.exprs.push(ExprAssign {
+                    local: Some(local),
+                    expr: Expr::CreateMutCell(Type::Boxed),
+                });
+            }
+        }
+
         self.gen_exprs(Some(boxed_local), &self.module_generator.ast.exprs);
         self.close_bb(Some(BasicBlockNext::Return));
         Func {
