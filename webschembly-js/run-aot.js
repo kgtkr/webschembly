@@ -43,3 +43,4 @@ for (const key of Object.keys(wasmInstance.exports).reverse()) {
     wasmInstance.exports[key]();
   }
 }
+wasmInstance.exports.cleanup();
