@@ -197,17 +197,9 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         lambda: &ast::Lambda<ast::Final>,
     ) -> Func {
         let self_closure = self.local(Type::Val(ValType::Closure));
-        let mut arg_locals = Vec::new();
-        for _ in &x.get_ref(type_map::key::<Used>()).args {
-            // 引数にMutCellは使えないので一旦全てBoxedで定義
-            let arg_local = self.local(Type::Boxed);
-            arg_locals.push(arg_local);
-        }
-        for (arg_local, arg) in arg_locals
-            .into_iter()
-            .zip(&x.get_ref(type_map::key::<Used>()).args)
-        {
-            let local = self.define_ast_local(*arg);
+        // mut cell化が必要な引数(引数で直接MutCellは受け取れないので後続の処理で生成する)
+        let mut mut_cell_arg_locals = Vec::new();
+        for arg in &x.get_ref(type_map::key::<Used>()).args {
             if self
                 .module_generator
                 .ast
@@ -216,21 +208,23 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 .box_vars
                 .contains(arg)
             {
-                self.exprs.push(ExprAssign {
-                    local: Some(local),
-                    expr: Expr::CreateMutCell(Type::Boxed),
-                });
-
-                self.exprs.push(ExprAssign {
-                    local: None,
-                    expr: Expr::SetMutCell(Type::Boxed, local, arg_local),
-                });
+                let local = self.local(LocalType::Type(Type::Boxed));
+                mut_cell_arg_locals.push((arg, local));
             } else {
-                self.exprs.push(ExprAssign {
-                    local: Some(local),
-                    expr: Expr::Move(arg_local),
-                });
+                self.define_ast_local(*arg);
             }
+        }
+        for (ast_local, local) in mut_cell_arg_locals {
+            let mut_cell_local = self.define_ast_local(*ast_local);
+            self.exprs.push(ExprAssign {
+                local: Some(mut_cell_local),
+                expr: Expr::CreateMutCell(Type::Boxed),
+            });
+
+            self.exprs.push(ExprAssign {
+                local: None,
+                expr: Expr::SetMutCell(Type::Boxed, mut_cell_local, local),
+            });
         }
 
         // 環境を復元するためのローカル変数を定義
