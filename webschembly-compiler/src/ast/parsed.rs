@@ -94,7 +94,7 @@ impl FamilyX<Parsed> for SetX {
 #[derive(Debug, Clone)]
 pub struct ParsedLetR {
     pub span: Span,
-    pub binding_spans: Vec<Span>,
+    pub binding_name_spans: Vec<Span>,
 }
 
 impl FamilyX<Parsed> for LetX {
@@ -298,7 +298,7 @@ impl Expr<Parsed> {
                 ..cdr
             ] => match cdr {
                 list_pattern![bindings, ..body] => {
-                    let (bindings, binding_spans) = bindings
+                    let (bindings, binding_name_spans) = bindings
                         .to_vec()
                         .ok_or_else(|| compiler_error!("Expected a list of bindings"))?
                         .into_iter()
@@ -307,9 +307,9 @@ impl Expr<Parsed> {
                                 SExpr {
                                     kind: SExprKind::Symbol(name),
                                     ..
-                                },
+                                } => name_span,
                                 expr,
-                            ] => Ok(((name, Expr::from_sexpr(expr)?), binding.span)),
+                            ] => Ok(((name, Expr::from_sexpr(expr)?), name_span)),
                             _ => Err(compiler_error!("Invalid binding")),
                         })
                         .collect::<Result<(Vec<_>, Vec<_>)>>()?;
@@ -323,7 +323,7 @@ impl Expr<Parsed> {
                     Ok(Expr::Let(
                         type_map::singleton(type_map::key::<Parsed>(), ParsedLetR {
                             span,
-                            binding_spans,
+                            binding_name_spans,
                         }),
                         Let { bindings, body },
                     ))

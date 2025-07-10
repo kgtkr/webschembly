@@ -63,24 +63,46 @@ pub fn empty() -> Empty {
     HNil
 }
 
-pub trait IntoTypeMap<T2> {
-    fn into_type_map(self) -> T2;
+// パラメータを取れるIntoトレイト
+pub trait ElementInto<T> {
+    type Param;
+
+    fn element_into(self, param: Self::Param) -> T;
 }
 
-impl IntoTypeMap<Empty> for Empty {
-    fn into_type_map(self) -> Empty {
+impl<T> ElementInto<T> for T {
+    type Param = ();
+
+    fn element_into(self, _: Self::Param) -> T {
         self
     }
 }
 
-impl<K, V, T, V2, T2> IntoTypeMap<Add<K, V2, T2>> for Add<K, V, T>
+pub trait IntoTypeMap<T2, P> {
+    type Param;
+
+    fn into_type_map(self, param: P) -> T2;
+}
+
+impl<P> IntoTypeMap<Empty, P> for Empty {
+    type Param = ();
+
+    fn into_type_map(self, _: P) -> Empty {
+        self
+    }
+}
+
+impl<K, V, T, V2, T2, P> IntoTypeMap<Add<K, V2, T2>, P> for Add<K, V, T>
 where
-    V: Into<V2>,
-    T: IntoTypeMap<T2>,
+    V: ElementInto<V2>,
+    T: IntoTypeMap<T2, P>,
+    P: Into<<V as ElementInto<V2>>::Param> + Clone,
 {
-    fn into_type_map(self) -> Add<K, V2, T2> {
+    type Param = <V as ElementInto<V2>>::Param;
+
+    fn into_type_map(self, param: P) -> Add<K, V2, T2> {
         self.tail
-            .into_type_map()
-            .add(key::<K>(), self.head.value.into())
+            .into_type_map(param.clone())
+            .add(key::<K>(), self.head.value.element_into(param.into()))
     }
 }

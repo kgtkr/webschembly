@@ -8,6 +8,7 @@ use crate::x::FamilyX;
 use crate::x::Phase;
 use crate::x::TypeMap;
 use crate::x::type_map;
+use crate::x::type_map::ElementInto;
 use crate::x::type_map::IntoTypeMap;
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -91,24 +92,40 @@ impl FamilyX<Used> for SetX {
     type R = UsedSetR;
 }
 
-impl From<parsed::ParsedLetR> for parsed::ParsedBeginR {
-    fn from(val: parsed::ParsedLetR) -> Self {
-        parsed::ParsedBeginR { span: val.span }
+impl ElementInto<parsed::ParsedBeginR> for parsed::ParsedLetR {
+    type Param = ();
+
+    fn element_into(self, _: Self::Param) -> parsed::ParsedBeginR {
+        parsed::ParsedBeginR { span: self.span }
     }
 }
 
-impl From<defined::DefinedLetR> for () {
-    fn from(_: defined::DefinedLetR) -> Self {
+impl ElementInto<()> for defined::DefinedLetR {
+    type Param = ();
+
+    fn element_into(self, _: Self::Param) -> () {
         ()
     }
 }
 
-impl From<parsed::ParsedLetR> for parsed::ParsedSetR {
-    fn from(val: parsed::ParsedLetR) -> Self {
+#[derive(Debug, Clone)]
+pub struct LetRIndex {
+    index: usize,
+}
+
+impl From<LetRIndex> for () {
+    fn from(_: LetRIndex) -> Self {
+        ()
+    }
+}
+
+impl ElementInto<parsed::ParsedSetR> for parsed::ParsedLetR {
+    type Param = LetRIndex;
+
+    fn element_into(self, param: Self::Param) -> parsed::ParsedSetR {
         parsed::ParsedSetR {
-            span: val.span,
-            // TODO:
-            name_span: val.span,
+            span: self.span,
+            name_span: self.binding_name_spans[param.index],
         }
     }
 }
@@ -400,6 +417,7 @@ impl Expr<Used> {
                 })
             }
             Expr::Set(x, set) => {
+                // TODO: flag_mutateが保守的すぎる。定義時にしかset!されない変数には不要
                 let var_id = if let Some(local_var) = ctx.env.get(&set.name) {
                     if local_var.is_captured {
                         state.captures.insert(local_var.id);
@@ -426,8 +444,9 @@ impl Expr<Used> {
                 }
 
                 let mut set_exprs = Vec::new();
-                for (name, expr) in &let_.bindings {
+                for (i, (name, expr)) in let_.bindings.iter().enumerate() {
                     let id = var_id_gen.gen_local(VarMeta { name: name.clone() });
+                    // TODO: let recは必要な場合もあるが、letならflag_mutateは不要では
                     var_id_gen.flag_mutate(id);
                     new_env.insert(name.clone(), EnvLocalVar {
                         id,
@@ -437,11 +456,12 @@ impl Expr<Used> {
 
                     let expr = Self::from_expr(expr.clone(), ctx, var_id_gen, state);
                     let set_expr = Expr::Set(
-                        x.clone()
-                            .into_type_map()
-                            .add(type_map::key::<Used>(), UsedSetR {
+                        x.clone().into_type_map(LetRIndex { index: i }).add(
+                            type_map::key::<Used>(),
+                            UsedSetR {
                                 var_id: VarId::Local(id),
-                            }),
+                            },
+                        ),
                         Set {
                             name: name.clone(),
                             expr: Box::new(expr),
@@ -471,9 +491,10 @@ impl Expr<Used> {
                         .collect::<Vec<_>>(),
                 );
 
-                Expr::Begin(x.into_type_map().add(type_map::key::<Used>(), ()), Begin {
-                    exprs,
-                })
+                Expr::Begin(
+                    x.into_type_map(()).add(type_map::key::<Used>(), ()),
+                    Begin { exprs },
+                )
             }
             Expr::Vector(x, vec) => {
                 let new_vec = vec

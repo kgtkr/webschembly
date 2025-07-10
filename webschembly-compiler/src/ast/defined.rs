@@ -1,11 +1,13 @@
 use super::Desugared;
 use super::astx::*;
+use crate::ast::parsed;
 use crate::compiler_error;
 use crate::error::Result;
 use crate::x::FamilyX;
 use crate::x::Phase;
 use crate::x::TypeMap;
 use crate::x::type_map;
+use crate::x::type_map::ElementInto;
 use crate::x::type_map::IntoTypeMap;
 
 // 変数の巻き上げを行うためにラムダ式で定義されている変数の名前リストを作成する
@@ -49,6 +51,17 @@ impl FamilyX<Defined> for BeginX {
 }
 impl FamilyX<Defined> for SetX {
     type R = ();
+}
+
+impl ElementInto<parsed::ParsedSetR> for parsed::ParsedDefineR {
+    type Param = ();
+
+    fn element_into(self, _: Self::Param) -> parsed::ParsedSetR {
+        parsed::ParsedSetR {
+            span: self.span,
+            name_span: self.name_span,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -138,13 +151,16 @@ impl Expr<Defined> {
                 // defineは巻き上げを行う以外set!と同じ
                 Ok((
                     ctx,
-                    Expr::Set(x.into_type_map().add(type_map::key::<Defined>(), ()), Set {
-                        name: def.name,
-                        expr: Box::new(
-                            Self::from_expr(*def.expr, ctx.to_undefinable_if_local(), names)
-                                .map(|(_, expr)| expr)?,
-                        ),
-                    }),
+                    Expr::Set(
+                        x.into_type_map(()).add(type_map::key::<Defined>(), ()),
+                        Set {
+                            name: def.name,
+                            expr: Box::new(
+                                Self::from_expr(*def.expr, ctx.to_undefinable_if_local(), names)
+                                    .map(|(_, expr)| expr)?,
+                            ),
+                        },
+                    ),
                 ))
             }
             Expr::Lambda(x, lambda) => {

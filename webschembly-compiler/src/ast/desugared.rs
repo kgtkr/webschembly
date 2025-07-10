@@ -7,6 +7,7 @@ use crate::x::Phase;
 use crate::x::RunX;
 use crate::x::TypeMap;
 use crate::x::type_map;
+use crate::x::type_map::ElementInto;
 use crate::x::type_map::IntoTypeMap;
 
 #[derive(Debug, Clone)]
@@ -60,44 +61,35 @@ impl FamilyX<Desugared> for ConsX {
     type R = ();
 }
 
-impl From<parsed::ParsedLetR> for parsed::ParsedLambdaR {
-    fn from(val: parsed::ParsedLetR) -> Self {
-        parsed::ParsedLambdaR {
-            span: val.span,
-            arg_spans: val.binding_spans,
-        }
+impl ElementInto<parsed::ParsedCallR> for parsed::ParsedLetR {
+    type Param = ();
+
+    fn element_into(self, _: Self::Param) -> parsed::ParsedCallR {
+        parsed::ParsedCallR { span: self.span }
     }
 }
 
-impl From<parsed::ParsedLetR> for parsed::ParsedCallR {
-    fn from(val: parsed::ParsedLetR) -> Self {
-        parsed::ParsedCallR { span: val.span }
+impl ElementInto<parsed::ParsedConstR> for parsed::ParsedQuoteR {
+    type Param = ();
+
+    fn element_into(self, _: Self::Param) -> parsed::ParsedConstR {
+        parsed::ParsedConstR { span: self.span }
     }
 }
 
-impl From<parsed::ParsedDefineR> for parsed::ParsedSetR {
-    fn from(val: parsed::ParsedDefineR) -> Self {
-        parsed::ParsedSetR {
-            span: val.span,
-            name_span: val.name_span,
-        }
+impl ElementInto<parsed::ParsedConsR> for parsed::ParsedQuoteR {
+    type Param = ();
+
+    fn element_into(self, _: Self::Param) -> parsed::ParsedConsR {
+        parsed::ParsedConsR { span: self.span }
     }
 }
 
-impl From<parsed::ParsedQuoteR> for parsed::ParsedConstR {
-    fn from(val: parsed::ParsedQuoteR) -> Self {
-        parsed::ParsedConstR { span: val.span }
-    }
-}
+impl ElementInto<parsed::ParsedVectorR> for parsed::ParsedQuoteR {
+    type Param = ();
 
-impl From<parsed::ParsedQuoteR> for parsed::ParsedConsR {
-    fn from(val: parsed::ParsedQuoteR) -> Self {
-        parsed::ParsedConsR { span: val.span }
-    }
-}
-impl From<parsed::ParsedQuoteR> for parsed::ParsedVectorR {
-    fn from(val: parsed::ParsedQuoteR) -> Self {
-        parsed::ParsedVectorR { span: val.span }
+    fn element_into(self, _: Self::Param) -> parsed::ParsedVectorR {
+        parsed::ParsedVectorR { span: self.span }
     }
 }
 
@@ -168,29 +160,29 @@ impl Expr<Desugared> {
     fn from_quoted_sexpr(x: RunX<QuoteX, <Desugared as Phase>::Prev>, sexpr: sexpr::SExpr) -> Self {
         match sexpr.kind {
             sexpr::SExprKind::Bool(b) => Expr::Const(
-                x.into_type_map().add(type_map::key::<Desugared>(), ()),
+                x.into_type_map(()).add(type_map::key::<Desugared>(), ()),
                 Const::Bool(b),
             ),
             sexpr::SExprKind::Int(i) => Expr::Const(
-                x.into_type_map().add(type_map::key::<Desugared>(), ()),
+                x.into_type_map(()).add(type_map::key::<Desugared>(), ()),
                 Const::Int(i),
             ),
             sexpr::SExprKind::String(s) => Expr::Const(
-                x.into_type_map().add(type_map::key::<Desugared>(), ()),
+                x.into_type_map(()).add(type_map::key::<Desugared>(), ()),
                 Const::String(s),
             ),
             sexpr::SExprKind::Char(c) => Expr::Const(
-                x.into_type_map().add(type_map::key::<Desugared>(), ()),
+                x.into_type_map(()).add(type_map::key::<Desugared>(), ()),
                 Const::Char(c),
             ),
             sexpr::SExprKind::Symbol(s) => Expr::Const(
-                x.into_type_map().add(type_map::key::<Desugared>(), ()),
+                x.into_type_map(()).add(type_map::key::<Desugared>(), ()),
                 Const::Symbol(s),
             ),
             // TODO: span情報の保持
             sexpr::SExprKind::Cons(cons) => Expr::Cons(
                 x.clone()
-                    .into_type_map()
+                    .into_type_map(())
                     .add(type_map::key::<Desugared>(), ()),
                 Cons {
                     car: Box::new(Self::from_quoted_sexpr(x.clone(), cons.car)),
@@ -200,14 +192,14 @@ impl Expr<Desugared> {
             // TODO: span情報の保持
             sexpr::SExprKind::Vector(vec) => Expr::Vector(
                 x.clone()
-                    .into_type_map()
+                    .into_type_map(())
                     .add(type_map::key::<Desugared>(), ()),
                 vec.into_iter()
                     .map(|s| Self::from_quoted_sexpr(x.clone(), s))
                     .collect(),
             ),
             sexpr::SExprKind::Nil => Expr::Const(
-                x.into_type_map().add(type_map::key::<Desugared>(), ()),
+                x.into_type_map(()).add(type_map::key::<Desugared>(), ()),
                 Const::Nil,
             ),
         }
