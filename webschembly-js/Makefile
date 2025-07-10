@@ -54,6 +54,11 @@ repl: $(WEBSCHEMBLY_RUNTIME)
 run: $(WEBSCHEMBLY_RUNTIME)
 	WEBSCHEMBLY_RUNTIME=$(WEBSCHEMBLY_RUNTIME) node run.js $(SRC)
 
+.PHONY: run-aot
+run-aot: $(WASM)
+	node run-aot.js $(WASM)
+
+
 .PHONY: clean
 clean:
 	rm -f $(WASM) $(WAT)
