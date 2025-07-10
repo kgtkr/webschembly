@@ -151,10 +151,31 @@ struct Context {
 }
 
 impl Context {
-    fn new() -> Self {
+    fn new_empty() -> Self {
         Context {
             env: FxHashMap::default(),
         }
+    }
+
+    fn extend_some_lambda(
+        mut self,
+        new_env: impl IntoIterator<Item = (String, EnvLocalVar)>,
+    ) -> Self {
+        for (name, local_var) in new_env {
+            self.env.insert(name, local_var);
+        }
+        self
+    }
+
+    fn extend_new_lambda(
+        mut self,
+        new_env: impl IntoIterator<Item = (String, EnvLocalVar)>,
+    ) -> Self {
+        for (_, var) in self.env.iter_mut() {
+            var.is_captured = true;
+        }
+
+        self.extend_some_lambda(new_env)
     }
 }
 
@@ -274,7 +295,7 @@ impl Ast<Used> {
             .into_iter()
             .map(|expr| {
                 let mut state = LambdaState::new();
-                let expr = Expr::from_expr(expr, &Context::new(), var_id_gen, &mut state);
+                let expr = Expr::from_expr(expr, &Context::new_empty(), var_id_gen, &mut state);
                 debug_assert!(state.captures.is_empty());
                 defines.extend(state.defines);
                 expr
@@ -321,12 +342,7 @@ impl Expr<Used> {
             Expr::Define(x, _) => x.get_owned(type_map::key::<Defined>()),
             Expr::Lambda(x, lambda) => {
                 let mut new_env = FxHashMap::default();
-                for (name, local_var) in ctx.env.iter() {
-                    new_env.insert(name.clone(), EnvLocalVar {
-                        id: local_var.id,
-                        is_captured: true,
-                    });
-                }
+
                 let args = lambda
                     .args
                     .iter()
@@ -351,7 +367,7 @@ impl Expr<Used> {
                     new_state.defines.push(id);
                 }
 
-                let new_ctx = Context { env: new_env };
+                let new_ctx = ctx.clone().extend_new_lambda(new_env);
                 let new_body = lambda
                     .body
                     .into_iter()
@@ -434,14 +450,7 @@ impl Expr<Used> {
                 })
             }
             Expr::Let(x, let_) => {
-                // TODO: lambdaと重複するのでAst::Scopedみたいなものがほしい
                 let mut new_env = FxHashMap::default();
-                for (name, local_var) in ctx.env.iter() {
-                    new_env.insert(name.clone(), EnvLocalVar {
-                        id: local_var.id,
-                        is_captured: false,
-                    });
-                }
 
                 let mut set_exprs = Vec::new();
                 for (i, (name, expr)) in let_.bindings.iter().enumerate() {
@@ -479,7 +488,7 @@ impl Expr<Used> {
                     state.defines.push(id);
                 }
 
-                let new_ctx = Context { env: new_env };
+                let new_ctx = ctx.clone().extend_some_lambda(new_env);
 
                 let mut exprs = vec![];
                 exprs.extend(set_exprs);

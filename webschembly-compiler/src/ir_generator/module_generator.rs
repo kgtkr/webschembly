@@ -147,29 +147,14 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             expr: Expr::InitModule,
         });
 
-        // TODO: lambda_genと被っている
-        for id in &self
-            .module_generator
-            .ast
-            .x
-            .get_ref(type_map::key::<Used>())
-            .defines
-        {
-            let local = self.define_ast_local(*id);
-            if self
+        self.define_all_ast_local_and_create_mut_cell(
+            &self
                 .module_generator
                 .ast
                 .x
                 .get_ref(type_map::key::<Used>())
-                .box_vars
-                .contains(id)
-            {
-                self.exprs.push(ExprAssign {
-                    local: Some(local),
-                    expr: Expr::CreateMutCell(Type::Boxed),
-                });
-            }
-        }
+                .defines,
+        );
 
         self.gen_exprs(Some(boxed_local), &self.module_generator.ast.exprs);
         self.close_bb(Some(BasicBlockNext::Return));
@@ -253,22 +238,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             });
         }
 
-        for id in &x.get_ref(type_map::key::<Used>()).defines {
-            let local = self.define_ast_local(*id);
-            if self
-                .module_generator
-                .ast
-                .x
-                .get_ref(type_map::key::<Used>())
-                .box_vars
-                .contains(id)
-            {
-                self.exprs.push(ExprAssign {
-                    local: Some(local),
-                    expr: Expr::CreateMutCell(Type::Boxed),
-                });
-            }
-        }
+        self.define_all_ast_local_and_create_mut_cell(&x.get_ref(type_map::key::<Used>()).defines);
 
         let ret = self.local(Type::Boxed);
         self.gen_exprs(Some(ret), &lambda.body);
@@ -335,6 +305,25 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
 
     fn local<T: Into<LocalType>>(&mut self, typ: T) -> LocalId {
         self.locals.push_and_get_key(typ.into())
+    }
+
+    fn define_all_ast_local_and_create_mut_cell(&mut self, locals: &[ast::LocalVarId]) {
+        for id in locals {
+            let local = self.define_ast_local(*id);
+            if self
+                .module_generator
+                .ast
+                .x
+                .get_ref(type_map::key::<Used>())
+                .box_vars
+                .contains(id)
+            {
+                self.exprs.push(ExprAssign {
+                    local: Some(local),
+                    expr: Expr::CreateMutCell(Type::Boxed),
+                });
+            }
+        }
     }
 
     fn define_ast_local(&mut self, id: ast::LocalVarId) -> LocalId {
