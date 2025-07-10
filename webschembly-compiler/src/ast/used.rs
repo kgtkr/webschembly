@@ -129,14 +129,16 @@ impl FamilyX<Used> for ConsX {
 }
 
 #[derive(Debug, Clone)]
-enum Context {
-    Global,
-    Local(LocalContext),
+struct Context {
+    env: FxHashMap<String, EnvLocalVar>,
 }
 
-#[derive(Debug, Clone)]
-struct LocalContext {
-    env: FxHashMap<String, EnvLocalVar>,
+impl Context {
+    fn new() -> Self {
+        Context {
+            env: FxHashMap::default(),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -255,7 +257,7 @@ impl Ast<Used> {
             .into_iter()
             .map(|expr| {
                 let mut state = LambdaState::new();
-                let expr = Expr::from_expr(expr, &Context::Global, var_id_gen, &mut state);
+                let expr = Expr::from_expr(expr, &Context::new(), var_id_gen, &mut state);
                 debug_assert!(state.captures.is_empty());
                 defines.extend(state.defines);
                 expr
@@ -289,34 +291,24 @@ impl Expr<Used> {
         match expr {
             Expr::Const(x, lit) => Expr::Const(x.add(type_map::key::<Used>(), ()), lit),
             Expr::Var(x, var) => {
-                let var_id = match ctx {
-                    Context::Global => VarId::Global(var_id_gen.global_var_id(&var)),
-                    Context::Local(LocalContext { env }) => {
-                        if let Some(local_var) = env.get(&var) {
-                            if local_var.is_captured {
-                                state.captures.insert(local_var.id);
-                            }
-                            VarId::Local(local_var.id)
-                        } else {
-                            VarId::Global(var_id_gen.global_var_id(&var))
-                        }
+                let var_id = if let Some(local_var) = ctx.env.get(&var) {
+                    if local_var.is_captured {
+                        state.captures.insert(local_var.id);
                     }
+                    VarId::Local(local_var.id)
+                } else {
+                    VarId::Global(var_id_gen.global_var_id(&var))
                 };
                 Expr::Var(x.add(type_map::key::<Used>(), UsedVarR { var_id }), var)
             }
             Expr::Define(x, _) => x.get_owned(type_map::key::<Defined>()),
             Expr::Lambda(x, lambda) => {
                 let mut new_env = FxHashMap::default();
-                match ctx {
-                    Context::Global => {}
-                    Context::Local(LocalContext { env }) => {
-                        for (name, local_var) in env.iter() {
-                            new_env.insert(name.clone(), EnvLocalVar {
-                                id: local_var.id,
-                                is_captured: true,
-                            });
-                        }
-                    }
+                for (name, local_var) in ctx.env.iter() {
+                    new_env.insert(name.clone(), EnvLocalVar {
+                        id: local_var.id,
+                        is_captured: true,
+                    });
                 }
                 let args = lambda
                     .args
@@ -342,7 +334,7 @@ impl Expr<Used> {
                     new_state.defines.push(id);
                 }
 
-                let new_ctx = Context::Local(LocalContext { env: new_env });
+                let new_ctx = Context { env: new_env };
                 let new_body = lambda
                     .body
                     .into_iter()
@@ -408,19 +400,14 @@ impl Expr<Used> {
                 })
             }
             Expr::Set(x, set) => {
-                let var_id = match ctx {
-                    Context::Global => VarId::Global(var_id_gen.global_var_id(&set.name)),
-                    Context::Local(LocalContext { env }) => {
-                        if let Some(local_var) = env.get(&set.name) {
-                            if local_var.is_captured {
-                                state.captures.insert(local_var.id);
-                            }
-                            var_id_gen.flag_mutate(local_var.id);
-                            VarId::Local(local_var.id)
-                        } else {
-                            VarId::Global(var_id_gen.global_var_id(&set.name))
-                        }
+                let var_id = if let Some(local_var) = ctx.env.get(&set.name) {
+                    if local_var.is_captured {
+                        state.captures.insert(local_var.id);
                     }
+                    var_id_gen.flag_mutate(local_var.id);
+                    VarId::Local(local_var.id)
+                } else {
+                    VarId::Global(var_id_gen.global_var_id(&set.name))
                 };
                 let new_expr = Self::from_expr(*set.expr, ctx, var_id_gen, state);
                 Expr::Set(x.add(type_map::key::<Used>(), UsedSetR { var_id }), Set {
@@ -431,16 +418,11 @@ impl Expr<Used> {
             Expr::Let(x, let_) => {
                 // TODO: lambdaと重複するのでAst::Scopedみたいなものがほしい
                 let mut new_env = FxHashMap::default();
-                match ctx {
-                    Context::Global => {}
-                    Context::Local(LocalContext { env }) => {
-                        for (name, local_var) in env.iter() {
-                            new_env.insert(name.clone(), EnvLocalVar {
-                                id: local_var.id,
-                                is_captured: false,
-                            });
-                        }
-                    }
+                for (name, local_var) in ctx.env.iter() {
+                    new_env.insert(name.clone(), EnvLocalVar {
+                        id: local_var.id,
+                        is_captured: false,
+                    });
                 }
 
                 let mut set_exprs = Vec::new();
@@ -477,7 +459,7 @@ impl Expr<Used> {
                     state.defines.push(id);
                 }
 
-                let new_ctx = Context::Local(LocalContext { env: new_env });
+                let new_ctx = Context { env: new_env };
 
                 let mut exprs = vec![];
                 exprs.extend(set_exprs);
