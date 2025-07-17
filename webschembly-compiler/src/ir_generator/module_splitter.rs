@@ -105,7 +105,7 @@ pub fn split_and_register_module(ir_generator: &mut IrGenerator, module: Module)
             let func = Func {
                 id: funcs.next_key(),
                 args: func.args,
-                ret: LocalId::from(func.args + 0),
+                ret: LocalId::from(func.args),
                 locals: {
                     let mut locals = TiVec::new();
                     locals.extend(func.arg_types().into_iter().map(LocalType::Type));
@@ -122,25 +122,23 @@ pub fn split_and_register_module(ir_generator: &mut IrGenerator, module: Module)
                 bbs: ti_vec![
                     BasicBlock {
                         id: BasicBlockId::from(0),
-                        exprs: {
-                            let mut exprs = Vec::new();
-                            exprs.push(ExprAssign {
+                        exprs: vec![
+                            ExprAssign {
                                 local: Some(LocalId::from(func.args + 1)),
                                 expr: Expr::GlobalGet(func_ref_globals[func.id]),
-                            });
-                            exprs.push(ExprAssign {
+                            },
+                            ExprAssign {
                                 local: Some(LocalId::from(func.args + 3)),
                                 expr: Expr::FuncRef(stub_func_ids[func.id]),
-                            });
-                            exprs.push(ExprAssign {
+                            },
+                            ExprAssign {
                                 local: Some(LocalId::from(func.args + 4)),
                                 expr: Expr::Eq(
                                     LocalId::from(func.args + 1),
                                     LocalId::from(func.args + 3),
                                 ),
-                            });
-                            exprs
-                        },
+                            },
+                        ],
                         next: BasicBlockNext::If(
                             LocalId::from(func.args + 4),
                             BasicBlockId::from(1),
@@ -149,39 +147,33 @@ pub fn split_and_register_module(ir_generator: &mut IrGenerator, module: Module)
                     },
                     BasicBlock {
                         id: BasicBlockId::from(1),
-                        exprs: {
-                            let mut exprs = Vec::new();
-                            exprs.push(ExprAssign {
-                                local: None,
-                                expr: Expr::InstantiateModule(module_ids[func.id]),
-                            });
-                            exprs
-                        },
+                        exprs: vec![ExprAssign {
+                            local: None,
+                            expr: Expr::InstantiateModule(module_ids[func.id]),
+                        }],
                         next: BasicBlockNext::Jump(BasicBlockId::from(2)),
                     },
                     BasicBlock {
                         id: BasicBlockId::from(2),
-                        exprs: {
-                            let mut exprs = Vec::new();
-                            exprs.push(ExprAssign {
+                        exprs: vec![
+                            ExprAssign {
                                 local: Some(LocalId::from(func.args + 1)),
                                 expr: Expr::GlobalGet(func_ref_globals[func.id]),
-                            });
-                            exprs.push(ExprAssign {
+                            },
+                            ExprAssign {
                                 local: Some(LocalId::from(func.args + 2)),
                                 expr: Expr::Unbox(ValType::FuncRef, LocalId::from(func.args + 1)),
-                            });
-                            exprs.push(ExprAssign {
-                                local: Some(LocalId::from(func.args + 0)),
+                            },
+                            ExprAssign {
+                                local: Some(LocalId::from(func.args)),
                                 expr: Expr::CallRef(
                                     true,
                                     LocalId::from(func.args + 2),
-                                    (0..func.args).map(|i| LocalId::from(i)).collect::<Vec<_>>(),
+                                    (0..func.args).map(LocalId::from).collect::<Vec<_>>(),
                                     func.func_type(),
                                 ),
-                            });
-                            exprs
-                        },
+                            }
+                        ],
                         next: BasicBlockNext::Return,
                     },
                 ],
@@ -230,26 +222,24 @@ pub fn split_and_register_module(ir_generator: &mut IrGenerator, module: Module)
             bb_entry: BasicBlockId::from(0),
             bbs: ti_vec![BasicBlock {
                 id: BasicBlockId::from(0),
-                exprs: {
-                    let mut exprs = Vec::new();
-                    exprs.push(ExprAssign {
+                exprs: vec![
+                    ExprAssign {
                         local: None,
                         expr: Expr::InitModule,
-                    });
-                    exprs.push(ExprAssign {
+                    },
+                    ExprAssign {
                         local: Some(LocalId::from(0)),
                         expr: Expr::FuncRef(FuncId::from(1)),
-                    });
-                    exprs.push(ExprAssign {
+                    },
+                    ExprAssign {
                         local: Some(LocalId::from(1)),
                         expr: Expr::Box(ValType::FuncRef, LocalId::from(0)),
-                    });
-                    exprs.push(ExprAssign {
+                    },
+                    ExprAssign {
                         local: None,
                         expr: Expr::GlobalSet(func_ref_globals[func.id], LocalId::from(1)),
-                    });
-                    exprs
-                },
+                    }
+                ],
                 next: BasicBlockNext::Return,
             },],
         };

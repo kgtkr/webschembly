@@ -103,8 +103,8 @@ impl ElementInto<parsed::ParsedBeginR> for parsed::ParsedLetR {
 impl ElementInto<()> for defined::DefinedLetR {
     type Param = ();
 
-    fn element_into(self, _: Self::Param) -> () {
-        ()
+    fn element_into(self, _: Self::Param) {
+        
     }
 }
 
@@ -115,7 +115,7 @@ pub struct LetRIndex {
 
 impl From<LetRIndex> for () {
     fn from(_: LetRIndex) -> Self {
-        ()
+        
     }
 }
 

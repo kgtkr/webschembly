@@ -50,7 +50,7 @@ impl Compiler {
 
     pub fn compile(&mut self, input: &str, is_stdlib: bool) -> crate::error::Result<Vec<u8>> {
         let module = self.compile_module(input, is_stdlib)?;
-        let code = wasm_generator::generate(&module);
+        let code = wasm_generator::generate(module);
         Ok(code)
     }
 

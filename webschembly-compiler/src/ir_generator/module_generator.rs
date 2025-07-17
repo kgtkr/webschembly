@@ -19,8 +19,8 @@ pub fn generate_module(
     config: Config,
 ) -> Module {
     let module_gen = ModuleGenerator::new(config, ir_generator, ast);
-    let module = module_gen.generate();
-    module
+    
+    module_gen.generate()
 }
 
 #[derive(Debug)]
