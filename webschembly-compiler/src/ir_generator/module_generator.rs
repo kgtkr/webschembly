@@ -19,7 +19,7 @@ pub fn generate_module(
     config: Config,
 ) -> Module {
     let module_gen = ModuleGenerator::new(config, ir_generator, ast);
-    
+
     module_gen.generate()
 }
 
