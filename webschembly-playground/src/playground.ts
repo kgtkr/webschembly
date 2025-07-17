@@ -1,4 +1,4 @@
-import playgroundWorker from "./playground.worker.js?worker";
+import playgroundWorker from "./playground.worker?worker";
 
 let runtimeModule;
 fetch(import.meta.env.BASE_URL + "wasm/webschembly_runtime.wasm").then((res) =>

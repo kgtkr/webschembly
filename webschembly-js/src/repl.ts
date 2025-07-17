@@ -1,5 +1,5 @@
-import { createNodeRuntimeEnv } from "./node-runtime-env.js";
-import { createRuntime } from "./runtime.js";
+import { createNodeRuntimeEnv } from "./node-runtime-env";
+import { createRuntime } from "./runtime";
 
 const runtime = createRuntime(
   createNodeRuntimeEnv({

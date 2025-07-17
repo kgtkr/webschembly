@@ -2,8 +2,8 @@ import * as fs from "fs/promises";
 import * as fsLegacy from "fs";
 import { beforeAll, describe, expect, test } from "vitest";
 import * as path from "path";
-import { createRuntime } from "./runtime.js";
-import { createNodeRuntimeEnv } from "./node-runtime-env.js";
+import { createRuntime } from "./runtime";
+import { createNodeRuntimeEnv } from "./node-runtime-env";
 
 function concatBufs(bufs) {
   const bufLen = bufs.map((buf) => buf.length).reduce((a, b) => a + b, 0);
@@ -16,7 +16,7 @@ function concatBufs(bufs) {
   return resultBuf;
 }
 
-const sourceDir = "src";
+const sourceDir = "fixtures";
 const filenames = fsLegacy
   .readdirSync(sourceDir)
   .filter((file) => file.endsWith(".scm"));

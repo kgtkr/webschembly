@@ -1,5 +1,5 @@
 BINARYEN_ARGS ?= $(shell cat ../binaryen-args.txt)
-SCM := $(wildcard src/*.scm)
+SCM := $(wildcard fixtures/*.scm)
 LIST := $(patsubst %.scm,%,$(SCM))
 WASM := $(patsubst %.scm,%.wasm,$(SCM))
 WASMS := $(patsubst %.scm,%.wasms,$(SCM))
@@ -48,15 +48,15 @@ test: $(WEBSCHEMBLY_RUNTIME)
 
 .PHONY: repl
 repl: $(WEBSCHEMBLY_RUNTIME)
-	WEBSCHEMBLY_RUNTIME=$(WEBSCHEMBLY_RUNTIME) node repl.js
+	WEBSCHEMBLY_RUNTIME=$(WEBSCHEMBLY_RUNTIME) npx tsx src/repl.ts
 
 .PHONY: run
 run: $(WEBSCHEMBLY_RUNTIME)
-	WEBSCHEMBLY_RUNTIME=$(WEBSCHEMBLY_RUNTIME) node run.js $(SRC)
+	WEBSCHEMBLY_RUNTIME=$(WEBSCHEMBLY_RUNTIME) npx tsx src/run.ts $(SRC)
 
 .PHONY: run-aot
 run-aot: $(WASM)
-	node run-aot.js $(WASM)
+	npx tsx src/run-aot.ts $(WASM)
 
 
 .PHONY: clean

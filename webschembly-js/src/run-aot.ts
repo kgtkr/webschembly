@@ -1,10 +1,9 @@
 import * as fs from "fs";
-import { createRuntime } from "./runtime.js";
-import { createNodeRuntimeEnv } from "./node-runtime-env.js";
+import { createNodeRuntimeEnv } from "./node-runtime-env";
 
 const wasmName = process.argv[2];
 if (!wasmName) {
-  console.error("Usage: run-aot.js <wasm>");
+  console.error("Usage: run-aot <wasm>");
   process.exit(1);
 }
 
@@ -12,7 +11,7 @@ const runtimeEnv = createNodeRuntimeEnv({ runtimeModule: null });
 const runtimeImportObjects = {
   js_instantiate: (bufPtr, bufSize, fromSrc) => {
     throw new Error(
-      "js_instantiate is not supported in run-aot.js. Use run.js instead."
+      "js_instantiate is not supported in run-aot. Use run instead."
     );
   },
   js_webschembly_log: (bufPtr, bufLen) => {

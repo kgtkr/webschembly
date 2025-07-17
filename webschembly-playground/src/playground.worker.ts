@@ -1,4 +1,4 @@
-import { createRuntime } from "webschembly-js/runtime.js";
+import { createRuntime } from "webschembly-js/runtime";
 
 self.addEventListener("message", (event) => {
   const { src, runtimeModule } = event.data;

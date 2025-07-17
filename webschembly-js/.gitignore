@@ -5,3 +5,5 @@
 bin/*
 /log/
 *.ir
+/dist/
+/node_modules/

@@ -1,10 +1,10 @@
 import * as fs from "fs";
-import { createRuntime } from "./runtime.js";
-import { createNodeRuntimeEnv } from "./node-runtime-env.js";
+import { createRuntime } from "./runtime";
+import { createNodeRuntimeEnv } from "./node-runtime-env";
 
 const srcName = process.argv[2];
 if (!srcName) {
-  console.error("Usage: run.js <src>");
+  console.error("Usage: run <src>");
   process.exit(1);
 }
 const runtime = createRuntime(
