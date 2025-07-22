@@ -586,12 +586,12 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     let mut arg_locals = Vec::new();
                     let mut args_types = Vec::new();
                     arg_locals.push(closure_local); // 第一引数にクロージャを渡す
-                    args_types.push(Type::Val(ValType::Closure));
+                    args_types.push(LocalType::Type(Type::Val(ValType::Closure)));
                     for arg in args {
                         let arg_local = self.local(Type::Boxed);
                         self.gen_expr(Some(arg_local), arg);
                         arg_locals.push(arg_local);
-                        args_types.push(Type::Boxed);
+                        args_types.push(LocalType::Type(Type::Boxed));
                     }
                     self.exprs.push(ExprAssign {
                         local: result,
@@ -600,7 +600,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                             func_local,
                             arg_locals,
                             FuncType {
-                                ret: Type::Boxed,
+                                ret: LocalType::Type(Type::Boxed),
                                 args: args_types,
                             },
                         ),

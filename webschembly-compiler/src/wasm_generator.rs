@@ -153,9 +153,9 @@ impl<'a> ModuleGenerator<'a> {
         let params = ir_func_type
             .args
             .iter()
-            .map(|ty| self.convert_type(ty))
+            .map(|ty| self.convert_local_type(ty))
             .collect();
-        let results = vec![self.convert_type(&ir_func_type.ret)];
+        let results = vec![self.convert_local_type(&ir_func_type.ret)];
         self.func_type(WasmFuncType { params, results })
     }
 

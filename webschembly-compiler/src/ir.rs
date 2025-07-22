@@ -43,6 +43,11 @@ pub struct MetaInFunc<'a> {
     meta: &'a Meta,
 }
 
+/*
+TypeもしくはmutableなTypeを表す
+Type自体にMutCellを含めて再帰的にしてしまうと無限種類の型を作れるようになってしまうので、IRではそれを避けるためこのような構造になっている
+TODO: LocalTypeという名前は適切ではない
+*/
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, derive_more::Display)]
 pub enum LocalType {
     #[display("mut_cell({})", _0)]
@@ -544,7 +549,6 @@ impl BasicBlockNext {
 pub struct Func {
     pub id: FuncId,
     pub locals: TiVec<LocalId, LocalType>,
-    // argsとretで指定されたローカル変数の型は LocalType::Type でなければならない
     // localsの先頭何個が引数か
     pub args: usize,
     // localsのうちどれが返り値か
@@ -558,14 +562,14 @@ impl Func {
         Display { value: self, meta }
     }
 
-    pub fn arg_types(&self) -> Vec<Type> {
+    pub fn arg_types(&self) -> Vec<LocalType> {
         (0..self.args)
-            .map(|i| self.locals[LocalId::from(i)].to_type().unwrap())
+            .map(|i| self.locals[LocalId::from(i)])
             .collect()
     }
 
-    pub fn ret_type(&self) -> Type {
-        self.locals[self.ret].to_type().unwrap()
+    pub fn ret_type(&self) -> LocalType {
+        self.locals[self.ret]
     }
 
     pub fn func_type(&self) -> FuncType {
@@ -621,8 +625,8 @@ impl fmt::Display for Display<'_, &'_ Func> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FuncType {
-    pub args: Vec<Type>,
-    pub ret: Type,
+    pub args: Vec<LocalType>,
+    pub ret: LocalType,
 }
 
 #[derive(Debug, Clone, Copy, From, Into, Hash, PartialEq, Eq)]

@@ -108,9 +108,9 @@ pub fn split_and_register_module(ir_generator: &mut IrGenerator, module: Module)
                 ret: LocalId::from(func.args),
                 locals: {
                     let mut locals = TiVec::new();
-                    locals.extend(func.arg_types().into_iter().map(LocalType::Type));
+                    locals.extend(func.arg_types().into_iter());
                     locals.extend(vec![
-                        LocalType::Type(func.ret_type()),
+                        func.ret_type(),
                         LocalType::Type(Type::Boxed), // boxed f0_ref
                         LocalType::Type(Type::Val(ValType::FuncRef)), // f0_ref
                         LocalType::Type(Type::Boxed), // f0_stub
