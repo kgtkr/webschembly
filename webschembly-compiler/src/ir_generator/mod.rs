@@ -4,3 +4,5 @@ mod module_splitter;
 pub use module_splitter::*;
 mod module_generator;
 pub use module_generator::*;
+mod function_splitter;
+pub use function_splitter::*;

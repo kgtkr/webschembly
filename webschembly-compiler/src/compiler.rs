@@ -40,6 +40,8 @@ impl Compiler {
             ir_generator::generate_module(&mut self.ir_generator, &ast, ir_generator::Config {
                 allow_set_builtin: is_stdlib,
             });
+        let module = ir_generator::split_function(module);
+
         let module_id = if self.config.enable_jit {
             ir_generator::split_and_register_module(&mut self.ir_generator, module)
         } else {

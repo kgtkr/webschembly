@@ -180,6 +180,12 @@ impl fmt::Display for Display<'_, FuncId> {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum LocalFlag {
+    Defined,
+    Used,
+}
+
 #[derive(Debug, Clone)]
 pub enum Expr {
     InstantiateModule(ModuleId),
@@ -248,6 +254,138 @@ pub enum Expr {
 impl Expr {
     pub fn display<'a>(&self, meta: MetaInFunc<'a>) -> DisplayInFunc<'a, &'_ Expr> {
         DisplayInFunc { value: self, meta }
+    }
+
+    pub fn modify_func_id<F>(&mut self, mut f: F)
+    where
+        F: FnMut(&mut FuncId),
+    {
+        match self {
+            Expr::FuncRef(func_id) => f(func_id),
+            Expr::Call(_, func_id, _) => f(func_id),
+            _ => {}
+        }
+    }
+
+    pub fn modify_local_id<F>(&mut self, mut f: F)
+    where
+        F: FnMut(&mut LocalId),
+    {
+        match self {
+            Expr::StringToSymbol(id) => f(id),
+            Expr::Vector(ids) => {
+                for id in ids {
+                    f(id);
+                }
+            }
+            Expr::Cons(a, b) => {
+                f(a);
+                f(b);
+            }
+            Expr::DerefMutCell(_, id) => f(id),
+            Expr::SetMutCell(_, cell_id, value_id) => {
+                f(cell_id);
+                f(value_id);
+            }
+            Expr::Call(_, _, args) => {
+                for arg in args {
+                    f(arg);
+                }
+            }
+            Expr::Closure {
+                envs,
+                func,
+                boxed_func,
+            } => {
+                for env in envs {
+                    f(env);
+                }
+                f(func);
+                f(boxed_func);
+            }
+            Expr::CallRef(_, func_id, args, _) => {
+                f(func_id);
+                for arg in args {
+                    f(arg);
+                }
+            }
+            Expr::Move(id) => f(id),
+            Expr::Box(_, id) => f(id),
+            Expr::Unbox(_, id) => f(id),
+            Expr::ClosureEnv(_, closure, _) => f(closure),
+            Expr::ClosureFuncRef(id) => f(id),
+            Expr::ClosureBoxedFuncRef(id) => f(id),
+            Expr::GlobalSet(_, value) => f(value),
+            Expr::Error(id) => f(id),
+            Expr::Display(id) => f(id),
+            Expr::Add(a, b) => {
+                f(a);
+                f(b);
+            }
+            Expr::Sub(a, b) => {
+                f(a);
+                f(b);
+            }
+            Expr::WriteChar(id) => f(id),
+            Expr::IsPair(id) => f(id),
+            Expr::IsSymbol(id) => f(id),
+            Expr::IsString(id) => f(id),
+            Expr::IsNumber(id) => f(id),
+            Expr::IsBoolean(id) => f(id),
+            Expr::IsProcedure(id) => f(id),
+            Expr::IsChar(id) => f(id),
+            Expr::IsVector(id) => f(id),
+            Expr::VectorLength(id) => f(id),
+            Expr::VectorRef(vec_id, index_id) => {
+                f(vec_id);
+                f(index_id);
+            }
+            Expr::VectorSet(vec_id, index_id, value_id) => {
+                f(vec_id);
+                f(index_id);
+                f(value_id);
+            }
+            Expr::Eq(a, b) => {
+                f(a);
+                f(b);
+            }
+            Expr::Not(id) => f(id),
+            Expr::Car(id) => f(id),
+            Expr::Cdr(id) => f(id),
+            Expr::SymbolToString(id) => f(id),
+            Expr::NumberToString(id) => f(id),
+            Expr::EqNum(a, b) => {
+                f(a);
+                f(b);
+            }
+            Expr::Lt(a, b) => {
+                f(a);
+                f(b);
+            }
+            Expr::Gt(a, b) => {
+                f(a);
+                f(b);
+            }
+            Expr::Le(a, b) => {
+                f(a);
+                f(b);
+            }
+            Expr::Ge(a, b) => {
+                f(a);
+                f(b);
+            }
+
+            Expr::InstantiateModule(_)
+            | Expr::Bool(_)
+            | Expr::Int(_)
+            | Expr::String(_)
+            | Expr::Nil
+            | Expr::Char(_)
+            | Expr::CreateMutCell(_)
+            | Expr::FuncRef(_)
+            | Expr::GlobalGet(_)
+            | Expr::InitModule => {}
+        }
     }
 }
 
@@ -432,6 +570,16 @@ impl ExprAssign {
     pub fn display<'a>(&self, meta: MetaInFunc<'a>) -> DisplayInFunc<'a, &'_ ExprAssign> {
         DisplayInFunc { value: self, meta }
     }
+
+    pub fn modify_local_id<F>(&mut self, mut f: F)
+    where
+        F: FnMut(&mut LocalId, LocalFlag),
+    {
+        if let Some(local) = &mut self.local {
+            f(local, LocalFlag::Defined);
+        }
+        self.expr.modify_local_id(|id| f(id, LocalFlag::Used));
+    }
 }
 
 impl fmt::Display for DisplayInFunc<'_, &'_ ExprAssign> {
@@ -455,6 +603,16 @@ pub struct BasicBlock {
 impl BasicBlock {
     pub fn display<'a>(&self, meta: MetaInFunc<'a>) -> DisplayInFunc<'a, &'_ BasicBlock> {
         DisplayInFunc { value: self, meta }
+    }
+
+    pub fn modify_local_id<F>(&mut self, mut f: F)
+    where
+        F: FnMut(&mut LocalId, LocalFlag),
+    {
+        for expr in &mut self.exprs {
+            expr.modify_local_id(&mut f);
+        }
+        self.next.modify_local_id(|id| f(id, LocalFlag::Used));
     }
 }
 impl fmt::Display for DisplayInFunc<'_, &'_ BasicBlock> {
@@ -514,6 +672,16 @@ pub enum BasicBlockNext {
 impl BasicBlockNext {
     pub fn display<'a>(&self, meta: MetaInFunc<'a>) -> DisplayInFunc<'a, BasicBlockNext> {
         DisplayInFunc { value: *self, meta }
+    }
+
+    pub fn modify_local_id<F>(&mut self, mut f: F)
+    where
+        F: FnMut(&mut LocalId),
+    {
+        match self {
+            BasicBlockNext::If(cond, _, _) => f(cond),
+            BasicBlockNext::Jump(_) | BasicBlockNext::Return => {}
+        }
     }
 }
 
