@@ -117,7 +117,7 @@ pub enum ValType {
     FuncRef,
 }
 
-#[derive(Debug, Clone, Copy, From, Into, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, From, Into, Hash, PartialEq, Eq, Ord, PartialOrd)]
 pub struct LocalId(usize);
 
 impl LocalId {

@@ -127,9 +127,13 @@ fn calculate_bb_info(
     let mut bb_info = TiVec::new();
 
     for result in analyze_results.into_iter() {
+        let mut args = result.used_locals.into_iter().collect::<Vec<_>>();
+        args.sort();
+        let mut defines = result.defined_locals.into_iter().collect::<Vec<_>>();
+        defines.sort();
         let mut info = BBInfo {
-            args: result.used_locals.into_iter().collect(),
-            defines: result.defined_locals.into_iter().collect(),
+            args,
+            defines,
             locals_mapping: FxHashMap::default(),
         };
 
