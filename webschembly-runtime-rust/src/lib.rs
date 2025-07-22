@@ -78,10 +78,12 @@ impl SymbolManager {
 }
 
 thread_local!(
-    static COMPILER: RefCell<webschembly_compiler::compiler::Compiler> =
-        RefCell::new(webschembly_compiler::compiler::Compiler::new(
-            webschembly_compiler::compiler::Config { enable_jit: true },
-        ));
+    static COMPILER: RefCell<webschembly_compiler::compiler::Compiler> = RefCell::new(
+        webschembly_compiler::compiler::Compiler::new(webschembly_compiler::compiler::Config {
+            enable_jit: true,
+            enable_split_bb: true,
+        }),
+    );
 );
 
 // const STDIN_FD: i32 = 0;

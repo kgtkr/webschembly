@@ -14,6 +14,8 @@ struct Args {
     no_stdlib: bool,
     #[arg(long, default_value = "false")]
     ir: bool,
+    #[arg(long, default_value = "false")]
+    split_bb: bool,
     #[arg(required = true)]
     inputs: Vec<String>,
 }
@@ -32,7 +34,10 @@ fn main() -> anyhow::Result<()> {
     let output_stem = output.file_stem().unwrap_or_default();
     let output_extension = output.extension().unwrap_or_default();
 
-    let mut compiler = Compiler::new(Config { enable_jit: false });
+    let mut compiler = Compiler::new(Config {
+        enable_jit: false,
+        enable_split_bb: args.split_bb,
+    });
     let mut srcs = Vec::new();
 
     if !args.no_stdlib {
