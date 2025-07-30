@@ -63,6 +63,13 @@ fn analyze_locals(func: &mut Func) -> TiVec<BasicBlockId, AnalyzeResult> {
         }
     }
 
+    // 最後に到達不能BBを追加
+    for (bb_id, visited) in visited.iter_enumerated() {
+        if !visited {
+            bb_ids.push(bb_id);
+        }
+    }
+
     // defineの集計は前から行う
     // 自分より前のブロックで定義済みの関数
     let mut prev_defines = TiVec::new();
