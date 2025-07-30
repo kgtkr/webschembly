@@ -1,5 +1,3 @@
-use std::collections::VecDeque;
-
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::ir::*;
@@ -23,8 +21,6 @@ fn analyze_locals(func: &mut Func) -> TiVec<BasicBlockId, AnalyzeResult> {
             }
         }
 
-        defined.insert(func.ret);
-
         bb.modify_local_id(|local_id, flag| match flag {
             LocalFlag::Defined => {
                 defined.insert(*local_id);
@@ -40,27 +36,9 @@ fn analyze_locals(func: &mut Func) -> TiVec<BasicBlockId, AnalyzeResult> {
         });
     }
 
-    // 推移的に使用を集計
     // BBは前方ジャンプがないことを仮定している
-    let mut queue = VecDeque::new();
-    let mut bb_ids = Vec::new();
-    let mut visited = {
-        let mut v = TiVec::with_capacity(func.bbs.len());
-        v.resize(func.bbs.len(), false);
-        v
-    };
-    queue.push_back(func.bb_entry);
-    while let Some(bb_id) = queue.pop_front() {
-        if visited[bb_id] {
-            continue;
-        }
-        bb_ids.push(bb_id);
-        visited[bb_id] = true;
-
-        for succ in func.bbs[bb_id].next.successors() {
-            queue.push_back(succ);
-        }
-    }
+    // 複雑な制御フローを持つ場合はトポロジカルソートなどが必要
+    let bb_ids = func.bbs.iter().map(|bb| bb.id).collect::<Vec<_>>();
 
     // defineの集計は前から行う
     // 自分より前のブロックで定義済みの関数
@@ -205,18 +183,13 @@ pub fn split_function(mut module: Module) -> Module {
                 new_locals.push(orig_func.locals[define]);
             }
 
-            let new_ret = bb_info.locals_mapping[&orig_func.ret];
-
             bb.modify_local_id(|local_id, _| {
                 *local_id = bb_info.locals_mapping[local_id];
             });
-            for expr in bb.exprs.iter_mut() {
-                expr.expr.modify_func_id(|func_id| {
-                    let new_target_func_id = new_func_ids[func_id];
-                    *func_id = new_target_func_id;
-                });
-            }
-
+            bb.modify_func_id(|func_id| {
+                let new_target_func_id = new_func_ids[func_id];
+                *func_id = new_target_func_id;
+            });
             let mut extra_bbs = Vec::new();
 
             let new_next = match bb.next {
@@ -231,20 +204,20 @@ pub fn split_function(mut module: Module) -> Module {
 
                     let then_bb_new = BasicBlock {
                         id: BasicBlockId::from(1),
-                        exprs: vec![ExprAssign {
-                            local: Some(new_ret),
-                            expr: Expr::Call(true, then_func_id, then_locals_to_pass),
-                        }],
-                        next: BasicBlockNext::Return,
+                        exprs: vec![],
+                        next: BasicBlockNext::TailCall(ExprCall {
+                            func_id: then_func_id,
+                            args: then_locals_to_pass,
+                        }),
                     };
 
                     let else_bb_new = BasicBlock {
                         id: BasicBlockId::from(2),
-                        exprs: vec![ExprAssign {
-                            local: Some(new_ret),
-                            expr: Expr::Call(true, else_func_id, else_locals_to_pass),
-                        }],
-                        next: BasicBlockNext::Return,
+                        exprs: vec![],
+                        next: BasicBlockNext::TailCall(ExprCall {
+                            func_id: else_func_id,
+                            args: else_locals_to_pass,
+                        }),
                     };
 
                     extra_bbs.push(then_bb_new);
@@ -257,14 +230,14 @@ pub fn split_function(mut module: Module) -> Module {
                     let args_to_pass =
                         calculate_args_to_pass(bb_info, &bb_infos[orig_func.id][target_bb]);
 
-                    bb.exprs.push(ExprAssign {
-                        local: Some(new_ret),
-                        expr: Expr::Call(true, target_func_id, args_to_pass),
-                    });
-
-                    BasicBlockNext::Return
+                    BasicBlockNext::TailCall(ExprCall {
+                        func_id: target_func_id,
+                        args: args_to_pass,
+                    })
                 }
-                BasicBlockNext::Return => BasicBlockNext::Return,
+                next @ (BasicBlockNext::Return(_)
+                | BasicBlockNext::TailCall(_)
+                | BasicBlockNext::TailCallRef(_)) => next,
             };
 
             let new_bb = BasicBlock {
@@ -281,7 +254,7 @@ pub fn split_function(mut module: Module) -> Module {
                 id: new_func_id,
                 locals: new_locals,
                 args: bb_info.args.len(),
-                ret: new_ret,
+                ret_type: orig_func.ret_type,
                 bb_entry: BasicBlockId::from(0),
                 bbs: new_bbs,
             };

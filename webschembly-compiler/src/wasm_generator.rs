@@ -600,7 +600,9 @@ enum StructuredBasicBlock {
         then: Vec<StructuredBasicBlock>,
         else_: Vec<StructuredBasicBlock>,
     },
-    Return,
+    Return(ir::LocalId),
+    TailCall(ir::ExprCall),
+    TailCallRef(ir::ExprCallRef),
 }
 
 // relooper algorithmのような動作をするもの
@@ -670,7 +672,8 @@ fn reloop_rec(
     }
     results.push(StructuredBasicBlock::Simple(cur));
     let bb = &bbs[cur];
-    match bb.next {
+    // TODO: cloneを避ける
+    match bb.next.clone() {
         BasicBlockNext::If(cond, then_target, else_target) => {
             let mut if_rejoin_points = reversed_doms[cur].clone();
             if_rejoin_points.retain(|bb_id| {
@@ -709,8 +712,16 @@ fn reloop_rec(
         BasicBlockNext::Jump(target) => {
             reloop_rec(target, bbs, reversed_doms, rejoin_points, results)
         }
-        BasicBlockNext::Return => {
-            results.push(StructuredBasicBlock::Return);
+        BasicBlockNext::Return(local) => {
+            results.push(StructuredBasicBlock::Return(local));
+            None
+        }
+        BasicBlockNext::TailCall(call) => {
+            results.push(StructuredBasicBlock::TailCall(call));
+            None
+        }
+        BasicBlockNext::TailCallRef(call_ref) => {
+            results.push(StructuredBasicBlock::TailCallRef(call_ref));
             None
         }
     }
@@ -799,9 +810,15 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 }
                 function.instruction(&Instruction::End);
             }
-            StructuredBasicBlock::Return => {
-                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(func.ret)));
+            StructuredBasicBlock::Return(local) => {
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*local)));
                 function.instruction(&Instruction::Return);
+            }
+            StructuredBasicBlock::TailCall(call) => {
+                self.gen_call(function, true, &call);
+            }
+            StructuredBasicBlock::TailCallRef(call_ref) => {
+                self.gen_call_ref(function, true, &call_ref);
             }
         }
     }
@@ -943,24 +960,8 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     ),
                 ));
             }
-            ir::Expr::CallRef(tail_call, func_ref, args, func_type) => {
-                let func_type = self.module_generator.func_type_from_ir(func_type);
-
-                for arg in args {
-                    function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*arg)));
-                }
-
-                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*func_ref)));
-                function.instruction(&Instruction::StructGet {
-                    struct_type_index: self.module_generator.func_ref_type,
-                    field_index: ModuleGenerator::FUNC_REF_FIELD_FUNC,
-                });
-                function.instruction(&Instruction::RefCastNonNull(HeapType::Concrete(func_type)));
-                if *tail_call {
-                    function.instruction(&Instruction::ReturnCallRef(func_type));
-                } else {
-                    function.instruction(&Instruction::CallRef(func_type));
-                }
+            ir::Expr::CallRef(call_ref) => {
+                self.gen_call_ref(function, false, call_ref);
             }
             ir::Expr::ClosureFuncRef(closure) => {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*closure)));
@@ -976,16 +977,8 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     field_index: ModuleGenerator::CLOSURE_BOXED_FUNC_FIELD,
                 });
             }
-            ir::Expr::Call(tail_call, func, args) => {
-                let func_idx = self.module_generator.func_indices[func];
-                for arg in args {
-                    function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*arg)));
-                }
-                if *tail_call {
-                    function.instruction(&Instruction::ReturnCall(func_idx));
-                } else {
-                    function.instruction(&Instruction::Call(func_idx));
-                }
+            ir::Expr::Call(call) => {
+                self.gen_call(function, false, call);
             }
             ir::Expr::Move(val) => {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
@@ -1346,6 +1339,38 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     self.module_generator.nil_global.unwrap(),
                 ));
             }
+        }
+    }
+
+    fn gen_call_ref(&mut self, function: &mut Function, is_tail: bool, call_ref: &ir::ExprCallRef) {
+        let func_type = self.module_generator.func_type_from_ir(&call_ref.func_type);
+
+        for arg in &call_ref.args {
+            function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*arg)));
+        }
+
+        function.instruction(&Instruction::LocalGet(self.local_id_to_idx(call_ref.func)));
+        function.instruction(&Instruction::StructGet {
+            struct_type_index: self.module_generator.func_ref_type,
+            field_index: ModuleGenerator::FUNC_REF_FIELD_FUNC,
+        });
+        function.instruction(&Instruction::RefCastNonNull(HeapType::Concrete(func_type)));
+        if is_tail {
+            function.instruction(&Instruction::ReturnCallRef(func_type));
+        } else {
+            function.instruction(&Instruction::CallRef(func_type));
+        }
+    }
+
+    fn gen_call(&mut self, function: &mut Function, is_tail: bool, call: &ir::ExprCall) {
+        let func_idx = self.module_generator.func_indices[&call.func_id];
+        for arg in &call.args {
+            function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*arg)));
+        }
+        if is_tail {
+            function.instruction(&Instruction::ReturnCall(func_idx));
+        } else {
+            function.instruction(&Instruction::Call(func_idx));
         }
     }
 }
