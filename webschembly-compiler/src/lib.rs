@@ -4,7 +4,10 @@
     trait_alias,
     never_type,
     let_chains,
-    associated_type_defaults
+    associated_type_defaults,
+    coroutines,
+    stmt_expr_attributes,
+    iter_from_coroutine
 )]
 pub mod lexer;
 pub mod parser_combinator;

@@ -1,4 +1,4 @@
-use std::fmt;
+use std::{fmt, iter::from_coroutine};
 
 use derive_more::{From, Into};
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -790,14 +790,22 @@ impl<'a> fmt::Display for DisplayInFunc<'_, &'a BasicBlockNext> {
 }
 
 impl BasicBlockNext {
-    pub fn successors(&self) -> Vec<BasicBlockId> {
-        match self {
-            BasicBlockNext::If(_, t, f) => vec![*t, *f],
-            BasicBlockNext::Jump(bb) => vec![*bb],
-            BasicBlockNext::Return(_)
-            | BasicBlockNext::TailCall(_)
-            | BasicBlockNext::TailCallRef(_) => vec![],
-        }
+    pub fn successors(&self) -> impl Iterator<Item = BasicBlockId> {
+        from_coroutine(
+            #[coroutine]
+            move || match self {
+                BasicBlockNext::If(_, t, f) => {
+                    yield *t;
+                    yield *f;
+                }
+                BasicBlockNext::Jump(bb) => {
+                    yield *bb;
+                }
+                BasicBlockNext::Return(_)
+                | BasicBlockNext::TailCall(_)
+                | BasicBlockNext::TailCallRef(_) => {}
+            },
+        )
     }
 }
 
