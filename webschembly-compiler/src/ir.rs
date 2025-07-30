@@ -200,13 +200,15 @@ impl ExprCall {
         f(&mut self.func_id);
     }
 
-    pub fn modify_local_id<F>(&mut self, mut f: F)
-    where
-        F: FnMut(&mut LocalId),
-    {
-        for arg in &mut self.args {
-            f(arg);
-        }
+    pub fn mut_local_ids(&mut self) -> impl Iterator<Item = &mut LocalId> {
+        from_coroutine(
+            #[coroutine]
+            move || {
+                for arg in &mut self.args {
+                    yield arg;
+                }
+            },
+        )
     }
 
     pub fn display<'a>(&self, meta: MetaInFunc<'a>) -> DisplayInFunc<'a, &'_ ExprCall> {
@@ -239,14 +241,16 @@ pub struct ExprCallRef {
 }
 
 impl ExprCallRef {
-    pub fn modify_local_id<F>(&mut self, mut f: F)
-    where
-        F: FnMut(&mut LocalId),
-    {
-        f(&mut self.func);
-        for arg in &mut self.args {
-            f(arg);
-        }
+    pub fn mut_local_ids(&mut self) -> impl Iterator<Item = &mut LocalId> {
+        from_coroutine(
+            #[coroutine]
+            move || {
+                yield &mut self.func;
+                for arg in &mut self.args {
+                    yield arg;
+                }
+            },
+        )
     }
 
     pub fn display<'a>(&self, meta: MetaInFunc<'a>) -> DisplayInFunc<'a, &'_ ExprCallRef> {
@@ -353,120 +357,124 @@ impl Expr {
         }
     }
 
-    pub fn modify_local_id<F>(&mut self, mut f: F)
-    where
-        F: FnMut(&mut LocalId),
-    {
-        match self {
-            Expr::StringToSymbol(id) => f(id),
-            Expr::Vector(ids) => {
-                for id in ids {
-                    f(id);
+    pub fn mut_local_ids(&mut self) -> impl Iterator<Item = &mut LocalId> {
+        from_coroutine(
+            #[coroutine]
+            move || match self {
+                Expr::StringToSymbol(id) => yield id,
+                Expr::Vector(ids) => {
+                    for id in ids {
+                        yield id;
+                    }
                 }
-            }
-            Expr::Cons(a, b) => {
-                f(a);
-                f(b);
-            }
-            Expr::DerefMutCell(_, id) => f(id),
-            Expr::SetMutCell(_, cell_id, value_id) => {
-                f(cell_id);
-                f(value_id);
-            }
-            Expr::Call(call) => {
-                call.modify_local_id(&mut f);
-            }
-            Expr::Closure {
-                envs,
-                func,
-                boxed_func,
-            } => {
-                for env in envs {
-                    f(env);
+                Expr::Cons(a, b) => {
+                    yield a;
+                    yield b;
                 }
-                f(func);
-                f(boxed_func);
-            }
-            Expr::CallRef(call_ref) => {
-                call_ref.modify_local_id(&mut f);
-            }
-            Expr::Move(id) => f(id),
-            Expr::Box(_, id) => f(id),
-            Expr::Unbox(_, id) => f(id),
-            Expr::ClosureEnv(_, closure, _) => f(closure),
-            Expr::ClosureFuncRef(id) => f(id),
-            Expr::ClosureBoxedFuncRef(id) => f(id),
-            Expr::GlobalSet(_, value) => f(value),
-            Expr::Error(id) => f(id),
-            Expr::Display(id) => f(id),
-            Expr::Add(a, b) => {
-                f(a);
-                f(b);
-            }
-            Expr::Sub(a, b) => {
-                f(a);
-                f(b);
-            }
-            Expr::WriteChar(id) => f(id),
-            Expr::IsPair(id) => f(id),
-            Expr::IsSymbol(id) => f(id),
-            Expr::IsString(id) => f(id),
-            Expr::IsNumber(id) => f(id),
-            Expr::IsBoolean(id) => f(id),
-            Expr::IsProcedure(id) => f(id),
-            Expr::IsChar(id) => f(id),
-            Expr::IsVector(id) => f(id),
-            Expr::VectorLength(id) => f(id),
-            Expr::VectorRef(vec_id, index_id) => {
-                f(vec_id);
-                f(index_id);
-            }
-            Expr::VectorSet(vec_id, index_id, value_id) => {
-                f(vec_id);
-                f(index_id);
-                f(value_id);
-            }
-            Expr::Eq(a, b) => {
-                f(a);
-                f(b);
-            }
-            Expr::Not(id) => f(id),
-            Expr::Car(id) => f(id),
-            Expr::Cdr(id) => f(id),
-            Expr::SymbolToString(id) => f(id),
-            Expr::NumberToString(id) => f(id),
-            Expr::EqNum(a, b) => {
-                f(a);
-                f(b);
-            }
-            Expr::Lt(a, b) => {
-                f(a);
-                f(b);
-            }
-            Expr::Gt(a, b) => {
-                f(a);
-                f(b);
-            }
-            Expr::Le(a, b) => {
-                f(a);
-                f(b);
-            }
-            Expr::Ge(a, b) => {
-                f(a);
-                f(b);
-            }
+                Expr::DerefMutCell(_, id) => yield id,
+                Expr::SetMutCell(_, cell_id, value_id) => {
+                    yield cell_id;
+                    yield value_id;
+                }
+                Expr::Call(call) => {
+                    for id in call.mut_local_ids() {
+                        yield id;
+                    }
+                }
+                Expr::Closure {
+                    envs,
+                    func,
+                    boxed_func,
+                } => {
+                    for env in envs {
+                        yield env;
+                    }
+                    yield func;
+                    yield boxed_func;
+                }
+                Expr::CallRef(call_ref) => {
+                    for id in call_ref.mut_local_ids() {
+                        yield id;
+                    }
+                }
+                Expr::Move(id) => yield id,
+                Expr::Box(_, id) => yield id,
+                Expr::Unbox(_, id) => yield id,
+                Expr::ClosureEnv(_, closure, _) => yield closure,
+                Expr::ClosureFuncRef(id) => yield id,
+                Expr::ClosureBoxedFuncRef(id) => yield id,
+                Expr::GlobalSet(_, value) => yield value,
+                Expr::Error(id) => yield id,
+                Expr::Display(id) => yield id,
+                Expr::Add(a, b) => {
+                    yield a;
+                    yield b;
+                }
+                Expr::Sub(a, b) => {
+                    yield a;
+                    yield b;
+                }
+                Expr::WriteChar(id) => yield id,
+                Expr::IsPair(id) => yield id,
+                Expr::IsSymbol(id) => yield id,
+                Expr::IsString(id) => yield id,
+                Expr::IsNumber(id) => yield id,
+                Expr::IsBoolean(id) => yield id,
+                Expr::IsProcedure(id) => yield id,
+                Expr::IsChar(id) => yield id,
+                Expr::IsVector(id) => yield id,
+                Expr::VectorLength(id) => yield id,
+                Expr::VectorRef(vec_id, index_id) => {
+                    yield vec_id;
+                    yield index_id;
+                }
+                Expr::VectorSet(vec_id, index_id, value_id) => {
+                    yield vec_id;
+                    yield index_id;
+                    yield value_id;
+                }
+                Expr::Eq(a, b) => {
+                    yield a;
+                    yield b;
+                }
+                Expr::Not(id) => yield id,
+                Expr::Car(id) => yield id,
+                Expr::Cdr(id) => yield id,
+                Expr::SymbolToString(id) => yield id,
+                Expr::NumberToString(id) => yield id,
+                Expr::EqNum(a, b) => {
+                    yield a;
+                    yield b;
+                }
+                Expr::Lt(a, b) => {
+                    yield a;
+                    yield b;
+                }
+                Expr::Gt(a, b) => {
+                    yield a;
+                    yield b;
+                }
+                Expr::Le(a, b) => {
+                    yield a;
+                    yield b;
+                }
+                Expr::Ge(a, b) => {
+                    yield a;
+                    yield b;
+                }
 
-            Expr::InstantiateModule(_)
-            | Expr::Bool(_)
-            | Expr::Int(_)
-            | Expr::String(_)
-            | Expr::Nil
-            | Expr::Char(_)
-            | Expr::CreateMutCell(_)
-            | Expr::FuncRef(_)
-            | Expr::GlobalGet(_)
-            | Expr::InitModule => {}
-        }
+                Expr::InstantiateModule(_)
+                | Expr::Bool(_)
+                | Expr::Int(_)
+                | Expr::String(_)
+                | Expr::Nil
+                | Expr::Char(_)
+                | Expr::CreateMutCell(_)
+                | Expr::FuncRef(_)
+                | Expr::GlobalGet(_)
+                | Expr::InitModule => {}
+            },
+        )
     }
 }
 
@@ -630,7 +638,9 @@ impl ExprAssign {
         if let Some(local) = &mut self.local {
             f(local, LocalFlag::Defined);
         }
-        self.expr.modify_local_id(|id| f(id, LocalFlag::Used));
+        for id in self.expr.mut_local_ids() {
+            f(id, LocalFlag::Used);
+        }
     }
 }
 
@@ -746,8 +756,16 @@ impl BasicBlockNext {
             BasicBlockNext::If(cond, _, _) => f(cond),
             BasicBlockNext::Jump(_) => {}
             BasicBlockNext::Return(local) => f(local),
-            BasicBlockNext::TailCall(call) => call.modify_local_id(&mut f),
-            BasicBlockNext::TailCallRef(call_ref) => call_ref.modify_local_id(&mut f),
+            BasicBlockNext::TailCall(call) => {
+                for id in call.mut_local_ids() {
+                    f(id);
+                }
+            }
+            BasicBlockNext::TailCallRef(call_ref) => {
+                for id in call_ref.mut_local_ids() {
+                    f(id);
+                }
+            }
         }
     }
 
