@@ -815,10 +815,10 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 function.instruction(&Instruction::Return);
             }
             StructuredBasicBlock::TailCall(call) => {
-                self.gen_call(function, &call);
+                self.gen_call(function, true, &call);
             }
             StructuredBasicBlock::TailCallRef(call_ref) => {
-                self.gen_call_ref(function, &call_ref);
+                self.gen_call_ref(function, true, &call_ref);
             }
         }
     }
@@ -961,7 +961,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 ));
             }
             ir::Expr::CallRef(call_ref) => {
-                self.gen_call_ref(function, call_ref);
+                self.gen_call_ref(function, false, call_ref);
             }
             ir::Expr::ClosureFuncRef(closure) => {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*closure)));
@@ -978,7 +978,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 });
             }
             ir::Expr::Call(call) => {
-                self.gen_call(function, call);
+                self.gen_call(function, false, call);
             }
             ir::Expr::Move(val) => {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
@@ -1342,7 +1342,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         }
     }
 
-    fn gen_call_ref(&mut self, function: &mut Function, call_ref: &ir::ExprCallRef) {
+    fn gen_call_ref(&mut self, function: &mut Function, is_tail: bool, call_ref: &ir::ExprCallRef) {
         let func_type = self.module_generator.func_type_from_ir(&call_ref.func_type);
 
         for arg in &call_ref.args {
@@ -1355,19 +1355,19 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             field_index: ModuleGenerator::FUNC_REF_FIELD_FUNC,
         });
         function.instruction(&Instruction::RefCastNonNull(HeapType::Concrete(func_type)));
-        if call_ref.is_tail {
+        if is_tail {
             function.instruction(&Instruction::ReturnCallRef(func_type));
         } else {
             function.instruction(&Instruction::CallRef(func_type));
         }
     }
 
-    fn gen_call(&mut self, function: &mut Function, call: &ir::ExprCall) {
+    fn gen_call(&mut self, function: &mut Function, is_tail: bool, call: &ir::ExprCall) {
         let func_idx = self.module_generator.func_indices[&call.func_id];
         for arg in &call.args {
             function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*arg)));
         }
-        if call.is_tail {
+        if is_tail {
             function.instruction(&Instruction::ReturnCall(func_idx));
         } else {
             function.instruction(&Instruction::Call(func_idx));

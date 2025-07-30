@@ -188,7 +188,6 @@ pub enum LocalFlag {
 
 #[derive(Debug, Clone)]
 pub struct ExprCall {
-    pub is_tail: bool,
     pub func_id: FuncId,
     pub args: Vec<LocalId>,
 }
@@ -217,9 +216,6 @@ impl ExprCall {
 
 impl fmt::Display for DisplayInFunc<'_, &'_ ExprCall> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.value.is_tail {
-            write!(f, "return_")?;
-        }
         write!(f, "call({})", self.value.func_id.display(self.meta.meta))?;
         if !self.value.args.is_empty() {
             write!(f, "(")?;
@@ -237,7 +233,6 @@ impl fmt::Display for DisplayInFunc<'_, &'_ ExprCall> {
 
 #[derive(Debug, Clone)]
 pub struct ExprCallRef {
-    pub is_tail: bool,
     pub func: LocalId,
     pub args: Vec<LocalId>,
     pub func_type: FuncType,
@@ -262,9 +257,6 @@ impl ExprCallRef {
 impl fmt::Display for DisplayInFunc<'_, &'_ ExprCallRef> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // TODO: func_typeを表示する
-        if self.value.is_tail {
-            write!(f, "return_")?;
-        }
         write!(f, "call_ref({})", self.value.func.display(self.meta))?;
         if !self.value.args.is_empty() {
             write!(f, "(")?;

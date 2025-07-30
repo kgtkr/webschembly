@@ -279,16 +279,10 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             });
             args.push(arg);
         }
-        let ret = self.local(Type::Boxed);
-        self.exprs.push(ExprAssign {
-            local: Some(ret),
-            expr: Expr::Call(ExprCall {
-                is_tail: true,
-                func_id: target_func_id,
-                args,
-            }),
-        });
-        self.close_bb(Some(BasicBlockNext::Return(ret)));
+        self.close_bb(Some(BasicBlockNext::TailCall(ExprCall {
+            func_id: target_func_id,
+            args,
+        })));
         Func {
             id: self.id,
             args: 2,
@@ -597,18 +591,23 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                         arg_locals.push(arg_local);
                         args_types.push(LocalType::Type(Type::Boxed));
                     }
-                    self.exprs.push(ExprAssign {
-                        local: result,
-                        expr: Expr::CallRef(ExprCallRef {
-                            is_tail: x.get_ref(type_map::key::<TailCall>()).is_tail,
-                            func: func_local,
-                            args: arg_locals,
-                            func_type: FuncType {
-                                ret: LocalType::Type(Type::Boxed),
-                                args: args_types,
-                            },
-                        }),
-                    });
+                    let is_tail = x.get_ref(type_map::key::<TailCall>()).is_tail;
+                    let call_ref = ExprCallRef {
+                        func: func_local,
+                        args: arg_locals,
+                        func_type: FuncType {
+                            ret: LocalType::Type(Type::Boxed),
+                            args: args_types,
+                        },
+                    };
+                    if is_tail {
+                        self.close_bb(Some(BasicBlockNext::TailCallRef(call_ref)));
+                    } else {
+                        self.exprs.push(ExprAssign {
+                            local: result,
+                            expr: Expr::CallRef(call_ref),
+                        });
+                    }
                 }
             }
             ast::Expr::Var(x, _) => match &x.get_ref(type_map::key::<Used>()).var_id {

@@ -225,32 +225,22 @@ pub fn split_function(mut module: Module) -> Module {
                     let else_locals_to_pass =
                         calculate_args_to_pass(bb_info, &bb_infos[orig_func.id][else_bb]);
 
-                    let dummy_ret = LocalId::from(0); // TODO:
-
                     let then_bb_new = BasicBlock {
                         id: BasicBlockId::from(1),
-                        exprs: vec![ExprAssign {
-                            local: Some(dummy_ret),
-                            expr: Expr::Call(ExprCall {
-                                is_tail: true,
-                                func_id: then_func_id,
-                                args: then_locals_to_pass,
-                            }),
-                        }],
-                        next: BasicBlockNext::Return(dummy_ret),
+                        exprs: vec![],
+                        next: BasicBlockNext::TailCall(ExprCall {
+                            func_id: then_func_id,
+                            args: then_locals_to_pass,
+                        }),
                     };
 
                     let else_bb_new = BasicBlock {
                         id: BasicBlockId::from(2),
-                        exprs: vec![ExprAssign {
-                            local: Some(dummy_ret),
-                            expr: Expr::Call(ExprCall {
-                                is_tail: true,
-                                func_id: else_func_id,
-                                args: else_locals_to_pass,
-                            }),
-                        }],
-                        next: BasicBlockNext::Return(dummy_ret),
+                        exprs: vec![],
+                        next: BasicBlockNext::TailCall(ExprCall {
+                            func_id: else_func_id,
+                            args: else_locals_to_pass,
+                        }),
                     };
 
                     extra_bbs.push(then_bb_new);
@@ -263,18 +253,10 @@ pub fn split_function(mut module: Module) -> Module {
                     let args_to_pass =
                         calculate_args_to_pass(bb_info, &bb_infos[orig_func.id][target_bb]);
 
-                    let dummy_ret = LocalId::from(0); // TODO:
-
-                    bb.exprs.push(ExprAssign {
-                        local: Some(dummy_ret),
-                        expr: Expr::Call(ExprCall {
-                            is_tail: true,
-                            func_id: target_func_id,
-                            args: args_to_pass,
-                        }),
-                    });
-
-                    BasicBlockNext::Return(dummy_ret)
+                    BasicBlockNext::TailCall(ExprCall {
+                        func_id: target_func_id,
+                        args: args_to_pass,
+                    })
                 }
                 next @ (BasicBlockNext::Return(_)
                 | BasicBlockNext::TailCall(_)

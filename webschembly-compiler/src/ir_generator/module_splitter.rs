@@ -82,17 +82,12 @@ pub fn split_and_register_module(ir_generator: &mut IrGenerator, module: Module)
                             expr: Expr::GlobalSet(func_ref_globals[func_id.id], LocalId::from(2)),
                         });
                     }
-                    exprs.push(ExprAssign {
-                        local: Some(LocalId::from(0)),
-                        expr: Expr::Call(ExprCall {
-                            is_tail: true,
-                            func_id: stub_func_ids[module.entry],
-                            args: vec![],
-                        }),
-                    });
                     exprs
                 },
-                next: BasicBlockNext::Return(LocalId::from(0)),
+                next: BasicBlockNext::TailCall(ExprCall {
+                    func_id: stub_func_ids[module.entry],
+                    args: vec![],
+                })
             },],
         };
         funcs.push(func);
@@ -168,17 +163,12 @@ pub fn split_and_register_module(ir_generator: &mut IrGenerator, module: Module)
                                 local: Some(LocalId::from(func.args + 2)),
                                 expr: Expr::Unbox(ValType::FuncRef, LocalId::from(func.args + 1)),
                             },
-                            ExprAssign {
-                                local: Some(LocalId::from(func.args)),
-                                expr: Expr::CallRef(ExprCallRef {
-                                    is_tail: true,
-                                    func: LocalId::from(func.args + 2),
-                                    args: (0..func.args).map(LocalId::from).collect::<Vec<_>>(),
-                                    func_type: func.func_type()
-                                }),
-                            }
                         ],
-                        next: BasicBlockNext::Return(LocalId::from(func.args)),
+                        next: BasicBlockNext::TailCallRef(ExprCallRef {
+                            func: LocalId::from(func.args + 2),
+                            args: (0..func.args).map(LocalId::from).collect::<Vec<_>>(),
+                            func_type: func.func_type()
+                        })
                     },
                 ],
             };
@@ -281,11 +271,7 @@ pub fn split_and_register_module(ir_generator: &mut IrGenerator, module: Module)
                                         expr: Expr::Unbox(ValType::FuncRef, boxed_func_ref),
                                     });
                                 }
-                                Expr::Call(ExprCall {
-                                    is_tail,
-                                    func_id,
-                                    args,
-                                }) => {
+                                Expr::Call(ExprCall { func_id, args }) => {
                                     exprs.push(ExprAssign {
                                         local: Some(boxed_func_ref),
                                         expr: Expr::GlobalGet(func_ref_globals[func_id]),
@@ -297,7 +283,6 @@ pub fn split_and_register_module(ir_generator: &mut IrGenerator, module: Module)
                                     exprs.push(ExprAssign {
                                         local: expr.local,
                                         expr: Expr::CallRef(ExprCallRef {
-                                            is_tail,
                                             func: func_ref,
                                             args,
                                             func_type: func_types[func_id].clone(),
