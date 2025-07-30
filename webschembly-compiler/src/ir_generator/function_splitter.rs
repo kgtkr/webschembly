@@ -234,7 +234,11 @@ pub fn split_function(mut module: Module) -> Module {
                         id: BasicBlockId::from(1),
                         exprs: vec![ExprAssign {
                             local: Some(dummy_ret),
-                            expr: Expr::Call(true, then_func_id, then_locals_to_pass),
+                            expr: Expr::Call(ExprCall {
+                                is_tail: true,
+                                func_id: then_func_id,
+                                args: then_locals_to_pass,
+                            }),
                         }],
                         next: BasicBlockNext::Return(dummy_ret),
                     };
@@ -243,7 +247,11 @@ pub fn split_function(mut module: Module) -> Module {
                         id: BasicBlockId::from(2),
                         exprs: vec![ExprAssign {
                             local: Some(dummy_ret),
-                            expr: Expr::Call(true, else_func_id, else_locals_to_pass),
+                            expr: Expr::Call(ExprCall {
+                                is_tail: true,
+                                func_id: else_func_id,
+                                args: else_locals_to_pass,
+                            }),
                         }],
                         next: BasicBlockNext::Return(dummy_ret),
                     };
@@ -262,7 +270,11 @@ pub fn split_function(mut module: Module) -> Module {
 
                     bb.exprs.push(ExprAssign {
                         local: Some(dummy_ret),
-                        expr: Expr::Call(true, target_func_id, args_to_pass),
+                        expr: Expr::Call(ExprCall {
+                            is_tail: true,
+                            func_id: target_func_id,
+                            args: args_to_pass,
+                        }),
                     });
 
                     BasicBlockNext::Return(dummy_ret)

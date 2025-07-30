@@ -943,20 +943,25 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     ),
                 ));
             }
-            ir::Expr::CallRef(tail_call, func_ref, args, func_type) => {
+            ir::Expr::CallRef(ir::ExprCallRef {
+                is_tail,
+                func,
+                args,
+                func_type,
+            }) => {
                 let func_type = self.module_generator.func_type_from_ir(func_type);
 
                 for arg in args {
                     function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*arg)));
                 }
 
-                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*func_ref)));
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*func)));
                 function.instruction(&Instruction::StructGet {
                     struct_type_index: self.module_generator.func_ref_type,
                     field_index: ModuleGenerator::FUNC_REF_FIELD_FUNC,
                 });
                 function.instruction(&Instruction::RefCastNonNull(HeapType::Concrete(func_type)));
-                if *tail_call {
+                if *is_tail {
                     function.instruction(&Instruction::ReturnCallRef(func_type));
                 } else {
                     function.instruction(&Instruction::CallRef(func_type));
@@ -976,12 +981,16 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     field_index: ModuleGenerator::CLOSURE_BOXED_FUNC_FIELD,
                 });
             }
-            ir::Expr::Call(tail_call, func, args) => {
-                let func_idx = self.module_generator.func_indices[func];
+            ir::Expr::Call(ir::ExprCall {
+                is_tail,
+                func_id,
+                args,
+            }) => {
+                let func_idx = self.module_generator.func_indices[func_id];
                 for arg in args {
                     function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*arg)));
                 }
-                if *tail_call {
+                if *is_tail {
                     function.instruction(&Instruction::ReturnCall(func_idx));
                 } else {
                     function.instruction(&Instruction::Call(func_idx));

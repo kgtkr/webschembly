@@ -282,7 +282,11 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         let ret = self.local(Type::Boxed);
         self.exprs.push(ExprAssign {
             local: Some(ret),
-            expr: Expr::Call(true, target_func_id, args),
+            expr: Expr::Call(ExprCall {
+                is_tail: true,
+                func_id: target_func_id,
+                args,
+            }),
         });
         self.close_bb(Some(BasicBlockNext::Return(ret)));
         Func {
@@ -595,15 +599,15 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     }
                     self.exprs.push(ExprAssign {
                         local: result,
-                        expr: Expr::CallRef(
-                            x.get_ref(type_map::key::<TailCall>()).is_tail,
-                            func_local,
-                            arg_locals,
-                            FuncType {
+                        expr: Expr::CallRef(ExprCallRef {
+                            is_tail: x.get_ref(type_map::key::<TailCall>()).is_tail,
+                            func: func_local,
+                            args: arg_locals,
+                            func_type: FuncType {
                                 ret: LocalType::Type(Type::Boxed),
                                 args: args_types,
                             },
-                        ),
+                        }),
                     });
                 }
             }
