@@ -209,13 +209,10 @@ pub fn split_function(mut module: Module) -> Module {
             bb.modify_local_id(|local_id, _| {
                 *local_id = bb_info.locals_mapping[local_id];
             });
-            for expr in bb.exprs.iter_mut() {
-                expr.expr.modify_func_id(|func_id| {
-                    let new_target_func_id = new_func_ids[func_id];
-                    *func_id = new_target_func_id;
-                });
-            }
-
+            bb.modify_func_id(|func_id| {
+                let new_target_func_id = new_func_ids[func_id];
+                *func_id = new_target_func_id;
+            });
             let mut extra_bbs = Vec::new();
 
             let new_next = match bb.next {
@@ -279,7 +276,9 @@ pub fn split_function(mut module: Module) -> Module {
 
                     BasicBlockNext::Return(dummy_ret)
                 }
-                next @ BasicBlockNext::Return(_) => next,
+                next @ (BasicBlockNext::Return(_)
+                | BasicBlockNext::TailCall(_)
+                | BasicBlockNext::TailCallRef(_)) => next,
             };
 
             let new_bb = BasicBlock {

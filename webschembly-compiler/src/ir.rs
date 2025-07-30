@@ -674,6 +674,16 @@ impl BasicBlock {
         }
         self.next.modify_local_id(|id| f(id, LocalFlag::Used));
     }
+
+    pub fn modify_func_id<F>(&mut self, mut f: F)
+    where
+        F: FnMut(&mut FuncId),
+    {
+        for expr in &mut self.exprs {
+            expr.expr.modify_func_id(&mut f);
+        }
+        self.next.modify_func_id(&mut f);
+    }
 }
 impl fmt::Display for DisplayInFunc<'_, &'_ BasicBlock> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -722,16 +732,18 @@ impl fmt::Display for Display<'_, BasicBlockId> {
 }
 
 // 閉路を作ってはいけない
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum BasicBlockNext {
     If(LocalId, BasicBlockId, BasicBlockId),
     Jump(BasicBlockId),
     Return(LocalId),
+    TailCall(ExprCall),
+    TailCallRef(ExprCallRef),
 }
 
 impl BasicBlockNext {
-    pub fn display<'a>(&self, meta: MetaInFunc<'a>) -> DisplayInFunc<'a, BasicBlockNext> {
-        DisplayInFunc { value: *self, meta }
+    pub fn display<'a>(&self, meta: MetaInFunc<'a>) -> DisplayInFunc<'a, &BasicBlockNext> {
+        DisplayInFunc { value: self, meta }
     }
 
     pub fn modify_local_id<F>(&mut self, mut f: F)
@@ -740,12 +752,28 @@ impl BasicBlockNext {
     {
         match self {
             BasicBlockNext::If(cond, _, _) => f(cond),
-            BasicBlockNext::Jump(_) | BasicBlockNext::Return(_) => {}
+            BasicBlockNext::Jump(_) => {}
+            BasicBlockNext::Return(local) => f(local),
+            BasicBlockNext::TailCall(call) => call.modify_local_id(&mut f),
+            BasicBlockNext::TailCallRef(call_ref) => call_ref.modify_local_id(&mut f),
+        }
+    }
+
+    pub fn modify_func_id<F>(&mut self, mut f: F)
+    where
+        F: FnMut(&mut FuncId),
+    {
+        match self {
+            BasicBlockNext::If(_, _, _)
+            | BasicBlockNext::Jump(_)
+            | BasicBlockNext::Return(_)
+            | BasicBlockNext::TailCallRef(_) => {}
+            BasicBlockNext::TailCall(call) => call.modify_func_id(&mut f),
         }
     }
 }
 
-impl fmt::Display for DisplayInFunc<'_, BasicBlockNext> {
+impl<'a> fmt::Display for DisplayInFunc<'_, &'a BasicBlockNext> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.value {
             BasicBlockNext::If(cond, bb1, bb2) => {
@@ -759,6 +787,12 @@ impl fmt::Display for DisplayInFunc<'_, BasicBlockNext> {
             }
             BasicBlockNext::Jump(bb) => write!(f, "jump {}", bb.display(self.meta.meta)),
             BasicBlockNext::Return(local) => write!(f, "return {}", local.display(self.meta)),
+            BasicBlockNext::TailCall(call) => {
+                write!(f, "tail_call {}", call.display(self.meta))
+            }
+            BasicBlockNext::TailCallRef(call_ref) => {
+                write!(f, "tail_call_ref {}", call_ref.display(self.meta))
+            }
         }
     }
 }
@@ -768,7 +802,9 @@ impl BasicBlockNext {
         match self {
             BasicBlockNext::If(_, t, f) => vec![*t, *f],
             BasicBlockNext::Jump(bb) => vec![*bb],
-            BasicBlockNext::Return(_) => vec![],
+            BasicBlockNext::Return(_)
+            | BasicBlockNext::TailCall(_)
+            | BasicBlockNext::TailCallRef(_) => vec![],
         }
     }
 }
