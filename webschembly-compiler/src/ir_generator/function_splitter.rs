@@ -8,6 +8,7 @@ struct AnalyzeResult {
     used_locals: FxHashSet<LocalId>,
 }
 
+// TODO: mutで受け取らない
 fn analyze_locals(func: &mut Func) -> TiVec<BasicBlockId, AnalyzeResult> {
     let mut results = TiVec::new();
 
