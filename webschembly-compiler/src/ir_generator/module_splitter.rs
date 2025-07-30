@@ -53,7 +53,7 @@ pub fn split_and_register_module(ir_generator: &mut IrGenerator, module: Module)
         let func = Func {
             id: funcs.next_key(),
             args: 0,
-            ret: LocalId::from(0),
+            ret_type: LocalType::Type(Type::Boxed),
             locals: ti_vec![
                 LocalType::Type(Type::Boxed),
                 LocalType::Type(Type::Val(ValType::FuncRef)),
@@ -88,7 +88,7 @@ pub fn split_and_register_module(ir_generator: &mut IrGenerator, module: Module)
                     });
                     exprs
                 },
-                next: BasicBlockNext::Return,
+                next: BasicBlockNext::Return(LocalId::from(0)),
             },],
         };
         funcs.push(func);
@@ -105,7 +105,7 @@ pub fn split_and_register_module(ir_generator: &mut IrGenerator, module: Module)
             let func = Func {
                 id: funcs.next_key(),
                 args: func.args,
-                ret: LocalId::from(func.args),
+                ret_type: func.ret_type,
                 locals: {
                     let mut locals = TiVec::new();
                     locals.extend(func.arg_types().into_iter());
@@ -174,7 +174,7 @@ pub fn split_and_register_module(ir_generator: &mut IrGenerator, module: Module)
                                 ),
                             }
                         ],
-                        next: BasicBlockNext::Return,
+                        next: BasicBlockNext::Return(LocalId::from(func.args)),
                     },
                 ],
             };
@@ -214,7 +214,7 @@ pub fn split_and_register_module(ir_generator: &mut IrGenerator, module: Module)
         let entry_func = Func {
             id: funcs.next_key(),
             args: 0,
-            ret: LocalId::from(0),
+            ret_type: LocalType::Type(Type::Val(ValType::FuncRef)), // TODO: Nilでも返したほうがよさそう
             locals: ti_vec![
                 LocalType::Type(Type::Val(ValType::FuncRef)),
                 LocalType::Type(Type::Boxed)
@@ -240,7 +240,7 @@ pub fn split_and_register_module(ir_generator: &mut IrGenerator, module: Module)
                         expr: Expr::GlobalSet(func_ref_globals[func.id], LocalId::from(1)),
                     }
                 ],
-                next: BasicBlockNext::Return,
+                next: BasicBlockNext::Return(LocalId::from(0)),
             },],
         };
         funcs.push(entry_func);
@@ -249,7 +249,7 @@ pub fn split_and_register_module(ir_generator: &mut IrGenerator, module: Module)
         let body_func = Func {
             id: funcs.next_key(),
             args: func.args,
-            ret: func.ret,
+            ret_type: func.ret_type,
             locals: {
                 let mut locals = func.locals;
                 locals.push(LocalType::Type(Type::Boxed));

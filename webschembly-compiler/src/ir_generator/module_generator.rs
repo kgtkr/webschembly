@@ -157,11 +157,11 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         );
 
         self.gen_exprs(Some(boxed_local), &self.module_generator.ast.exprs);
-        self.close_bb(Some(BasicBlockNext::Return));
+        self.close_bb(Some(BasicBlockNext::Return(boxed_local)));
         Func {
             id: self.id,
             args: 0,
-            ret: boxed_local,
+            ret_type: LocalType::Type(Type::Boxed),
             locals: self.locals,
             bb_entry: BasicBlockId::from(0), // TODO: もっと綺麗な書き方があるはず
             bbs: self
@@ -242,11 +242,11 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
 
         let ret = self.local(Type::Boxed);
         self.gen_exprs(Some(ret), &lambda.body);
-        self.close_bb(Some(BasicBlockNext::Return));
+        self.close_bb(Some(BasicBlockNext::Return(ret)));
         Func {
             id: self.id,
             args: lambda.args.len() + 1,
-            ret,
+            ret_type: LocalType::Type(Type::Boxed),
             locals: self.locals,
             bb_entry: BasicBlockId::from(0), // TODO: もっと綺麗な書き方があるはず
             bbs: self
@@ -284,11 +284,11 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             local: Some(ret),
             expr: Expr::Call(true, target_func_id, args),
         });
-        self.close_bb(Some(BasicBlockNext::Return));
+        self.close_bb(Some(BasicBlockNext::Return(ret)));
         Func {
             id: self.id,
             args: 2,
-            ret,
+            ret_type: LocalType::Type(Type::Boxed),
             locals: self.locals,
             bb_entry: BasicBlockId::from(0),
             bbs: self

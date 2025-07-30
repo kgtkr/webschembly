@@ -666,7 +666,7 @@ impl fmt::Display for Display<'_, BasicBlockId> {
 pub enum BasicBlockNext {
     If(LocalId, BasicBlockId, BasicBlockId),
     Jump(BasicBlockId),
-    Return,
+    Return(LocalId),
 }
 
 impl BasicBlockNext {
@@ -680,7 +680,7 @@ impl BasicBlockNext {
     {
         match self {
             BasicBlockNext::If(cond, _, _) => f(cond),
-            BasicBlockNext::Jump(_) | BasicBlockNext::Return => {}
+            BasicBlockNext::Jump(_) | BasicBlockNext::Return(_) => {}
         }
     }
 }
@@ -698,7 +698,7 @@ impl fmt::Display for DisplayInFunc<'_, BasicBlockNext> {
                 )
             }
             BasicBlockNext::Jump(bb) => write!(f, "jump {}", bb.display(self.meta.meta)),
-            BasicBlockNext::Return => write!(f, "return"),
+            BasicBlockNext::Return(local) => write!(f, "return {}", local.display(self.meta)),
         }
     }
 }
@@ -708,7 +708,7 @@ impl BasicBlockNext {
         match self {
             BasicBlockNext::If(_, t, f) => vec![*t, *f],
             BasicBlockNext::Jump(bb) => vec![*bb],
-            BasicBlockNext::Return => vec![],
+            BasicBlockNext::Return(_) => vec![],
         }
     }
 }
@@ -719,8 +719,7 @@ pub struct Func {
     pub locals: TiVec<LocalId, LocalType>,
     // localsの先頭何個が引数か
     pub args: usize,
-    // localsのうちどれが返り値か
-    pub ret: LocalId,
+    pub ret_type: LocalType,
     pub bb_entry: BasicBlockId,
     pub bbs: TiVec<BasicBlockId, BasicBlock>,
 }
@@ -737,7 +736,7 @@ impl Func {
     }
 
     pub fn ret_type(&self) -> LocalType {
-        self.locals[self.ret]
+        self.ret_type
     }
 
     pub fn func_type(&self) -> FuncType {
@@ -772,12 +771,7 @@ impl fmt::Display for Display<'_, &'_ Func> {
             }
         }
         writeln!(f)?;
-        writeln!(
-            f,
-            "{}rets: {}",
-            DISPLAY_INDENT,
-            self.value.ret.display(self.meta.in_func(self.value.id))
-        )?;
+        writeln!(f, "{}ret_type: {}", DISPLAY_INDENT, self.value.ret_type)?;
         writeln!(
             f,
             "{}entry: {}",

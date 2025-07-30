@@ -23,7 +23,8 @@ fn analyze_locals(func: &mut Func) -> TiVec<BasicBlockId, AnalyzeResult> {
             }
         }
 
-        defined.insert(func.ret);
+        // TODO:
+        // defined.insert(func.ret);
 
         bb.modify_local_id(|local_id, flag| match flag {
             LocalFlag::Defined => {
@@ -205,8 +206,6 @@ pub fn split_function(mut module: Module) -> Module {
                 new_locals.push(orig_func.locals[define]);
             }
 
-            let new_ret = bb_info.locals_mapping[&orig_func.ret];
-
             bb.modify_local_id(|local_id, _| {
                 *local_id = bb_info.locals_mapping[local_id];
             });
@@ -229,22 +228,24 @@ pub fn split_function(mut module: Module) -> Module {
                     let else_locals_to_pass =
                         calculate_args_to_pass(bb_info, &bb_infos[orig_func.id][else_bb]);
 
+                    let dummy_ret = LocalId::from(0); // TODO:
+
                     let then_bb_new = BasicBlock {
                         id: BasicBlockId::from(1),
                         exprs: vec![ExprAssign {
-                            local: Some(new_ret),
+                            local: Some(dummy_ret),
                             expr: Expr::Call(true, then_func_id, then_locals_to_pass),
                         }],
-                        next: BasicBlockNext::Return,
+                        next: BasicBlockNext::Return(dummy_ret),
                     };
 
                     let else_bb_new = BasicBlock {
                         id: BasicBlockId::from(2),
                         exprs: vec![ExprAssign {
-                            local: Some(new_ret),
+                            local: Some(dummy_ret),
                             expr: Expr::Call(true, else_func_id, else_locals_to_pass),
                         }],
-                        next: BasicBlockNext::Return,
+                        next: BasicBlockNext::Return(dummy_ret),
                     };
 
                     extra_bbs.push(then_bb_new);
@@ -257,14 +258,16 @@ pub fn split_function(mut module: Module) -> Module {
                     let args_to_pass =
                         calculate_args_to_pass(bb_info, &bb_infos[orig_func.id][target_bb]);
 
+                    let dummy_ret = LocalId::from(0); // TODO:
+
                     bb.exprs.push(ExprAssign {
-                        local: Some(new_ret),
+                        local: Some(dummy_ret),
                         expr: Expr::Call(true, target_func_id, args_to_pass),
                     });
 
-                    BasicBlockNext::Return
+                    BasicBlockNext::Return(dummy_ret)
                 }
-                BasicBlockNext::Return => BasicBlockNext::Return,
+                next @ BasicBlockNext::Return(_) => next,
             };
 
             let new_bb = BasicBlock {
@@ -281,7 +284,7 @@ pub fn split_function(mut module: Module) -> Module {
                 id: new_func_id,
                 locals: new_locals,
                 args: bb_info.args.len(),
-                ret: new_ret,
+                ret_type: orig_func.ret_type,
                 bb_entry: BasicBlockId::from(0),
                 bbs: new_bbs,
             };

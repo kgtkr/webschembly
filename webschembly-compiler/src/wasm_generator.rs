@@ -600,7 +600,7 @@ enum StructuredBasicBlock {
         then: Vec<StructuredBasicBlock>,
         else_: Vec<StructuredBasicBlock>,
     },
-    Return,
+    Return(ir::LocalId),
 }
 
 // relooper algorithmのような動作をするもの
@@ -709,8 +709,8 @@ fn reloop_rec(
         BasicBlockNext::Jump(target) => {
             reloop_rec(target, bbs, reversed_doms, rejoin_points, results)
         }
-        BasicBlockNext::Return => {
-            results.push(StructuredBasicBlock::Return);
+        BasicBlockNext::Return(local) => {
+            results.push(StructuredBasicBlock::Return(local));
             None
         }
     }
@@ -799,8 +799,8 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 }
                 function.instruction(&Instruction::End);
             }
-            StructuredBasicBlock::Return => {
-                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(func.ret)));
+            StructuredBasicBlock::Return(local) => {
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*local)));
                 function.instruction(&Instruction::Return);
             }
         }
