@@ -254,49 +254,72 @@ pub fn split_and_register_module(ir_generator: &mut IrGenerator, module: Module)
             bbs: func
                 .bbs
                 .into_iter()
-                .map(|bb| BasicBlock {
-                    id: bb.id,
-                    exprs: {
-                        let mut exprs = Vec::new();
-                        for expr in bb.exprs {
-                            // FuncRefとCall命令はget global命令に置き換えられる
-                            match expr.expr {
-                                Expr::FuncRef(id) => {
-                                    exprs.push(ExprAssign {
-                                        local: Some(boxed_func_ref),
-                                        expr: Expr::GlobalGet(func_ref_globals[id]),
-                                    });
-                                    exprs.push(ExprAssign {
-                                        local: expr.local,
-                                        expr: Expr::Unbox(ValType::FuncRef, boxed_func_ref),
-                                    });
-                                }
-                                Expr::Call(ExprCall { func_id, args }) => {
-                                    exprs.push(ExprAssign {
-                                        local: Some(boxed_func_ref),
-                                        expr: Expr::GlobalGet(func_ref_globals[func_id]),
-                                    });
-                                    exprs.push(ExprAssign {
-                                        local: Some(func_ref),
-                                        expr: Expr::Unbox(ValType::FuncRef, boxed_func_ref),
-                                    });
-                                    exprs.push(ExprAssign {
-                                        local: expr.local,
-                                        expr: Expr::CallRef(ExprCallRef {
-                                            func: func_ref,
-                                            args,
-                                            func_type: func_types[func_id].clone(),
-                                        }),
-                                    });
-                                }
-                                _ => {
-                                    exprs.push(expr);
-                                }
+                .map(|bb| {
+                    let mut exprs = Vec::new();
+                    for expr in bb.exprs {
+                        // FuncRefとCall命令はget global命令に置き換えられる
+                        match expr.expr {
+                            Expr::FuncRef(id) => {
+                                exprs.push(ExprAssign {
+                                    local: Some(boxed_func_ref),
+                                    expr: Expr::GlobalGet(func_ref_globals[id]),
+                                });
+                                exprs.push(ExprAssign {
+                                    local: expr.local,
+                                    expr: Expr::Unbox(ValType::FuncRef, boxed_func_ref),
+                                });
+                            }
+                            Expr::Call(ExprCall { func_id, args }) => {
+                                exprs.push(ExprAssign {
+                                    local: Some(boxed_func_ref),
+                                    expr: Expr::GlobalGet(func_ref_globals[func_id]),
+                                });
+                                exprs.push(ExprAssign {
+                                    local: Some(func_ref),
+                                    expr: Expr::Unbox(ValType::FuncRef, boxed_func_ref),
+                                });
+                                exprs.push(ExprAssign {
+                                    local: expr.local,
+                                    expr: Expr::CallRef(ExprCallRef {
+                                        func: func_ref,
+                                        args,
+                                        func_type: func_types[func_id].clone(),
+                                    }),
+                                });
+                            }
+                            _ => {
+                                exprs.push(expr);
                             }
                         }
-                        exprs
-                    },
-                    next: bb.next,
+                    }
+
+                    let next = match bb.next {
+                        BasicBlockNext::TailCall(ExprCall { func_id, args }) => {
+                            exprs.push(ExprAssign {
+                                local: Some(boxed_func_ref),
+                                expr: Expr::GlobalGet(func_ref_globals[func_id]),
+                            });
+                            exprs.push(ExprAssign {
+                                local: Some(func_ref),
+                                expr: Expr::Unbox(ValType::FuncRef, boxed_func_ref),
+                            });
+                            BasicBlockNext::TailCallRef(ExprCallRef {
+                                func: func_ref,
+                                args,
+                                func_type: func_types[func_id].clone(),
+                            })
+                        }
+                        next @ (BasicBlockNext::TailCallRef(_)
+                        | BasicBlockNext::Return(_)
+                        | BasicBlockNext::If(_, _, _)
+                        | BasicBlockNext::Jump(_)) => next,
+                    };
+
+                    BasicBlock {
+                        id: bb.id,
+                        exprs,
+                        next,
+                    }
                 })
                 .collect(),
         };

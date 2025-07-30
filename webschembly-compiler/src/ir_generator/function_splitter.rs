@@ -1,5 +1,3 @@
-use std::collections::VecDeque;
-
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::ir::*;
@@ -23,9 +21,6 @@ fn analyze_locals(func: &mut Func) -> TiVec<BasicBlockId, AnalyzeResult> {
             }
         }
 
-        // TODO:
-        // defined.insert(func.ret);
-
         bb.modify_local_id(|local_id, flag| match flag {
             LocalFlag::Defined => {
                 defined.insert(*local_id);
@@ -41,34 +36,9 @@ fn analyze_locals(func: &mut Func) -> TiVec<BasicBlockId, AnalyzeResult> {
         });
     }
 
-    // 推移的に使用を集計
     // BBは前方ジャンプがないことを仮定している
-    let mut queue = VecDeque::new();
-    let mut bb_ids = Vec::new();
-    let mut visited = {
-        let mut v = TiVec::with_capacity(func.bbs.len());
-        v.resize(func.bbs.len(), false);
-        v
-    };
-    queue.push_back(func.bb_entry);
-    while let Some(bb_id) = queue.pop_front() {
-        if visited[bb_id] {
-            continue;
-        }
-        bb_ids.push(bb_id);
-        visited[bb_id] = true;
-
-        for succ in func.bbs[bb_id].next.successors() {
-            queue.push_back(succ);
-        }
-    }
-
-    // 最後に到達不能BBを追加
-    for (bb_id, visited) in visited.iter_enumerated() {
-        if !visited {
-            bb_ids.push(bb_id);
-        }
-    }
+    // 複雑な制御フローを持つ場合はトポロジカルソートなどが必要
+    let bb_ids = func.bbs.iter().map(|bb| bb.id).collect::<Vec<_>>();
 
     // defineの集計は前から行う
     // 自分より前のブロックで定義済みの関数
