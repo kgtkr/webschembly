@@ -826,7 +826,7 @@ impl BasicBlockNext {
     }
 }
 
-impl<'a> fmt::Display for DisplayInFunc<'_, &'a BasicBlockNext> {
+impl fmt::Display for DisplayInFunc<'_, &BasicBlockNext> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.value {
             BasicBlockNext::If(cond, bb1, bb2) => {

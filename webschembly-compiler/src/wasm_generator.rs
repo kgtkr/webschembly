@@ -815,10 +815,10 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 function.instruction(&Instruction::Return);
             }
             StructuredBasicBlock::TailCall(call) => {
-                self.gen_call(function, true, &call);
+                self.gen_call(function, true, call);
             }
             StructuredBasicBlock::TailCallRef(call_ref) => {
-                self.gen_call_ref(function, true, &call_ref);
+                self.gen_call_ref(function, true, call_ref);
             }
         }
     }

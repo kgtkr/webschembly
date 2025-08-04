@@ -81,9 +81,8 @@ fn analyze_locals(func: &mut Func) -> TiVec<BasicBlockId, AnalyzeResult> {
     }
 
     // エントリーポイントの例外的処理
-    results[func.bb_entry].used_locals = (0..func.args)
-        .map(|i| LocalId::from(i))
-        .collect::<FxHashSet<_>>();
+    results[func.bb_entry].used_locals =
+        (0..func.args).map(LocalId::from).collect::<FxHashSet<_>>();
     for i in 0..func.args {
         results[func.bb_entry]
             .defined_locals
