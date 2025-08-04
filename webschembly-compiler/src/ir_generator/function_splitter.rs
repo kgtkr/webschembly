@@ -190,7 +190,7 @@ pub fn split_function(mut module: Module) -> Module {
                 *local_id = bb_info.locals_mapping[local_id];
             }
 
-            for func_id in bb.next.func_ids_mut() {
+            for func_id in bb.func_ids_mut() {
                 let new_target_func_id = new_func_ids[func_id];
                 *func_id = new_target_func_id;
             }
