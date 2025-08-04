@@ -8,11 +8,10 @@ struct AnalyzeResult {
     used_locals: FxHashSet<LocalId>,
 }
 
-// TODO: mutで受け取らない
-fn analyze_locals(func: &mut Func) -> TiVec<BasicBlockId, AnalyzeResult> {
+fn analyze_locals(func: &Func) -> TiVec<BasicBlockId, AnalyzeResult> {
     let mut results = TiVec::new();
 
-    for bb in func.bbs.iter_mut() {
+    for bb in func.bbs.iter() {
         let mut defined = FxHashSet::default();
         let mut used = FxHashSet::default();
 
@@ -22,7 +21,7 @@ fn analyze_locals(func: &mut Func) -> TiVec<BasicBlockId, AnalyzeResult> {
             }
         }
 
-        for (local_id, flag) in bb.local_usages_mut() {
+        for (local_id, flag) in bb.local_usages() {
             match flag {
                 LocalFlag::Defined => {
                     defined.insert(*local_id);
