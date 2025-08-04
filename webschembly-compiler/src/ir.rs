@@ -193,11 +193,13 @@ pub struct ExprCall {
 }
 
 impl ExprCall {
-    pub fn modify_func_id<F>(&mut self, mut f: F)
-    where
-        F: FnMut(&mut FuncId),
-    {
-        f(&mut self.func_id);
+    pub fn func_ids_mut(&mut self) -> impl Iterator<Item = &mut FuncId> {
+        from_coroutine(
+            #[coroutine]
+            move || {
+                yield &mut self.func_id;
+            },
+        )
     }
 
     pub fn local_ids_mut(&mut self) -> impl Iterator<Item = &mut LocalId> {
@@ -346,15 +348,19 @@ impl Expr {
         DisplayInFunc { value: self, meta }
     }
 
-    pub fn modify_func_id<F>(&mut self, mut f: F)
-    where
-        F: FnMut(&mut FuncId),
-    {
-        match self {
-            Expr::FuncRef(func_id) => f(func_id),
-            Expr::Call(call) => call.modify_func_id(&mut f),
-            _ => {}
-        }
+    pub fn func_ids_mut(&mut self) -> impl Iterator<Item = &mut FuncId> {
+        from_coroutine(
+            #[coroutine]
+            move || match self {
+                Expr::FuncRef(func_id) => yield func_id,
+                Expr::Call(call) => {
+                    for id in call.func_ids_mut() {
+                        yield id;
+                    }
+                }
+                _ => {}
+            },
+        )
     }
 
     pub fn local_ids_mut(&mut self) -> impl Iterator<Item = &mut LocalId> {
@@ -687,14 +693,20 @@ impl BasicBlock {
         )
     }
 
-    pub fn modify_func_id<F>(&mut self, mut f: F)
-    where
-        F: FnMut(&mut FuncId),
-    {
-        for expr in &mut self.exprs {
-            expr.expr.modify_func_id(&mut f);
-        }
-        self.next.modify_func_id(&mut f);
+    pub fn func_ids_mut(&mut self) -> impl Iterator<Item = &mut FuncId> {
+        from_coroutine(
+            #[coroutine]
+            move || {
+                for expr in &mut self.exprs {
+                    for id in expr.expr.func_ids_mut() {
+                        yield id;
+                    }
+                }
+                for id in self.next.func_ids_mut() {
+                    yield id;
+                }
+            },
+        )
     }
 }
 impl fmt::Display for DisplayInFunc<'_, &'_ BasicBlock> {
@@ -779,17 +791,21 @@ impl BasicBlockNext {
         )
     }
 
-    pub fn modify_func_id<F>(&mut self, mut f: F)
-    where
-        F: FnMut(&mut FuncId),
-    {
-        match self {
-            BasicBlockNext::If(_, _, _)
-            | BasicBlockNext::Jump(_)
-            | BasicBlockNext::Return(_)
-            | BasicBlockNext::TailCallRef(_) => {}
-            BasicBlockNext::TailCall(call) => call.modify_func_id(&mut f),
-        }
+    pub fn func_ids_mut(&mut self) -> impl Iterator<Item = &mut FuncId> {
+        from_coroutine(
+            #[coroutine]
+            move || match self {
+                BasicBlockNext::If(_, _, _)
+                | BasicBlockNext::Jump(_)
+                | BasicBlockNext::Return(_)
+                | BasicBlockNext::TailCallRef(_) => {}
+                BasicBlockNext::TailCall(call) => {
+                    for id in call.func_ids_mut() {
+                        yield id;
+                    }
+                }
+            },
+        )
     }
 }
 

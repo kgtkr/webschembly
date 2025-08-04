@@ -189,10 +189,11 @@ pub fn split_function(mut module: Module) -> Module {
             for (local_id, _) in bb.local_usages_mut() {
                 *local_id = bb_info.locals_mapping[local_id];
             }
-            bb.modify_func_id(|func_id| {
+
+            for func_id in bb.next.func_ids_mut() {
                 let new_target_func_id = new_func_ids[func_id];
                 *func_id = new_target_func_id;
-            });
+            }
             let mut extra_bbs = Vec::new();
 
             let new_next = match bb.next {
