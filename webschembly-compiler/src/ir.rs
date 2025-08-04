@@ -200,7 +200,7 @@ impl ExprCall {
         f(&mut self.func_id);
     }
 
-    pub fn mut_local_ids(&mut self) -> impl Iterator<Item = &mut LocalId> {
+    pub fn local_ids_mut(&mut self) -> impl Iterator<Item = &mut LocalId> {
         from_coroutine(
             #[coroutine]
             move || {
@@ -241,7 +241,7 @@ pub struct ExprCallRef {
 }
 
 impl ExprCallRef {
-    pub fn mut_local_ids(&mut self) -> impl Iterator<Item = &mut LocalId> {
+    pub fn local_ids_mut(&mut self) -> impl Iterator<Item = &mut LocalId> {
         from_coroutine(
             #[coroutine]
             move || {
@@ -357,7 +357,7 @@ impl Expr {
         }
     }
 
-    pub fn mut_local_ids(&mut self) -> impl Iterator<Item = &mut LocalId> {
+    pub fn local_ids_mut(&mut self) -> impl Iterator<Item = &mut LocalId> {
         from_coroutine(
             #[coroutine]
             move || match self {
@@ -377,7 +377,7 @@ impl Expr {
                     yield value_id;
                 }
                 Expr::Call(call) => {
-                    for id in call.mut_local_ids() {
+                    for id in call.local_ids_mut() {
                         yield id;
                     }
                 }
@@ -393,7 +393,7 @@ impl Expr {
                     yield boxed_func;
                 }
                 Expr::CallRef(call_ref) => {
-                    for id in call_ref.mut_local_ids() {
+                    for id in call_ref.local_ids_mut() {
                         yield id;
                     }
                 }
@@ -638,7 +638,7 @@ impl ExprAssign {
         if let Some(local) = &mut self.local {
             f(local, LocalFlag::Defined);
         }
-        for id in self.expr.mut_local_ids() {
+        for id in self.expr.local_ids_mut() {
             f(id, LocalFlag::Used);
         }
     }
@@ -757,12 +757,12 @@ impl BasicBlockNext {
             BasicBlockNext::Jump(_) => {}
             BasicBlockNext::Return(local) => f(local),
             BasicBlockNext::TailCall(call) => {
-                for id in call.mut_local_ids() {
+                for id in call.local_ids_mut() {
                     f(id);
                 }
             }
             BasicBlockNext::TailCallRef(call_ref) => {
-                for id in call_ref.mut_local_ids() {
+                for id in call_ref.local_ids_mut() {
                     f(id);
                 }
             }
