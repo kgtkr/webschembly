@@ -192,26 +192,43 @@ pub struct ExprCall {
     pub args: Vec<LocalId>,
 }
 
-impl ExprCall {
-    pub fn func_ids_mut(&mut self) -> impl Iterator<Item = &mut FuncId> {
-        from_coroutine(
-            #[coroutine]
-            move || {
-                yield &mut self.func_id;
-            },
-        )
-    }
+macro_rules! impl_ExprCall_func_ids {
+    ($($suffix: ident)?,$($mutability: tt)?) => {
+        paste::paste! {
+            pub fn [<func_ids $($suffix)?>](&$($mutability)? self) -> impl Iterator<Item = &$($mutability)? FuncId> {
+                from_coroutine(
+                    #[coroutine]
+                    move || {
+                        yield &$($mutability)? self.func_id;
+                    },
+                )
+            }
+        }
+    };
+}
 
-    pub fn local_ids_mut(&mut self) -> impl Iterator<Item = &mut LocalId> {
-        from_coroutine(
-            #[coroutine]
-            move || {
-                for arg in &mut self.args {
-                    yield arg;
-                }
-            },
-        )
-    }
+macro_rules! impl_ExprCall_local_ids {
+    ($($suffix: ident)?,$($mutability: tt)?) => {
+        paste::paste! {
+            pub fn [<local_ids $($suffix)?>](&$($mutability)? self) -> impl Iterator<Item = &$($mutability)? LocalId> {
+                from_coroutine(
+                    #[coroutine]
+                    move || {
+                        for arg in &$($mutability)? self.args {
+                            yield arg;
+                        }
+                    },
+                )
+            }
+        }
+    };
+}
+
+impl ExprCall {
+    impl_ExprCall_func_ids!(_mut, mut);
+    impl_ExprCall_func_ids!(,);
+    impl_ExprCall_local_ids!(_mut, mut);
+    impl_ExprCall_local_ids!(,);
 
     pub fn display<'a>(&self, meta: MetaInFunc<'a>) -> DisplayInFunc<'a, &'_ ExprCall> {
         DisplayInFunc { value: self, meta }
