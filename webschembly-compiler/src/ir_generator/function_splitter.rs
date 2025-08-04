@@ -22,14 +22,16 @@ fn analyze_locals(func: &mut Func) -> TiVec<BasicBlockId, AnalyzeResult> {
             }
         }
 
-        bb.modify_local_id(|local_id, flag| match flag {
-            LocalFlag::Defined => {
-                defined.insert(*local_id);
+        for (local_id, flag) in bb.local_usages_mut() {
+            match flag {
+                LocalFlag::Defined => {
+                    defined.insert(*local_id);
+                }
+                LocalFlag::Used => {
+                    used.insert(*local_id);
+                }
             }
-            LocalFlag::Used => {
-                used.insert(*local_id);
-            }
-        });
+        }
 
         results.push(AnalyzeResult {
             defined_locals: defined,
@@ -184,9 +186,9 @@ pub fn split_function(mut module: Module) -> Module {
                 new_locals.push(orig_func.locals[define]);
             }
 
-            bb.modify_local_id(|local_id, _| {
+            for (local_id, _) in bb.local_usages_mut() {
                 *local_id = bb_info.locals_mapping[local_id];
-            });
+            }
             bb.modify_func_id(|func_id| {
                 let new_target_func_id = new_func_ids[func_id];
                 *func_id = new_target_func_id;

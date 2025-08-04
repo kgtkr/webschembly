@@ -620,6 +620,8 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
     }
 }
 
+pub type LocalUsage<'a> = (&'a mut LocalId, LocalFlag);
+
 #[derive(Debug, Clone)]
 pub struct ExprAssign {
     pub local: Option<LocalId>,
@@ -631,16 +633,18 @@ impl ExprAssign {
         DisplayInFunc { value: self, meta }
     }
 
-    pub fn modify_local_id<F>(&mut self, mut f: F)
-    where
-        F: FnMut(&mut LocalId, LocalFlag),
-    {
-        if let Some(local) = &mut self.local {
-            f(local, LocalFlag::Defined);
-        }
-        for id in self.expr.local_ids_mut() {
-            f(id, LocalFlag::Used);
-        }
+    pub fn local_usages_mut(&mut self) -> impl Iterator<Item = LocalUsage> {
+        from_coroutine(
+            #[coroutine]
+            move || {
+                if let Some(local) = &mut self.local {
+                    yield (local, LocalFlag::Defined);
+                }
+                for id in self.expr.local_ids_mut() {
+                    yield (id, LocalFlag::Used);
+                }
+            },
+        )
     }
 }
 
@@ -667,14 +671,20 @@ impl BasicBlock {
         DisplayInFunc { value: self, meta }
     }
 
-    pub fn modify_local_id<F>(&mut self, mut f: F)
-    where
-        F: FnMut(&mut LocalId, LocalFlag),
-    {
-        for expr in &mut self.exprs {
-            expr.modify_local_id(&mut f);
-        }
-        self.next.modify_local_id(|id| f(id, LocalFlag::Used));
+    pub fn local_usages_mut(&mut self) -> impl Iterator<Item = LocalUsage> {
+        from_coroutine(
+            #[coroutine]
+            move || {
+                for expr in &mut self.exprs {
+                    for usage in expr.local_usages_mut() {
+                        yield usage;
+                    }
+                }
+                for id in self.next.local_ids_mut() {
+                    yield (id, LocalFlag::Used);
+                }
+            },
+        )
     }
 
     pub fn modify_func_id<F>(&mut self, mut f: F)
@@ -748,25 +758,25 @@ impl BasicBlockNext {
         DisplayInFunc { value: self, meta }
     }
 
-    pub fn modify_local_id<F>(&mut self, mut f: F)
-    where
-        F: FnMut(&mut LocalId),
-    {
-        match self {
-            BasicBlockNext::If(cond, _, _) => f(cond),
-            BasicBlockNext::Jump(_) => {}
-            BasicBlockNext::Return(local) => f(local),
-            BasicBlockNext::TailCall(call) => {
-                for id in call.local_ids_mut() {
-                    f(id);
+    pub fn local_ids_mut(&mut self) -> impl Iterator<Item = &mut LocalId> {
+        from_coroutine(
+            #[coroutine]
+            move || match self {
+                BasicBlockNext::If(cond, _, _) => yield cond,
+                BasicBlockNext::Jump(_) => {}
+                BasicBlockNext::Return(local) => yield local,
+                BasicBlockNext::TailCall(call) => {
+                    for id in call.local_ids_mut() {
+                        yield id;
+                    }
                 }
-            }
-            BasicBlockNext::TailCallRef(call_ref) => {
-                for id in call_ref.local_ids_mut() {
-                    f(id);
+                BasicBlockNext::TailCallRef(call_ref) => {
+                    for id in call_ref.local_ids_mut() {
+                        yield id;
+                    }
                 }
-            }
-        }
+            },
+        )
     }
 
     pub fn modify_func_id<F>(&mut self, mut f: F)
