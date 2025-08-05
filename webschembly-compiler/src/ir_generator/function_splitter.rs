@@ -8,11 +8,10 @@ struct AnalyzeResult {
     used_locals: FxHashSet<LocalId>,
 }
 
-// TODO: mutで受け取らない
-fn analyze_locals(func: &mut Func) -> TiVec<BasicBlockId, AnalyzeResult> {
+fn analyze_locals(func: &Func) -> TiVec<BasicBlockId, AnalyzeResult> {
     let mut results = TiVec::new();
 
-    for bb in func.bbs.iter_mut() {
+    for bb in func.bbs.iter() {
         let mut defined = FxHashSet::default();
         let mut used = FxHashSet::default();
 
@@ -22,14 +21,16 @@ fn analyze_locals(func: &mut Func) -> TiVec<BasicBlockId, AnalyzeResult> {
             }
         }
 
-        bb.modify_local_id(|local_id, flag| match flag {
-            LocalFlag::Defined => {
-                defined.insert(*local_id);
+        for (local_id, flag) in bb.local_usages() {
+            match flag {
+                LocalFlag::Defined => {
+                    defined.insert(*local_id);
+                }
+                LocalFlag::Used => {
+                    used.insert(*local_id);
+                }
             }
-            LocalFlag::Used => {
-                used.insert(*local_id);
-            }
-        });
+        }
 
         results.push(AnalyzeResult {
             defined_locals: defined,
@@ -79,9 +80,8 @@ fn analyze_locals(func: &mut Func) -> TiVec<BasicBlockId, AnalyzeResult> {
     }
 
     // エントリーポイントの例外的処理
-    results[func.bb_entry].used_locals = (0..func.args)
-        .map(|i| LocalId::from(i))
-        .collect::<FxHashSet<_>>();
+    results[func.bb_entry].used_locals =
+        (0..func.args).map(LocalId::from).collect::<FxHashSet<_>>();
     for i in 0..func.args {
         results[func.bb_entry]
             .defined_locals
@@ -184,13 +184,14 @@ pub fn split_function(mut module: Module) -> Module {
                 new_locals.push(orig_func.locals[define]);
             }
 
-            bb.modify_local_id(|local_id, _| {
+            for (local_id, _) in bb.local_usages_mut() {
                 *local_id = bb_info.locals_mapping[local_id];
-            });
-            bb.modify_func_id(|func_id| {
+            }
+
+            for func_id in bb.func_ids_mut() {
                 let new_target_func_id = new_func_ids[func_id];
                 *func_id = new_target_func_id;
-            });
+            }
             let mut extra_bbs = Vec::new();
 
             let new_next = match bb.next {
