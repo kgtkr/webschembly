@@ -3,15 +3,15 @@
 JavaScript bindings for Webschembly
 
 
-## 使用方法
-環境変数 `LOG_DIR` を設定することで、ログファイルの出力先を指定できます。
+## Usage
+You can specify the log file output directory by setting the `LOG_DIR` environment variable.
 ```bash
 $ make repl
-// REPL起動
+// Start REPL
 $ make test
-// E2Eテスト実行
+// Run E2E tests
 $ make run SRC=./a.scm
-// JITモードで実行
+// Run in JIT mode
 $ make run-aot SRC=./a.scm
-// AOTモードで実行
+// Run in AOT mode
 ```

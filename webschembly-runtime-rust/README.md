@@ -2,5 +2,5 @@
 
 Webschembly runtime
 
-## 概要
-各種ランタイム機能のRust実装。`webschembly-compiler` にランタイムからアクセスする機能や、文字列操作などが実装されている。
+## Overview
+Rust implementation of various runtime features. Includes functionality for accessing runtime from `webschembly-compiler` and string manipulation operations.

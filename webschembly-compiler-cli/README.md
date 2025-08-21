@@ -2,18 +2,18 @@
 
 Command-line interface for the Webschembly compiler
 
-## 使用例
+## Usage Examples
 
 ```bash
 $ cargo run -- a.scm
-// a.wasmとa.1.wasmが生成される
+// Generates a.wasm and a.1.wasm
 
 $ cargo run -- --no-stdlib a.scm
-// a.wasmのみが生成される
+// Generates only a.wasm
 
 $ cargo run -- --ir a.scm
-// a.irが生成される
+// Generates a.ir
 
 $ cargo run -- --split-bb a.scm
-// JITのために関数が分割されたwasmが生成される
+// Generates wasm with functions split for JIT
 ```

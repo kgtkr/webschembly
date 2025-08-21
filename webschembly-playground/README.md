@@ -2,7 +2,7 @@
 
 Web playground for Webschembly
 
-## 開発
+## Development
 ```bash
 $ npm install
 $ make dev

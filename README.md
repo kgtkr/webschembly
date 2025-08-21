@@ -4,30 +4,30 @@ Scheme JIT compiler for WebAssembly
 
 [Playground](https://kgtkr.github.io/webschembly/)
 
-## プロジェクト構成
-このプロジェクトは以下のコンポーネントで構成されています：
+## Project Structure
+This project consists of the following components:
 
-* webschembly-compiler: Scheme → WebAssemblyコンパイラライブラリ
-* webschembly-compiler-cli: コンパイラのコマンドラインインターフェース。主に生成コードのデバッグのために使う
-* webschembly-js: JavaScriptバインディング。Cliでの実行やREPLが利用可能
-* webschembly-playground: Webベースのプレイグラウンド
-* webschembly-runtime: ランタイムライブラリ
-* webschembly-runtime-rust: ランタイムライブラリのうちRustで実装されている部分
+* webschembly-compiler: Scheme → WebAssembly compiler library
+* webschembly-compiler-cli: Command-line interface for the compiler, mainly used for debugging generated code
+* webschembly-js: JavaScript bindings with CLI execution and REPL capabilities
+* webschembly-playground: Web-based playground
+* webschembly-runtime: Runtime library
+* webschembly-runtime-rust: Rust-implemented parts of the runtime library
 
 ## Requirements
 * Nix
 * Direnv
 
-`direnv allow` を実行すると開発環境がセットアップされます。
+Run `direnv allow` to set up the development environment.
 
-## サンプルコード
+## Sample Code
 
 ```scheme
-;; 単純な加算
+;; Simple addition
 (write (+ 1 2))
 (newline)
 
-;; 関数定義
+;; Function definition
 (define (factorial n)
   (if (= n 0)
       1
