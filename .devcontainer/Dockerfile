@@ -21,4 +21,5 @@ RUN $HOME/.nix-profile/bin/nix profile add nixpkgs#direnv nixpkgs#nix-direnv && 
 
 COPY imports /tmp/imports
 RUN for nar in /tmp/imports/*.nar; do $HOME/.nix-profile/bin/nix-store --import < $nar; done && \
-    for sh in /tmp/imports/*.sh; do cat $sh >> $HOME/.bashrc; done
+    for sh in /tmp/imports/*.sh; do cat $sh >> $HOME/.bashrc; done && \
+    for gcroot in /tmp/imports/*.gcroot; do ln -s `cat $gcroot` /nix/var/nix/gcroots/`basename $gcroot`; done
