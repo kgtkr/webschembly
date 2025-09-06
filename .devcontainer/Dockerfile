@@ -15,5 +15,6 @@ RUN curl --proto '=https' --tlsv1.2 -L https://nixos.org/nix/install > /tmp/inst
     mkdir -p $HOME/.config/nix && \
     echo "experimental-features = nix-command flakes" >> $HOME/.config/nix/nix.conf
 
-RUN nix profile install nixpkgs#direnv nixpkgs#nix-direnv && \
-    echo ". $HOME/.nix-profile/share/nix-direnv/direnvrc" >> $HOME/.bashrc
+RUN $HOME/.nix-profile/bin/nix profile add nixpkgs#direnv nixpkgs#nix-direnv && \
+    echo ". $HOME/.nix-profile/share/nix-direnv/direnvrc" >> $HOME/.bashrc && \
+    $HOME/.nix-profile/bin/direnv hook bash >> $HOME/.bashrc
