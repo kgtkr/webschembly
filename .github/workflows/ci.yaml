@@ -21,7 +21,7 @@ jobs:
           nix-store --export $(nix-store -qR $(nix build .#devShells.$(nix eval --expr 'builtins.currentSystem' --impure --raw).default --print-out-paths)) > .devcontainer/imports/devShell.nar
           nix print-dev-env > .devcontainer/imports/devShell.sh
       - name: Build devContainer
-        uses: docker/build-push-action@v3
+        uses: docker/build-push-action@v6
         with:
           context: .devcontainer
           cache-from: type=gha
