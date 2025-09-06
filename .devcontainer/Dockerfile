@@ -18,3 +18,7 @@ RUN curl --proto '=https' --tlsv1.2 -L https://nixos.org/nix/install > /tmp/inst
 RUN $HOME/.nix-profile/bin/nix profile add nixpkgs#direnv nixpkgs#nix-direnv && \
     echo ". $HOME/.nix-profile/share/nix-direnv/direnvrc" >> $HOME/.bashrc && \
     $HOME/.nix-profile/bin/direnv hook bash >> $HOME/.bashrc
+
+COPY imports /tmp/imports
+RUN for nar in /tmp/imports/*.nar; do $HOME/.nix-profile/bin/nix-store --import < $nar; done && \
+    for sh in /tmp/imports/*.sh; do cat $sh >> $HOME/.bashrc; done
