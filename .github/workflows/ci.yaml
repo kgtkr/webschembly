@@ -91,7 +91,7 @@ jobs:
       - uses: DeterminateSystems/magic-nix-cache-action@main
       - name: Install dependencies
         run: |
-          nix profile install --inputs-from . nixpkgs#skopeo
+          nix profile add --inputs-from . nixpkgs#skopeo
       - name: Build
         run: |
           $(nix build .#stream-devcontainer --no-link --print-out-paths) > devcontainer.tar
