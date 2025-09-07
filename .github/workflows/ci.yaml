@@ -17,25 +17,17 @@ jobs:
         run: |
           nix print-dev-env > result-devShell.sh
           echo "BASH_ENV=$PWD/result-devShell.sh" >> $GITHUB_ENV
-      - name: Prepare devContainer context
+      - name: Build devcontainer
         run: |
-          nix build .#devShells.$(nix eval --expr 'builtins.currentSystem' --impure --raw).default --print-out-paths > .devcontainer/imports/devShell.gcroot
-          nix-store --export $(nix-store -qR $(cat .devcontainer/imports/devShell.gcroot)) > .devcontainer/imports/devShell.nar
-          nix print-dev-env > .devcontainer/imports/devShell.sh
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.repository_owner }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/setup-buildx-action@v3
-      - name: Build devContainer
-        uses: docker/build-push-action@v6
-        with:
-          context: .devcontainer
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          push: ${{ github.ref == 'refs/heads/master' }}
-          tags: ghcr.io/${{ github.repository_owner }}/webschembly-devcontainer:latest
+          $(nix build .#stream-devcontainer --no-link --print-out-paths) > devcontainer.tar
+      - name: Push devcontainer image
+        run: |
+          skopeo login ghcr.io -u "$DOCKER_USER" -p "$DOCKER_PASS"
+          skopeo copy docker-archive:./devcontainer.tar "docker://ghcr.io/kgtkr/webschembly-devcontainer:latest"
+        env:
+          DOCKER_USER: ${{ github.repository_owner }}
+          DOCKER_PASS: ${{ secrets.GITHUB_TOKEN }}
+        if: github.ref == 'refs/heads/master'
       - name: Cache cargo target
         uses: actions/cache@v4
         with:

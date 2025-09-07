@@ -23,6 +23,7 @@
         inputs.make-shell.flakeModules.default
         ./rust.nix
         ./js.nix
+        ./devcontainer.nix
       ];
       perSystem = { self', pkgs, system, ... }:
         {
@@ -42,6 +43,7 @@
               pkgs.nixpkgs-fmt
               pkgs.binaryen
               pkgs.wasm-tools
+              pkgs.skopeo
             ];
           };
         };
