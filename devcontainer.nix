@@ -2,6 +2,7 @@
   perSystem = { self', pkgs, system, config, ... }:
     {
       packages = {
+        # $(nix build .#stream-devcontainer --no-link --print-out-paths) | docker load
         stream-devcontainer = pkgs.dockerTools.streamLayeredImage {
           name = "webschembly-devcontainer";
           tag = "latest";
@@ -45,7 +46,7 @@
           config = {
             Env = lib.mapAttrsToList (name: value: "${name}=${value}") config.make-shells.default.env;
           };
+        };
       };
     };
-  };
 }

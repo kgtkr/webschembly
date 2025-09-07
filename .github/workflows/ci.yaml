@@ -5,7 +5,6 @@ jobs:
     permissions:
       contents: read
       id-token: write
-      packages: write
     env:
       CI: 'true'
     runs-on: ubuntu-latest
@@ -17,17 +16,6 @@ jobs:
         run: |
           nix print-dev-env > result-devShell.sh
           echo "BASH_ENV=$PWD/result-devShell.sh" >> $GITHUB_ENV
-      - name: Build devcontainer
-        run: |
-          $(nix build .#stream-devcontainer --no-link --print-out-paths) > devcontainer.tar
-      - name: Push devcontainer image
-        run: |
-          skopeo login ghcr.io -u "$DOCKER_USER" -p "$DOCKER_PASS"
-          skopeo copy docker-archive:./devcontainer.tar "docker://ghcr.io/kgtkr/webschembly-devcontainer:latest"
-        env:
-          DOCKER_USER: ${{ github.repository_owner }}
-          DOCKER_PASS: ${{ secrets.GITHUB_TOKEN }}
-        if: github.ref == 'refs/heads/master'
       - name: Cache cargo target
         uses: actions/cache@v4
         with:
@@ -91,3 +79,27 @@ jobs:
     steps:
       - uses: actions/deploy-pages@v4
         id: deployment
+  devcontainer:
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - name: Install dependencies
+        run: |
+          nix profile install --inputs-from . nixpkgs#skopeo
+      - name: Build
+        run: |
+          $(nix build .#stream-devcontainer --no-link --print-out-paths) > devcontainer.tar
+      - name: Push
+        run: |
+          skopeo login ghcr.io -u "$DOCKER_USER" -p "$DOCKER_PASS"
+          skopeo copy docker-archive:./devcontainer.tar "docker://ghcr.io/kgtkr/webschembly-devcontainer:latest"
+        env:
+          DOCKER_USER: ${{ github.repository_owner }}
+          DOCKER_PASS: ${{ secrets.GITHUB_TOKEN }}
+        if: github.ref == 'refs/heads/master'
