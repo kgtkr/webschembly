@@ -3,3 +3,4 @@ result*
 *.snap.new
 /node_modules/
 *.tsbuildinfo
+/.direnv
