@@ -7,6 +7,8 @@
         fileset = lib.fileset.unions ([
           ./package.json
           ./package-lock.json
+          ./tsconfig.json
+          ./tsconfig.base.json
         ] ++ lib.map (lib.path.append ./.) (builtins.fromJSON (builtins.readFile ./package.json)).workspaces);
       };
       generatedSrc = pkgs.napalm.buildPackage src {

@@ -1,6 +1,6 @@
 import { defineConfig } from "vite";
 import { viteStaticCopy } from "vite-plugin-static-copy";
-import tsconfigPaths from "vite-tsconfig-paths";
+import path from "path";
 
 export default defineConfig({
   plugins: [
@@ -12,7 +12,14 @@ export default defineConfig({
         },
       ],
     }),
-    tsconfigPaths(),
   ],
   base: process.env.BASE_URL,
+  resolve: {
+    alias: [
+      {
+        find: "webschembly-js",
+        replacement: path.resolve(__dirname, "../webschembly-js/src"),
+      },
+    ],
+  },
 });

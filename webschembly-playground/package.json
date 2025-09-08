@@ -9,7 +9,6 @@
   "devDependencies": {
     "vite": "^6.2.0",
     "vite-plugin-static-copy": "^2.3.0",
-    "vite-tsconfig-paths": "^5.1.4",
     "webschembly-js": "^0.1.0"
   }
 }
