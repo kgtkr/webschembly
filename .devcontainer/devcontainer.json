@@ -6,7 +6,6 @@
             "settings": {},
             "extensions": [
                 "rust-lang.rust-analyzer",
-                "ms-vscode.vscode-typescript-next",
                 "esbenp.prettier-vscode"
             ]
         }
