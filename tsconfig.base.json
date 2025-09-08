@@ -1,0 +1,24 @@
+{
+    "compilerOptions": {
+        "composite": true,
+        "target": "ES2020",
+        "module": "ESNext",
+        "moduleResolution": "node",
+        "lib": [
+            "ES2020",
+            "DOM",
+            "WebWorker"
+        ],
+        "strict": true,
+        "esModuleInterop": true,
+        "skipLibCheck": true,
+        "forceConsistentCasingInFileNames": true,
+        "declaration": true,
+        "declarationMap": true,
+        "sourceMap": true,
+        "allowSyntheticDefaultImports": true,
+        "resolveJsonModule": true,
+        "verbatimModuleSyntax": true,
+        "isolatedModules": true,
+    },
+}

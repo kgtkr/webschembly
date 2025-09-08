@@ -1,13 +1,19 @@
 import { createRuntime } from "webschembly-js/runtime";
 
-self.addEventListener("message", (event) => {
-  const { src, runtimeModule } = event.data;
+self.addEventListener("message", async (event) => {
+  const {
+    src,
+    runtimeModule,
+  }: {
+    src: string;
+    runtimeModule: WebAssembly.Module;
+  } = event.data;
 
   const srcBuf = new TextEncoder().encode(src);
   let exitCode = 0;
-  const stdoutBufs = [];
-  const stderrBufs = [];
-  const runtime = createRuntime(
+  const stdoutBufs: Uint8Array[] = [];
+  const stderrBufs: Uint8Array[] = [];
+  const runtime = await createRuntime(
     {
       exit: (code) => {
         exitCode = code;
@@ -20,7 +26,7 @@ self.addEventListener("message", (event) => {
           console.log("instantiate:", buf);
         },
       },
-      runtimeModule,
+      loadRuntimeModule: async () => runtimeModule,
       writeBuf: (fd, buf) => {
         switch (fd) {
           case 1:
@@ -47,7 +53,7 @@ self.addEventListener("message", (event) => {
   self.postMessage({ exitCode, stdout, stderr });
 });
 
-function concatBufs(bufs) {
+function concatBufs(bufs: Uint8Array[]) {
   const bufLen = bufs.map((buf) => buf.length).reduce((a, b) => a + b, 0);
   const resultBuf = new Uint8Array(bufLen);
   let offset = 0;

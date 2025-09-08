@@ -1,24 +1,8 @@
 {
+    "extends": "../tsconfig.base.json",
     "compilerOptions": {
-        "target": "ES2020",
-        "module": "ESNext",
-        "moduleResolution": "node",
-        "lib": [
-            "ES2020",
-            "DOM",
-            "WebWorker"
-        ],
         "outDir": "./dist",
         "rootDir": "./src",
-        "strict": true,
-        "esModuleInterop": true,
-        "skipLibCheck": true,
-        "forceConsistentCasingInFileNames": true,
-        "declaration": true,
-        "declarationMap": true,
-        "sourceMap": true,
-        "allowSyntheticDefaultImports": true,
-        "resolveJsonModule": true,
         "paths": {
             "webschembly-js/*": [
                 "../webschembly-js/src/*"
@@ -28,4 +12,9 @@
     "include": [
         "src/**/*"
     ],
+    "references": [
+        {
+            "path": "../webschembly-js"
+        }
+    ]
 }

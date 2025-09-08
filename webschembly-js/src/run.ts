@@ -7,8 +7,8 @@ if (!srcName) {
   console.error("Usage: run <src>");
   process.exit(1);
 }
-const runtime = createRuntime(
-  createNodeRuntimeEnv({
+const runtime = await createRuntime(
+  await createNodeRuntimeEnv({
     runtimeName: srcName,
   }),
   {}

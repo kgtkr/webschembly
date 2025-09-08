@@ -1,8 +1,8 @@
 import { createNodeRuntimeEnv } from "./node-runtime-env";
 import { createRuntime } from "./runtime";
 
-const runtime = createRuntime(
-  createNodeRuntimeEnv({
+const runtime = await createRuntime(
+  await createNodeRuntimeEnv({
     runtimeName: "repl.scm",
   }),
   {

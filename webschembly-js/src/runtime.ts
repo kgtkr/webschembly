@@ -1,8 +1,69 @@
-export function createRuntime(
-  { exit, logger, runtimeModule, writeBuf },
-  { exitWhenException = true, printEvalResult = false }
-) {
-  const runtimeImportObjects = {
+export type RuntimeEnv = {
+  exit: (code: number) => void;
+  logger: RuntimeLogger;
+  loadRuntimeModule: () => Promise<WebAssembly.Module>;
+  writeBuf: (fd: number, buf: Uint8Array) => void;
+};
+
+export type RuntimeConfig = {
+  exitWhenException?: boolean;
+  printEvalResult?: boolean;
+};
+
+export type RuntimeLogger = {
+  log: (s: string) => void;
+  instantiate: (buf: Uint8Array) => void;
+};
+
+export type Runtime = {
+  loadStdlib: () => void;
+  loadSrc: (srcBuf: Uint8Array) => void;
+  flushAll: () => void;
+  cleanup: () => void;
+};
+
+export type RuntimeImportsEnv = {
+  js_instantiate: (bufPtr: number, bufSize: number, fromSrc: number) => void;
+  js_webschembly_log: (bufPtr: number, bufLen: number) => void;
+  js_write_buf: (fd: number, bufPtr: number, bufLen: number) => void;
+};
+
+export type RuntimeImports = {
+  env: RuntimeImportsEnv;
+};
+
+export type RuntimeExports = {
+  memory: WebAssembly.Memory;
+  WEBSCHEMBLY_EXCEPTION: WebAssembly.ExceptionTag;
+  get_global: (namePtr: number, nameLen: number) => number;
+  new_vector: (elemSize: number) => number;
+  set_vector: (vecPtr: number, index: number, value: number) => void;
+  call_closure: (closurePtr: number, paramsPtr: number) => number;
+  malloc: (size: number) => number;
+  free: (ptr: number) => void;
+  load_stdlib: () => void;
+  load_src: (srcPtr: number, srcLen: number) => void;
+  flush_all: () => void;
+  cleanup: () => void;
+};
+
+export type ModuleImports = {
+  runtime: RuntimeExports;
+};
+
+export type ModuleExports = {
+  start: () => number;
+};
+
+export type TypedWebAssemblyInstance<Exports> = WebAssembly.Instance & {
+  exports: Exports;
+};
+
+export async function createRuntime(
+  { exit, logger, loadRuntimeModule, writeBuf }: RuntimeEnv,
+  { exitWhenException = true, printEvalResult = false }: RuntimeConfig
+): Promise<Runtime> {
+  const runtimeImportObjects: RuntimeImportsEnv = {
     js_instantiate: (bufPtr, bufSize, fromSrc) => {
       const buf = new Uint8Array(
         runtimeInstance.exports.memory.buffer,
@@ -14,7 +75,7 @@ export function createRuntime(
       const instance = new WebAssembly.Instance(
         new WebAssembly.Module(buf),
         importObject
-      );
+      ) as TypedWebAssemblyInstance<ModuleExports>;
 
       const result = instance.exports.start();
       if (printEvalResult && fromSrc !== 0) {
@@ -50,17 +111,17 @@ export function createRuntime(
     },
   };
 
-  const runtimeInstance = new WebAssembly.Instance(runtimeModule, {
+  const runtimeInstance = new WebAssembly.Instance(await loadRuntimeModule(), {
     env: runtimeImportObjects,
-  });
+  } satisfies RuntimeImports) as TypedWebAssemblyInstance<RuntimeExports>;
 
-  const importObject = {
+  const importObject: ModuleImports = {
     runtime: runtimeInstance.exports,
   };
 
   const errorHandle =
-    (f) =>
-    (...args) => {
+    <A extends any[], R>(f: (...args: A) => R) =>
+    (...args: A): void => {
       try {
         f(...args);
       } catch (e) {
@@ -77,7 +138,7 @@ export function createRuntime(
       }
     };
 
-  function mallocString(s) {
+  function mallocString(s: string): [number, number] {
     const buf = new TextEncoder().encode(s);
     const bufPtr = runtimeInstance.exports.malloc(buf.length);
     new Uint8Array(runtimeInstance.exports.memory.buffer).set(buf, bufPtr);

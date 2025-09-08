@@ -1,6 +1,6 @@
 import playgroundWorker from "./playground.worker?worker";
 
-let runtimeModule;
+let runtimeModule: WebAssembly.Module;
 fetch(import.meta.env.BASE_URL + "wasm/webschembly_runtime.wasm").then((res) =>
   res.arrayBuffer().then((buf) => {
     runtimeModule = new WebAssembly.Module(buf);
@@ -8,11 +8,11 @@ fetch(import.meta.env.BASE_URL + "wasm/webschembly_runtime.wasm").then((res) =>
 );
 
 document.addEventListener("DOMContentLoaded", () => {
-  const src = document.getElementById("src");
-  const runButton = document.getElementById("run");
-  const stdout = document.getElementById("stdout");
-  const stderr = document.getElementById("stderr");
-  const exitCode = document.getElementById("exit-code");
+  const src = document.getElementById("src")! as HTMLTextAreaElement;
+  const runButton = document.getElementById("run")!;
+  const stdout = document.getElementById("stdout")!;
+  const stderr = document.getElementById("stderr")!;
+  const exitCode = document.getElementById("exit-code")!;
 
   runButton.addEventListener("click", () => {
     const worker = new playgroundWorker();

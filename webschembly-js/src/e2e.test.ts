@@ -5,7 +5,7 @@ import * as path from "path";
 import { createRuntime } from "./runtime";
 import { createNodeRuntimeEnv } from "./node-runtime-env";
 
-function concatBufs(bufs) {
+function concatBufs(bufs: Uint8Array[]) {
   const bufLen = bufs.map((buf) => buf.length).reduce((a, b) => a + b, 0);
   const resultBuf = new Uint8Array(bufLen);
   let offset = 0;
@@ -22,25 +22,25 @@ const filenames = fsLegacy
   .filter((file) => file.endsWith(".scm"));
 
 describe("E2E test", () => {
-  let runtimeModule;
+  let runtimeModule: WebAssembly.Module;
   beforeAll(async () => {
     runtimeModule = new WebAssembly.Module(
-      await fs.readFile(process.env["WEBSCHEMBLY_RUNTIME"])
+      await fs.readFile(process.env["WEBSCHEMBLY_RUNTIME"]!)
     );
   });
 
   describe.each(filenames)("%s", (filename) => {
-    let srcBuf;
+    let srcBuf: Buffer;
     beforeAll(async () => {
       srcBuf = await fs.readFile(path.join(sourceDir, filename));
     });
 
     test("snapshot test", async () => {
       let exitCode = 0;
-      const stdoutBufs = [];
-      const stderrBufs = [];
-      const runtime = createRuntime(
-        createNodeRuntimeEnv({
+      const stdoutBufs: Uint8Array[] = [];
+      const stderrBufs: Uint8Array[] = [];
+      const runtime = await createRuntime(
+        await createNodeRuntimeEnv({
           runtimeName: filename,
           exit: (code) => {
             exitCode = code;
@@ -57,7 +57,7 @@ describe("E2E test", () => {
                 throw new Error(`Unsupported file descriptor: ${fd}`);
             }
           },
-          runtimeModule,
+          loadRuntimeModule: async () => runtimeModule,
         }),
         {}
       );

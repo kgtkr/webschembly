@@ -40,10 +40,12 @@ jobs:
       - name: Test
         run: |
           cargo test
+      - run: npm ci
+      - run: npm run check
       - name: E2E Test
         run: |
-          npm ci
-          cd webschembly-js && make test
+          make test
+        working-directory: ./webschembly-js
       - name: Build Playground
         run: |
           nix build .#webschembly-playground-for-pages --out-link result-playground

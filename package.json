@@ -5,5 +5,8 @@
     "workspaces": [
         "webschembly-js",
         "webschembly-playground"
-    ]
+    ],
+    "scripts": {
+        "check": "tsc -b"
+    }
 }

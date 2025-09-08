@@ -1,5 +1,10 @@
 import * as fs from "fs";
 import { createNodeRuntimeEnv } from "./node-runtime-env";
+import {
+  type RuntimeExports,
+  type TypedWebAssemblyInstance,
+  type RuntimeImportsEnv,
+} from "./runtime";
 
 const wasmName = process.argv[2];
 if (!wasmName) {
@@ -7,8 +12,14 @@ if (!wasmName) {
   process.exit(1);
 }
 
-const runtimeEnv = createNodeRuntimeEnv({ runtimeModule: null });
-const runtimeImportObjects = {
+const runtimeEnv = await createNodeRuntimeEnv({
+  loadRuntimeModule: () => {
+    throw new Error(
+      "loadRuntimeModule is not supported in run-aot. Use run instead."
+    );
+  },
+});
+const runtimeImportObjects: RuntimeImportsEnv = {
   js_instantiate: (bufPtr, bufSize, fromSrc) => {
     throw new Error(
       "js_instantiate is not supported in run-aot. Use run instead."
@@ -34,12 +45,12 @@ const wasmBuf = new Uint8Array(fs.readFileSync(wasmName));
 const wasmModule = new WebAssembly.Module(wasmBuf);
 const wasmInstance = new WebAssembly.Instance(wasmModule, {
   env: runtimeImportObjects,
-});
+}) as TypedWebAssemblyInstance<RuntimeExports>;
 
 // reverseしないと動かない(runtimeが後にexportされているため)
 for (const key of Object.keys(wasmInstance.exports).reverse()) {
   if (key.startsWith("start")) {
-    wasmInstance.exports[key]();
+    (wasmInstance.exports[key] as Function)();
   }
 }
 wasmInstance.exports.cleanup();
