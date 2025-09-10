@@ -131,6 +131,7 @@ impl<'a> ModuleSplitter<'a> {
                     args: vec![],
                 })
             },],
+            jit_strategy: FuncJitStrategy::Never,
         };
         funcs.push(func);
         for func in module.funcs.iter() {
@@ -213,6 +214,7 @@ impl<'a> ModuleSplitter<'a> {
                         })
                     },
                 ],
+                jit_strategy: FuncJitStrategy::Never,
             };
             funcs.push(func);
         }
@@ -275,6 +277,7 @@ impl<'a> ModuleSplitter<'a> {
                 ],
                 next: BasicBlockNext::Return(LocalId::from(0)),
             },],
+            jit_strategy: FuncJitStrategy::Never,
         };
         funcs.push(entry_func);
         let boxed_func_ref = func.locals.next_key();
@@ -361,6 +364,7 @@ impl<'a> ModuleSplitter<'a> {
                     }
                 })
                 .collect(),
+            jit_strategy: func.jit_strategy,
         };
 
         funcs.push(body_func);

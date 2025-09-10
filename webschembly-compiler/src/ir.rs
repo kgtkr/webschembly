@@ -959,6 +959,13 @@ impl BasicBlockNext {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FuncJitStrategy {
+    Never,
+    Lambda { args: LocalId },
+    BasicBlock,
+}
+
 #[derive(Debug, Clone)]
 pub struct Func {
     pub id: FuncId,
@@ -968,6 +975,7 @@ pub struct Func {
     pub ret_type: LocalType,
     pub bb_entry: BasicBlockId,
     pub bbs: TiVec<BasicBlockId, BasicBlock>,
+    pub jit_strategy: FuncJitStrategy,
 }
 
 impl Func {

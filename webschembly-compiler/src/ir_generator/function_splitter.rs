@@ -259,6 +259,11 @@ pub fn split_function(mut module: Module) -> Module {
                 ret_type: orig_func.ret_type,
                 bb_entry: BasicBlockId::from(0),
                 bbs: new_bbs,
+                jit_strategy: if orig_func.bb_entry == bb.id {
+                    orig_func.jit_strategy
+                } else {
+                    FuncJitStrategy::BasicBlock
+                },
             };
 
             new_funcs.push(new_func);
