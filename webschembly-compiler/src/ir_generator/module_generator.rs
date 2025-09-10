@@ -796,6 +796,16 @@ impl BuiltinConversionRule {
                 ret: Type::Val(ValType::Int),
                 to_ir: Expr::Sub,
             },
+            Builtin::Mul => BuiltinConversionRule::Binary {
+                args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
+                ret: Type::Val(ValType::Int),
+                to_ir: Expr::Mul,
+            },
+            Builtin::Div => BuiltinConversionRule::Binary {
+                args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
+                ret: Type::Val(ValType::Int),
+                to_ir: Expr::Div,
+            },
             Builtin::WriteChar => BuiltinConversionRule::Unary {
                 args: [Type::Val(ValType::Char)],
                 ret: Type::Val(ValType::Nil),

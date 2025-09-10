@@ -344,6 +344,8 @@ pub enum Expr {
     Display(LocalId),
     Add(LocalId, LocalId),
     Sub(LocalId, LocalId),
+    Mul(LocalId, LocalId),
+    Div(LocalId, LocalId),
     WriteChar(LocalId),
     IsPair(LocalId),
     IsSymbol(LocalId),
@@ -448,6 +450,14 @@ macro_rules! impl_Expr_local_ids {
                             yield b;
                         }
                         Expr::Sub(a, b) => {
+                            yield a;
+                            yield b;
+                        }
+                        Expr::Mul(a, b) => {
+                            yield a;
+                            yield b;
+                        }
+                        Expr::Div(a, b) => {
                             yield a;
                             yield b;
                         }
@@ -619,6 +629,8 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
             Expr::Display(id) => write!(f, "display({})", id.display(self.meta)),
             Expr::Add(a, b) => write!(f, "add({}, {})", a.display(self.meta), b.display(self.meta)),
             Expr::Sub(a, b) => write!(f, "sub({}, {})", a.display(self.meta), b.display(self.meta)),
+            Expr::Mul(a, b) => write!(f, "mul({}, {})", a.display(self.meta), b.display(self.meta)),
+            Expr::Div(a, b) => write!(f, "div({}, {})", a.display(self.meta), b.display(self.meta)),
             Expr::WriteChar(id) => write!(f, "write_char({})", id.display(self.meta)),
             Expr::IsPair(id) => write!(f, "is_pair({})", id.display(self.meta)),
             Expr::IsSymbol(id) => write!(f, "is_symbol({})", id.display(self.meta)),

@@ -1149,6 +1149,16 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*rhs)));
                 function.instruction(&Instruction::I64Sub);
             }
+            ir::Expr::Mul(lhs, rhs) => {
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*lhs)));
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*rhs)));
+                function.instruction(&Instruction::I64Mul);
+            }
+            ir::Expr::Div(lhs, rhs) => {
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*lhs)));
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*rhs)));
+                function.instruction(&Instruction::I64DivS);
+            }
             ir::Expr::WriteChar(val) => {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
                 function.instruction(&Instruction::Call(self.module_generator.write_char_func));

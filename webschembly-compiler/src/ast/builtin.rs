@@ -7,6 +7,10 @@ pub enum Builtin {
     Add,
     #[strum(serialize = "-")]
     Sub,
+    #[strum(serialize = "*")]
+    Mul,
+    #[strum(serialize = "/")]
+    Div,
     #[strum(serialize = "write-char")]
     WriteChar,
     #[strum(serialize = "pair?")]
