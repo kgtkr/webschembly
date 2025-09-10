@@ -10,13 +10,12 @@
   (type $String (sub final (struct (field $buf (mut (ref $StringBuf))) (field $len i32) (field $offset i32))))
   (type $Symbol (sub final (struct (field $name (ref $String)))))
   (type $Vector (array (mut eqref)))
+  (type $Args (array (mut eqref)))
   (type $FuncRef (sub final (struct (field $func funcref))))
   (type $Closure (sub (struct
           ;; (Closure, Args) -> Boxed
-          (field $func (ref $FuncRef))
-          ;; (Closure, Vector) -> Boxed
-          (field $boxed_func (ref $FuncRef)))))
-  (type $BoxedFunc (func (param (ref $Closure)) (param (ref $Vector)) (result eqref)))
+          (field $func (ref $FuncRef)))))
+  (type $ClosureFunc (func (param (ref $Closure)) (param (ref $Args)) (result eqref)))
   (import "runtime" "init" (func $init))
   (import "runtime" "malloc" (func $malloc (param i32) (result i32)))
   (import "runtime" "free" (func $free (param i32)))
@@ -187,19 +186,19 @@
     )
   )
 
-  (func $new_vector (export "new_vector") (param $size i32) (result (ref $Vector))
-    (return (array.new $Vector (ref.null eq) (local.get $size)))
+  (func $new_args (export "new_args") (param $size i32) (result (ref $Args))
+    (return (array.new $Args (ref.null eq) (local.get $size)))
   )
 
-  (func $set_vector (export "set_vector") (param $params (ref $Vector)) (param $index i32) (param $value eqref)
-    (array.set $Vector (local.get $params) (local.get $index) (local.get $value))
+  (func $set_args (export "set_args") (param $params (ref $Args)) (param $index i32) (param $value eqref)
+    (array.set $Args (local.get $params) (local.get $index) (local.get $value))
   )
 
-  (func $call_closure (export "call_closure") (param $closure (ref $Closure)) (param $params (ref $Vector)) (result eqref)
-    (local $func (ref $BoxedFunc))
-    (local.set $func (ref.cast (ref $BoxedFunc) (struct.get $FuncRef $func (struct.get $Closure $boxed_func (local.get $closure)))))
+  (func $call_closure (export "call_closure") (param $closure (ref $Closure)) (param $params (ref $Args)) (result eqref)
+    (local $func (ref $ClosureFunc))
+    (local.set $func (ref.cast (ref $ClosureFunc) (struct.get $FuncRef $func (struct.get $Closure $func (local.get $closure)))))
 
 
-    (call_ref $BoxedFunc (local.get $closure) (local.get $params) (local.get $func))
+    (call_ref $ClosureFunc (local.get $closure) (local.get $params) (local.get $func))
   )
 )

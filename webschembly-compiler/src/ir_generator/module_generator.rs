@@ -102,16 +102,12 @@ impl<'a> ModuleGenerator<'a> {
         &mut self,
         x: &RunX<ast::LambdaX, ast::Final>,
         lambda: &ast::Lambda<ast::Final>,
-    ) -> (FuncId, FuncId) {
+    ) -> FuncId {
         let id = self.funcs.push_and_get_key(None);
         let func = FuncGenerator::new(self, id).lambda_gen(x, lambda);
         self.funcs[id] = Some(func);
 
-        let boxed_id = self.funcs.push_and_get_key(None);
-        let boxed_func = FuncGenerator::new(self, boxed_id).boxed_func_gen(id, lambda.args.len());
-        self.funcs[boxed_id] = Some(boxed_func);
-
-        (id, boxed_id)
+        id
     }
 }
 
@@ -182,9 +178,9 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         lambda: &ast::Lambda<ast::Final>,
     ) -> Func {
         let self_closure = self.local(Type::Val(ValType::Closure));
-        // mut cell化が必要な引数(引数で直接MutCellは受け取れないので後続の処理で生成する)
-        let mut mut_cell_arg_locals = Vec::new();
-        for arg in &x.get_ref(type_map::key::<Used>()).args {
+        let args = self.local(LocalType::Args);
+        // TODO: 引数の数が合っているかのチェック
+        for (arg_idx, arg) in x.get_ref(type_map::key::<Used>()).args.iter().enumerate() {
             if self
                 .module_generator
                 .ast
@@ -194,22 +190,27 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 .contains(arg)
             {
                 let local = self.local(LocalType::Type(Type::Boxed));
-                mut_cell_arg_locals.push((arg, local));
-            } else {
-                self.define_ast_local(*arg);
-            }
-        }
-        for (ast_local, local) in mut_cell_arg_locals {
-            let mut_cell_local = self.define_ast_local(*ast_local);
-            self.exprs.push(ExprAssign {
-                local: Some(mut_cell_local),
-                expr: Expr::CreateMutCell(Type::Boxed),
-            });
+                self.exprs.push(ExprAssign {
+                    local: Some(local),
+                    expr: Expr::ArgsRef(args, arg_idx),
+                });
 
-            self.exprs.push(ExprAssign {
-                local: None,
-                expr: Expr::SetMutCell(Type::Boxed, mut_cell_local, local),
-            });
+                let mut_cell = self.define_ast_local(*arg);
+                self.exprs.push(ExprAssign {
+                    local: Some(mut_cell),
+                    expr: Expr::CreateMutCell(Type::Boxed),
+                });
+                self.exprs.push(ExprAssign {
+                    local: None,
+                    expr: Expr::SetMutCell(Type::Boxed, mut_cell, local),
+                });
+            } else {
+                let arg_id = self.define_ast_local(*arg);
+                self.exprs.push(ExprAssign {
+                    local: Some(arg_id),
+                    expr: Expr::ArgsRef(args, arg_idx),
+                });
+            }
         }
 
         // 環境を復元するためのローカル変数を定義
@@ -245,50 +246,10 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         self.close_bb(Some(BasicBlockNext::Return(ret)));
         Func {
             id: self.id,
-            args: lambda.args.len() + 1,
-            ret_type: LocalType::Type(Type::Boxed),
-            locals: self.locals,
-            bb_entry: BasicBlockId::from(0), // TODO: もっと綺麗な書き方があるはず
-            bbs: self
-                .bbs
-                .into_iter_enumerated()
-                .map(|(id, bb)| BasicBlock {
-                    id,
-                    exprs: bb.exprs,
-                    next: bb.next.unwrap(),
-                })
-                .collect(),
-        }
-    }
-
-    fn boxed_func_gen(mut self, target_func_id: FuncId, args_len: usize) -> Func {
-        let self_closure = self.local(Type::Val(ValType::Closure));
-        let vector = self.local(Type::Val(ValType::Vector));
-        let mut args = Vec::new();
-        args.push(self_closure);
-        for i in 0..args_len {
-            let arg = self.local(Type::Boxed);
-            let arg_i = self.local(Type::Val(ValType::Int));
-            self.exprs.push(ExprAssign {
-                local: Some(arg_i),
-                expr: Expr::Int(i as i64),
-            });
-            self.exprs.push(ExprAssign {
-                local: Some(arg),
-                expr: Expr::VectorRef(vector, arg_i),
-            });
-            args.push(arg);
-        }
-        self.close_bb(Some(BasicBlockNext::TailCall(ExprCall {
-            func_id: target_func_id,
-            args,
-        })));
-        Func {
-            id: self.id,
             args: 2,
             ret_type: LocalType::Type(Type::Boxed),
             locals: self.locals,
-            bb_entry: BasicBlockId::from(0),
+            bb_entry: BasicBlockId::from(0), // TODO: もっと綺麗な書き方があるはず
             bbs: self
                 .bbs
                 .into_iter_enumerated()
@@ -440,24 +401,18 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     .iter()
                     .map(|id| *self.local_ids.get(id).unwrap())
                     .collect::<Vec<_>>();
-                let (func_id, boxed_func_id) = self.module_generator.gen_func(x, lambda);
+                let func_id = self.module_generator.gen_func(x, lambda);
                 let func_local = self.local(ValType::FuncRef);
-                let boxed_func_local = self.local(ValType::FuncRef);
                 let unboxed = self.local(Type::Val(ValType::Closure));
                 self.exprs.push(ExprAssign {
                     local: Some(func_local),
                     expr: Expr::FuncRef(func_id),
                 });
                 self.exprs.push(ExprAssign {
-                    local: Some(boxed_func_local),
-                    expr: Expr::FuncRef(boxed_func_id),
-                });
-                self.exprs.push(ExprAssign {
                     local: Some(unboxed),
                     expr: Expr::Closure {
                         envs: captures,
                         func: func_local,
-                        boxed_func: boxed_func_local,
                     },
                 });
                 self.exprs.push(ExprAssign {
@@ -580,24 +535,29 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                         local: Some(func_local),
                         expr: Expr::ClosureFuncRef(closure_local),
                     });
-                    // TODO: 引数の数が合っているかのチェック
-                    let mut arg_locals = Vec::new();
-                    let mut args_types = Vec::new();
-                    arg_locals.push(closure_local); // 第一引数にクロージャを渡す
-                    args_types.push(LocalType::Type(Type::Val(ValType::Closure)));
+
+                    let args_local = self.local(LocalType::Args);
+                    let mut args_locals = Vec::new();
                     for arg in args {
                         let arg_local = self.local(Type::Boxed);
                         self.gen_expr(Some(arg_local), arg);
-                        arg_locals.push(arg_local);
-                        args_types.push(LocalType::Type(Type::Boxed));
+                        args_locals.push(arg_local);
                     }
+                    self.exprs.push(ExprAssign {
+                        local: Some(args_local),
+                        expr: Expr::Args(args_locals),
+                    });
+
                     let is_tail = x.get_ref(type_map::key::<TailCall>()).is_tail;
                     let call_ref = ExprCallRef {
                         func: func_local,
-                        args: arg_locals,
+                        args: vec![closure_local, args_local],
                         func_type: FuncType {
                             ret: LocalType::Type(Type::Boxed),
-                            args: args_types,
+                            args: vec![
+                                LocalType::Type(Type::Val(ValType::Closure)),
+                                LocalType::Args,
+                            ],
                         },
                     };
                     if is_tail {

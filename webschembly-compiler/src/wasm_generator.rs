@@ -210,8 +210,7 @@ impl<'a> ModuleGenerator<'a> {
     const CONS_CDR_FIELD: u32 = 1;
     const SYMBOL_STRING_FIELD: u32 = 0;
     const CLOSURE_FUNC_FIELD: u32 = 0;
-    const CLOSURE_BOXED_FUNC_FIELD: u32 = 1;
-    const CLOSURE_ENVS_FIELD_OFFSET: u32 = 2;
+    const CLOSURE_ENVS_FIELD_OFFSET: u32 = 1;
     // const STRING_BUF_BUF_FIELD: u32 = 0;
     // const STRING_BUF_SHARED_FIELD: u32 = 1;
     // const STRING_BUF_FIELD: u32 = 0;
@@ -323,22 +322,13 @@ impl<'a> ModuleGenerator<'a> {
 
         self.closure_type = self.type_count;
         self.type_count += 1;
-        self.closure_type_fields = vec![
-            FieldType {
-                element_type: StorageType::Val(ValType::Ref(RefType {
-                    nullable: false,
-                    heap_type: HeapType::Concrete(self.func_ref_type),
-                })),
-                mutable: false,
-            },
-            FieldType {
-                element_type: StorageType::Val(ValType::Ref(RefType {
-                    nullable: false,
-                    heap_type: HeapType::Concrete(self.func_ref_type),
-                })),
-                mutable: false,
-            },
-        ];
+        self.closure_type_fields = vec![FieldType {
+            element_type: StorageType::Val(ValType::Ref(RefType {
+                nullable: false,
+                heap_type: HeapType::Concrete(self.func_ref_type),
+            })),
+            mutable: false,
+        }];
         self.types.ty().subtype(&SubType {
             is_final: false,
             supertype_idx: None,
@@ -955,13 +945,8 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     self.module_generator.func_ref_type,
                 )));
             }
-            ir::Expr::Closure {
-                envs,
-                func,
-                boxed_func,
-            } => {
+            ir::Expr::Closure { envs, func } => {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*func)));
-                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*boxed_func)));
                 for env in envs.iter() {
                     function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*env)));
                 }
@@ -980,13 +965,6 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 function.instruction(&Instruction::StructGet {
                     struct_type_index: self.module_generator.closure_type,
                     field_index: ModuleGenerator::CLOSURE_FUNC_FIELD,
-                });
-            }
-            ir::Expr::ClosureBoxedFuncRef(closure) => {
-                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*closure)));
-                function.instruction(&Instruction::StructGet {
-                    struct_type_index: self.module_generator.closure_type,
-                    field_index: ModuleGenerator::CLOSURE_BOXED_FUNC_FIELD,
                 });
             }
             ir::Expr::Call(call) => {

@@ -36,8 +36,8 @@ export type RuntimeExports = {
   memory: WebAssembly.Memory;
   WEBSCHEMBLY_EXCEPTION: WebAssembly.ExceptionTag;
   get_global: (namePtr: number, nameLen: number) => number;
-  new_vector: (elemSize: number) => number;
-  set_vector: (vecPtr: number, index: number, value: number) => void;
+  new_args: (elemSize: number) => number;
+  set_args: (vecPtr: number, index: number, value: number) => void;
   call_closure: (closurePtr: number, paramsPtr: number) => number;
   malloc: (size: number) => number;
   free: (ptr: number) => void;
@@ -83,15 +83,15 @@ export async function createRuntime(
           writePtr,
           writeLen
         );
-        const writeParams = runtimeInstance.exports.new_vector(1);
-        runtimeInstance.exports.set_vector(writeParams, 0, result);
+        const writeParams = runtimeInstance.exports.new_args(1);
+        runtimeInstance.exports.set_args(writeParams, 0, result);
         runtimeInstance.exports.call_closure(writeClosure, writeParams);
 
         const newlineClosure = runtimeInstance.exports.get_global(
           newlinePtr,
           newlineLen
         );
-        const newlineParams = runtimeInstance.exports.new_vector(0);
+        const newlineParams = runtimeInstance.exports.new_args(0);
         runtimeInstance.exports.call_closure(newlineClosure, newlineParams);
       }
     },

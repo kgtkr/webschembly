@@ -326,7 +326,6 @@ pub enum Expr {
     Closure {
         envs: Vec<LocalId>,
         func: LocalId,
-        boxed_func: LocalId,
     },
     Move(LocalId),
     Box(ValType, LocalId),
@@ -337,7 +336,6 @@ pub enum Expr {
         usize,          /* env index */
     ),
     ClosureFuncRef(LocalId),
-    ClosureBoxedFuncRef(LocalId),
     GlobalSet(GlobalId, LocalId),
     GlobalGet(GlobalId),
     Error(LocalId),
@@ -426,13 +424,11 @@ macro_rules! impl_Expr_local_ids {
                         Expr::Closure {
                             envs,
                             func,
-                            boxed_func,
                         } => {
                             for env in envs {
                                 yield env;
                             }
                             yield func;
-                            yield boxed_func;
                         }
                         Expr::CallRef(call_ref) => {
                             for id in call_ref.[<local_ids $($suffix)?>]() {
@@ -444,7 +440,6 @@ macro_rules! impl_Expr_local_ids {
                         Expr::Unbox(_, id) => yield id,
                         Expr::ClosureEnv(_, closure, _) => yield closure,
                         Expr::ClosureFuncRef(id) => yield id,
-                        Expr::ClosureBoxedFuncRef(id) => yield id,
                         Expr::GlobalSet(_, value) => yield value,
                         Expr::Error(id) => yield id,
                         Expr::Display(id) => yield id,
@@ -583,17 +578,8 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
             Expr::Call(call) => {
                 write!(f, "{}", call.display(self.meta))
             }
-            Expr::Closure {
-                envs,
-                func,
-                boxed_func,
-            } => {
-                write!(
-                    f,
-                    "closure(func={}, boxed_func={}",
-                    func.display(self.meta),
-                    boxed_func.display(self.meta)
-                )?;
+            Expr::Closure { envs, func } => {
+                write!(f, "closure(func={}", func.display(self.meta),)?;
                 for env in envs {
                     write!(f, ", {}", env.display(self.meta))?;
                 }
@@ -617,9 +603,6 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                 Ok(())
             }
             Expr::ClosureFuncRef(id) => write!(f, "closure_func_ref({})", id.display(self.meta)),
-            Expr::ClosureBoxedFuncRef(id) => {
-                write!(f, "closure_boxed_func_ref({})", id.display(self.meta))
-            }
             Expr::GlobalSet(id, value) => {
                 write!(
                     f,
