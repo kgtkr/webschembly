@@ -51,9 +51,11 @@ TODO: LocalTypeという名前は適切ではない
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, derive_more::Display)]
 pub enum LocalType {
     #[display("mut_cell({})", _0)]
-    MutCell(Type),
+    MutCell(Type), // TODO: MutCell<Boxed>固定で良いかも？
     #[display("{}", _0)]
     Type(Type),
+    #[display("args")]
+    Args,
 }
 
 impl From<Type> for LocalType {

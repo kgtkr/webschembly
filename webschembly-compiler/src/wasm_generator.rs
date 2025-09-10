@@ -68,6 +68,7 @@ struct ModuleGenerator<'a> {
     func_types: FxHashMap<WasmFuncType, u32>,
     closure_type_fields: Vec<FieldType>,
     func_ref_type: u32,
+    args_type: u32,
     // table
     global_table: u32,
     // const
@@ -117,6 +118,7 @@ impl<'a> ModuleGenerator<'a> {
             func_types: FxHashMap::default(),
             closure_type_fields: Vec::new(),
             func_ref_type: 0,
+            args_type: 0,
             global_table: 0,
             nil_global: None,
             true_global: None,
@@ -348,6 +350,12 @@ impl<'a> ModuleGenerator<'a> {
             },
         });
 
+        self.args_type = self.type_count;
+        self.type_count += 1;
+        self.types
+            .ty()
+            .array(&StorageType::Val(Self::BOXED_TYPE), true);
+
         self.imports.import(
             "runtime",
             "memory",
@@ -552,6 +560,10 @@ impl<'a> ModuleGenerator<'a> {
                 })
             }
             ir::LocalType::Type(ty) => self.convert_type(ty),
+            ir::LocalType::Args => ValType::Ref(RefType {
+                nullable: false,
+                heap_type: HeapType::Concrete(self.args_type),
+            }),
         }
     }
 
