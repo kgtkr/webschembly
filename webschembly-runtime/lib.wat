@@ -12,7 +12,7 @@
   (type $Vector (array (mut eqref)))
   (type $FuncRef (sub final (struct (field $func funcref))))
   (type $Closure (sub (struct
-          ;; (Closure, Boxed, Boxed, ..., Boxed) -> Boxed
+          ;; (Closure, Args) -> Boxed
           (field $func (ref $FuncRef))
           ;; (Closure, Vector) -> Boxed
           (field $boxed_func (ref $FuncRef)))))

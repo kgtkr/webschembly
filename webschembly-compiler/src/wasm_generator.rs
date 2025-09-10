@@ -1305,6 +1305,20 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*rhs)));
                 function.instruction(&Instruction::I64GeS);
             }
+            ir::Expr::Args(args) => {
+                for arg in args.iter() {
+                    function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*arg)));
+                }
+                function.instruction(&Instruction::ArrayNewFixed {
+                    array_type_index: self.module_generator.args_type,
+                    array_size: args.len() as u32,
+                });
+            }
+            ir::Expr::ArgsRef(args, idx) => {
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*args)));
+                function.instruction(&Instruction::I32Const(*idx as i32));
+                function.instruction(&Instruction::ArrayGet(self.module_generator.args_type));
+            }
 
             ir::Expr::InitModule => {
                 for func in self.module_generator.module.funcs.iter() {

@@ -369,6 +369,10 @@ pub enum Expr {
     Gt(LocalId, LocalId),
     Le(LocalId, LocalId),
     Ge(LocalId, LocalId),
+    Args(Vec<LocalId>),
+    ArgsRef(LocalId, usize),
+    // ArgsVariadic(Vec<LocalId>, LocalId<Vector>)
+    // ArgsRest(LocalId, usize) -> Vector
 }
 
 macro_rules! impl_Expr_func_ids {
@@ -499,6 +503,14 @@ macro_rules! impl_Expr_local_ids {
                         Expr::Ge(a, b) => {
                             yield a;
                             yield b;
+                        }
+                        Expr::Args(ids) => {
+                            for id in ids {
+                                yield id;
+                            }
+                        }
+                        Expr::ArgsRef(id, _) => {
+                            yield id;
                         }
 
                         Expr::InstantiateModule(_)
@@ -667,6 +679,17 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
             Expr::Gt(a, b) => write!(f, "gt({}, {})", a.display(self.meta), b.display(self.meta)),
             Expr::Le(a, b) => write!(f, "le({}, {})", a.display(self.meta), b.display(self.meta)),
             Expr::Ge(a, b) => write!(f, "ge({}, {})", a.display(self.meta), b.display(self.meta)),
+            Expr::Args(ids) => {
+                write!(f, "args(")?;
+                for (i, id) in ids.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ",")?;
+                    }
+                    write!(f, "{}", id.display(self.meta))?;
+                }
+                write!(f, ")")
+            }
+            Expr::ArgsRef(id, index) => write!(f, "args_ref({}, {})", id.display(self.meta), index),
         }
     }
 }
