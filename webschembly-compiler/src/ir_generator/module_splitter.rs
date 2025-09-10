@@ -1,37 +1,76 @@
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::ir::*;
 use crate::ir_generator::IrGenerator;
 use typed_index_collections::{TiVec, ti_vec};
 
 pub fn split_and_register_module(ir_generator: &mut IrGenerator, module: Module) -> ModuleId {
-    let func_ref_globals = module
-        .funcs
-        .iter()
-        .map(|_| ir_generator.gen_global_id())
-        .collect::<TiVec<FuncId, _>>();
+    let mut splitter = ModuleSplitter::new(ir_generator, &module);
+    splitter.split_and_register_module(module);
+    splitter.entry_module_id
+}
 
-    let globals = {
-        let mut globals = module.globals;
-        globals.extend(func_ref_globals.iter());
-        globals
-    };
+#[derive(Debug)]
+struct ModuleSplitter<'a> {
+    ir_generator: &'a mut IrGenerator,
+    func_ref_globals: TiVec<FuncId, GlobalId>,
+    globals: FxHashSet<GlobalId>,
+    func_types: TiVec<FuncId, FuncType>,
+    entry_module_id: ModuleId,
+    module_ids: TiVec<FuncId, ModuleId>,
+}
 
-    let func_types = module
-        .funcs
-        .iter()
-        .map(|func| func.func_type())
-        .collect::<TiVec<FuncId, _>>();
+impl<'a> ModuleSplitter<'a> {
+    fn new(ir_generator: &'a mut IrGenerator, module: &Module) -> Self {
+        let func_ref_globals = module
+            .funcs
+            .iter()
+            .map(|_| ir_generator.gen_global_id())
+            .collect::<TiVec<FuncId, _>>();
 
-    let entry_module_id = ir_generator.alloc_module_id();
-    let module_ids = module
-        .funcs
-        .iter()
-        .map(|_| ir_generator.alloc_module_id())
-        .collect::<TiVec<FuncId, _>>();
+        let globals = {
+            let mut globals = module.globals.clone();
+            globals.extend(func_ref_globals.iter());
+            globals
+        };
 
-    // エントリーモジュール
-    let entry_module = {
+        let func_types = module
+            .funcs
+            .iter()
+            .map(|func| func.func_type())
+            .collect::<TiVec<FuncId, _>>();
+
+        let entry_module_id = ir_generator.alloc_module_id();
+        let module_ids = module
+            .funcs
+            .iter()
+            .map(|_| ir_generator.alloc_module_id())
+            .collect::<TiVec<FuncId, _>>();
+        Self {
+            ir_generator,
+            func_ref_globals,
+            globals,
+            func_types,
+            entry_module_id,
+            module_ids,
+        }
+    }
+
+    fn split_and_register_module(&mut self, module: Module) {
+        let entry_module = self.generate_entry_module(&module);
+        self.ir_generator
+            .set_module(self.entry_module_id, entry_module);
+
+        // 各関数のモジュール
+        for func in module.funcs {
+            let module_id = self.module_ids[func.id];
+            let module = self.generate_func_module(func);
+
+            self.ir_generator.set_module(module_id, module);
+        }
+    }
+
+    fn generate_entry_module(&self, module: &Module) -> Module {
         // entry関数もあるので+1してる
         let stub_func_ids = module
             .funcs
@@ -79,7 +118,10 @@ pub fn split_and_register_module(ir_generator: &mut IrGenerator, module: Module)
                         });
                         exprs.push(ExprAssign {
                             local: None,
-                            expr: Expr::GlobalSet(func_ref_globals[func_id.id], LocalId::from(2)),
+                            expr: Expr::GlobalSet(
+                                self.func_ref_globals[func_id.id],
+                                LocalId::from(2),
+                            ),
                         });
                     }
                     exprs
@@ -124,7 +166,7 @@ pub fn split_and_register_module(ir_generator: &mut IrGenerator, module: Module)
                         exprs: vec![
                             ExprAssign {
                                 local: Some(LocalId::from(func.args + 1)),
-                                expr: Expr::GlobalGet(func_ref_globals[func.id]),
+                                expr: Expr::GlobalGet(self.func_ref_globals[func.id]),
                             },
                             ExprAssign {
                                 local: Some(LocalId::from(func.args + 3)),
@@ -148,7 +190,7 @@ pub fn split_and_register_module(ir_generator: &mut IrGenerator, module: Module)
                         id: BasicBlockId::from(1),
                         exprs: vec![ExprAssign {
                             local: None,
-                            expr: Expr::InstantiateModule(module_ids[func.id]),
+                            expr: Expr::InstantiateModule(self.module_ids[func.id]),
                         }],
                         next: BasicBlockNext::Jump(BasicBlockId::from(2)),
                     },
@@ -157,7 +199,7 @@ pub fn split_and_register_module(ir_generator: &mut IrGenerator, module: Module)
                         exprs: vec![
                             ExprAssign {
                                 local: Some(LocalId::from(func.args + 1)),
-                                expr: Expr::GlobalGet(func_ref_globals[func.id]),
+                                expr: Expr::GlobalGet(self.func_ref_globals[func.id]),
                             },
                             ExprAssign {
                                 local: Some(LocalId::from(func.args + 2)),
@@ -176,7 +218,7 @@ pub fn split_and_register_module(ir_generator: &mut IrGenerator, module: Module)
         }
 
         Module {
-            globals: globals.clone(),
+            globals: self.globals.clone(),
             funcs,
             entry: FuncId::from(0),
             meta: Meta {
@@ -185,12 +227,9 @@ pub fn split_and_register_module(ir_generator: &mut IrGenerator, module: Module)
                 global_metas: FxHashMap::default(),
             },
         }
-    };
+    }
 
-    ir_generator.set_module(entry_module_id, entry_module);
-
-    // 各関数のモジュール
-    for func in module.funcs {
+    fn generate_func_module(&self, func: Func) -> Module {
         /*
         以下に対応するモジュールを生成
         func entry() {
@@ -231,7 +270,7 @@ pub fn split_and_register_module(ir_generator: &mut IrGenerator, module: Module)
                     },
                     ExprAssign {
                         local: None,
-                        expr: Expr::GlobalSet(func_ref_globals[func.id], LocalId::from(1)),
+                        expr: Expr::GlobalSet(self.func_ref_globals[func.id], LocalId::from(1)),
                     }
                 ],
                 next: BasicBlockNext::Return(LocalId::from(0)),
@@ -262,7 +301,7 @@ pub fn split_and_register_module(ir_generator: &mut IrGenerator, module: Module)
                             Expr::FuncRef(id) => {
                                 exprs.push(ExprAssign {
                                     local: Some(boxed_func_ref),
-                                    expr: Expr::GlobalGet(func_ref_globals[id]),
+                                    expr: Expr::GlobalGet(self.func_ref_globals[id]),
                                 });
                                 exprs.push(ExprAssign {
                                     local: expr.local,
@@ -272,7 +311,7 @@ pub fn split_and_register_module(ir_generator: &mut IrGenerator, module: Module)
                             Expr::Call(ExprCall { func_id, args }) => {
                                 exprs.push(ExprAssign {
                                     local: Some(boxed_func_ref),
-                                    expr: Expr::GlobalGet(func_ref_globals[func_id]),
+                                    expr: Expr::GlobalGet(self.func_ref_globals[func_id]),
                                 });
                                 exprs.push(ExprAssign {
                                     local: Some(func_ref),
@@ -283,7 +322,7 @@ pub fn split_and_register_module(ir_generator: &mut IrGenerator, module: Module)
                                     expr: Expr::CallRef(ExprCallRef {
                                         func: func_ref,
                                         args,
-                                        func_type: func_types[func_id].clone(),
+                                        func_type: self.func_types[func_id].clone(),
                                     }),
                                 });
                             }
@@ -297,7 +336,7 @@ pub fn split_and_register_module(ir_generator: &mut IrGenerator, module: Module)
                         BasicBlockNext::TailCall(ExprCall { func_id, args }) => {
                             exprs.push(ExprAssign {
                                 local: Some(boxed_func_ref),
-                                expr: Expr::GlobalGet(func_ref_globals[func_id]),
+                                expr: Expr::GlobalGet(self.func_ref_globals[func_id]),
                             });
                             exprs.push(ExprAssign {
                                 local: Some(func_ref),
@@ -306,7 +345,7 @@ pub fn split_and_register_module(ir_generator: &mut IrGenerator, module: Module)
                             BasicBlockNext::TailCallRef(ExprCallRef {
                                 func: func_ref,
                                 args,
-                                func_type: func_types[func_id].clone(),
+                                func_type: self.func_types[func_id].clone(),
                             })
                         }
                         next @ (BasicBlockNext::TailCallRef(_)
@@ -327,7 +366,7 @@ pub fn split_and_register_module(ir_generator: &mut IrGenerator, module: Module)
         funcs.push(body_func);
 
         let module = Module {
-            globals: globals.clone(),
+            globals: self.globals.clone(),
             funcs,
             entry: FuncId::from(0),
             meta: Meta {
@@ -336,9 +375,6 @@ pub fn split_and_register_module(ir_generator: &mut IrGenerator, module: Module)
                 global_metas: FxHashMap::default(),
             },
         };
-
-        ir_generator.set_module(module_ids[func.id], module);
+        module
     }
-
-    entry_module_id
 }
