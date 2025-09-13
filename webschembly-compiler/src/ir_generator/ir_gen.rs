@@ -9,8 +9,7 @@ pub struct IrGenerator {
     global_count: usize,
     // GlobalIdのうち、ast::GlobalVarIdに対応するもの
     // 全てのGlobalIdがast::GlobalVarIdに対応するわけではない
-    // TODO: pubにするべきではない
-    pub global_ids: FxHashMap<ast::GlobalVarId, GlobalId>,
+    global_ids: FxHashMap<ast::GlobalVarId, GlobalId>,
 }
 
 impl Default for IrGenerator {
@@ -53,5 +52,16 @@ impl IrGenerator {
         let id = GlobalId::from(self.global_count);
         self.global_count += 1;
         id
+    }
+
+    pub fn global_id(&mut self, id: ast::GlobalVarId) -> GlobalId {
+        if let Some(&global_id) = self.global_ids.get(&id) {
+            global_id
+        } else {
+            let global_id = self.gen_global_id();
+            self.global_ids.insert(id, global_id);
+
+            global_id
+        }
     }
 }

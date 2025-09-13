@@ -78,24 +78,21 @@ impl<'a> ModuleGenerator<'a> {
     }
 
     fn global_id(&mut self, id: ast::GlobalVarId) -> GlobalId {
-        if let Some(&global_id) = self.ir_generator.global_ids.get(&id) {
-            global_id
-        } else {
-            let ast_meta = self
-                .ast
-                .x
-                .get_ref(type_map::key::<Used>())
-                .global_metas
-                .get(&id);
-            let global_id: GlobalId = self.ir_generator.gen_global_id();
-            self.ir_generator.global_ids.insert(id, global_id);
-            if let Some(ast_meta) = ast_meta {
-                self.global_metas.insert(global_id, VarMeta {
+        let global_id = self.ir_generator.global_id(id);
+        let ast_meta = self
+            .ast
+            .x
+            .get_ref(type_map::key::<Used>())
+            .global_metas
+            .get(&id);
+        if let Some(ast_meta) = ast_meta {
+            self.global_metas
+                .entry(global_id)
+                .or_insert_with(|| VarMeta {
                     name: ast_meta.name.clone(),
                 });
-            }
-            global_id
         }
+        global_id
     }
 
     fn gen_func(
