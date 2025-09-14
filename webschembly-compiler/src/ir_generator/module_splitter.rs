@@ -364,7 +364,7 @@ impl<'a> ModuleSplitter<'a> {
                     }
                 })
                 .collect(),
-            jit_strategy: func.jit_strategy,
+            jit_strategy: FuncJitStrategy::Never,
         };
 
         funcs.push(body_func);
