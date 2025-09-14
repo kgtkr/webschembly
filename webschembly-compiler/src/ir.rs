@@ -2,6 +2,7 @@ use std::{fmt, iter::from_coroutine};
 
 use derive_more::{From, Into};
 use rustc_hash::{FxHashMap, FxHashSet};
+use strum_macros::EnumIter;
 use typed_index_collections::TiVec;
 
 const DISPLAY_INDENT: &str = "  ";
@@ -95,28 +96,35 @@ impl From<ValType> for Type {
 
 // Box化可能な型
 // 基本的にSchemeの型に対応するがFuncRefなど例外もある
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, derive_more::Display)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, derive_more::Display, EnumIter)]
+#[repr(i32)]
 pub enum ValType {
-    #[display("bool")]
-    Bool,
-    #[display("int")]
-    Int,
-    #[display("string")]
-    String,
-    #[display("symbol")]
-    Symbol,
     #[display("nil")]
-    Nil,
-    #[display("cons")]
-    Cons,
-    #[display("closure")]
-    Closure,
+    Nil = 1,
+    #[display("bool")]
+    Bool = 2,
     #[display("char")]
-    Char,
+    Char = 3,
+    #[display("int")]
+    Int = 4,
+    #[display("string")]
+    String = 5,
+    #[display("symbol")]
+    Symbol = 6,
+    #[display("cons")]
+    Cons = 7,
     #[display("vector")]
-    Vector,
+    Vector = 8,
     #[display("func_ref")]
-    FuncRef,
+    FuncRef = 9,
+    #[display("closure")]
+    Closure = 10,
+}
+
+impl ValType {
+    pub fn tag(&self) -> i32 {
+        *self as i32
+    }
 }
 
 #[derive(Debug, Clone, Copy, From, Into, Hash, PartialEq, Eq, Ord, PartialOrd)]

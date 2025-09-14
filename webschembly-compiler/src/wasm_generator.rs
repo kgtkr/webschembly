@@ -52,7 +52,9 @@ struct ModuleGenerator<'a> {
     func_indices: FxHashMap<ir::FuncId, u32>,
     exports: ExportSection,
     // types
+    vector_inner_type: u32,
     mut_cell_types: FxHashMap<ir::Type, u32>,
+    val_type: u32,
     nil_type: u32,
     bool_type: u32,
     int_type: u32,
@@ -103,6 +105,8 @@ impl<'a> ModuleGenerator<'a> {
             datas: DataSection::new(),
             exports: ExportSection::new(),
             mut_cell_types: FxHashMap::default(),
+            vector_inner_type: 0,
+            val_type: 0,
             nil_type: 0,
             bool_type: 0,
             int_type: 0,
@@ -201,61 +205,36 @@ impl<'a> ModuleGenerator<'a> {
         self.closure_type(types)
     }
 
+    const VAL_TYPE_FIELDS: [FieldType; 1] = [FieldType {
+        element_type: StorageType::I8,
+        mutable: false,
+    }];
     const BOXED_TYPE: ValType = ValType::Ref(RefType::EQREF);
+    // const VAL_TAG_FIELD: u32 = 1;
+    const BOOL_VALUE_FIELD: u32 = 1;
+    const CHAR_VALUE_FIELD: u32 = 1;
+    const INT_VALUE_FIELD: u32 = 1;
+    // const STRING_BUF_FIELD: u32 = 1;
+    // const STRING_LEN_FIELD: u32 = 2;
+    // const STRING_OFFSET_FIELD: u32 = 3;
+    const SYMBOL_STRING_FIELD: u32 = 1;
+    const CONS_CAR_FIELD: u32 = 1;
+    const CONS_CDR_FIELD: u32 = 2;
+    const VECTOR_INNER_FIELD: u32 = 1;
+    const FUNC_REF_FIELD_FUNC: u32 = 1;
+    const CLOSURE_FUNC_FIELD: u32 = 1;
+    const CLOSURE_ENVS_FIELD_OFFSET: u32 = 2;
+
     const MUT_CELL_VALUE_FIELD: u32 = 0;
-    const BOOL_VALUE_FIELD: u32 = 0;
-    const INT_VALUE_FIELD: u32 = 0;
-    const CHAR_VALUE_FIELD: u32 = 0;
-    const CONS_CAR_FIELD: u32 = 0;
-    const CONS_CDR_FIELD: u32 = 1;
-    const SYMBOL_STRING_FIELD: u32 = 0;
-    const CLOSURE_FUNC_FIELD: u32 = 0;
-    const CLOSURE_ENVS_FIELD_OFFSET: u32 = 1;
     // const STRING_BUF_BUF_FIELD: u32 = 0;
     // const STRING_BUF_SHARED_FIELD: u32 = 1;
-    // const STRING_BUF_FIELD: u32 = 0;
-    // const STRING_LEN_FIELD: u32 = 1;
-    // const STRING_OFFSET_FIELD: u32 = 2;
-    const FUNC_REF_FIELD_FUNC: u32 = 0;
 
     pub fn generate(mut self) -> Module {
-        self.nil_type = self.type_count;
+        self.vector_inner_type = self.type_count;
         self.type_count += 1;
-        self.types.ty().struct_(vec![]);
-
-        self.bool_type = self.type_count;
-        self.type_count += 1;
-        self.types.ty().struct_(vec![FieldType {
-            element_type: StorageType::I8,
-            mutable: false,
-        }]);
-
-        self.int_type = self.type_count;
-        self.type_count += 1;
-        self.types.ty().struct_(vec![FieldType {
-            element_type: StorageType::Val(ValType::I64),
-            mutable: false,
-        }]);
-
-        self.char_type = self.type_count;
-        self.type_count += 1;
-        self.types.ty().struct_(vec![FieldType {
-            element_type: StorageType::Val(ValType::I32),
-            mutable: false,
-        }]);
-
-        self.cons_type = self.type_count;
-        self.type_count += 1;
-        self.types.ty().struct_(vec![
-            FieldType {
-                element_type: StorageType::Val(Self::BOXED_TYPE),
-                mutable: true,
-            },
-            FieldType {
-                element_type: StorageType::Val(Self::BOXED_TYPE),
-                mutable: true,
-            },
-        ]);
+        self.types
+            .ty()
+            .array(&StorageType::Val(Self::BOXED_TYPE), true);
 
         self.buf_type = self.type_count;
         self.type_count += 1;
@@ -277,61 +256,229 @@ impl<'a> ModuleGenerator<'a> {
             },
         ]);
 
-        self.string_type = self.type_count;
+        self.val_type = self.type_count;
         self.type_count += 1;
-        self.types.ty().struct_(vec![
-            FieldType {
-                element_type: StorageType::Val(ValType::Ref(RefType {
-                    nullable: false,
-                    heap_type: HeapType::Concrete(self.string_buf_type),
-                })),
-                mutable: true,
-            },
-            FieldType {
-                element_type: StorageType::Val(ValType::I32),
-                mutable: false,
-            },
-            FieldType {
-                element_type: StorageType::Val(ValType::I32),
-                mutable: false,
-            },
-        ]);
-
-        self.symbol_type = self.type_count;
-        self.type_count += 1;
-        self.types.ty().struct_(vec![FieldType {
-            element_type: StorageType::Val(ValType::Ref(RefType {
-                nullable: false,
-                heap_type: HeapType::Concrete(self.string_type),
-            })),
-            mutable: false,
-        }]);
-
-        self.vector_type = self.type_count;
-        self.type_count += 1;
-        self.types
-            .ty()
-            .array(&StorageType::Val(Self::BOXED_TYPE), true);
-
-        self.func_ref_type = self.type_count;
-        self.type_count += 1;
-        self.types.ty().struct_(vec![FieldType {
-            element_type: StorageType::Val(ValType::FUNCREF),
-            mutable: false,
-        }]);
-
-        self.closure_type = self.type_count;
-        self.type_count += 1;
-        self.closure_type_fields = vec![FieldType {
-            element_type: StorageType::Val(ValType::Ref(RefType {
-                nullable: false,
-                heap_type: HeapType::Concrete(self.func_ref_type),
-            })),
-            mutable: false,
-        }];
         self.types.ty().subtype(&SubType {
             is_final: false,
             supertype_idx: None,
+            composite_type: CompositeType {
+                shared: false,
+                inner: CompositeInnerType::Struct(StructType {
+                    fields: Self::VAL_TYPE_FIELDS.into(),
+                }),
+            },
+        });
+
+        self.nil_type = self.type_count;
+        self.type_count += 1;
+        self.types.ty().subtype(&SubType {
+            is_final: true,
+            supertype_idx: Some(self.val_type),
+            composite_type: CompositeType {
+                shared: false,
+                inner: CompositeInnerType::Struct(StructType {
+                    fields: Self::VAL_TYPE_FIELDS.into(),
+                }),
+            },
+        });
+
+        self.bool_type = self.type_count;
+        self.type_count += 1;
+        self.types.ty().subtype(&SubType {
+            is_final: true,
+            supertype_idx: Some(self.val_type),
+            composite_type: CompositeType {
+                shared: false,
+                inner: CompositeInnerType::Struct(StructType {
+                    fields: {
+                        let mut fields = Self::VAL_TYPE_FIELDS.to_vec();
+                        fields.push(FieldType {
+                            element_type: StorageType::I8,
+                            mutable: false,
+                        });
+                        fields.into_boxed_slice()
+                    },
+                }),
+            },
+        });
+
+        self.char_type = self.type_count;
+        self.type_count += 1;
+        self.types.ty().subtype(&SubType {
+            is_final: true,
+            supertype_idx: Some(self.val_type),
+            composite_type: CompositeType {
+                shared: false,
+                inner: CompositeInnerType::Struct(StructType {
+                    fields: {
+                        let mut fields = Self::VAL_TYPE_FIELDS.to_vec();
+                        fields.push(FieldType {
+                            element_type: StorageType::Val(ValType::I32),
+                            mutable: false,
+                        });
+                        fields.into_boxed_slice()
+                    },
+                }),
+            },
+        });
+
+        self.int_type = self.type_count;
+        self.type_count += 1;
+        self.types.ty().subtype(&SubType {
+            is_final: true,
+            supertype_idx: Some(self.val_type),
+            composite_type: CompositeType {
+                shared: false,
+                inner: CompositeInnerType::Struct(StructType {
+                    fields: {
+                        let mut fields = Self::VAL_TYPE_FIELDS.to_vec();
+                        fields.push(FieldType {
+                            element_type: StorageType::Val(ValType::I64),
+                            mutable: false,
+                        });
+                        fields.into_boxed_slice()
+                    },
+                }),
+            },
+        });
+
+        self.string_type = self.type_count;
+        self.type_count += 1;
+        self.types.ty().subtype(&SubType {
+            is_final: true,
+            supertype_idx: Some(self.val_type),
+            composite_type: CompositeType {
+                shared: false,
+                inner: CompositeInnerType::Struct(StructType {
+                    fields: {
+                        let mut fields = Self::VAL_TYPE_FIELDS.to_vec();
+                        fields.push(FieldType {
+                            element_type: StorageType::Val(ValType::Ref(RefType {
+                                nullable: false,
+                                heap_type: HeapType::Concrete(self.string_buf_type),
+                            })),
+                            mutable: true,
+                        });
+                        fields.push(FieldType {
+                            element_type: StorageType::Val(ValType::I32),
+                            mutable: false,
+                        });
+                        fields.push(FieldType {
+                            element_type: StorageType::Val(ValType::I32),
+                            mutable: false,
+                        });
+                        fields.into_boxed_slice()
+                    },
+                }),
+            },
+        });
+
+        self.symbol_type = self.type_count;
+        self.type_count += 1;
+        self.types.ty().subtype(&SubType {
+            is_final: true,
+            supertype_idx: Some(self.val_type),
+            composite_type: CompositeType {
+                shared: false,
+                inner: CompositeInnerType::Struct(StructType {
+                    fields: {
+                        let mut fields = Self::VAL_TYPE_FIELDS.to_vec();
+                        fields.push(FieldType {
+                            element_type: StorageType::Val(ValType::Ref(RefType {
+                                nullable: false,
+                                heap_type: HeapType::Concrete(self.string_type),
+                            })),
+                            mutable: false,
+                        });
+                        fields.into_boxed_slice()
+                    },
+                }),
+            },
+        });
+
+        self.cons_type = self.type_count;
+        self.type_count += 1;
+        self.types.ty().subtype(&SubType {
+            is_final: true,
+            supertype_idx: Some(self.val_type),
+            composite_type: CompositeType {
+                shared: false,
+                inner: CompositeInnerType::Struct(StructType {
+                    fields: {
+                        let mut fields = Self::VAL_TYPE_FIELDS.to_vec();
+                        fields.push(FieldType {
+                            element_type: StorageType::Val(Self::BOXED_TYPE),
+                            mutable: true,
+                        });
+                        fields.push(FieldType {
+                            element_type: StorageType::Val(Self::BOXED_TYPE),
+                            mutable: true,
+                        });
+                        fields.into_boxed_slice()
+                    },
+                }),
+            },
+        });
+
+        self.vector_type = self.type_count;
+        self.type_count += 1;
+        self.types.ty().subtype(&SubType {
+            is_final: true,
+            supertype_idx: Some(self.val_type),
+            composite_type: CompositeType {
+                shared: false,
+                inner: CompositeInnerType::Struct(StructType {
+                    fields: {
+                        let mut fields = Self::VAL_TYPE_FIELDS.to_vec();
+                        fields.push(FieldType {
+                            element_type: StorageType::Val(ValType::Ref(RefType {
+                                nullable: false,
+                                heap_type: HeapType::Concrete(self.vector_inner_type),
+                            })),
+                            mutable: false,
+                        });
+                        fields.into_boxed_slice()
+                    },
+                }),
+            },
+        });
+
+        self.func_ref_type = self.type_count;
+        self.type_count += 1;
+        self.types.ty().subtype(&SubType {
+            is_final: true,
+            supertype_idx: Some(self.val_type),
+            composite_type: CompositeType {
+                shared: false,
+                inner: CompositeInnerType::Struct(StructType {
+                    fields: {
+                        let mut fields = Self::VAL_TYPE_FIELDS.to_vec();
+                        fields.push(FieldType {
+                            element_type: StorageType::Val(ValType::FUNCREF),
+                            mutable: false,
+                        });
+                        fields.into_boxed_slice()
+                    },
+                }),
+            },
+        });
+
+        self.closure_type = self.type_count;
+        self.type_count += 1;
+        self.closure_type_fields = {
+            let mut fields = Self::VAL_TYPE_FIELDS.to_vec();
+            fields.push(FieldType {
+                element_type: StorageType::Val(ValType::Ref(RefType {
+                    nullable: false,
+                    heap_type: HeapType::Concrete(self.func_ref_type),
+                })),
+                mutable: false,
+            });
+            fields
+        };
+        self.types.ty().subtype(&SubType {
+            is_final: false,
+            supertype_idx: Some(self.val_type),
             composite_type: CompositeType {
                 shared: false,
                 inner: CompositeInnerType::Struct(StructType {
@@ -867,6 +1014,9 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 let data_index = self.module_generator.datas.len();
                 self.module_generator.datas.passive(bs.iter().copied());
 
+                // String.tag
+                function.instruction(&Instruction::I32Const(ir::ValType::String.tag()));
+
                 // data offset
                 function.instruction(&Instruction::I32Const(0));
                 // data len
@@ -900,18 +1050,21 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 function.instruction(&Instruction::I32Const(0));
             }
             ir::Expr::Cons(car, cdr) => {
+                function.instruction(&Instruction::I32Const(ir::ValType::Cons.tag()));
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*car)));
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*cdr)));
                 function.instruction(&Instruction::StructNew(self.module_generator.cons_type));
             }
             ir::Expr::Vector(vec) => {
+                function.instruction(&Instruction::I32Const(ir::ValType::Vector.tag()));
                 for elem in vec.iter() {
                     function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*elem)));
                 }
                 function.instruction(&Instruction::ArrayNewFixed {
-                    array_type_index: self.module_generator.vector_type,
+                    array_type_index: self.module_generator.vector_inner_type,
                     array_size: vec.len() as u32,
                 });
+                function.instruction(&Instruction::StructNew(self.module_generator.vector_type));
             }
             ir::Expr::CreateMutCell(typ) => {
                 function.instruction(&Instruction::RefNull(HeapType::Abstract {
@@ -946,6 +1099,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 )));
             }
             ir::Expr::Closure { envs, func } => {
+                function.instruction(&Instruction::I32Const(ir::ValType::Closure.tag()));
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*func)));
                 for env in envs.iter() {
                     function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*env)));
@@ -1064,10 +1218,12 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     function.instruction(&Instruction::End);
                 }
                 ir::ValType::Int => {
+                    function.instruction(&Instruction::I32Const(ir::ValType::Int.tag()));
                     function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
                     function.instruction(&Instruction::StructNew(self.module_generator.int_type));
                 }
                 ir::ValType::Char => {
+                    function.instruction(&Instruction::I32Const(ir::ValType::Char.tag()));
                     function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
                     function.instruction(&Instruction::StructNew(self.module_generator.char_type));
                 }
@@ -1215,21 +1371,37 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             }
             ir::Expr::VectorLength(val) => {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
+                function.instruction(&Instruction::StructGet {
+                    struct_type_index: self.module_generator.vector_type,
+                    field_index: ModuleGenerator::VECTOR_INNER_FIELD,
+                });
                 function.instruction(&Instruction::ArrayLen);
                 function.instruction(&Instruction::I64ExtendI32U);
             }
             ir::Expr::VectorRef(vector, index) => {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*vector)));
+                function.instruction(&Instruction::StructGet {
+                    struct_type_index: self.module_generator.vector_type,
+                    field_index: ModuleGenerator::VECTOR_INNER_FIELD,
+                });
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*index)));
                 function.instruction(&Instruction::I32WrapI64);
-                function.instruction(&Instruction::ArrayGet(self.module_generator.vector_type));
+                function.instruction(&Instruction::ArrayGet(
+                    self.module_generator.vector_inner_type,
+                ));
             }
             ir::Expr::VectorSet(vector, index, val) => {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*vector)));
+                function.instruction(&Instruction::StructGet {
+                    struct_type_index: self.module_generator.vector_type,
+                    field_index: ModuleGenerator::VECTOR_INNER_FIELD,
+                });
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*index)));
                 function.instruction(&Instruction::I32WrapI64);
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
-                function.instruction(&Instruction::ArraySet(self.module_generator.vector_type));
+                function.instruction(&Instruction::ArraySet(
+                    self.module_generator.vector_inner_type,
+                ));
                 function.instruction(&Instruction::I32Const(0));
             }
             ir::Expr::Eq(lhs, rhs) => {
@@ -1312,6 +1484,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 for func in self.module_generator.module.funcs.iter() {
                     let global_idx = self.module_generator.func_ref_globals[&func.id];
                     let func_idx = self.module_generator.func_indices[&func.id];
+                    function.instruction(&Instruction::I32Const(ir::ValType::FuncRef.tag()));
                     function.instruction(&Instruction::RefFunc(func_idx));
                     function
                         .instruction(&Instruction::StructNew(self.module_generator.func_ref_type));
