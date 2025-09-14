@@ -18,7 +18,7 @@
   (type $Cons (sub final $ValType (struct (field $tag i8) (field $car (mut eqref)) (field $cdr (mut eqref)))))
   (type $Vector (sub final $ValType (struct (field $tag i8) (field $inner (ref $VectorInner)))))
   (type $FuncRef (sub final $ValType (struct (field $tag i8) (field $func funcref))))
-  (type $Closure (sub final $ValType (struct
+  (type $Closure (sub $ValType (struct
     (field $tag i8)
     ;; (Closure, Args) -> Boxed
     (field $func (ref $FuncRef)))))
