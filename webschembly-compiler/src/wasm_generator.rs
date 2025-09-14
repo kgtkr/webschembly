@@ -209,13 +209,6 @@ impl<'a> ModuleGenerator<'a> {
         element_type: StorageType::I8,
         mutable: false,
     }];
-    // TODO: 動的に決定
-    const BOXED_TYPE_ID: u32 = 0;
-    const BOXED_TYPE_REF: RefType = RefType {
-        nullable: true,
-        heap_type: HeapType::Concrete(Self::BOXED_TYPE_ID),
-    };
-    const BOXED_TYPE: ValType = ValType::Ref(Self::BOXED_TYPE_REF);
     // const VAL_TAG_FIELD: u32 = 1;
     const BOOL_VALUE_FIELD: u32 = 1;
     const CHAR_VALUE_FIELD: u32 = 1;
@@ -251,9 +244,13 @@ impl<'a> ModuleGenerator<'a> {
 
         self.vector_inner_type = self.type_count;
         self.type_count += 1;
-        self.types
-            .ty()
-            .array(&StorageType::Val(Self::BOXED_TYPE), true);
+        self.types.ty().array(
+            &StorageType::Val(ValType::Ref(RefType {
+                nullable: true,
+                heap_type: HeapType::Concrete(self.val_type),
+            })),
+            true,
+        );
 
         self.buf_type = self.type_count;
         self.type_count += 1;
@@ -413,11 +410,17 @@ impl<'a> ModuleGenerator<'a> {
                     fields: {
                         let mut fields = Self::VAL_TYPE_FIELDS.to_vec();
                         fields.push(FieldType {
-                            element_type: StorageType::Val(Self::BOXED_TYPE),
+                            element_type: StorageType::Val(ValType::Ref(RefType {
+                                nullable: true,
+                                heap_type: HeapType::Concrete(self.val_type),
+                            })),
                             mutable: true,
                         });
                         fields.push(FieldType {
-                            element_type: StorageType::Val(Self::BOXED_TYPE),
+                            element_type: StorageType::Val(ValType::Ref(RefType {
+                                nullable: true,
+                                heap_type: HeapType::Concrete(self.val_type),
+                            })),
                             mutable: true,
                         });
                         fields.into_boxed_slice()
@@ -495,9 +498,13 @@ impl<'a> ModuleGenerator<'a> {
 
         self.args_type = self.type_count;
         self.type_count += 1;
-        self.types
-            .ty()
-            .array(&StorageType::Val(Self::BOXED_TYPE), true);
+        self.types.ty().array(
+            &StorageType::Val(ValType::Ref(RefType {
+                nullable: true,
+                heap_type: HeapType::Concrete(self.val_type),
+            })),
+            true,
+        );
 
         self.imports.import(
             "runtime",
@@ -562,7 +569,10 @@ impl<'a> ModuleGenerator<'a> {
             "runtime",
             "globals",
             EntityType::Table(TableType {
-                element_type: Self::BOXED_TYPE_REF,
+                element_type: RefType {
+                    nullable: true,
+                    heap_type: HeapType::Concrete(self.val_type),
+                },
                 table64: false,
                 minimum: 0,
                 maximum: None,
@@ -712,7 +722,10 @@ impl<'a> ModuleGenerator<'a> {
 
     fn convert_type(&self, ty: &ir::Type) -> ValType {
         match ty {
-            ir::Type::Boxed => Self::BOXED_TYPE,
+            ir::Type::Boxed => ValType::Ref(RefType {
+                nullable: true,
+                heap_type: HeapType::Concrete(self.val_type),
+            }),
             ir::Type::Val(val) => match val {
                 ir::ValType::Bool => ValType::I32,
                 ir::ValType::Int => ValType::I64,
@@ -1074,7 +1087,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             }
             ir::Expr::CreateMutCell(typ) => {
                 function.instruction(&Instruction::RefNull(HeapType::Concrete(
-                    ModuleGenerator::BOXED_TYPE_ID,
+                    self.module_generator.val_type,
                 )));
                 function.instruction(&Instruction::StructNew(
                     self.module_generator.mut_cell_type(typ),
@@ -1291,7 +1304,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 ));
                 // これがないとこの後のdropでコンパイルエラーになる
                 function.instruction(&Instruction::RefNull(HeapType::Concrete(
-                    ModuleGenerator::BOXED_TYPE_ID,
+                    self.module_generator.val_type,
                 )));
             }
             ir::Expr::Display(val) => {
@@ -1512,7 +1525,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 function.instruction(&Instruction::I32GeU);
                 function.instruction(&Instruction::BrIf(1));
                 function.instruction(&Instruction::RefNull(HeapType::Concrete(
-                    ModuleGenerator::BOXED_TYPE_ID,
+                    self.module_generator.val_type,
                 )));
                 function.instruction(&Instruction::TableSize(self.module_generator.global_table));
                 function.instruction(&Instruction::TableGrow(self.module_generator.global_table));
