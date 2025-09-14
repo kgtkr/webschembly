@@ -1,9 +1,10 @@
 (module
-  (type $VectorInner (array (mut eqref)))
+  (type $ValType (sub (struct (field $tag i8))))
+
+  (type $VectorInner (array (mut (ref null $ValType))))
   (type $Buf (array (mut i8)))
   (type $StringBuf (sub final (struct (field $buf (ref $Buf)) (field $shared (mut i8)))))
-
-  (type $ValType (sub (struct (field $tag i8))))
+  
   (type $Nil (sub final $ValType (struct (field $tag i8))))
   (type $Bool (sub final $ValType (struct (field $tag i8) (field i8))))
   (type $Char (sub final $ValType (struct (field $tag i8) (field i32))))
@@ -15,7 +16,7 @@
     (field $len i32)
     (field $offset i32))))
   (type $Symbol (sub final $ValType (struct (field $tag i8) (field $name (ref $String)))))
-  (type $Cons (sub final $ValType (struct (field $tag i8) (field $car (mut eqref)) (field $cdr (mut eqref)))))
+  (type $Cons (sub final $ValType (struct (field $tag i8) (field $car (mut (ref null $ValType))) (field $cdr (mut (ref null $ValType))))))
   (type $Vector (sub final $ValType (struct (field $tag i8) (field $inner (ref $VectorInner)))))
   (type $FuncRef (sub final $ValType (struct (field $tag i8) (field $func funcref))))
   (type $Closure (sub $ValType (struct
@@ -23,8 +24,8 @@
     ;; (Closure, Args) -> Boxed
     (field $func (ref $FuncRef)))))
 
-  (type $Args (array (mut eqref)))
-  (type $ClosureFunc (func (param (ref $Closure)) (param (ref $Args)) (result eqref)))
+  (type $Args (array (mut (ref null $ValType))))
+  (type $ClosureFunc (func (param (ref $Closure)) (param (ref $Args)) (result (ref null $ValType))))
   
   (import "runtime" "init" (func $init))
   (import "runtime" "malloc" (func $malloc (param i32) (result i32)))
@@ -38,7 +39,7 @@
   (global $nil (export "nil") (ref $Nil) (struct.new $Nil (i32.const 1)))
   (global $true (export "true") (ref $Bool) (struct.new $Bool (i32.const 2) (i32.const 1)))
   (global $false (export "false") (ref $Bool) (struct.new $Bool (i32.const 2) (i32.const 0)))
-  (table $globals (export "globals") 1 eqref)
+  (table $globals (export "globals") 1 (ref null $ValType))
   (table $symbols 1 (ref null $Symbol))
   (tag $WEBSCHEMBLY_EXCEPTION (export "WEBSCHEMBLY_EXCEPTION"))
 
@@ -200,7 +201,7 @@
     (return (array.new $Args (ref.null eq) (local.get $size)))
   )
 
-  (func $set_args (export "set_args") (param $params (ref $Args)) (param $index i32) (param $value eqref)
+  (func $set_args (export "set_args") (param $params (ref $Args)) (param $index i32) (param $value (ref $ValType))
     (array.set $Args (local.get $params) (local.get $index) (local.get $value))
   )
 

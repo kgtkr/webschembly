@@ -6,11 +6,11 @@ use crate::ir::BasicBlockNext;
 
 use super::ir;
 use wasm_encoder::{
-    AbstractHeapType, BlockType, CodeSection, CompositeInnerType, CompositeType, ConstExpr,
-    DataCountSection, DataSection, ElementSection, Elements, EntityType, ExportKind, ExportSection,
-    FieldType, Function, FunctionSection, GlobalSection, GlobalType, HeapType, ImportSection,
-    Instruction, MemoryType, Module, RefType, StorageType, StructType, SubType, TableSection,
-    TableType, TypeSection, ValType,
+    BlockType, CodeSection, CompositeInnerType, CompositeType, ConstExpr, DataCountSection,
+    DataSection, ElementSection, Elements, EntityType, ExportKind, ExportSection, FieldType,
+    Function, FunctionSection, GlobalSection, GlobalType, HeapType, ImportSection, Instruction,
+    MemoryType, Module, RefType, StorageType, StructType, SubType, TableSection, TableType,
+    TypeSection, ValType,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -209,7 +209,13 @@ impl<'a> ModuleGenerator<'a> {
         element_type: StorageType::I8,
         mutable: false,
     }];
-    const BOXED_TYPE: ValType = ValType::Ref(RefType::EQREF);
+    // TODO: 動的に決定
+    const BOXED_TYPE_ID: u32 = 0;
+    const BOXED_TYPE_REF: RefType = RefType {
+        nullable: true,
+        heap_type: HeapType::Concrete(Self::BOXED_TYPE_ID),
+    };
+    const BOXED_TYPE: ValType = ValType::Ref(Self::BOXED_TYPE_REF);
     // const VAL_TAG_FIELD: u32 = 1;
     const BOOL_VALUE_FIELD: u32 = 1;
     const CHAR_VALUE_FIELD: u32 = 1;
@@ -230,6 +236,19 @@ impl<'a> ModuleGenerator<'a> {
     // const STRING_BUF_SHARED_FIELD: u32 = 1;
 
     pub fn generate(mut self) -> Module {
+        self.val_type = self.type_count;
+        self.type_count += 1;
+        self.types.ty().subtype(&SubType {
+            is_final: false,
+            supertype_idx: None,
+            composite_type: CompositeType {
+                shared: false,
+                inner: CompositeInnerType::Struct(StructType {
+                    fields: Self::VAL_TYPE_FIELDS.into(),
+                }),
+            },
+        });
+
         self.vector_inner_type = self.type_count;
         self.type_count += 1;
         self.types
@@ -255,19 +274,6 @@ impl<'a> ModuleGenerator<'a> {
                 mutable: true,
             },
         ]);
-
-        self.val_type = self.type_count;
-        self.type_count += 1;
-        self.types.ty().subtype(&SubType {
-            is_final: false,
-            supertype_idx: None,
-            composite_type: CompositeType {
-                shared: false,
-                inner: CompositeInnerType::Struct(StructType {
-                    fields: Self::VAL_TYPE_FIELDS.into(),
-                }),
-            },
-        });
 
         self.nil_type = self.type_count;
         self.type_count += 1;
@@ -556,7 +562,7 @@ impl<'a> ModuleGenerator<'a> {
             "runtime",
             "globals",
             EntityType::Table(TableType {
-                element_type: RefType::EQREF,
+                element_type: Self::BOXED_TYPE_REF,
                 table64: false,
                 minimum: 0,
                 maximum: None,
@@ -1067,10 +1073,9 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 function.instruction(&Instruction::StructNew(self.module_generator.vector_type));
             }
             ir::Expr::CreateMutCell(typ) => {
-                function.instruction(&Instruction::RefNull(HeapType::Abstract {
-                    shared: false,
-                    ty: AbstractHeapType::Eq,
-                }));
+                function.instruction(&Instruction::RefNull(HeapType::Concrete(
+                    ModuleGenerator::BOXED_TYPE_ID,
+                )));
                 function.instruction(&Instruction::StructNew(
                     self.module_generator.mut_cell_type(typ),
                 ));
@@ -1285,10 +1290,9 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     self.module_generator.throw_webassembly_exception,
                 ));
                 // これがないとこの後のdropでコンパイルエラーになる
-                function.instruction(&Instruction::RefNull(HeapType::Abstract {
-                    shared: false,
-                    ty: AbstractHeapType::Eq,
-                }));
+                function.instruction(&Instruction::RefNull(HeapType::Concrete(
+                    ModuleGenerator::BOXED_TYPE_ID,
+                )));
             }
             ir::Expr::Display(val) => {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
@@ -1507,10 +1511,9 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 function.instruction(&Instruction::I32Const(global_count as i32));
                 function.instruction(&Instruction::I32GeU);
                 function.instruction(&Instruction::BrIf(1));
-                function.instruction(&Instruction::RefNull(HeapType::Abstract {
-                    shared: false,
-                    ty: AbstractHeapType::Eq,
-                }));
+                function.instruction(&Instruction::RefNull(HeapType::Concrete(
+                    ModuleGenerator::BOXED_TYPE_ID,
+                )));
                 function.instruction(&Instruction::TableSize(self.module_generator.global_table));
                 function.instruction(&Instruction::TableGrow(self.module_generator.global_table));
                 function.instruction(&Instruction::I32Const(-1));
