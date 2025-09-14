@@ -142,17 +142,17 @@ impl<'a> ModuleGenerator<'a> {
     }
 
     fn func_type(&mut self, func_type: WasmFuncType) -> u32 {
-        if let Some(type_index) = self.func_types.get(&func_type) {
-            *type_index
-        } else {
-            let type_index = self.type_count;
-            self.type_count += 1;
-            self.types
-                .ty()
-                .function(func_type.params.clone(), func_type.results.clone());
-            self.func_types.insert(func_type, type_index);
-            type_index
-        }
+        *self
+            .func_types
+            .entry(func_type)
+            .or_insert_with_key(|func_type| {
+                let type_index = self.type_count;
+                self.type_count += 1;
+                self.types
+                    .ty()
+                    .function(func_type.params.clone(), func_type.results.clone());
+                type_index
+            })
     }
 
     fn func_type_from_ir(&mut self, ir_func_type: &ir::FuncType) -> u32 {
@@ -166,35 +166,34 @@ impl<'a> ModuleGenerator<'a> {
     }
 
     fn closure_type(&mut self, env_types: Vec<ValType>) -> u32 {
-        if let Some(type_index) = self.closure_types.get(&env_types) {
-            *type_index
-        } else {
-            let mut fields = self.closure_type_fields.clone();
-            for ty in env_types.iter() {
-                fields.push(FieldType {
-                    element_type: StorageType::Val(*ty),
-                    mutable: false,
+        *self
+            .closure_types
+            .entry(env_types)
+            .or_insert_with_key(|env_types| {
+                let mut fields = self.closure_type_fields.clone();
+                for ty in env_types.iter() {
+                    fields.push(FieldType {
+                        element_type: StorageType::Val(*ty),
+                        mutable: false,
+                    });
+                }
+
+                let type_index = self.type_count;
+                self.type_count += 1;
+
+                self.types.ty().subtype(&SubType {
+                    is_final: true,
+                    supertype_idx: Some(self.closure_type),
+                    composite_type: CompositeType {
+                        shared: false,
+                        inner: CompositeInnerType::Struct(StructType {
+                            fields: fields.into_boxed_slice(),
+                        }),
+                    },
                 });
-            }
 
-            let type_index = self.type_count;
-            self.type_count += 1;
-
-            self.types.ty().subtype(&SubType {
-                is_final: true,
-                supertype_idx: Some(self.closure_type),
-                composite_type: CompositeType {
-                    shared: false,
-                    inner: CompositeInnerType::Struct(StructType {
-                        fields: fields.into_boxed_slice(),
-                    }),
-                },
-            });
-
-            self.closure_types.insert(env_types, type_index);
-
-            type_index
-        }
+                type_index
+            })
     }
 
     fn closure_type_from_ir(&mut self, env_types: &[ir::LocalType]) -> u32 {
@@ -689,18 +688,17 @@ impl<'a> ModuleGenerator<'a> {
     }
 
     fn mut_cell_type(&mut self, inner_ty: &ir::Type) -> u32 {
-        if let Some(mut_cell_type) = self.mut_cell_types.get(inner_ty) {
-            *mut_cell_type
-        } else {
+        let ty = self.convert_type(inner_ty);
+
+        *self.mut_cell_types.entry(*inner_ty).or_insert_with(|| {
             let type_id = self.type_count;
             self.type_count += 1;
-            let ty = self.convert_type(inner_ty);
             self.types.ty().struct_(vec![FieldType {
                 element_type: StorageType::Val(ty),
                 mutable: true,
             }]);
             type_id
-        }
+        })
     }
 
     fn convert_local_type(&mut self, ty: &ir::LocalType) -> ValType {
