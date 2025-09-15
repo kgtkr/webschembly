@@ -50,15 +50,11 @@ jobs:
         run: |
           make benchmark
         working-directory: ./webschembly-js
-      - name: Store benchmark result
-        uses: benchmark-action/github-action-benchmark@v1
+      - name: Upload benchmark.result
+        uses: actions/upload-artifact@v4
         with:
-          tool: 'benchmarkjs'
-          output-file-path: ./webschembly-js/benchmark.result
-          gh-pages-branch: github-action-benchmark-data
-      - name: Push benchmark result
-        run: git push origin github-action-benchmark-data:github-action-benchmark-data
-        if: github.event_name != 'pull_request'
+          name: benchmark.result
+          path: ./webschembly-js/benchmark.result
       - name: Build Playground
         run: |
           nix build .#webschembly-playground-for-pages --out-link result-playground
@@ -81,6 +77,26 @@ jobs:
         with:
           name: runtime
           path: result-runtime/lib/webschembly_runtime.wasm
+  deploy-benchmark:
+    needs: build
+    if: github.ref == 'refs/heads/master'
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Download benchmark.result
+        uses: actions/download-artifact@v4
+        with:
+          name: benchmark.result
+      - name: Store benchmark result
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          tool: 'benchmarkjs'
+          output-file-path: ./webschembly-js/benchmark.result
+          gh-pages-branch: github-action-benchmark-data
+      - name: Push benchmark result
+        run: git push origin github-action-benchmark-data:github-action-benchmark-data
   deploy:
     needs: build
     if: github.ref == 'refs/heads/master'
