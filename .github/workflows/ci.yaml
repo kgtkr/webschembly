@@ -56,7 +56,6 @@ jobs:
           tool: 'benchmarkjs'
           output-file-path: ./webschembly-js/benchmark.result
           gh-pages-branch: github-action-benchmark-data
-          benchmark-data-dir-path: .
       - name: Build Playground
         run: |
           nix build .#webschembly-playground-for-pages --out-link result-playground
