@@ -369,7 +369,7 @@ impl<'a> ModuleSplitter<'a> {
 
         funcs.push(body_func);
 
-        let module = Module {
+        Module {
             globals: self.globals.clone(),
             funcs,
             entry: FuncId::from(0),
@@ -378,7 +378,6 @@ impl<'a> ModuleSplitter<'a> {
                 local_metas: FxHashMap::default(),
                 global_metas: FxHashMap::default(),
             },
-        };
-        module
+        }
     }
 }
