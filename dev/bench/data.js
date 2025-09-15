@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1757928819885,
+  "lastUpdate": 1757930694294,
   "repoUrl": "https://github.com/kgtkr/webschembly",
   "entries": {
     "Benchmark": [
@@ -38,6 +38,44 @@ window.BENCHMARK_DATA = {
             "range": "±1.69%",
             "unit": "ops/sec",
             "extra": "37 samples"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "me@kgtkr.net",
+            "name": "kgtkr",
+            "username": "kgtkr"
+          },
+          "committer": {
+            "email": "me@kgtkr.net",
+            "name": "kgtkr",
+            "username": "kgtkr"
+          },
+          "distinct": true,
+          "id": "f910991b7505cd6510936872d2692838678c17ee",
+          "message": "ベンチマーク結果をgithub pagesにデプロイ",
+          "timestamp": "2025-09-15T19:03:23+09:00",
+          "tree_id": "9c70ae1d1f1e65d4a983051e11e46d79b0eaed8c",
+          "url": "https://github.com/kgtkr/webschembly/commit/f910991b7505cd6510936872d2692838678c17ee"
+        },
+        "date": 1757930693963,
+        "tool": "benchmarkjs",
+        "benches": [
+          {
+            "name": "div2.b.scm",
+            "value": 3.56,
+            "range": "±2.43%",
+            "unit": "ops/sec",
+            "extra": "13 samples"
+          },
+          {
+            "name": "tak.b.scm",
+            "value": 20.63,
+            "range": "±1.14%",
+            "unit": "ops/sec",
+            "extra": "38 samples"
           }
         ]
       }
