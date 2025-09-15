@@ -874,6 +874,11 @@ impl BuiltinConversionRule {
                 ret: Type::Val(ValType::Bool),
                 to_ir: Expr::Eq,
             },
+            Builtin::Cons => BuiltinConversionRule::Binary {
+                args: [Type::Boxed, Type::Boxed],
+                ret: Type::Val(ValType::Cons),
+                to_ir: Expr::Cons,
+            },
             Builtin::Car => BuiltinConversionRule::Unary {
                 args: [Type::Val(ValType::Cons)],
                 ret: Type::Boxed,

@@ -1,0 +1,28 @@
+(define (create-n size)
+  (if (= size 0)
+      '()
+      (cons size (create-n (- size 1)))))
+
+(define (div2 l)
+  (define (loop x y z)
+    (if (null? x)
+        (cons y (cons z '()))
+        (if (null? (cdr x))
+            (cons (cons (car x) y) (cons z '()))
+            (loop (cddr x)
+                    (cons (car x) y)
+                    (cons (cadr x) z)))))
+  (loop l '() '()))
+
+(define l (create-n 10))
+(write (div2 l))(newline)
+
+(write "start")(newline)
+(define (loop n)
+  (if (= n 0)
+      '()
+      (begin
+        (div2 l)
+        (loop (- n 1)))))
+(loop 300000)
+(write "done")(newline)

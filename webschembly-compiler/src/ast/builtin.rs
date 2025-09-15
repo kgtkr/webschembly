@@ -37,6 +37,8 @@ pub enum Builtin {
     IsVector,
     #[strum(serialize = "eq?")]
     Eq,
+    #[strum(serialize = "cons")]
+    Cons,
     #[strum(serialize = "car")]
     Car,
     #[strum(serialize = "cdr")]
