@@ -56,6 +56,11 @@ jobs:
           tool: 'benchmarkjs'
           output-file-path: ./webschembly-js/benchmark.result
           gh-pages-branch: github-action-benchmark-data
+      - name: Restore benchmark pages
+        run: |
+          git restore --source=github-action-benchmark-data -- dev/
+          mkdir -p github-action-benchmark-data
+          mv dev/ github-action-benchmark-data/
       - name: Push benchmark result
         run: git push origin github-action-benchmark-data:github-action-benchmark-data
         if: github.ref == 'refs/heads/master'
@@ -66,7 +71,9 @@ jobs:
         id: deployment
         uses: actions/upload-pages-artifact@v3
         with:
-          path: result-playground/
+          path: |
+            result-playground/
+            github-action-benchmark-data/
       - name: Build cli
         run: |
           nix build .#webschembly-compiler-cli --out-link result-cli
