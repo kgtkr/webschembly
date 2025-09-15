@@ -56,6 +56,9 @@ jobs:
           tool: 'benchmarkjs'
           output-file-path: ./webschembly-js/benchmark.result
           gh-pages-branch: github-action-benchmark-data
+      - name: Push benchmark result
+        run: git push origin github-action-benchmark-data:github-action-benchmark-data
+        if: github.event_name != 'pull_request'
       - name: Build Playground
         run: |
           nix build .#webschembly-playground-for-pages --out-link result-playground
