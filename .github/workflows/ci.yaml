@@ -3,7 +3,7 @@ on: push
 jobs:
   build:
     permissions:
-      contents: read
+      contents: write
       id-token: write
     env:
       CI: 'true'
@@ -58,7 +58,7 @@ jobs:
           gh-pages-branch: github-action-benchmark-data
       - name: Push benchmark result
         run: git push origin github-action-benchmark-data:github-action-benchmark-data
-        if: github.event_name != 'pull_request'
+        if: github.ref == 'refs/heads/master'
       - name: Build Playground
         run: |
           nix build .#webschembly-playground-for-pages --out-link result-playground
