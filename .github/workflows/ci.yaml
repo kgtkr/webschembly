@@ -56,24 +56,22 @@ jobs:
           tool: 'benchmarkjs'
           output-file-path: ./webschembly-js/benchmark.result
           gh-pages-branch: github-action-benchmark-data
-      - name: Restore benchmark pages
-        run: |
-          git restore --source=github-action-benchmark-data -- dev/
-          mkdir -p github-action-benchmark-data
-          mv dev/ github-action-benchmark-data/
       - name: Push benchmark result
         run: git push origin github-action-benchmark-data:github-action-benchmark-data
         if: github.ref == 'refs/heads/master'
       - name: Build Playground
         run: |
           nix build .#webschembly-playground-for-pages --out-link result-playground
+      - name: Prepare pages
+        run: |
+          mkdir -p pages
+          cp -r result-playground/* pages/
+          git archive github-action-benchmark-data | tar -x -C pages
       - name: Upload Playground
         id: deployment
         uses: actions/upload-pages-artifact@v3
         with:
-          path: |
-            result-playground/
-            github-action-benchmark-data/
+          path: /pages
       - name: Build cli
         run: |
           nix build .#webschembly-compiler-cli --out-link result-cli
