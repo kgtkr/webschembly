@@ -260,6 +260,15 @@ exports[`E2E test > set_builtin.scm > snapshot test 1`] = `
 }
 `;
 
+exports[`E2E test > tak.b.scm > snapshot test 1`] = `
+{
+  "exitCode": 0,
+  "stderr": "",
+  "stdout": "7
+",
+}
+`;
+
 exports[`E2E test > vector.scm > snapshot test 1`] = `
 {
   "exitCode": 0,

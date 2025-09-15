@@ -48,3 +48,4 @@
         (write-char #\closeparen))
   (display "<unknown>")))))))))))
 )
+(define (not x) (if x #f #t))
