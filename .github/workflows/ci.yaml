@@ -71,7 +71,7 @@ jobs:
         id: deployment
         uses: actions/upload-pages-artifact@v3
         with:
-          path: /pages
+          path: ./pages
       - name: Build cli
         run: |
           nix build .#webschembly-compiler-cli --out-link result-cli

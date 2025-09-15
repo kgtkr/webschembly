@@ -2,7 +2,8 @@
 
 Scheme JIT compiler for WebAssembly
 
-[Playground](https://kgtkr.github.io/webschembly/)
+* [Playground](https://kgtkr.github.io/webschembly/)
+* [Benchmark](https://kgtkr.github.io/webschembly/dev/bench)
 
 ## Project Structure
 This project consists of the following components:
