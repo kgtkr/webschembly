@@ -46,6 +46,15 @@ jobs:
         run: |
           make test
         working-directory: ./webschembly-js
+      - name: E2E Benchmark
+        run: |
+          make benchmark
+        working-directory: ./webschembly-js
+      - name: Store benchmark result
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          tool: 'benchmarkjs'
+          output-file-path: ./webschembly-js/benchmark.result
       - name: Build Playground
         run: |
           nix build .#webschembly-playground-for-pages --out-link result-playground

@@ -66,3 +66,9 @@ clean:
 
 .PHONY: all
 all: $(WASM) $(WAT)
+
+benchmark.result: $(WEBSCHEMBLY_RUNTIME)
+	WEBSCHEMBLY_RUNTIME=$(WEBSCHEMBLY_RUNTIME) npx tsx src/e2e.benchmark.ts | tee $@
+
+.PHONY: benchmark
+benchmark: benchmark.result
