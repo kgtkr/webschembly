@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1757931114146,
+  "lastUpdate": 1757931470891,
   "repoUrl": "https://github.com/kgtkr/webschembly",
   "entries": {
     "Benchmark": [
@@ -114,6 +114,44 @@ window.BENCHMARK_DATA = {
             "range": "±1.67%",
             "unit": "ops/sec",
             "extra": "37 samples"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "me@kgtkr.net",
+            "name": "kgtkr",
+            "username": "kgtkr"
+          },
+          "committer": {
+            "email": "me@kgtkr.net",
+            "name": "kgtkr",
+            "username": "kgtkr"
+          },
+          "distinct": true,
+          "id": "d6623dee263e4f57f9920666aa96fbd54ca73220",
+          "message": "fixup! github pages生成の仕組み修正",
+          "timestamp": "2025-09-15T19:16:00+09:00",
+          "tree_id": "b66fcdb810f4db481200859f637a3854259d673a",
+          "url": "https://github.com/kgtkr/webschembly/commit/d6623dee263e4f57f9920666aa96fbd54ca73220"
+        },
+        "date": 1757931469975,
+        "tool": "benchmarkjs",
+        "benches": [
+          {
+            "name": "div2.b.scm",
+            "value": 3.61,
+            "range": "±3.21%",
+            "unit": "ops/sec",
+            "extra": "14 samples"
+          },
+          {
+            "name": "tak.b.scm",
+            "value": 20.62,
+            "range": "±1.61%",
+            "unit": "ops/sec",
+            "extra": "38 samples"
           }
         ]
       }
