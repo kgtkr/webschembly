@@ -868,13 +868,21 @@ fn reloop_rec(
                 &if_rejoin_points,
                 &mut else_bbs,
             );
-            assert_eq!(rejoin_point1, rejoin_point2);
+            // 片方の分岐がtail cailの場合、片方だけNoneになる
+            let rejoin_point = match (rejoin_point1, rejoin_point2) {
+                (Some(p1), Some(p2)) => {
+                    assert_eq!(p1, p2);
+                    Some(p1)
+                }
+                (Some(p), None) | (None, Some(p)) => Some(p),
+                (None, None) => None,
+            };
             results.push(StructuredBasicBlock::If {
                 cond,
                 then: then_bbs,
                 else_: else_bbs,
             });
-            if let Some(rejoin_point) = rejoin_point1 {
+            if let Some(rejoin_point) = rejoin_point {
                 reloop_rec(rejoin_point, bbs, reversed_doms, rejoin_points, results)
             } else {
                 None
