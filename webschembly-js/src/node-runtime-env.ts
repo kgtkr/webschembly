@@ -1,4 +1,6 @@
+import * as fsSync from "fs";
 import * as fs from "fs/promises";
+
 import * as path from "path";
 import { type RuntimeLogger, type RuntimeEnv } from "./runtime";
 
@@ -10,26 +12,26 @@ export async function createLogger({
   let logFile = null;
   if (logDir !== null) {
     try {
-      await fs.mkdir(logDir);
+      fsSync.mkdirSync(logDir);
     } catch (e: any) {
       if (e.code !== "EEXIST") {
         throw e;
       }
     }
 
-    logFile = await fs.open(path.join(logDir, logBasename + ".log"), "a");
+    logFile = fsSync.openSync(path.join(logDir, logBasename + ".log"), "a");
   }
   let instantiateCount = 0;
 
   return {
     instantiate: (buf, ir) => {
       if (logDir !== null) {
-        void fs.writeFile(
+        fsSync.writeFileSync(
           path.join(logDir, logBasename + "-" + instantiateCount + ".wasm"),
           buf
         );
         if (ir !== null) {
-          void fs.writeFile(
+          fsSync.writeFileSync(
             path.join(logDir, logBasename + "-" + instantiateCount + ".ir"),
             ir
           );
@@ -39,8 +41,7 @@ export async function createLogger({
     },
     log: (s) => {
       if (logFile !== null) {
-        void fs.writeFile(logFile, s + "\n", { flush: true });
-        // TODO: panicするとflushされないことがある
+        fsSync.writeFileSync(logFile, s + "\n", { flush: true });
       }
     },
   };

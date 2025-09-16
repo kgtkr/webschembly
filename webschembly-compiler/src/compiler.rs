@@ -59,6 +59,7 @@ impl Compiler {
             panic!("JIT is not enabled");
         }
 
-        self.jit.instantiate_func(module_id, func_id)
+        self.jit
+            .instantiate_func(&mut self.global_manager, module_id, func_id)
     }
 }

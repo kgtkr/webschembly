@@ -34,9 +34,14 @@ impl Jit {
         self.jit_module[module_id].generate_stub_module(self)
     }
 
-    pub fn instantiate_func(&mut self, module_id: ModuleId, func_id: FuncId) -> Module {
+    pub fn instantiate_func(
+        &mut self,
+        global_manager: &mut GlobalManager,
+        module_id: ModuleId,
+        func_id: FuncId,
+    ) -> Module {
         let jit_module = &self.jit_module[module_id];
-        let jit_func = jit_module.generate_jit_func(self, func_id);
+        let jit_func = jit_module.generate_jit_func(global_manager, self, func_id);
         self.jit_func[module_id][func_id] = Some(jit_func);
 
         self.jit_func[module_id][func_id]
@@ -234,8 +239,13 @@ impl JitModule {
         }
     }
 
-    fn generate_jit_func(&self, jit: &Jit, func_id: FuncId) -> JitFunc {
-        JitFunc::new(&mut GlobalManager::new(), jit, self, func_id)
+    fn generate_jit_func(
+        &self,
+        global_manager: &mut GlobalManager,
+        jit: &Jit,
+        func_id: FuncId,
+    ) -> JitFunc {
+        JitFunc::new(global_manager, jit, self, func_id)
     }
 }
 
@@ -280,26 +290,16 @@ impl JitFunc {
 
     fn generate_stub_module(&self, jit: &Jit, jit_module: &JitModule) -> Module {
         let module = &jit.modules[jit_module.module_id];
+        let func = &module.funcs[self.func_id];
+
+        let mut funcs = TiVec::<FuncId, _>::new();
         /*
-        以下に対応するモジュールを生成
         func entry() {
             set_global f0_ref f0
             set_global bb0_ref bb0_stub
             set_global bb1_ref bb1_stub
         }
-
-        func f0() {
-            f1 <- get_global f1_ref
-            f1()
-        }
-
-        func bb0_stub(...) {
-        }
-
         */
-        let func = &module.funcs[self.func_id];
-
-        let mut funcs = TiVec::<FuncId, _>::new();
         let entry_func = Func {
             id: funcs.next_key(),
             args: 0,
@@ -311,32 +311,57 @@ impl JitFunc {
             bb_entry: BasicBlockId::from(0),
             bbs: ti_vec![BasicBlock {
                 id: BasicBlockId::from(0),
-                exprs: vec![
-                    ExprAssign {
-                        local: None,
-                        expr: Expr::InitModule,
-                    },
-                    ExprAssign {
-                        local: Some(LocalId::from(0)),
-                        expr: Expr::FuncRef(FuncId::from(1)),
-                    },
-                    ExprAssign {
-                        local: Some(LocalId::from(1)),
-                        expr: Expr::Box(ValType::FuncRef, LocalId::from(0)),
-                    },
-                    ExprAssign {
-                        local: None,
-                        expr: Expr::GlobalSet(
-                            jit_module.func_to_globals[func.id],
-                            LocalId::from(1)
-                        ),
+                exprs: {
+                    let mut exprs = Vec::new();
+                    exprs.extend([
+                        ExprAssign {
+                            local: None,
+                            expr: Expr::InitModule,
+                        },
+                        ExprAssign {
+                            local: Some(LocalId::from(0)),
+                            expr: Expr::FuncRef(FuncId::from(1)),
+                        },
+                        ExprAssign {
+                            local: Some(LocalId::from(1)),
+                            expr: Expr::Box(ValType::FuncRef, LocalId::from(0)),
+                        },
+                        ExprAssign {
+                            local: None,
+                            expr: Expr::GlobalSet(
+                                jit_module.func_to_globals[func.id],
+                                LocalId::from(1),
+                            ),
+                        },
+                    ]);
+                    for (bb_id, &bb_global) in self.bb_to_globals.iter_enumerated() {
+                        exprs.push(ExprAssign {
+                            local: Some(LocalId::from(0)),
+                            expr: Expr::FuncRef(FuncId::from(2 + usize::from(bb_id))),
+                        });
+                        exprs.push(ExprAssign {
+                            local: Some(LocalId::from(1)),
+                            expr: Expr::Box(ValType::FuncRef, LocalId::from(0)),
+                        });
+                        exprs.push(ExprAssign {
+                            local: None,
+                            expr: Expr::GlobalSet(bb_global, LocalId::from(1)),
+                        });
                     }
-                ],
+                    exprs
+                },
                 next: BasicBlockNext::Return(LocalId::from(0)),
             },],
             jit_strategy: FuncJitStrategy::Never,
         };
         funcs.push(entry_func);
+
+        /*
+        func f0(...) {
+            bb0 <- get_global bb0_ref
+            bb0(...)
+        }
+        */
         let boxed_func_ref = func.locals.next_key();
         let func_ref = LocalId::from(usize::from(boxed_func_ref) + 1);
         let body_func = Func {
@@ -425,6 +450,102 @@ impl JitFunc {
         };
 
         funcs.push(body_func);
+
+        for (bb_id, &bb_global) in self.bb_to_globals.iter_enumerated() {
+            /*
+            func bb0_stub(...) {
+                if bb0_ref == bb0_stub
+                    instantiate_bb(...)
+                bb0 <- get_global bb0_ref
+                bb0(...)
+            }
+            */
+            let bb_info = &self.bb_infos[bb_id];
+            let mut locals = TiVec::new();
+            locals.extend(bb_info.args.iter().map(|&arg| func.locals[arg]));
+            locals.extend([
+                func.ret_type(),
+                LocalType::Type(Type::Boxed), // boxed bb0_ref
+                LocalType::Type(Type::Val(ValType::FuncRef)), // bb0_ref
+                LocalType::Type(Type::Boxed), // bb0_stub
+                LocalType::Type(Type::Val(ValType::Bool)), // bb0_ref != bb0_stub
+            ]);
+
+            let func = Func {
+                id: funcs.next_key(),
+                args: bb_info.args.len(),
+                ret_type: func.ret_type,
+                locals,
+                bb_entry: BasicBlockId::from(0),
+                bbs: ti_vec![
+                    BasicBlock {
+                        id: BasicBlockId::from(0),
+                        exprs: vec![
+                            ExprAssign {
+                                local: Some(LocalId::from(bb_info.args.len() + 1)),
+                                expr: Expr::GlobalGet(bb_global),
+                            },
+                            ExprAssign {
+                                local: Some(LocalId::from(bb_info.args.len() + 3)),
+                                expr: Expr::FuncRef(FuncId::from(2 + usize::from(bb_id))),
+                            },
+                            ExprAssign {
+                                local: Some(LocalId::from(bb_info.args.len() + 4)),
+                                expr: Expr::Eq(
+                                    LocalId::from(bb_info.args.len() + 1),
+                                    LocalId::from(bb_info.args.len() + 3),
+                                ),
+                            },
+                        ],
+                        next: BasicBlockNext::If(
+                            LocalId::from(bb_info.args.len() + 4),
+                            BasicBlockId::from(1),
+                            BasicBlockId::from(2),
+                        ),
+                    },
+                    BasicBlock {
+                        id: BasicBlockId::from(1),
+                        exprs: vec![ExprAssign {
+                            local: None,
+                            expr: Expr::InstantiateBB(jit_module.module_id, func.id, bb_id),
+                        }],
+                        next: BasicBlockNext::Jump(BasicBlockId::from(2)),
+                    },
+                    BasicBlock {
+                        id: BasicBlockId::from(2),
+                        exprs: vec![
+                            ExprAssign {
+                                local: Some(LocalId::from(bb_info.args.len() + 1)),
+                                expr: Expr::GlobalGet(bb_global),
+                            },
+                            ExprAssign {
+                                local: Some(LocalId::from(bb_info.args.len() + 2)),
+                                expr: Expr::Unbox(
+                                    ValType::FuncRef,
+                                    LocalId::from(bb_info.args.len() + 1),
+                                ),
+                            }
+                        ],
+                        next: BasicBlockNext::TailCallRef(ExprCallRef {
+                            func: LocalId::from(bb_info.args.len() + 2),
+                            args: (0..bb_info.args.len())
+                                .map(LocalId::from)
+                                .collect::<Vec<_>>(),
+                            func_type: FuncType {
+                                args: bb_info
+                                    .args
+                                    .iter()
+                                    .map(|&arg| func.locals[arg])
+                                    .collect::<Vec<_>>(),
+                                ret: func.ret_type,
+                            },
+                        }),
+                    },
+                ],
+                jit_strategy: FuncJitStrategy::Never,
+            };
+            funcs.push(func);
+        }
 
         Module {
             globals: self.globals.clone(),
