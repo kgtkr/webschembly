@@ -54,7 +54,7 @@ impl Compiler {
         self.ast_generator.get_global_id(name).map(|id| id.0 as i32)
     }
 
-    pub fn instantiate_func(&self, module_id: ir::ModuleId, func_id: ir::FuncId) -> ir::Module {
+    pub fn instantiate_func(&mut self, module_id: ir::ModuleId, func_id: ir::FuncId) -> ir::Module {
         if !self.config.enable_jit {
             panic!("JIT is not enabled");
         }

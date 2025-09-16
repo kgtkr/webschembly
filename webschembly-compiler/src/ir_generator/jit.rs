@@ -6,8 +6,10 @@ use crate::ir_generator::GlobalManager;
 
 #[derive(Debug)]
 pub struct Jit {
+    // TODO: データ構造の見直し
     modules: TiVec<ModuleId, Module>,
     jit_module: TiVec<ModuleId, JitModule>,
+    jit_func: TiVec<ModuleId, TiVec<FuncId, Option<JitFunc>>>,
 }
 
 impl Jit {
@@ -15,6 +17,7 @@ impl Jit {
         Self {
             modules: TiVec::new(),
             jit_module: TiVec::new(),
+            jit_func: TiVec::new(),
         }
     }
 
@@ -23,16 +26,22 @@ impl Jit {
         global_manager: &mut GlobalManager,
         module: Module,
     ) -> Module {
+        self.jit_func
+            .push((0..module.funcs.len()).map(|_| None).collect());
         let module_id = self.modules.push_and_get_key(module);
         self.jit_module
             .push(JitModule::new(global_manager, self, module_id));
         self.jit_module[module_id].generate_stub_module(self)
     }
 
-    pub fn instantiate_func(&self, module_id: ModuleId, func_id: FuncId) -> Module {
+    pub fn instantiate_func(&mut self, module_id: ModuleId, func_id: FuncId) -> Module {
         let jit_module = &self.jit_module[module_id];
-        jit_module
-            .generate_jit_func(self, func_id)
+        let jit_func = jit_module.generate_jit_func(self, func_id);
+        self.jit_func[module_id][func_id] = Some(jit_func);
+
+        self.jit_func[module_id][func_id]
+            .as_ref()
+            .unwrap()
             .generate_stub_module(self, jit_module)
     }
 }
@@ -40,14 +49,14 @@ impl Jit {
 #[derive(Debug)]
 struct JitModule {
     module_id: ModuleId,
-    func_ref_globals: TiVec<FuncId, GlobalId>,
+    func_to_globals: TiVec<FuncId, GlobalId>,
     globals: FxHashSet<GlobalId>,
 }
 
 impl JitModule {
     fn new(global_manager: &mut GlobalManager, jit: &Jit, module_id: ModuleId) -> Self {
         let module = &jit.modules[module_id];
-        let func_ref_globals = module
+        let func_to_globals = module
             .funcs
             .iter()
             .map(|_| global_manager.gen_global_id())
@@ -55,13 +64,13 @@ impl JitModule {
 
         let globals = {
             let mut globals = module.globals.clone();
-            globals.extend(func_ref_globals.iter());
+            globals.extend(func_to_globals.iter());
             globals
         };
 
         Self {
             module_id,
-            func_ref_globals,
+            func_to_globals,
             globals,
         }
     }
@@ -115,7 +124,7 @@ impl JitModule {
                         });
                         exprs.push(ExprAssign {
                             local: None,
-                            expr: Expr::GlobalSet(self.func_ref_globals[func.id], LocalId::from(2)),
+                            expr: Expr::GlobalSet(self.func_to_globals[func.id], LocalId::from(2)),
                         });
                     }
                     exprs
@@ -161,7 +170,7 @@ impl JitModule {
                         exprs: vec![
                             ExprAssign {
                                 local: Some(LocalId::from(func.args + 1)),
-                                expr: Expr::GlobalGet(self.func_ref_globals[func.id]),
+                                expr: Expr::GlobalGet(self.func_to_globals[func.id]),
                             },
                             ExprAssign {
                                 local: Some(LocalId::from(func.args + 3)),
@@ -194,7 +203,7 @@ impl JitModule {
                         exprs: vec![
                             ExprAssign {
                                 local: Some(LocalId::from(func.args + 1)),
-                                expr: Expr::GlobalGet(self.func_ref_globals[func.id]),
+                                expr: Expr::GlobalGet(self.func_to_globals[func.id]),
                             },
                             ExprAssign {
                                 local: Some(LocalId::from(func.args + 2)),
@@ -233,7 +242,7 @@ impl JitModule {
 #[derive(Debug)]
 struct JitFunc {
     func_id: FuncId,
-    func_ref_globals: TiVec<BasicBlockId, GlobalId>,
+    bb_to_globals: TiVec<BasicBlockId, GlobalId>,
     bb_infos: TiVec<BasicBlockId, BBInfo>,
     globals: FxHashSet<GlobalId>,
 }
@@ -247,7 +256,7 @@ impl JitFunc {
     ) -> Self {
         let module = &jit.modules[jit_module.module_id];
         let func = &module.funcs[func_id];
-        let func_ref_globals = func
+        let bb_to_globals = func
             .bbs
             .iter()
             .map(|_| global_manager.gen_global_id())
@@ -257,13 +266,13 @@ impl JitFunc {
 
         let globals = {
             let mut globals = jit_module.globals.clone();
-            globals.extend(func_ref_globals.iter());
+            globals.extend(bb_to_globals.iter());
             globals
         };
 
         Self {
             func_id,
-            func_ref_globals,
+            bb_to_globals,
             bb_infos,
             globals,
         }
@@ -275,11 +284,16 @@ impl JitFunc {
         以下に対応するモジュールを生成
         func entry() {
             set_global f0_ref f0
+            set_global bb0_ref bb0_stub
+            set_global bb1_ref bb1_stub
         }
 
         func f0() {
             f1 <- get_global f1_ref
             f1()
+        }
+
+        func bb0_stub(...) {
         }
 
         */
@@ -313,7 +327,7 @@ impl JitFunc {
                     ExprAssign {
                         local: None,
                         expr: Expr::GlobalSet(
-                            jit_module.func_ref_globals[func.id],
+                            jit_module.func_to_globals[func.id],
                             LocalId::from(1)
                         ),
                     }
@@ -347,7 +361,7 @@ impl JitFunc {
                             Expr::FuncRef(id) => {
                                 exprs.push(ExprAssign {
                                     local: Some(boxed_func_ref),
-                                    expr: Expr::GlobalGet(jit_module.func_ref_globals[*id]),
+                                    expr: Expr::GlobalGet(jit_module.func_to_globals[*id]),
                                 });
                                 exprs.push(ExprAssign {
                                     local: expr.local,
@@ -357,7 +371,7 @@ impl JitFunc {
                             Expr::Call(ExprCall { func_id, args }) => {
                                 exprs.push(ExprAssign {
                                     local: Some(boxed_func_ref),
-                                    expr: Expr::GlobalGet(jit_module.func_ref_globals[*func_id]),
+                                    expr: Expr::GlobalGet(jit_module.func_to_globals[*func_id]),
                                 });
                                 exprs.push(ExprAssign {
                                     local: Some(func_ref),
@@ -382,7 +396,7 @@ impl JitFunc {
                         BasicBlockNext::TailCall(ExprCall { func_id, args }) => {
                             exprs.push(ExprAssign {
                                 local: Some(boxed_func_ref),
-                                expr: Expr::GlobalGet(jit_module.func_ref_globals[*func_id]),
+                                expr: Expr::GlobalGet(jit_module.func_to_globals[*func_id]),
                             });
                             exprs.push(ExprAssign {
                                 local: Some(func_ref),
