@@ -62,4 +62,17 @@ impl Compiler {
         self.jit
             .instantiate_func(&mut self.global_manager, module_id, func_id)
     }
+
+    pub fn instantiate_bb(
+        &mut self,
+        module_id: ir::ModuleId,
+        func_id: ir::FuncId,
+        bb_id: ir::BasicBlockId,
+    ) -> ir::Module {
+        if !self.config.enable_jit {
+            panic!("JIT is not enabled");
+        }
+
+        self.jit.instantiate_bb(module_id, func_id, bb_id)
+    }
 }

@@ -318,6 +318,33 @@ pub extern "C" fn instantiate_func(module_id: i32, func_id: i32) -> i32 {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn instantiate_bb(_module_id: i32, _func_id: i32, _bb_id: i32) -> i32 {
-    unimplemented!()
+pub extern "C" fn instantiate_bb(module_id: i32, func_id: i32, bb_id: i32) -> i32 {
+    let (wasm, ir) = COMPILER.with(|compiler| {
+        let mut compiler = compiler.borrow_mut();
+        let module = compiler.instantiate_bb(
+            webschembly_compiler::ir::ModuleId::from(module_id as usize),
+            webschembly_compiler::ir::FuncId::from(func_id as usize),
+            webschembly_compiler::ir::BasicBlockId::from(bb_id as usize),
+        );
+        let wasm = webschembly_compiler::wasm_generator::generate(&module);
+        let ir = if cfg!(debug_assertions) {
+            let ir = format!("{}", module.display());
+            Some(ir.into_bytes())
+        } else {
+            None
+        };
+        (wasm, ir)
+    });
+
+    unsafe {
+        env::js_instantiate(
+            wasm.as_ptr() as i32,
+            wasm.len() as i32,
+            ir.as_ref().map(|ir| ir.as_ptr() as i32).unwrap_or(0),
+            ir.as_ref().map(|ir| ir.len() as i32).unwrap_or(0),
+            0,
+        )
+    }
+
+    0
 }
