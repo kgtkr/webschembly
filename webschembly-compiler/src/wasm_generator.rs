@@ -33,7 +33,8 @@ struct ModuleGenerator<'a> {
     global_count: u32,
     table_count: u32,
     // runtime functions
-    instantiate_module_func: u32,
+    instantiate_func_func: u32,
+    instantiate_bb_func: u32,
     display_func: u32,
     display_fd_func: u32,
     string_to_symbol_func: u32,
@@ -87,7 +88,8 @@ impl<'a> ModuleGenerator<'a> {
             type_count: 0,
             func_count: 0,
             global_count: 0,
-            instantiate_module_func: 0,
+            instantiate_func_func: 0,
+            instantiate_bb_func: 0,
             display_func: 0,
             display_fd_func: 0,
             string_to_symbol_func: 0,
@@ -579,11 +581,14 @@ impl<'a> ModuleGenerator<'a> {
             }),
         );
 
-        self.instantiate_module_func =
-            self.add_runtime_function("instantiate_module", WasmFuncType {
-                params: vec![ValType::I32],
-                results: vec![ValType::I32],
-            });
+        self.instantiate_func_func = self.add_runtime_function("instantiate_func", WasmFuncType {
+            params: vec![ValType::I32, ValType::I32],
+            results: vec![ValType::I32],
+        });
+        self.instantiate_bb_func = self.add_runtime_function("instantiate_bb", WasmFuncType {
+            params: vec![ValType::I32, ValType::I32, ValType::I32],
+            results: vec![ValType::I32],
+        });
 
         self.display_func = self.add_runtime_function("display", WasmFuncType {
             params: vec![ValType::Ref(RefType {
@@ -1010,10 +1015,19 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         expr: &ir::Expr,
     ) {
         match expr {
-            ir::Expr::InstantiateModule(id) => {
-                function.instruction(&Instruction::I32Const(usize::from(*id) as i32));
+            ir::Expr::InstantiateFunc(module_id, func_id) => {
+                function.instruction(&Instruction::I32Const(usize::from(*module_id) as i32));
+                function.instruction(&Instruction::I32Const(usize::from(*func_id) as i32));
                 function.instruction(&Instruction::Call(
-                    self.module_generator.instantiate_module_func,
+                    self.module_generator.instantiate_func_func,
+                ));
+            }
+            ir::Expr::InstantiateBB(module_id, func_id, bb_id) => {
+                function.instruction(&Instruction::I32Const(usize::from(*module_id) as i32));
+                function.instruction(&Instruction::I32Const(usize::from(*func_id) as i32));
+                function.instruction(&Instruction::I32Const(usize::from(*bb_id) as i32));
+                function.instruction(&Instruction::Call(
+                    self.module_generator.instantiate_bb_func,
                 ));
             }
             ir::Expr::Bool(b) => {

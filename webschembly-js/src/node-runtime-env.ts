@@ -39,7 +39,8 @@ export async function createLogger({
     },
     log: (s) => {
       if (logFile !== null) {
-        void fs.writeFile(logFile, s + "\n");
+        void fs.writeFile(logFile, s + "\n", { flush: true });
+        // TODO: panicするとflushされないことがある
       }
     },
   };

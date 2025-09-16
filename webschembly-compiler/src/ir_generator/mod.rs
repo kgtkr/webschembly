@@ -1,8 +1,6 @@
-mod ir_gen;
-pub use ir_gen::*;
-mod module_splitter;
-pub use module_splitter::*;
 mod module_generator;
 pub use module_generator::*;
-mod function_splitter;
-pub use function_splitter::*;
+pub mod global_manager;
+pub use global_manager::*;
+mod jit;
+pub use jit::*;

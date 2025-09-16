@@ -316,7 +316,8 @@ impl fmt::Display for DisplayInFunc<'_, &'_ ExprCallRef> {
 
 #[derive(Debug, Clone)]
 pub enum Expr {
-    InstantiateModule(ModuleId),
+    InstantiateFunc(ModuleId, FuncId),
+    InstantiateBB(ModuleId, FuncId, BasicBlockId),
     Bool(bool),
     Int(i64),
     String(String),
@@ -526,7 +527,8 @@ macro_rules! impl_Expr_local_ids {
                             yield id;
                         }
 
-                        Expr::InstantiateModule(_)
+                        Expr::InstantiateFunc(_, _)
+                        | Expr::InstantiateBB(_, _, _)
                         | Expr::Bool(_)
                         | Expr::Int(_)
                         | Expr::String(_)
@@ -557,8 +559,22 @@ impl Expr {
 impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.value {
-            Expr::InstantiateModule(id) => {
-                write!(f, "instantiate_module({})", id.display(self.meta.meta))
+            Expr::InstantiateFunc(module_id, func_id) => {
+                write!(
+                    f,
+                    "instantiate_func({}, {})",
+                    module_id.display(self.meta.meta),
+                    func_id.display(self.meta.meta)
+                )
+            }
+            Expr::InstantiateBB(module_id, func_id, bb_id) => {
+                write!(
+                    f,
+                    "instantiate_bb({}, {}, {})",
+                    module_id.display(self.meta.meta),
+                    func_id.display(self.meta.meta),
+                    bb_id.display(self.meta.meta)
+                )
             }
             Expr::Bool(b) => write!(f, "{}", b),
             Expr::Int(i) => write!(f, "{}", i),
