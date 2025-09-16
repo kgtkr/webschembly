@@ -12,6 +12,12 @@ pub struct Jit {
     jit_func: TiVec<ModuleId, TiVec<FuncId, Option<JitFunc>>>,
 }
 
+impl Default for Jit {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Jit {
     pub fn new() -> Self {
         Self {
@@ -379,7 +385,7 @@ impl JitFunc {
             ret_type: func.ret_type,
             locals: {
                 let mut locals = TiVec::new();
-                locals.extend(func.arg_types().into_iter());
+                locals.extend(func.arg_types());
                 locals.push(LocalType::Type(Type::Boxed)); // boxed bb0_ref
                 locals.push(LocalType::Type(Type::Val(ValType::FuncRef))); // bb0_ref
                 locals
@@ -756,7 +762,7 @@ impl JitFunc {
             jit_strategy: FuncJitStrategy::Never,
         };
 
-        body_func.bbs.extend(extra_bbs.into_iter());
+        body_func.bbs.extend(extra_bbs);
 
         funcs.push(body_func);
 
