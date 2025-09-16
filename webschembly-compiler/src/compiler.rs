@@ -1,10 +1,8 @@
-use typed_index_collections::TiVec;
-
 use crate::ast;
 use crate::compiler_error;
 use crate::ir;
 use crate::ir_generator;
-use crate::ir_generator::JitModuleManager;
+use crate::ir_generator::Jit;
 use crate::lexer;
 use crate::sexpr_parser;
 
@@ -12,7 +10,7 @@ use crate::sexpr_parser;
 pub struct Compiler {
     ast_generator: ast::ASTGenerator,
     global_manager: ir_generator::GlobalManager,
-    jit_module_managers: TiVec<ir::ModuleId, ir_generator::JitModuleManager>,
+    jit: Jit,
     config: Config,
 }
 
@@ -26,7 +24,7 @@ impl Compiler {
         Self {
             ast_generator: ast::ASTGenerator::new(),
             global_manager: ir_generator::GlobalManager::new(),
-            jit_module_managers: TiVec::new(),
+            jit: Jit::new(),
             config,
         }
     }
@@ -46,13 +44,7 @@ impl Compiler {
             });
 
         if self.config.enable_jit {
-            let module_id = self.jit_module_managers.next_key();
-            self.jit_module_managers.push(JitModuleManager::new(
-                &mut self.global_manager,
-                module_id,
-                module,
-            ));
-            Ok(self.jit_module_managers[module_id].generate_stub_module())
+            Ok(self.jit.register_module(&mut self.global_manager, module))
         } else {
             Ok(module)
         }
@@ -67,6 +59,6 @@ impl Compiler {
             panic!("JIT is not enabled");
         }
 
-        self.jit_module_managers[module_id].generate_func_module(func_id)
+        self.jit.instantiate_func(module_id, func_id)
     }
 }

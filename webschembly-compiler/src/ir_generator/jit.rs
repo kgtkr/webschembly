@@ -5,15 +5,45 @@ use crate::ir::*;
 use crate::ir_generator::GlobalManager;
 
 #[derive(Debug)]
+pub struct Jit {
+    modules: TiVec<ModuleId, Module>,
+    module_managers: TiVec<ModuleId, JitModuleManager>,
+}
+
+impl Jit {
+    pub fn new() -> Self {
+        Self {
+            modules: TiVec::new(),
+            module_managers: TiVec::new(),
+        }
+    }
+
+    pub fn register_module(
+        &mut self,
+        global_manager: &mut GlobalManager,
+        module: Module,
+    ) -> Module {
+        let module_id = self.modules.push_and_get_key(module);
+        self.module_managers
+            .push(JitModuleManager::new(global_manager, self, module_id));
+        self.module_managers[module_id].generate_stub_module(self)
+    }
+
+    pub fn instantiate_func(&self, module_id: ModuleId, func_id: FuncId) -> Module {
+        self.module_managers[module_id].generate_func_module(self, func_id)
+    }
+}
+
+#[derive(Debug)]
 pub struct JitModuleManager {
     module_id: ModuleId,
-    module: Module,
     func_ref_globals: TiVec<FuncId, GlobalId>,
     globals: FxHashSet<GlobalId>,
 }
 
 impl JitModuleManager {
-    pub fn new(global_manager: &mut GlobalManager, module_id: ModuleId, module: Module) -> Self {
+    pub fn new(global_manager: &mut GlobalManager, jit: &Jit, module_id: ModuleId) -> Self {
+        let module = &jit.modules[module_id];
         let func_ref_globals = module
             .funcs
             .iter()
@@ -28,16 +58,15 @@ impl JitModuleManager {
 
         Self {
             module_id,
-            module,
             func_ref_globals,
             globals,
         }
     }
 
-    pub fn generate_stub_module(&mut self) -> Module {
+    pub fn generate_stub_module(&self, jit: &Jit) -> Module {
+        let module = &jit.modules[self.module_id];
         // entry関数もあるので+1してる
-        let stub_func_ids = self
-            .module
+        let stub_func_ids = module
             .funcs
             .iter()
             .map(|func| FuncId::from(usize::from(func.id) + 1))
@@ -72,7 +101,7 @@ impl JitModuleManager {
                         local: None,
                         expr: Expr::InitModule,
                     });
-                    for func in self.module.funcs.iter() {
+                    for func in module.funcs.iter() {
                         exprs.push(ExprAssign {
                             local: Some(LocalId::from(1)),
                             expr: Expr::FuncRef(stub_func_ids[func.id]),
@@ -89,14 +118,14 @@ impl JitModuleManager {
                     exprs
                 },
                 next: BasicBlockNext::TailCall(ExprCall {
-                    func_id: stub_func_ids[self.module.entry],
+                    func_id: stub_func_ids[module.entry],
                     args: vec![],
                 })
             },],
             jit_strategy: FuncJitStrategy::Never,
         };
         funcs.push(func);
-        for func in self.module.funcs.iter() {
+        for func in module.funcs.iter() {
             /*
             以下のようなスタブを生成
             func f0_stub(x1, x2) {
@@ -193,7 +222,8 @@ impl JitModuleManager {
         }
     }
 
-    pub fn generate_func_module(&self, func_id: FuncId) -> Module {
+    pub fn generate_func_module(&self, jit: &Jit, func_id: FuncId) -> Module {
+        let module = &jit.modules[self.module_id];
         /*
         以下に対応するモジュールを生成
         func entry() {
@@ -206,7 +236,7 @@ impl JitModuleManager {
         }
 
         */
-        let func = &self.module.funcs[func_id];
+        let func = &module.funcs[func_id];
 
         let mut funcs = TiVec::<FuncId, _>::new();
         let entry_func = Func {
@@ -288,7 +318,7 @@ impl JitModuleManager {
                                     expr: Expr::CallRef(ExprCallRef {
                                         func: func_ref,
                                         args: args.clone(),
-                                        func_type: self.module.funcs[*func_id].func_type(),
+                                        func_type: module.funcs[*func_id].func_type(),
                                     }),
                                 });
                             }
@@ -311,7 +341,7 @@ impl JitModuleManager {
                             BasicBlockNext::TailCallRef(ExprCallRef {
                                 func: func_ref,
                                 args: args.clone(),
-                                func_type: self.module.funcs[*func_id].func_type(),
+                                func_type: module.funcs[*func_id].func_type(),
                             })
                         }
                         next @ (BasicBlockNext::TailCallRef(_)
