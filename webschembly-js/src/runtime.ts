@@ -12,7 +12,7 @@ export type RuntimeConfig = {
 
 export type RuntimeLogger = {
   log: (s: string) => void;
-  instantiate: (buf: Uint8Array) => void;
+  instantiate: (buf: Uint8Array, ir: string | null) => void;
 };
 
 export type Runtime = {
@@ -23,7 +23,13 @@ export type Runtime = {
 };
 
 export type RuntimeImportsEnv = {
-  js_instantiate: (bufPtr: number, bufSize: number, fromSrc: number) => void;
+  js_instantiate: (
+    bufPtr: number,
+    bufSize: number,
+    irBufPtr: number,
+    irBufSize: number,
+    fromSrc: number
+  ) => void;
   js_webschembly_log: (bufPtr: number, bufLen: number) => void;
   js_write_buf: (fd: number, bufPtr: number, bufLen: number) => void;
 };
@@ -64,13 +70,24 @@ export async function createRuntime(
   { exitWhenException = true, printEvalResult = false }: RuntimeConfig
 ): Promise<Runtime> {
   const runtimeImportObjects: RuntimeImportsEnv = {
-    js_instantiate: (bufPtr, bufSize, fromSrc) => {
+    js_instantiate: (bufPtr, bufSize, irBufPtr, irBufSize, fromSrc) => {
       const buf = new Uint8Array(
         runtimeInstance.exports.memory.buffer,
         bufPtr,
         bufSize
       );
-      logger.instantiate(buf);
+      const ir =
+        irBufPtr === 0
+          ? null
+          : new TextDecoder().decode(
+              new Uint8Array(
+                runtimeInstance.exports.memory.buffer,
+                irBufPtr,
+                irBufSize
+              )
+            );
+
+      logger.instantiate(buf, ir);
 
       const instance = new WebAssembly.Instance(
         new WebAssembly.Module(buf),

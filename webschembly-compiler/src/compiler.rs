@@ -4,7 +4,6 @@ use crate::ir;
 use crate::ir_generator;
 use crate::lexer;
 use crate::sexpr_parser;
-use crate::wasm_generator;
 
 #[derive(Debug)]
 pub struct Compiler {
@@ -55,18 +54,11 @@ impl Compiler {
         Ok(self.ir_generator.get_module(module_id))
     }
 
-    pub fn compile(&mut self, input: &str, is_stdlib: bool) -> crate::error::Result<Vec<u8>> {
-        let module = self.compile_module(input, is_stdlib)?;
-        let code = wasm_generator::generate(module);
-        Ok(code)
-    }
-
     pub fn get_global_id(&self, name: &str) -> Option<i32> {
         self.ast_generator.get_global_id(name).map(|id| id.0 as i32)
     }
 
-    pub fn instantiate_module(&self, module_id: ir::ModuleId) -> Vec<u8> {
-        let module = self.ir_generator.get_module(module_id);
-        wasm_generator::generate(module)
+    pub fn instantiate_module(&self, module_id: ir::ModuleId) -> &ir::Module {
+        self.ir_generator.get_module(module_id)
     }
 }

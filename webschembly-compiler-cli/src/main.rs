@@ -59,13 +59,13 @@ fn main() -> anyhow::Result<()> {
         output.add_extension(output_extension);
         let mut o = std::fs::File::create(output)?;
 
+        let module = compiler.compile_module(&src, is_stdlib)?;
         if args.ir {
-            let module = compiler.compile_module(&src, is_stdlib)?;
             let s = module.display().to_string();
             let bs = s.as_bytes();
             o.write_all(bs)?;
         } else {
-            let bs: Vec<u8> = compiler.compile(&src, is_stdlib)?;
+            let bs: Vec<u8> = webschembly_compiler::wasm_generator::generate(module);
             o.write_all(&bs)?;
         }
     }

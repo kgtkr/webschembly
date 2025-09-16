@@ -91,13 +91,30 @@ const STDOUT_FD: i32 = 1;
 const STDERR_FD: i32 = 2;
 
 fn load_src_inner(src: String, is_stdlib: bool) {
-    let wasm = COMPILER.with(|compiler| {
+    let result = COMPILER.with(|compiler| {
         let mut compiler = compiler.borrow_mut();
-        compiler.compile(&src, is_stdlib)
+        compiler.compile_module(&src, is_stdlib).map(|module| {
+            let wasm = webschembly_compiler::wasm_generator::generate(module);
+            let ir = if cfg!(debug_assertions) {
+                let ir = format!("{}", module.display());
+                Some(ir.into_bytes())
+            } else {
+                None
+            };
+            (wasm, ir)
+        })
     });
 
-    match wasm {
-        Ok(wasm) => unsafe { env::js_instantiate(wasm.as_ptr() as i32, wasm.len() as i32, 1) },
+    match result {
+        Ok((wasm, ir)) => unsafe {
+            env::js_instantiate(
+                wasm.as_ptr() as i32,
+                wasm.len() as i32,
+                ir.as_ref().map(|ir| ir.as_ptr() as i32).unwrap_or(0),
+                ir.as_ref().map(|ir| ir.len() as i32).unwrap_or(0),
+                1,
+            )
+        },
         Err(err) => {
             let error_msg = format!("{}\n", err);
             WRITERS.with(|writers| {
@@ -268,12 +285,29 @@ pub extern "C" fn get_global_id(buf_ptr: i32, buf_len: i32) -> i32 {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn instantiate_module(module_id: i32) -> i32 {
-    let wasm = COMPILER.with(|compiler| {
+    let (wasm, ir) = COMPILER.with(|compiler| {
         let compiler = compiler.borrow();
-        compiler.instantiate_module(webschembly_compiler::ir::ModuleId::from(module_id as usize))
+        let module = compiler
+            .instantiate_module(webschembly_compiler::ir::ModuleId::from(module_id as usize));
+        let wasm = webschembly_compiler::wasm_generator::generate(module);
+        let ir = if cfg!(debug_assertions) {
+            let ir = format!("{}", module.display());
+            Some(ir.into_bytes())
+        } else {
+            None
+        };
+        (wasm, ir)
     });
 
-    unsafe { env::js_instantiate(wasm.as_ptr() as i32, wasm.len() as i32, 0) }
+    unsafe {
+        env::js_instantiate(
+            wasm.as_ptr() as i32,
+            wasm.len() as i32,
+            ir.as_ref().map(|ir| ir.as_ptr() as i32).unwrap_or(0),
+            ir.as_ref().map(|ir| ir.len() as i32).unwrap_or(0),
+            0,
+        )
+    }
 
     0
 }

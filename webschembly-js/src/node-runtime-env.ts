@@ -22,12 +22,18 @@ export async function createLogger({
   let instantiateCount = 0;
 
   return {
-    instantiate: (buf) => {
+    instantiate: (buf, ir) => {
       if (logDir !== null) {
         void fs.writeFile(
           path.join(logDir, logBasename + "-" + instantiateCount + ".wasm"),
           buf
         );
+        if (ir !== null) {
+          void fs.writeFile(
+            path.join(logDir, logBasename + "-" + instantiateCount + ".ir"),
+            ir
+          );
+        }
       }
       instantiateCount++;
     },
