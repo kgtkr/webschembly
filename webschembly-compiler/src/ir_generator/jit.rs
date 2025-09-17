@@ -6,10 +6,7 @@ use crate::ir_generator::GlobalManager;
 
 #[derive(Debug)]
 pub struct Jit {
-    // TODO: データ構造の見直し
-    modules: TiVec<ModuleId, Module>,
     jit_module: TiVec<ModuleId, JitModule>,
-    jit_func: TiVec<ModuleId, TiVec<FuncId, Option<JitFunc>>>,
 }
 
 impl Default for Jit {
@@ -21,9 +18,7 @@ impl Default for Jit {
 impl Jit {
     pub fn new() -> Self {
         Self {
-            modules: TiVec::new(),
             jit_module: TiVec::new(),
-            jit_func: TiVec::new(),
         }
     }
 
@@ -32,12 +27,10 @@ impl Jit {
         global_manager: &mut GlobalManager,
         module: Module,
     ) -> Module {
-        self.jit_func
-            .push((0..module.funcs.len()).map(|_| None).collect());
-        let module_id = self.modules.push_and_get_key(module);
+        let module_id = self.jit_module.next_key();
         self.jit_module
-            .push(JitModule::new(global_manager, self, module_id));
-        self.jit_module[module_id].generate_stub_module(self)
+            .push(JitModule::new(global_manager, module_id, module));
+        self.jit_module[module_id].generate_stub_module()
     }
 
     pub fn instantiate_func(
@@ -46,14 +39,13 @@ impl Jit {
         module_id: ModuleId,
         func_id: FuncId,
     ) -> Module {
-        let jit_module = &self.jit_module[module_id];
-        let jit_func = jit_module.generate_jit_func(global_manager, self, func_id);
-        self.jit_func[module_id][func_id] = Some(jit_func);
+        let jit_func = self.jit_module[module_id].generate_jit_func(global_manager, func_id);
+        self.jit_module[module_id].jit_funcs[func_id] = Some(jit_func);
 
-        self.jit_func[module_id][func_id]
+        self.jit_module[module_id].jit_funcs[func_id]
             .as_ref()
             .unwrap()
-            .generate_stub_module(self, jit_module)
+            .generate_stub_module(&self.jit_module[module_id])
     }
 
     pub fn instantiate_bb(
@@ -63,21 +55,26 @@ impl Jit {
         bb_id: BasicBlockId,
     ) -> Module {
         let jit_module = &self.jit_module[module_id];
-        let jit_func = self.jit_func[module_id][func_id].as_ref().unwrap();
-        jit_func.generate_bb_module(self, jit_module, bb_id)
+        let jit_func = self.jit_module[module_id].jit_funcs[func_id]
+            .as_ref()
+            .unwrap();
+        jit_func.generate_bb_module(jit_module, bb_id)
     }
 }
 
 #[derive(Debug)]
 struct JitModule {
     module_id: ModuleId,
+    module: Module,
+    jit_funcs: TiVec<FuncId, Option<JitFunc>>,
     func_to_globals: TiVec<FuncId, GlobalId>,
     globals: FxHashSet<GlobalId>,
 }
 
 impl JitModule {
-    fn new(global_manager: &mut GlobalManager, jit: &Jit, module_id: ModuleId) -> Self {
-        let module = &jit.modules[module_id];
+    fn new(global_manager: &mut GlobalManager, module_id: ModuleId, module: Module) -> Self {
+        let jit_funcs = (0..module.funcs.len()).map(|_| None).collect();
+
         let func_to_globals = module
             .funcs
             .iter()
@@ -92,15 +89,17 @@ impl JitModule {
 
         Self {
             module_id,
+            module,
+            jit_funcs,
             func_to_globals,
             globals,
         }
     }
 
-    fn generate_stub_module(&self, jit: &Jit) -> Module {
-        let module = &jit.modules[self.module_id];
+    fn generate_stub_module(&self) -> Module {
         // entry関数もあるので+1してる
-        let stub_func_ids = module
+        let stub_func_ids = self
+            .module
             .funcs
             .iter()
             .map(|func| FuncId::from(usize::from(func.id) + 1))
@@ -135,7 +134,7 @@ impl JitModule {
                         local: None,
                         expr: Expr::InitModule,
                     });
-                    for func in module.funcs.iter() {
+                    for func in self.module.funcs.iter() {
                         exprs.push(ExprAssign {
                             local: Some(LocalId::from(1)),
                             expr: Expr::FuncRef(stub_func_ids[func.id]),
@@ -152,14 +151,14 @@ impl JitModule {
                     exprs
                 },
                 next: BasicBlockNext::TailCall(ExprCall {
-                    func_id: stub_func_ids[module.entry],
+                    func_id: stub_func_ids[self.module.entry],
                     args: vec![],
                 })
             },],
             jit_strategy: FuncJitStrategy::Never,
         };
         funcs.push(func);
-        for func in module.funcs.iter() {
+        for func in self.module.funcs.iter() {
             /*
             以下のようなスタブを生成
             func f0_stub(x1, x2) {
@@ -256,13 +255,8 @@ impl JitModule {
         }
     }
 
-    fn generate_jit_func(
-        &self,
-        global_manager: &mut GlobalManager,
-        jit: &Jit,
-        func_id: FuncId,
-    ) -> JitFunc {
-        JitFunc::new(global_manager, jit, self, func_id)
+    fn generate_jit_func(&self, global_manager: &mut GlobalManager, func_id: FuncId) -> JitFunc {
+        JitFunc::new(global_manager, self, func_id)
     }
 }
 
@@ -275,13 +269,8 @@ struct JitFunc {
 }
 
 impl JitFunc {
-    fn new(
-        global_manager: &mut GlobalManager,
-        jit: &Jit,
-        jit_module: &JitModule,
-        func_id: FuncId,
-    ) -> Self {
-        let module = &jit.modules[jit_module.module_id];
+    fn new(global_manager: &mut GlobalManager, jit_module: &JitModule, func_id: FuncId) -> Self {
+        let module = &jit_module.module;
         let func = &module.funcs[func_id];
         let bb_to_globals = func
             .bbs
@@ -305,8 +294,8 @@ impl JitFunc {
         }
     }
 
-    fn generate_stub_module(&self, jit: &Jit, jit_module: &JitModule) -> Module {
-        let module = &jit.modules[jit_module.module_id];
+    fn generate_stub_module(&self, jit_module: &JitModule) -> Module {
+        let module = &jit_module.module;
         let func = &module.funcs[self.func_id];
 
         let mut funcs = TiVec::<FuncId, _>::new();
@@ -529,8 +518,8 @@ impl JitFunc {
         }
     }
 
-    fn generate_bb_module(&self, jit: &Jit, jit_module: &JitModule, bb_id: BasicBlockId) -> Module {
-        let module = &jit.modules[jit_module.module_id];
+    fn generate_bb_module(&self, jit_module: &JitModule, bb_id: BasicBlockId) -> Module {
+        let module = &jit_module.module;
         let func = &module.funcs[self.func_id];
         let mut bb = func.bbs[bb_id].clone();
         let bb_info = &self.bb_infos[bb_id];
@@ -608,21 +597,21 @@ impl JitFunc {
                 let mut exprs = Vec::new();
                 for expr in bb.exprs.iter() {
                     // FuncRefとCall命令はget global命令に置き換えられる
-                    match &expr.expr {
+                    match expr.expr {
                         Expr::FuncRef(id) => {
                             exprs.push(ExprAssign {
                                 local: Some(boxed_func_ref),
-                                expr: Expr::GlobalGet(jit_module.func_to_globals[*id]),
+                                expr: Expr::GlobalGet(jit_module.func_to_globals[id]),
                             });
                             exprs.push(ExprAssign {
                                 local: expr.local,
                                 expr: Expr::Unbox(ValType::FuncRef, boxed_func_ref),
                             });
                         }
-                        Expr::Call(ExprCall { func_id, args }) => {
+                        Expr::Call(ExprCall { func_id, ref args }) => {
                             exprs.push(ExprAssign {
                                 local: Some(boxed_func_ref),
-                                expr: Expr::GlobalGet(jit_module.func_to_globals[*func_id]),
+                                expr: Expr::GlobalGet(jit_module.func_to_globals[func_id]),
                             });
                             exprs.push(ExprAssign {
                                 local: Some(func_ref),
@@ -633,7 +622,7 @@ impl JitFunc {
                                 expr: Expr::CallRef(ExprCallRef {
                                     func: func_ref,
                                     args: args.clone(),
-                                    func_type: module.funcs[*func_id].func_type(),
+                                    func_type: module.funcs[func_id].func_type(),
                                 }),
                             });
                         }
@@ -643,11 +632,11 @@ impl JitFunc {
                     }
                 }
 
-                let next = match &bb.next {
-                    BasicBlockNext::TailCall(ExprCall { func_id, args }) => {
+                let next = match bb.next {
+                    BasicBlockNext::TailCall(ExprCall { func_id, ref args }) => {
                         exprs.push(ExprAssign {
                             local: Some(boxed_func_ref),
-                            expr: Expr::GlobalGet(jit_module.func_to_globals[*func_id]),
+                            expr: Expr::GlobalGet(jit_module.func_to_globals[func_id]),
                         });
                         exprs.push(ExprAssign {
                             local: Some(func_ref),
@@ -656,21 +645,21 @@ impl JitFunc {
                         BasicBlockNext::TailCallRef(ExprCallRef {
                             func: func_ref,
                             args: args.clone(),
-                            func_type: module.funcs[*func_id].func_type(),
+                            func_type: module.funcs[func_id].func_type(),
                         })
                     }
                     BasicBlockNext::If(cond, then_bb, else_bb) => {
                         let then_locals_to_pass =
-                            calculate_args_to_pass(bb_info, &self.bb_infos[*then_bb]);
+                            calculate_args_to_pass(bb_info, &self.bb_infos[then_bb]);
                         let else_locals_to_pass =
-                            calculate_args_to_pass(bb_info, &self.bb_infos[*else_bb]);
+                            calculate_args_to_pass(bb_info, &self.bb_infos[else_bb]);
 
                         let then_bb_new = BasicBlock {
                             id: BasicBlockId::from(1),
                             exprs: vec![
                                 ExprAssign {
                                     local: Some(boxed_func_ref),
-                                    expr: Expr::GlobalGet(self.bb_to_globals[*then_bb]),
+                                    expr: Expr::GlobalGet(self.bb_to_globals[then_bb]),
                                 },
                                 ExprAssign {
                                     local: Some(func_ref),
@@ -681,7 +670,7 @@ impl JitFunc {
                                 func: func_ref,
                                 args: then_locals_to_pass,
                                 func_type: FuncType {
-                                    args: self.bb_infos[*then_bb]
+                                    args: self.bb_infos[then_bb]
                                         .args
                                         .iter()
                                         .map(|&arg| func.locals[arg])
@@ -696,7 +685,7 @@ impl JitFunc {
                             exprs: vec![
                                 ExprAssign {
                                     local: Some(boxed_func_ref),
-                                    expr: Expr::GlobalGet(self.bb_to_globals[*else_bb]),
+                                    expr: Expr::GlobalGet(self.bb_to_globals[else_bb]),
                                 },
                                 ExprAssign {
                                     local: Some(func_ref),
@@ -707,7 +696,7 @@ impl JitFunc {
                                 func: func_ref,
                                 args: else_locals_to_pass,
                                 func_type: FuncType {
-                                    args: self.bb_infos[*else_bb]
+                                    args: self.bb_infos[else_bb]
                                         .args
                                         .iter()
                                         .map(|&arg| func.locals[arg])
@@ -720,15 +709,15 @@ impl JitFunc {
                         extra_bbs.push(then_bb_new);
                         extra_bbs.push(else_bb_new);
 
-                        BasicBlockNext::If(*cond, BasicBlockId::from(1), BasicBlockId::from(2))
+                        BasicBlockNext::If(cond, BasicBlockId::from(1), BasicBlockId::from(2))
                     }
                     BasicBlockNext::Jump(target_bb) => {
                         let args_to_pass =
-                            calculate_args_to_pass(bb_info, &self.bb_infos[*target_bb]);
+                            calculate_args_to_pass(bb_info, &self.bb_infos[target_bb]);
 
                         exprs.push(ExprAssign {
                             local: Some(boxed_func_ref),
-                            expr: Expr::GlobalGet(self.bb_to_globals[*target_bb]),
+                            expr: Expr::GlobalGet(self.bb_to_globals[target_bb]),
                         });
                         exprs.push(ExprAssign {
                             local: Some(func_ref),
@@ -739,7 +728,7 @@ impl JitFunc {
                             func: func_ref,
                             args: args_to_pass,
                             func_type: FuncType {
-                                args: self.bb_infos[*target_bb]
+                                args: self.bb_infos[target_bb]
                                     .args
                                     .iter()
                                     .map(|&arg| func.locals[arg])
