@@ -32,6 +32,9 @@ _ = nop // unboxでl1を参照している場合、nopに置き換え、左辺�
 _ = nop // 同様
 _ = add(l1, l1) // 上で記憶した左辺が出てきたらl1に置き換え
 ```
+
+次のBBに引き継ぐ情報:
+- boxedな値→unboxedな値の対応とその型(どちらも再代入されない場合のみ)
 */
 
 pub fn remove_box(
@@ -40,7 +43,7 @@ pub fn remove_box(
     type_params: &TiVec<TypeParamId, LocalId>,
     type_args: &TiVec<TypeParamId, Option<ValType>>,
     args: &Vec<LocalId>,
-) -> BasicBlock {
+) -> (BasicBlock, TiVec<LocalId, Option<NextTypeArg>>) {
     let mut expr_assigns = Vec::new();
 
     // ローカルをBoxed -> Typeに書き換え
@@ -93,22 +96,40 @@ pub fn remove_box(
     // ローカル変数の置き換え情報
     let mut local_replacements = boxed_locals.clone();
 
+    // 次のBBに引き継ぐ型情報
+    let mut next_type_args = ti_vec![None; locals.len()];
+
     for expr_assign in bb.exprs {
         use Expr::*;
         let new_expr_assign = match expr_assign {
             ExprAssign {
-                local: Some(local),
+                local,
                 expr: Unbox(typ, value),
-            } if locals_immutability[value]
-                && locals_immutability[local]
-                && let Some(type_param_id) = type_params_rev[value]
-                && let Some(type_arg) = type_args[type_param_id] =>
-            {
-                debug_assert_eq!(type_arg, typ);
-                local_replacements[local] = Some(value);
-                ExprAssign {
-                    local: None,
-                    expr: Expr::Nop,
+            } => {
+                if locals_immutability[value]
+                    && let Some(local) = local
+                    && locals_immutability[local]
+                    && let Some(type_param_id) = type_params_rev[value]
+                    && let Some(type_arg) = type_args[type_param_id]
+                {
+                    debug_assert_eq!(type_arg, typ);
+                    local_replacements[local] = Some(value);
+                    ExprAssign {
+                        local: None,
+                        expr: Expr::Nop,
+                    }
+                } else {
+                    if locals_immutability[value]
+                        && let Some(local) = local
+                        && locals_immutability[local]
+                    {
+                        next_type_args[value] = Some(NextTypeArg {
+                            boxed: value,
+                            unboxed: local,
+                            typ,
+                        });
+                    }
+                    expr_assign
                 }
             }
             mut expr_assign => {
@@ -130,9 +151,35 @@ pub fn remove_box(
         }
     }
 
-    BasicBlock {
-        id: bb.id,
-        exprs: expr_assigns,
-        next: new_next,
+    for (unboxed, &boxed) in boxed_locals.iter_enumerated() {
+        if let Some(boxed) = boxed
+            && locals_immutability[unboxed]
+            && locals_immutability[boxed]
+        {
+            let LocalType::Type(Type::Val(typ)) = locals[unboxed] else {
+                unreachable!()
+            };
+            next_type_args[boxed] = Some(NextTypeArg {
+                boxed,
+                unboxed,
+                typ,
+            });
+        }
     }
+
+    (
+        BasicBlock {
+            id: bb.id,
+            exprs: expr_assigns,
+            next: new_next,
+        },
+        next_type_args,
+    )
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct NextTypeArg {
+    pub boxed: LocalId,
+    pub unboxed: LocalId,
+    pub typ: ValType,
 }

@@ -4,6 +4,7 @@ use typed_index_collections::{TiVec, ti_vec};
 use super::bb_optimizer;
 use crate::ir::*;
 use crate::ir_generator::GlobalManager;
+use crate::ir_generator::bb_optimizer::NextTypeArg;
 
 #[derive(Debug)]
 pub struct Jit {
@@ -577,6 +578,14 @@ impl JitFunc {
             *local_id = bb_info.from_original_locals_mapping[local_id];
         }
 
+        let (bb, next_type_args) = bb_optimizer::remove_box(
+            &mut new_locals,
+            bb,
+            &bb_info.type_params,
+            &ti_vec![None; bb_info.type_params.len()],
+            &bb_info.args,
+        );
+
         let local_offset = new_locals.len();
 
         new_locals.push(LocalType::Type(Type::Boxed)); // boxed bb1_ref
@@ -585,7 +594,8 @@ impl JitFunc {
         let boxed_func_ref = LocalId::from(local_offset);
         let func_ref: LocalId = LocalId::from(local_offset + 1);
         let mut extra_bbs = Vec::new();
-        let new_bb = {
+
+        let bb = {
             let mut exprs = Vec::new();
             for expr in bb.exprs.iter() {
                 // FuncRefとCall命令はget global命令に置き換えられる
@@ -649,13 +659,15 @@ impl JitFunc {
                     })
                 }
                 BasicBlockNext::If(cond, then_bb, else_bb) => {
-                    let then_locals_to_pass = calculate_args_to_pass(
+                    let (then_locals_to_pass, _) = calculate_args_to_pass(
                         &self.jit_bbs[bb_id].info,
                         &self.jit_bbs[then_bb].info,
+                        &next_type_args,
                     );
-                    let else_locals_to_pass = calculate_args_to_pass(
+                    let (else_locals_to_pass, _) = calculate_args_to_pass(
                         &self.jit_bbs[bb_id].info,
                         &self.jit_bbs[else_bb].info,
+                        &next_type_args,
                     );
 
                     let then_bb_new = BasicBlock {
@@ -708,9 +720,10 @@ impl JitFunc {
                     BasicBlockNext::If(cond, BasicBlockId::from(1), BasicBlockId::from(2))
                 }
                 BasicBlockNext::Jump(target_bb) => {
-                    let args_to_pass = calculate_args_to_pass(
+                    let (args_to_pass, _) = calculate_args_to_pass(
                         &self.jit_bbs[bb_id].info,
                         &self.jit_bbs[target_bb].info,
+                        &next_type_args,
                     );
 
                     exprs.push(ExprAssign {
@@ -740,20 +753,14 @@ impl JitFunc {
                 next,
             }
         };
-        let new_bb = bb_optimizer::remove_box(
-            &mut new_locals,
-            new_bb,
-            &ti_vec![],
-            &ti_vec![],
-            &self.jit_bbs[bb_id].info.args,
-        );
+
         let mut body_func = Func {
             id: funcs.next_key(),
-            args: self.jit_bbs[bb_id].info.args.len(),
+            args: bb_info.args.len(),
             ret_type: func.ret_type,
             locals: new_locals,
             bb_entry: BasicBlockId::from(0),
-            bbs: ti_vec![new_bb],
+            bbs: ti_vec![bb],
             jit_strategy: FuncJitStrategy::Never,
         };
 
@@ -942,11 +949,32 @@ fn calculate_bb_info(
     bb_info
 }
 
-fn calculate_args_to_pass(caller: &BBInfo, callee: &BBInfo) -> Vec<LocalId> {
+fn calculate_args_to_pass(
+    caller: &BBInfo,
+    callee: &BBInfo,
+    caller_next_type_args: &TiVec<LocalId, Option<NextTypeArg>>,
+) -> (Vec<LocalId>, TiVec<TypeParamId, Option<ValType>>) {
+    let callee_type_params_rev = callee
+        .type_params
+        .iter_enumerated()
+        .map(|(k, &v)| (v, k))
+        .collect::<FxHashMap<_, _>>();
+    let mut type_args = ti_vec![None; callee.type_params.len()];
     let mut args_to_pass = Vec::new();
-    for &arg in &callee.args {
-        args_to_pass
-            .push(caller.from_original_locals_mapping[&callee.to_original_locals_mapping[arg]]);
+
+    for &callee_arg in &callee.args {
+        let caller_args =
+            caller.from_original_locals_mapping[&callee.to_original_locals_mapping[callee_arg]];
+        let caller_args = if let Some(&type_param_id) = callee_type_params_rev.get(&callee_arg)
+            && let Some(caller_next_type_arg) = caller_next_type_args[caller_args]
+        {
+            type_args[type_param_id] = Some(caller_next_type_arg.typ);
+            caller_next_type_arg.unboxed
+        } else {
+            caller_args
+        };
+
+        args_to_pass.push(caller_args);
     }
-    args_to_pass
+    (args_to_pass, type_args)
 }
