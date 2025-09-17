@@ -80,7 +80,10 @@ pub fn remove_box(
         .collect::<TiVec<LocalId, bool>>();
 
     // ローカル変数の置き換え情報
-    let mut local_replacements = boxed_locals.clone();
+    let mut local_replacements = TiVec::new();
+    for (from, to) in boxed_locals.iter_enumerated() {
+        local_replacements.push(to.unwrap_or(from));
+    }
 
     // 次のBBに引き継ぐ型情報
     let mut next_type_args = ti_vec![None; locals.len()];
@@ -88,13 +91,7 @@ pub fn remove_box(
     for mut expr_assign in bb.exprs {
         use Expr::*;
 
-        for (local, _) in expr_assign.local_usages_mut() {
-            if let Some(replacement) = local_replacements[*local] {
-                *local = replacement;
-            }
-        }
-
-        let new_expr_assign = match expr_assign {
+        expr_assign = match expr_assign {
             ExprAssign {
                 local,
                 expr: Unbox(typ, value),
@@ -106,7 +103,7 @@ pub fn remove_box(
                     && let Some(type_arg) = type_args[type_param_id]
                 {
                     debug_assert_eq!(type_arg, typ);
-                    local_replacements[local] = Some(value);
+                    local_replacements[local] = value;
                     ExprAssign {
                         local: None,
                         expr: Expr::Nop,
@@ -125,33 +122,17 @@ pub fn remove_box(
                     expr_assign
                 }
             }
-            ExprAssign {
-                local: Some(local),
-                expr: Move(value),
-            } if locals_immutability[value] && locals_immutability[local] => {
-                local_replacements[local] = Some(value);
-                /*
-                 ExprAssign {
-                    local: None,
-                    expr: Expr::Nop,
-                }
-                TODO: ここでNopにするとtak.b.scmが動かない
-                */
-                ExprAssign {
-                    local: Some(local),
-                    expr: Expr::Move(value),
-                }
-            }
             expr_assign => expr_assign,
         };
-        expr_assigns.push(new_expr_assign);
+        for (local, _) in expr_assign.local_usages_mut() {
+            *local = local_replacements[*local];
+        }
+        expr_assigns.push(expr_assign);
     }
 
     let mut new_next = bb.next;
     for local in new_next.local_ids_mut() {
-        if let Some(replacement) = local_replacements[*local] {
-            *local = replacement;
-        }
+        *local = local_replacements[*local]
     }
 
     for (unboxed, &boxed) in boxed_locals.iter_enumerated() {
@@ -185,4 +166,72 @@ pub struct NextTypeArg {
     pub boxed: LocalId,
     pub unboxed: LocalId,
     pub typ: ValType,
+}
+
+pub fn remove_move(
+    locals: &TiVec<LocalId, LocalType>,
+    bb: BasicBlock,
+    args: &Vec<LocalId>,
+) -> BasicBlock {
+    let mut expr_assigns = Vec::new();
+
+    // 再代入されている変数の特定
+    let mut assign_counts = ti_vec![0; locals.len()];
+    for &arg in args {
+        assign_counts[arg] += 1;
+    }
+    for expr_assign in &bb.exprs {
+        if let Some(local) = expr_assign.local {
+            assign_counts[local] += 1;
+        }
+    }
+
+    let locals_immutability = assign_counts
+        .into_iter()
+        .map(|count| count <= 1)
+        .collect::<TiVec<LocalId, bool>>();
+
+    // ローカル変数の置き換え情報
+    let mut local_replacements = TiVec::new();
+    for local in locals.keys() {
+        local_replacements.push(local);
+    }
+
+    for mut expr_assign in bb.exprs {
+        use Expr::*;
+        for (local, _) in expr_assign.local_usages_mut() {
+            *local = local_replacements[*local];
+        }
+
+        let new_expr_assign = match expr_assign {
+            ExprAssign {
+                local: Some(local),
+                expr: Move(value),
+            } if locals_immutability[value] && locals_immutability[local] => {
+                local_replacements[local] = value;
+                /*
+
+                TODO: ここでNopにするとtak.b.scmが動かない
+                推移的な置き換えが必要かも
+                */
+                ExprAssign {
+                    local: Some(local),
+                    expr: Expr::Move(value),
+                }
+            }
+            expr_assign => expr_assign,
+        };
+        expr_assigns.push(new_expr_assign);
+    }
+
+    let mut new_next = bb.next;
+    for local in new_next.local_ids_mut() {
+        *local = local_replacements[*local]
+    }
+
+    BasicBlock {
+        id: bb.id,
+        exprs: expr_assigns,
+        next: new_next,
+    }
 }

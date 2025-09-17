@@ -624,6 +624,7 @@ impl JitFunc {
             *local_id = bb_info.from_original_locals_mapping[local_id];
         }
 
+        let bb = bb_optimizer::remove_move(&new_locals, bb, &bb_info.args);
         let (bb, next_type_args) = bb_optimizer::remove_box(
             &mut new_locals,
             bb,
