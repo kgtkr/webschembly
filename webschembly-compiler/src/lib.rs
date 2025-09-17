@@ -19,6 +19,7 @@ pub mod compiler;
 pub mod wasm_generator;
 #[macro_use]
 pub mod error;
+pub mod fxbihashmap;
 pub mod ir;
 pub mod ir_generator;
 pub mod sexpr_parser;

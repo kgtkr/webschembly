@@ -1,7 +1,10 @@
+use std::borrow::Cow;
+
 use rustc_hash::{FxHashMap, FxHashSet};
 use typed_index_collections::{TiVec, ti_vec};
 
 use super::bb_optimizer;
+use crate::fxbihashmap::FxBiHashMap;
 use crate::ir::*;
 use crate::ir_generator::GlobalManager;
 use crate::ir_generator::bb_optimizer::NextTypeArg;
@@ -977,4 +980,57 @@ fn calculate_args_to_pass(
         args_to_pass.push(caller_args);
     }
     (args_to_pass, type_args)
+}
+
+pub const GLOBAL_LAYOUT_MAX_SIZE: usize = 32;
+pub const GLOBAL_LAYOUT_DEFAULT_INDEX: usize = 0;
+
+#[derive(Debug)]
+pub struct GlobalLayout {
+    type_params_to_index: FxBiHashMap<TiVec<TypeParamId, Option<ValType>>, usize>,
+}
+
+impl Default for GlobalLayout {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl GlobalLayout {
+    pub fn new() -> Self {
+        let mut type_params_to_index = FxBiHashMap::default();
+        type_params_to_index.insert(ti_vec![], GLOBAL_LAYOUT_DEFAULT_INDEX); // 全ての型パラメータがNoneの時に対応
+        Self {
+            type_params_to_index,
+        }
+    }
+
+    pub fn to_idx(&mut self, type_params: &TiVec<TypeParamId, Option<ValType>>) -> usize {
+        if type_params.iter().all(|t| t.is_none()) {
+            // 全ての型パラメータがNoneなら0を返す
+            GLOBAL_LAYOUT_DEFAULT_INDEX
+        } else {
+            if let Some(&index) = self.type_params_to_index.get_by_left(type_params) {
+                index
+            } else if self.type_params_to_index.len() < GLOBAL_LAYOUT_MAX_SIZE {
+                let index = self.type_params_to_index.len();
+                self.type_params_to_index.insert(type_params.clone(), index);
+                index
+            } else {
+                GLOBAL_LAYOUT_DEFAULT_INDEX
+            }
+        }
+    }
+
+    pub fn from_idx(
+        &self,
+        index: usize,
+        params_len: usize,
+    ) -> Cow<TiVec<TypeParamId, Option<ValType>>> {
+        if index == GLOBAL_LAYOUT_DEFAULT_INDEX {
+            Cow::Owned(ti_vec![None; params_len])
+        } else {
+            Cow::Borrowed(self.type_params_to_index.get_by_right(&index).unwrap())
+        }
+    }
 }

@@ -4,6 +4,7 @@ name = "webschembly-compiler"
 version = "0.1.0"
 
 [dependencies]
+bimap = "0.6.3"
 derive_more = {version = "2", features = ["full"]}
 frunk = {git = "https://github.com/lloydmeta/frunk.git", branch = "master"}
 frunk_core = {git = "https://github.com/lloydmeta/frunk.git", branch = "master"}
