@@ -1062,7 +1062,7 @@ fn calculate_bb_info(
 
         let mut type_params = TiVec::new();
         for &arg in &args {
-            if let LocalType::Type(Type::Boxed) = locals[arg] {
+            if let LocalType::Type(Type::Boxed) = locals[to_original_locals_mapping[arg]] {
                 type_params.push(arg);
             }
         }
@@ -1108,7 +1108,9 @@ fn calculate_args_to_pass(
             && let Some(caller_next_type_arg) = caller_next_type_args[caller_args]
         {
             type_args[type_param_id] = Some(caller_next_type_arg.typ);
-            caller_next_type_arg.unboxed
+            // TODO:
+            // caller_next_type_arg.unboxed
+            caller_args
         } else {
             caller_args
         };
