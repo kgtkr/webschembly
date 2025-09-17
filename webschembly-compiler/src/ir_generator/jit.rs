@@ -408,11 +408,7 @@ impl JitFunc {
                         .map(|&arg| entry_bb_info.to_original_locals_mapping[arg])
                         .collect::<Vec<_>>(),
                     func_type: FuncType {
-                        args: entry_bb_info
-                            .args
-                            .iter()
-                            .map(|&arg| func.locals[entry_bb_info.to_original_locals_mapping[arg]])
-                            .collect::<Vec<_>>(),
+                        args: entry_bb_info.arg_types(func),
                         ret: func.ret_type,
                     },
                 })
@@ -432,13 +428,7 @@ impl JitFunc {
             }
             */
             let mut locals = TiVec::new();
-            locals.extend(
-                jit_bb
-                    .info
-                    .args
-                    .iter()
-                    .map(|&arg| func.locals[jit_bb.info.to_original_locals_mapping[arg]]),
-            );
+            locals.extend(jit_bb.info.arg_types(func));
             locals.extend([
                 func.ret_type(),
                 LocalType::Type(Type::Boxed), // boxed bb0_ref
@@ -508,13 +498,7 @@ impl JitFunc {
                                 .map(LocalId::from)
                                 .collect::<Vec<_>>(),
                             func_type: FuncType {
-                                args: jit_bb
-                                    .info
-                                    .args
-                                    .iter()
-                                    .map(|&arg| func.locals
-                                        [jit_bb.info.to_original_locals_mapping[arg]])
-                                    .collect::<Vec<_>>(),
+                                args: jit_bb.info.arg_types(func),
                                 ret: func.ret_type,
                             },
                         }),
@@ -586,13 +570,8 @@ impl JitFunc {
         let mut new_locals = TiVec::new();
         let bb_info = &self.jit_bbs[bb_id].info;
 
-        for &arg in &bb_info.args {
-            new_locals.push(func.locals[bb_info.to_original_locals_mapping[arg]]);
-        }
-
-        for &define in &bb_info.defines {
-            new_locals.push(func.locals[bb_info.to_original_locals_mapping[define]]);
-        }
+        new_locals.extend(bb_info.arg_types(func));
+        new_locals.extend(bb_info.define_types(func));
 
         for (local_id, _) in bb.local_usages_mut() {
             *local_id = bb_info.from_original_locals_mapping[local_id];
@@ -695,16 +674,7 @@ impl JitFunc {
                             func: func_ref,
                             args: then_locals_to_pass,
                             func_type: FuncType {
-                                args: self.jit_bbs[then_bb]
-                                    .info
-                                    .args
-                                    .iter()
-                                    .map(|&arg| {
-                                        func.locals[self.jit_bbs[then_bb]
-                                            .info
-                                            .to_original_locals_mapping[arg]]
-                                    })
-                                    .collect::<Vec<_>>(),
+                                args: self.jit_bbs[then_bb].info.arg_types(func),
                                 ret: func.ret_type,
                             },
                         }),
@@ -726,16 +696,7 @@ impl JitFunc {
                             func: func_ref,
                             args: else_locals_to_pass,
                             func_type: FuncType {
-                                args: self.jit_bbs[else_bb]
-                                    .info
-                                    .args
-                                    .iter()
-                                    .map(|&arg| {
-                                        func.locals[self.jit_bbs[else_bb]
-                                            .info
-                                            .to_original_locals_mapping[arg]]
-                                    })
-                                    .collect::<Vec<_>>(),
+                                args: self.jit_bbs[else_bb].info.arg_types(func),
                                 ret: func.ret_type,
                             },
                         }),
@@ -765,16 +726,7 @@ impl JitFunc {
                         func: func_ref,
                         args: args_to_pass,
                         func_type: FuncType {
-                            args: self.jit_bbs[target_bb]
-                                .info
-                                .args
-                                .iter()
-                                .map(|&arg| {
-                                    func.locals[self.jit_bbs[target_bb]
-                                        .info
-                                        .to_original_locals_mapping[arg]]
-                                })
-                                .collect::<Vec<_>>(),
+                            args: self.jit_bbs[target_bb].info.arg_types(func),
                             ret: func.ret_type,
                         },
                     })
@@ -913,6 +865,22 @@ struct BBInfo {
     type_params: TiVec<TypeParamId, LocalId>,
     to_original_locals_mapping: TiVec<LocalId, LocalId>,
     from_original_locals_mapping: FxHashMap<LocalId, LocalId>,
+}
+
+impl BBInfo {
+    fn arg_types(&self, func: &Func) -> Vec<LocalType> {
+        self.args
+            .iter()
+            .map(|&arg| func.locals[self.to_original_locals_mapping[arg]])
+            .collect()
+    }
+
+    fn define_types(&self, func: &Func) -> Vec<LocalType> {
+        self.defines
+            .iter()
+            .map(|&define| func.locals[self.to_original_locals_mapping[define]])
+            .collect()
+    }
 }
 
 fn calculate_bb_info(
