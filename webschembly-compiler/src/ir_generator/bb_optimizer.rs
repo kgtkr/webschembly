@@ -46,14 +46,6 @@ pub fn remove_box(
 ) -> (BasicBlock, TiVec<LocalId, Option<NextTypeArg>>) {
     let mut expr_assigns = Vec::new();
 
-    // ローカルをBoxed -> Typeに書き換え
-    for (&type_param_id, &local) in type_params.iter() {
-        if let Some(typ) = type_args[type_param_id] {
-            debug_assert_eq!(locals[local], LocalType::Type(Type::Boxed));
-            locals[local] = LocalType::Type(Type::Val(typ));
-        }
-    }
-
     // 型代入されている変数のboxed版を用意(l1_boxedに対応)
     let mut boxed_locals = ti_vec![None; locals.len()];
     for (type_param_id, typ) in type_args.iter_enumerated() {

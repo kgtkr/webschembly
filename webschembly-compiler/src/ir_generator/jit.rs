@@ -447,7 +447,8 @@ impl JitFunc {
                             .map(|&arg| entry_bb_info.to_original_locals_mapping[arg])
                             .collect(),
                         func_type: FuncType {
-                            args: entry_bb_info.arg_types(func),
+                            args: entry_bb_info
+                                .arg_types(func, &ti_vec![None; entry_bb_info.type_params.len()]),
                             ret: func.ret_type,
                         },
                     })
@@ -501,7 +502,7 @@ impl JitFunc {
         */
         let type_args = &*global_layout.from_idx(index, jit_bb.info.type_params.len());
         let mut locals = TiVec::new();
-        locals.extend(jit_bb.info.arg_types_(func, type_args));
+        locals.extend(jit_bb.info.arg_types(func, type_args));
         let boxed_local = locals.push_and_get_key(LocalType::Type(Type::Boxed)); // boxed bb0_ref
         let func_ref_local = locals.push_and_get_key(LocalType::Type(Type::Val(ValType::FuncRef))); // bb0_ref
         let stub_local = locals.push_and_get_key(LocalType::Type(Type::Boxed)); // bb0_stub
@@ -587,7 +588,7 @@ impl JitFunc {
                         func: func_ref_local,
                         args: jit_bb.info.args.clone(),
                         func_type: FuncType {
-                            args: jit_bb.info.arg_types_(func, type_args),
+                            args: jit_bb.info.arg_types(func, type_args),
                             ret: func.ret_type,
                         },
                     }),
@@ -606,6 +607,7 @@ impl JitFunc {
     ) -> Module {
         let mut required_stubs = Vec::new();
 
+        let type_args = &*global_layout.from_idx(index, self.jit_bbs[bb_id].info.type_params.len());
         let module = &jit_module.module;
         let func = &module.funcs[self.func_id];
         let mut bb = func.bbs[bb_id].clone();
@@ -615,7 +617,7 @@ impl JitFunc {
         let mut new_locals = TiVec::new();
         let bb_info = &self.jit_bbs[bb_id].info;
 
-        new_locals.extend(bb_info.arg_types(func));
+        new_locals.extend(bb_info.arg_types(func, type_args));
         new_locals.extend(bb_info.define_types(func));
 
         for (local_id, _) in bb.local_usages_mut() {
@@ -626,7 +628,7 @@ impl JitFunc {
             &mut new_locals,
             bb,
             &bb_info.type_params,
-            &ti_vec![None; bb_info.type_params.len()],
+            type_args,
             &bb_info.args,
         );
 
@@ -745,7 +747,7 @@ impl JitFunc {
                             func: func_ref_local,
                             args: then_locals_to_pass,
                             func_type: FuncType {
-                                args: self.jit_bbs[then_bb].info.arg_types(func),
+                                args: self.jit_bbs[then_bb].info.arg_types(func, &then_type_args),
                                 ret: func.ret_type,
                             },
                         }),
@@ -779,7 +781,7 @@ impl JitFunc {
                             func: func_ref_local,
                             args: else_locals_to_pass,
                             func_type: FuncType {
-                                args: self.jit_bbs[else_bb].info.arg_types(func),
+                                args: self.jit_bbs[else_bb].info.arg_types(func, &else_type_args),
                                 ret: func.ret_type,
                             },
                         }),
@@ -825,7 +827,7 @@ impl JitFunc {
                         func: func_ref_local,
                         args: args_to_pass,
                         func_type: FuncType {
-                            args: self.jit_bbs[target_bb].info.arg_types(func),
+                            args: self.jit_bbs[target_bb].info.arg_types(func, &type_args),
                             ret: func.ret_type,
                         },
                     })
@@ -1107,14 +1109,7 @@ struct BBInfo {
 }
 
 impl BBInfo {
-    fn arg_types(&self, func: &Func) -> Vec<LocalType> {
-        self.args
-            .iter()
-            .map(|&arg| func.locals[self.to_original_locals_mapping[arg]])
-            .collect::<Vec<_>>()
-    }
-
-    fn arg_types_(
+    fn arg_types(
         &self,
         func: &Func,
         type_args: &TiVec<TypeParamId, Option<ValType>>,
@@ -1209,9 +1204,7 @@ fn calculate_args_to_pass(
             && let Some(caller_next_type_arg) = caller_next_type_args[caller_args]
         {
             type_args[type_param_id] = Some(caller_next_type_arg.typ);
-            // TODO:
-            // caller_next_type_arg.unboxed
-            caller_args
+            caller_next_type_arg.unboxed
         } else {
             caller_args
         };
