@@ -99,8 +99,15 @@ pub fn remove_box(
     // 次のBBに引き継ぐ型情報
     let mut next_type_args = ti_vec![None; locals.len()];
 
-    for expr_assign in bb.exprs {
+    for mut expr_assign in bb.exprs {
         use Expr::*;
+
+        for (local, _) in expr_assign.local_usages_mut() {
+            if let Some(replacement) = local_replacements[*local] {
+                *local = replacement;
+            }
+        }
+
         let new_expr_assign = match expr_assign {
             ExprAssign {
                 local,
@@ -132,14 +139,24 @@ pub fn remove_box(
                     expr_assign
                 }
             }
-            mut expr_assign => {
-                for (local, _) in expr_assign.local_usages_mut() {
-                    if let Some(replacement) = local_replacements[*local] {
-                        *local = replacement;
-                    }
+            ExprAssign {
+                local: Some(local),
+                expr: Move(value),
+            } if locals_immutability[value] && locals_immutability[local] => {
+                local_replacements[local] = Some(value);
+                /*
+                 ExprAssign {
+                    local: None,
+                    expr: Expr::Nop,
                 }
-                expr_assign
+                TODO: ここでNopにするとtak.b.scmが動かない
+                */
+                ExprAssign {
+                    local: Some(local),
+                    expr: Expr::Move(value),
+                }
             }
+            expr_assign => expr_assign,
         };
         expr_assigns.push(new_expr_assign);
     }
