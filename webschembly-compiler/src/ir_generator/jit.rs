@@ -124,7 +124,7 @@ impl JitModule {
 
         let func = Func {
             id: funcs.next_key(),
-            args: 0,
+            args: vec![],
             ret_type: LocalType::Type(Type::Boxed),
             locals: ti_vec![
                 LocalType::Type(Type::Boxed),
@@ -176,7 +176,7 @@ impl JitModule {
                             */
             let func = Func {
                 id: funcs.next_key(),
-                args: func.args,
+                args: func.args.clone(),
                 ret_type: func.ret_type,
                 locals: {
                     let mut locals = TiVec::new();
@@ -196,23 +196,23 @@ impl JitModule {
                         id: BasicBlockId::from(0),
                         exprs: vec![
                             ExprAssign {
-                                local: Some(LocalId::from(func.args + 1)),
+                                local: Some(LocalId::from(func.args.len() + 1)),
                                 expr: Expr::GlobalGet(self.func_to_globals[func.id]),
                             },
                             ExprAssign {
-                                local: Some(LocalId::from(func.args + 3)),
+                                local: Some(LocalId::from(func.args.len() + 3)),
                                 expr: Expr::FuncRef(stub_func_ids[func.id]),
                             },
                             ExprAssign {
-                                local: Some(LocalId::from(func.args + 4)),
+                                local: Some(LocalId::from(func.args.len() + 4)),
                                 expr: Expr::Eq(
-                                    LocalId::from(func.args + 1),
-                                    LocalId::from(func.args + 3),
+                                    LocalId::from(func.args.len() + 1),
+                                    LocalId::from(func.args.len() + 3),
                                 ),
                             },
                         ],
                         next: BasicBlockNext::If(
-                            LocalId::from(func.args + 4),
+                            LocalId::from(func.args.len() + 4),
                             BasicBlockId::from(1),
                             BasicBlockId::from(2),
                         ),
@@ -229,17 +229,20 @@ impl JitModule {
                         id: BasicBlockId::from(2),
                         exprs: vec![
                             ExprAssign {
-                                local: Some(LocalId::from(func.args + 1)),
+                                local: Some(LocalId::from(func.args.len() + 1)),
                                 expr: Expr::GlobalGet(self.func_to_globals[func.id]),
                             },
                             ExprAssign {
-                                local: Some(LocalId::from(func.args + 2)),
-                                expr: Expr::Unbox(ValType::FuncRef, LocalId::from(func.args + 1)),
+                                local: Some(LocalId::from(func.args.len() + 2)),
+                                expr: Expr::Unbox(
+                                    ValType::FuncRef,
+                                    LocalId::from(func.args.len() + 1)
+                                ),
                             },
                         ],
                         next: BasicBlockNext::TailCallRef(ExprCallRef {
-                            func: LocalId::from(func.args + 2),
-                            args: (0..func.args).map(LocalId::from).collect::<Vec<_>>(),
+                            func: LocalId::from(func.args.len() + 2),
+                            args: func.args.clone(),
                             func_type: func.func_type()
                         })
                     },
@@ -327,7 +330,7 @@ impl JitFunc {
 
             Func {
                 id: funcs.next_key(),
-                args: 0,
+                args: vec![],
                 ret_type: LocalType::Type(Type::Val(ValType::FuncRef)), // TODO: Nilでも返したほうがよさそう
                 locals,
                 bb_entry: BasicBlockId::from(0),
@@ -406,7 +409,7 @@ impl JitFunc {
 
             Func {
                 id: funcs.next_key(),
-                args: func.args,
+                args: func.args.clone(),
                 ret_type: func.ret_type,
                 locals,
                 bb_entry: BasicBlockId::from(0),
@@ -475,7 +478,7 @@ impl JitFunc {
 
             let func = Func {
                 id: funcs.next_key(),
-                args: jit_bb.info.args.len(),
+                args: jit_bb.info.args.clone(),
                 ret_type: func.ret_type,
                 locals,
                 bb_entry: BasicBlockId::from(0),
@@ -592,7 +595,7 @@ impl JitFunc {
 
             Func {
                 id: funcs.next_key(),
-                args: 0,
+                args: vec![],
                 ret_type: LocalType::Type(Type::Val(ValType::FuncRef)), // TODO: Nilでも返したほうがよさそう
                 locals,
                 bb_entry: BasicBlockId::from(0),
@@ -863,7 +866,7 @@ impl JitFunc {
 
         let mut body_func = Func {
             id: funcs.next_key(),
-            args: bb_info.args.len(),
+            args: bb_info.args.clone(),
             ret_type: func.ret_type,
             locals: new_locals,
             bb_entry: BasicBlockId::from(0),
@@ -964,15 +967,6 @@ fn analyze_locals(func: &Func) -> TiVec<BasicBlockId, AnalyzeResult> {
         }
 
         results[bb_id] = result;
-    }
-
-    // エントリーポイントの例外的処理
-    results[func.bb_entry].used_locals =
-        (0..func.args).map(LocalId::from).collect::<FxHashSet<_>>();
-    for i in 0..func.args {
-        results[func.bb_entry]
-            .defined_locals
-            .remove(&LocalId::from(i));
     }
 
     results

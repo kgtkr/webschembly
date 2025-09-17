@@ -997,8 +997,7 @@ pub enum FuncJitStrategy {
 pub struct Func {
     pub id: FuncId,
     pub locals: TiVec<LocalId, LocalType>,
-    // localsの先頭何個が引数か
-    pub args: usize,
+    pub args: Vec<LocalId>,
     pub ret_type: LocalType,
     pub bb_entry: BasicBlockId,
     pub bbs: TiVec<BasicBlockId, BasicBlock>,
@@ -1011,9 +1010,7 @@ impl Func {
     }
 
     pub fn arg_types(&self) -> Vec<LocalType> {
-        (0..self.args)
-            .map(|i| self.locals[LocalId::from(i)])
-            .collect()
+        self.args.iter().map(|&arg| self.locals[arg]).collect()
     }
 
     pub fn ret_type(&self) -> LocalType {
@@ -1041,13 +1038,9 @@ impl fmt::Display for Display<'_, &'_ Func> {
             )?;
         }
         write!(f, "{}args: ", DISPLAY_INDENT)?;
-        for i in 0..self.value.args {
-            write!(
-                f,
-                "{}",
-                LocalId::from(i).display(self.meta.in_func(self.value.id))
-            )?;
-            if i < self.value.args - 1 {
+        for (i, arg) in self.value.args.iter().enumerate() {
+            write!(f, "{}", arg.display(self.meta.in_func(self.value.id)))?;
+            if i < self.value.args.len() - 1 {
                 write!(f, ",")?;
             }
         }

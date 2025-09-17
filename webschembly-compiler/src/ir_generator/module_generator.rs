@@ -153,7 +153,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         self.close_bb(Some(BasicBlockNext::Return(boxed_local)));
         Func {
             id: self.id,
-            args: 0,
+            args: vec![],
             ret_type: LocalType::Type(Type::Boxed),
             locals: self.locals,
             bb_entry: BasicBlockId::from(0), // TODO: もっと綺麗な書き方があるはず
@@ -244,7 +244,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         self.close_bb(Some(BasicBlockNext::Return(ret)));
         Func {
             id: self.id,
-            args: 2,
+            args: vec![self_closure, args],
             ret_type: LocalType::Type(Type::Boxed),
             locals: self.locals,
             bb_entry: BasicBlockId::from(0), // TODO: もっと綺麗な書き方があるはず

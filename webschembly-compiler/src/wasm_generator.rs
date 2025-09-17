@@ -929,7 +929,26 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
     }
 
     fn gen_func(mut self) {
-        for (local_id, _) in self.func.locals.iter_enumerated() {
+        let mut is_args = ti_vec![false; self.func.locals.len()];
+        for arg in &self.func.args {
+            is_args[*arg] = true;
+        }
+        let is_args = is_args;
+
+        for (local_id, _) in
+            // ローカル変数をargs, argsでない変数の順に並べる
+            self
+                .func
+                .locals
+                .iter_enumerated()
+                .filter(|(local_id, _)| is_args[*local_id])
+                .chain(
+                    self.func
+                        .locals
+                        .iter_enumerated()
+                        .filter(|(local_id, _)| !is_args[*local_id]),
+                )
+        {
             let idx = self.local_count;
             self.local_ids.insert(local_id, idx);
             self.local_count += 1;
@@ -943,9 +962,9 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         let mut function = Function::new(
             self.func
                 .locals
-                .iter()
-                .skip(self.func.args)
-                .map(|ty| {
+                .iter_enumerated()
+                .filter(|(local_id, _)| !is_args[*local_id])
+                .map(|(_, ty)| {
                     let ty = self.module_generator.convert_local_type(ty);
                     (1, ty)
                 })
