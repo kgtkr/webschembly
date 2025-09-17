@@ -1,5 +1,4 @@
 use std::borrow::Cow;
-use std::boxed;
 
 use rustc_hash::{FxHashMap, FxHashSet};
 use typed_index_collections::{TiVec, ti_vec};
@@ -13,6 +12,7 @@ use crate::ir_generator::bb_optimizer::NextTypeArg;
 #[derive(Debug)]
 pub struct Jit {
     jit_module: TiVec<ModuleId, JitModule>,
+    global_layout: GlobalLayout,
 }
 
 impl Default for Jit {
@@ -25,6 +25,7 @@ impl Jit {
     pub fn new() -> Self {
         Self {
             jit_module: TiVec::new(),
+            global_layout: GlobalLayout::new(),
         }
     }
 
@@ -55,16 +56,17 @@ impl Jit {
     }
 
     pub fn instantiate_bb(
-        &self,
+        &mut self,
         module_id: ModuleId,
         func_id: FuncId,
         bb_id: BasicBlockId,
+        index: usize,
     ) -> Module {
         let jit_module = &self.jit_module[module_id];
         let jit_func = self.jit_module[module_id].jit_funcs[func_id]
             .as_ref()
             .unwrap();
-        jit_func.generate_bb_module(jit_module, bb_id)
+        jit_func.generate_bb_module(jit_module, bb_id, index, &mut self.global_layout) // TODO: index
     }
 }
 
@@ -426,7 +428,7 @@ impl JitFunc {
                         },
                         ExprAssign {
                             local: Some(index_local),
-                            expr: Expr::Int(0), // TODO:
+                            expr: Expr::Int(GLOBAL_LAYOUT_DEFAULT_INDEX as i64),
                         },
                         ExprAssign {
                             local: Some(boxed_local),
@@ -464,10 +466,10 @@ impl JitFunc {
 
         for (bb_id, jit_bb) in self.jit_bbs.iter_enumerated() {
             /*
-            func bb0_stub(...) {
+            func bb0_stub(index, ...) {
                 bb0 <- get_global bb0_ref
                 if bb0 == bb0_stub
-                    instantiate_bb(...)
+                    instantiate_bb(..., index)
                 bb0 <- get_global bb0_ref
                 bb0(...)
             }
@@ -497,10 +499,6 @@ impl JitFunc {
                     BasicBlock {
                         id: BasicBlockId::from(0),
                         exprs: vec![
-                            ExprAssign {
-                                local: Some(index_local),
-                                expr: Expr::Int(0), // TODO:
-                            },
                             ExprAssign {
                                 local: Some(boxed_local),
                                 expr: Expr::GlobalGet(jit_bb.global),
@@ -532,17 +530,18 @@ impl JitFunc {
                         id: BasicBlockId::from(1),
                         exprs: vec![ExprAssign {
                             local: None,
-                            expr: Expr::InstantiateBB(jit_module.module_id, func.id, bb_id),
+                            expr: Expr::InstantiateBB(
+                                jit_module.module_id,
+                                func.id,
+                                bb_id,
+                                index_local
+                            ),
                         }],
                         next: BasicBlockNext::Jump(BasicBlockId::from(2)),
                     },
                     BasicBlock {
                         id: BasicBlockId::from(2),
                         exprs: vec![
-                            ExprAssign {
-                                local: Some(index_local),
-                                expr: Expr::Int(0), // TODO:
-                            },
                             ExprAssign {
                                 local: Some(boxed_local),
                                 expr: Expr::GlobalGet(jit_bb.global),
@@ -592,7 +591,13 @@ impl JitFunc {
         }
     }
 
-    fn generate_bb_module(&self, jit_module: &JitModule, bb_id: BasicBlockId) -> Module {
+    fn generate_bb_module(
+        &self,
+        jit_module: &JitModule,
+        bb_id: BasicBlockId,
+        index: usize,
+        global_layout: &mut GlobalLayout,
+    ) -> Module {
         let module = &jit_module.module;
         let func = &module.funcs[self.func_id];
         let mut bb = func.bbs[bb_id].clone();
@@ -624,7 +629,7 @@ impl JitFunc {
                             },
                             ExprAssign {
                                 local: Some(index_local),
-                                expr: Expr::Int(0), // TODO:
+                                expr: Expr::Int(index as i64),
                             },
                             ExprAssign {
                                 local: Some(boxed_local),
@@ -746,18 +751,20 @@ impl JitFunc {
                     })
                 }
                 BasicBlockNext::If(cond, then_bb, else_bb) => {
-                    let (then_locals_to_pass, _) = calculate_args_to_pass(
+                    let (then_locals_to_pass, then_type_args) = calculate_args_to_pass(
                         index_local,
                         &self.jit_bbs[bb_id].info,
                         &self.jit_bbs[then_bb].info,
                         &next_type_args,
                     );
-                    let (else_locals_to_pass, _) = calculate_args_to_pass(
+                    let then_index = global_layout.to_idx(&then_type_args);
+                    let (else_locals_to_pass, else_type_args) = calculate_args_to_pass(
                         index_local,
                         &self.jit_bbs[bb_id].info,
                         &self.jit_bbs[else_bb].info,
                         &next_type_args,
                     );
+                    let else_index = global_layout.to_idx(&else_type_args);
 
                     let then_bb_new = BasicBlock {
                         id: BasicBlockId::from(1),
@@ -772,7 +779,7 @@ impl JitFunc {
                             },
                             ExprAssign {
                                 local: Some(index_local),
-                                expr: Expr::Int(0), // TODO:
+                                expr: Expr::Int(then_index as i64),
                             },
                             ExprAssign {
                                 local: Some(boxed_local),
@@ -806,7 +813,7 @@ impl JitFunc {
                             },
                             ExprAssign {
                                 local: Some(index_local),
-                                expr: Expr::Int(0), // TODO:
+                                expr: Expr::Int(else_index as i64),
                             },
                             ExprAssign {
                                 local: Some(boxed_local),
@@ -833,12 +840,13 @@ impl JitFunc {
                     BasicBlockNext::If(cond, BasicBlockId::from(1), BasicBlockId::from(2))
                 }
                 BasicBlockNext::Jump(target_bb) => {
-                    let (args_to_pass, _) = calculate_args_to_pass(
+                    let (args_to_pass, type_args) = calculate_args_to_pass(
                         index_local,
                         &self.jit_bbs[bb_id].info,
                         &self.jit_bbs[target_bb].info,
                         &next_type_args,
                     );
+                    let target_index = global_layout.to_idx(&type_args);
 
                     exprs.push(ExprAssign {
                         local: Some(boxed_local),
@@ -850,7 +858,7 @@ impl JitFunc {
                     });
                     exprs.push(ExprAssign {
                         local: Some(index_local),
-                        expr: Expr::Int(0), // TODO:
+                        expr: Expr::Int(target_index as i64),
                     });
                     exprs.push(ExprAssign {
                         local: Some(boxed_local),

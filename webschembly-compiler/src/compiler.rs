@@ -68,11 +68,12 @@ impl Compiler {
         module_id: ir::ModuleId,
         func_id: ir::FuncId,
         bb_id: ir::BasicBlockId,
+        index: usize,
     ) -> ir::Module {
         if !self.config.enable_jit {
             panic!("JIT is not enabled");
         }
 
-        self.jit.instantiate_bb(module_id, func_id, bb_id)
+        self.jit.instantiate_bb(module_id, func_id, bb_id, index)
     }
 }

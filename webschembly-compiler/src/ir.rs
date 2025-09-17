@@ -318,7 +318,7 @@ impl fmt::Display for DisplayInFunc<'_, &'_ ExprCallRef> {
 pub enum Expr {
     Nop,
     InstantiateFunc(ModuleId, FuncId),
-    InstantiateBB(ModuleId, FuncId, BasicBlockId),
+    InstantiateBB(ModuleId, FuncId, BasicBlockId, LocalId /* index */),
     Bool(bool),
     Int(i64),
     String(String),
@@ -570,13 +570,14 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                     func_id.display(self.meta.meta)
                 )
             }
-            Expr::InstantiateBB(module_id, func_id, bb_id) => {
+            Expr::InstantiateBB(module_id, func_id, bb_id, index) => {
                 write!(
                     f,
-                    "instantiate_bb({}, {}, {})",
+                    "instantiate_bb({}, {}, {}, {})",
                     module_id.display(self.meta.meta),
                     func_id.display(self.meta.meta),
-                    bb_id.display(self.meta.meta)
+                    bb_id.display(self.meta.meta),
+                    index.display(self.meta),
                 )
             }
             Expr::Bool(b) => write!(f, "{}", b),

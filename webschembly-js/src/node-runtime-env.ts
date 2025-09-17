@@ -8,7 +8,7 @@ export async function createLogger({
   logDir = process.env.LOG_DIR || null,
   runtimeName = "untitled",
 }): Promise<RuntimeLogger> {
-  const logBasename = path.basename(runtimeName) + "-" + Date.now();
+  const logBasename = Date.now() + "-" + path.basename(runtimeName);
   let logFile = null;
   if (logDir !== null) {
     try {

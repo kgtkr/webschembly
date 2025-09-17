@@ -586,7 +586,7 @@ impl<'a> ModuleGenerator<'a> {
             results: vec![ValType::I32],
         });
         self.instantiate_bb_func = self.add_runtime_function("instantiate_bb", WasmFuncType {
-            params: vec![ValType::I32, ValType::I32, ValType::I32],
+            params: vec![ValType::I32, ValType::I32, ValType::I32, ValType::I32],
             results: vec![ValType::I32],
         });
 
@@ -1046,10 +1046,12 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     self.module_generator.instantiate_func_func,
                 ));
             }
-            ir::Expr::InstantiateBB(module_id, func_id, bb_id) => {
+            ir::Expr::InstantiateBB(module_id, func_id, bb_id, index_local) => {
                 function.instruction(&Instruction::I32Const(usize::from(*module_id) as i32));
                 function.instruction(&Instruction::I32Const(usize::from(*func_id) as i32));
                 function.instruction(&Instruction::I32Const(usize::from(*bb_id) as i32));
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*index_local)));
+                function.instruction(&Instruction::I32WrapI64);
                 function.instruction(&Instruction::Call(
                     self.module_generator.instantiate_bb_func,
                 ));

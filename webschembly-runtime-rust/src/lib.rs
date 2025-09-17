@@ -318,13 +318,14 @@ pub extern "C" fn instantiate_func(module_id: i32, func_id: i32) -> i32 {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn instantiate_bb(module_id: i32, func_id: i32, bb_id: i32) -> i32 {
+pub extern "C" fn instantiate_bb(module_id: i32, func_id: i32, bb_id: i32, index: i32) -> i32 {
     let (wasm, ir) = COMPILER.with(|compiler| {
         let mut compiler = compiler.borrow_mut();
         let module = compiler.instantiate_bb(
             webschembly_compiler::ir::ModuleId::from(module_id as usize),
             webschembly_compiler::ir::FuncId::from(func_id as usize),
             webschembly_compiler::ir::BasicBlockId::from(bb_id as usize),
+            index as usize,
         );
         let wasm = webschembly_compiler::wasm_generator::generate(&module);
         let ir = if cfg!(debug_assertions) {
