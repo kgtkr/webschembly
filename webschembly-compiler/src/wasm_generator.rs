@@ -933,21 +933,15 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         for arg in &self.func.args {
             is_args[*arg] = true;
         }
-        let is_args = is_args;
 
-        for (local_id, _) in
+        for local_id in
             // ローカル変数をargs, argsでない変数の順に並べる
-            self
-                .func
-                .locals
-                .iter_enumerated()
-                .filter(|(local_id, _)| is_args[*local_id])
-                .chain(
-                    self.func
-                        .locals
-                        .iter_enumerated()
-                        .filter(|(local_id, _)| !is_args[*local_id]),
-                )
+            self.func.args.iter().copied().chain(
+                self.func
+                    .locals
+                    .keys()
+                    .filter(|local_id| !is_args[*local_id]),
+            )
         {
             let idx = self.local_count;
             self.local_ids.insert(local_id, idx);
