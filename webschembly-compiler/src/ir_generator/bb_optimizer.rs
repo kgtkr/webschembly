@@ -39,6 +39,7 @@ pub fn remove_box(
     bb: BasicBlock,
     type_params: &TiVec<TypeParamId, LocalId>,
     type_args: &TiVec<TypeParamId, Option<ValType>>,
+    args: &Vec<LocalId>,
 ) -> BasicBlock {
     let mut expr_assigns = Vec::new();
 
@@ -75,7 +76,9 @@ pub fn remove_box(
 
     // 再代入されている変数の特定
     let mut assign_counts = ti_vec![0; locals.len()];
-    // TODO: 引数は1度代入されているとみなす
+    for &arg in args {
+        assign_counts[arg] += 1;
+    }
     for expr_assign in &bb.exprs {
         if let Some(local) = expr_assign.local {
             assign_counts[local] += 1;

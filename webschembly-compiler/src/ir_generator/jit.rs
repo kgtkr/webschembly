@@ -740,7 +740,13 @@ impl JitFunc {
                 next,
             }
         };
-        let new_bb = bb_optimizer::remove_box(&mut new_locals, new_bb, &ti_vec![], &ti_vec![]);
+        let new_bb = bb_optimizer::remove_box(
+            &mut new_locals,
+            new_bb,
+            &ti_vec![],
+            &ti_vec![],
+            &self.jit_bbs[bb_id].info.args,
+        );
         let mut body_func = Func {
             id: funcs.next_key(),
             args: self.jit_bbs[bb_id].info.args.len(),
