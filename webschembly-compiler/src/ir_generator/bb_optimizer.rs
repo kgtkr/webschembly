@@ -60,7 +60,6 @@ pub fn remove_box(
         }
     }
 
-    let locals = locals;
     let boxed_locals = boxed_locals;
 
     // 再代入されている変数の特定
@@ -114,7 +113,6 @@ pub fn remove_box(
                         && locals_immutability[local]
                     {
                         next_type_args[value] = Some(NextTypeArg {
-                            boxed: value,
                             unboxed: local,
                             typ,
                         });
@@ -143,11 +141,7 @@ pub fn remove_box(
             let LocalType::Type(Type::Val(typ)) = locals[unboxed] else {
                 unreachable!()
             };
-            next_type_args[boxed] = Some(NextTypeArg {
-                boxed,
-                unboxed,
-                typ,
-            });
+            next_type_args[boxed] = Some(NextTypeArg { unboxed, typ });
         }
     }
 
@@ -163,7 +157,6 @@ pub fn remove_box(
 
 #[derive(Debug, Clone, Copy)]
 pub struct NextTypeArg {
-    pub boxed: LocalId,
     pub unboxed: LocalId,
     pub typ: ValType,
 }

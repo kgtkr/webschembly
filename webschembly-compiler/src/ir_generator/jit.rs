@@ -655,7 +655,7 @@ impl JitFunc {
                             expr: Expr::GlobalGet(jit_module.func_to_globals[id]),
                         });
                         exprs.push(ExprAssign {
-                            local: local,
+                            local,
                             expr: Expr::Unbox(ValType::FuncRef, boxed_local),
                         });
                     }
@@ -672,7 +672,7 @@ impl JitFunc {
                             expr: Expr::Unbox(ValType::FuncRef, boxed_local),
                         });
                         exprs.push(ExprAssign {
-                            local: local,
+                            local,
                             expr: Expr::CallRef(ExprCallRef {
                                 func: func_ref_local,
                                 args: args.clone(),
@@ -1242,16 +1242,14 @@ impl GlobalLayout {
         if type_params.iter().all(|t| t.is_none()) {
             // 全ての型パラメータがNoneなら0を返す
             GLOBAL_LAYOUT_DEFAULT_INDEX
+        } else if let Some(&index) = self.type_params_to_index.get_by_left(type_params) {
+            index
+        } else if self.type_params_to_index.len() < GLOBAL_LAYOUT_MAX_SIZE {
+            let index = self.type_params_to_index.len();
+            self.type_params_to_index.insert(type_params.clone(), index);
+            index
         } else {
-            if let Some(&index) = self.type_params_to_index.get_by_left(type_params) {
-                index
-            } else if self.type_params_to_index.len() < GLOBAL_LAYOUT_MAX_SIZE {
-                let index = self.type_params_to_index.len();
-                self.type_params_to_index.insert(type_params.clone(), index);
-                index
-            } else {
-                GLOBAL_LAYOUT_DEFAULT_INDEX
-            }
+            GLOBAL_LAYOUT_DEFAULT_INDEX
         }
     }
 
