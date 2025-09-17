@@ -441,19 +441,13 @@ impl JitFunc {
                     ],
                     next: BasicBlockNext::TailCallRef(ExprCallRef {
                         func: func_ref_local,
-                        args: {
-                            let mut args = Vec::new();
-                            args.push(index_local);
-                            args.extend(
-                                entry_bb_info
-                                    .args
-                                    .iter()
-                                    .map(|&arg| entry_bb_info.to_original_locals_mapping[arg]),
-                            );
-                            args
-                        },
+                        args: entry_bb_info
+                            .args
+                            .iter()
+                            .map(|&arg| entry_bb_info.to_original_locals_mapping[arg])
+                            .collect(),
                         func_type: FuncType {
-                            args: entry_bb_info.arg_types_with_index(func),
+                            args: entry_bb_info.arg_types(func),
                             ret: func.ret_type,
                         },
                     })
@@ -486,12 +480,7 @@ impl JitFunc {
 
             let func = Func {
                 id: funcs.next_key(),
-                args: {
-                    let mut args = Vec::new();
-                    args.push(index_local);
-                    args.extend(jit_bb.info.args.iter());
-                    args
-                },
+                args: jit_bb.info.args.clone(),
                 ret_type: func.ret_type,
                 locals,
                 bb_entry: BasicBlockId::from(0),
@@ -561,14 +550,9 @@ impl JitFunc {
                         ],
                         next: BasicBlockNext::TailCallRef(ExprCallRef {
                             func: func_ref_local,
-                            args: {
-                                let mut args = Vec::new();
-                                args.push(index_local);
-                                args.extend(jit_bb.info.args.iter());
-                                args
-                            },
+                            args: jit_bb.info.args.clone(),
                             func_type: FuncType {
-                                args: jit_bb.info.arg_types_with_index(func),
+                                args: jit_bb.info.arg_types(func),
                                 ret: func.ret_type,
                             },
                         }),
@@ -752,14 +736,12 @@ impl JitFunc {
                 }
                 BasicBlockNext::If(cond, then_bb, else_bb) => {
                     let (then_locals_to_pass, then_type_args) = calculate_args_to_pass(
-                        index_local,
                         &self.jit_bbs[bb_id].info,
                         &self.jit_bbs[then_bb].info,
                         &next_type_args,
                     );
                     let then_index = global_layout.to_idx(&then_type_args);
                     let (else_locals_to_pass, else_type_args) = calculate_args_to_pass(
-                        index_local,
                         &self.jit_bbs[bb_id].info,
                         &self.jit_bbs[else_bb].info,
                         &next_type_args,
@@ -794,7 +776,7 @@ impl JitFunc {
                             func: func_ref_local,
                             args: then_locals_to_pass,
                             func_type: FuncType {
-                                args: self.jit_bbs[then_bb].info.arg_types_with_index(func),
+                                args: self.jit_bbs[then_bb].info.arg_types(func),
                                 ret: func.ret_type,
                             },
                         }),
@@ -828,7 +810,7 @@ impl JitFunc {
                             func: func_ref_local,
                             args: else_locals_to_pass,
                             func_type: FuncType {
-                                args: self.jit_bbs[else_bb].info.arg_types_with_index(func),
+                                args: self.jit_bbs[else_bb].info.arg_types(func),
                                 ret: func.ret_type,
                             },
                         }),
@@ -841,7 +823,6 @@ impl JitFunc {
                 }
                 BasicBlockNext::Jump(target_bb) => {
                     let (args_to_pass, type_args) = calculate_args_to_pass(
-                        index_local,
                         &self.jit_bbs[bb_id].info,
                         &self.jit_bbs[target_bb].info,
                         &next_type_args,
@@ -874,7 +855,7 @@ impl JitFunc {
                         func: func_ref_local,
                         args: args_to_pass,
                         func_type: FuncType {
-                            args: self.jit_bbs[target_bb].info.arg_types_with_index(func),
+                            args: self.jit_bbs[target_bb].info.arg_types(func),
                             ret: func.ret_type,
                         },
                     })
@@ -891,12 +872,7 @@ impl JitFunc {
 
         let mut body_func = Func {
             id: funcs.next_key(),
-            args: {
-                let mut args = Vec::new();
-                args.push(index_local);
-                args.extend(bb_info.args.iter());
-                args
-            },
+            args: bb_info.args.clone(),
             ret_type: func.ret_type,
             locals: new_locals,
             bb_entry: BasicBlockId::from(0),
@@ -1019,12 +995,6 @@ impl BBInfo {
             .collect()
     }
 
-    fn arg_types_with_index(&self, func: &Func) -> Vec<LocalType> {
-        let mut types = vec![LocalType::Type(Type::Val(ValType::Int))];
-        types.extend(self.arg_types(func));
-        types
-    }
-
     fn define_types(&self, func: &Func) -> Vec<LocalType> {
         self.defines
             .iter()
@@ -1087,7 +1057,6 @@ fn calculate_bb_info(
 }
 
 fn calculate_args_to_pass(
-    index_local: LocalId,
     caller: &BBInfo,
     callee: &BBInfo,
     caller_next_type_args: &TiVec<LocalId, Option<NextTypeArg>>,
@@ -1099,7 +1068,6 @@ fn calculate_args_to_pass(
         .collect::<FxHashMap<_, _>>();
     let mut type_args = ti_vec![None; callee.type_params.len()];
     let mut args_to_pass = Vec::new();
-    args_to_pass.push(index_local);
 
     for &callee_arg in &callee.args {
         let caller_args =
