@@ -46,6 +46,14 @@ pub fn remove_box(
 ) -> BasicBlock {
     let mut expr_assigns = Vec::new();
 
+    // ローカルをBoxed -> Typeに書き換え
+    for (type_param_id, &local) in type_params.iter_enumerated() {
+        if let Some(typ) = type_args[type_param_id] {
+            debug_assert_eq!(locals[local], LocalType::Type(Type::Boxed));
+            locals[local] = LocalType::Type(Type::Val(typ));
+        }
+    }
+
     let mut type_params_rev = ti_vec![None; locals.len()];
     for (type_param_id, &local) in type_params.iter_enumerated() {
         type_params_rev[local] = Some(type_param_id);
@@ -126,100 +134,5 @@ pub fn remove_box(
         id: bb.id,
         exprs: expr_assigns,
         next: new_next,
-    }
-}
-
-#[derive(Debug)]
-pub struct BBOptimizer {
-    type_params: TiVec<LocalId, Option<ValType>>,
-}
-
-impl BBOptimizer {
-    pub fn new(bb: &BasicBlock, type_params: TiVec<LocalId, Option<ValType>>) -> Self {
-        Self { type_params }
-    }
-
-    pub fn optimize_expr(&mut self, expr_assign: &ExprAssign) -> ExprAssign {
-        use Expr::*;
-        match *expr_assign {
-            ExprAssign {
-                local,
-                expr: ref expr @ Unbox(unbox_type, value),
-            } => {
-                // type_paramsに含まれているならUnboxを削除
-                ExprAssign {
-                    local,
-                    expr: if let Some(Some(ty)) = self.type_params.get(value) {
-                        debug_assert_eq!(&unbox_type, ty);
-                        Expr::Move(value)
-                    } else {
-                        expr.clone()
-                    },
-                }
-            }
-            ExprAssign {
-                local,
-                expr:
-                    ref expr @ (Nop
-                    | InstantiateFunc(..)
-                    | InstantiateBB(..)
-                    | Bool(..)
-                    | Int(..)
-                    | String(..)
-                    | StringToSymbol(..)
-                    | Nil
-                    | Char(..)
-                    | Vector(..)
-                    | Cons(..)
-                    | CreateMutCell(..)
-                    | DerefMutCell(..)
-                    | SetMutCell(..)
-                    | FuncRef(..)
-                    | Call(..)
-                    | CallRef(..)
-                    | Closure { .. }
-                    | Move(..)
-                    | Box(..)
-                    | ClosureEnv(..)
-                    | ClosureFuncRef(..)
-                    | GlobalSet(..)
-                    | GlobalGet(..)
-                    | Error(..)
-                    | InitModule
-                    | Display(..)
-                    | Add(..)
-                    | Sub(..)
-                    | Mul(..)
-                    | Div(..)
-                    | WriteChar(..)
-                    | IsPair(..)
-                    | IsSymbol(..)
-                    | IsString(..)
-                    | IsNumber(..)
-                    | IsBoolean(..)
-                    | IsProcedure(..)
-                    | IsChar(..)
-                    | IsVector(..)
-                    | VectorLength(..)
-                    | VectorRef(..)
-                    | VectorSet(..)
-                    | Eq(..)
-                    | Not(..)
-                    | Car(..)
-                    | Cdr(..)
-                    | SymbolToString(..)
-                    | NumberToString(..)
-                    | EqNum(..)
-                    | Lt(..)
-                    | Gt(..)
-                    | Le(..)
-                    | Ge(..)
-                    | Args(..)
-                    | ArgsRef(..)),
-            } => ExprAssign {
-                local,
-                expr: expr.clone(),
-            },
-        }
     }
 }

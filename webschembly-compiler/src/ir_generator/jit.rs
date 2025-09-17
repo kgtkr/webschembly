@@ -1,9 +1,9 @@
 use rustc_hash::{FxHashMap, FxHashSet};
 use typed_index_collections::{TiVec, ti_vec};
 
+use super::bb_optimizer;
 use crate::ir::*;
-use crate::ir_generator::bb_optimizer::BBOptimizer;
-use crate::ir_generator::{GlobalManager, bb_optimizer};
+use crate::ir_generator::GlobalManager;
 
 #[derive(Debug)]
 pub struct Jit {
@@ -594,62 +594,28 @@ impl JitFunc {
         let boxed_func_ref = LocalId::from(local_offset);
         let func_ref: LocalId = LocalId::from(local_offset + 1);
         let mut extra_bbs = Vec::new();
-        let mut body_func = Func {
-            id: funcs.next_key(),
-            args: self.jit_bbs[bb_id].info.args.len(),
-            ret_type: func.ret_type,
-            locals: new_locals,
-            bb_entry: BasicBlockId::from(0),
-            bbs: ti_vec![{
-                let mut exprs = Vec::new();
-                let mut bb_optimizer = BBOptimizer::new(&bb, ti_vec![None; local_offset]);
-                for expr in bb.exprs.iter() {
-                    // FuncRefとCall命令はget global命令に置き換えられる
-                    match bb_optimizer.optimize_expr(expr) {
-                        ExprAssign {
-                            local,
-                            expr: Expr::FuncRef(id),
-                        } => {
-                            exprs.push(ExprAssign {
-                                local: Some(boxed_func_ref),
-                                expr: Expr::GlobalGet(jit_module.func_to_globals[id]),
-                            });
-                            exprs.push(ExprAssign {
-                                local: local,
-                                expr: Expr::Unbox(ValType::FuncRef, boxed_func_ref),
-                            });
-                        }
-                        ExprAssign {
-                            local,
-                            expr: Expr::Call(ExprCall { func_id, args }),
-                        } => {
-                            exprs.push(ExprAssign {
-                                local: Some(boxed_func_ref),
-                                expr: Expr::GlobalGet(jit_module.func_to_globals[func_id]),
-                            });
-                            exprs.push(ExprAssign {
-                                local: Some(func_ref),
-                                expr: Expr::Unbox(ValType::FuncRef, boxed_func_ref),
-                            });
-                            exprs.push(ExprAssign {
-                                local: local,
-                                expr: Expr::CallRef(ExprCallRef {
-                                    func: func_ref,
-                                    args: args,
-                                    func_type: module.funcs[func_id].func_type(),
-                                }),
-                            });
-                        }
-                        expr => {
-                            exprs.push(expr);
-                        }
+        let new_bb = {
+            let mut exprs = Vec::new();
+            for expr in bb.exprs.iter() {
+                // FuncRefとCall命令はget global命令に置き換えられる
+                match *expr {
+                    ExprAssign {
+                        local,
+                        expr: Expr::FuncRef(id),
+                    } => {
+                        exprs.push(ExprAssign {
+                            local: Some(boxed_func_ref),
+                            expr: Expr::GlobalGet(jit_module.func_to_globals[id]),
+                        });
+                        exprs.push(ExprAssign {
+                            local: local,
+                            expr: Expr::Unbox(ValType::FuncRef, boxed_func_ref),
+                        });
                     }
-                }
-
-                // nextがtail callならexpr::callと同じようにget globalに置き換える
-                // nextがif/jumpなら、BBに対応する関数へのジャンプに置き換える
-                let next = match bb.next {
-                    BasicBlockNext::TailCall(ExprCall { func_id, ref args }) => {
+                    ExprAssign {
+                        local,
+                        expr: Expr::Call(ExprCall { func_id, ref args }),
+                    } => {
                         exprs.push(ExprAssign {
                             local: Some(boxed_func_ref),
                             expr: Expr::GlobalGet(jit_module.func_to_globals[func_id]),
@@ -658,101 +624,66 @@ impl JitFunc {
                             local: Some(func_ref),
                             expr: Expr::Unbox(ValType::FuncRef, boxed_func_ref),
                         });
-                        BasicBlockNext::TailCallRef(ExprCallRef {
-                            func: func_ref,
-                            args: args.clone(),
-                            func_type: module.funcs[func_id].func_type(),
-                        })
-                    }
-                    BasicBlockNext::If(cond, then_bb, else_bb) => {
-                        let then_locals_to_pass = calculate_args_to_pass(
-                            &self.jit_bbs[bb_id].info,
-                            &self.jit_bbs[then_bb].info,
-                        );
-                        let else_locals_to_pass = calculate_args_to_pass(
-                            &self.jit_bbs[bb_id].info,
-                            &self.jit_bbs[else_bb].info,
-                        );
-
-                        let then_bb_new = BasicBlock {
-                            id: BasicBlockId::from(1),
-                            exprs: vec![
-                                ExprAssign {
-                                    local: Some(boxed_func_ref),
-                                    expr: Expr::GlobalGet(self.jit_bbs[then_bb].global),
-                                },
-                                ExprAssign {
-                                    local: Some(func_ref),
-                                    expr: Expr::Unbox(ValType::FuncRef, boxed_func_ref),
-                                },
-                            ],
-                            next: BasicBlockNext::TailCallRef(ExprCallRef {
-                                func: func_ref,
-                                args: then_locals_to_pass,
-                                func_type: FuncType {
-                                    args: self.jit_bbs[then_bb]
-                                        .info
-                                        .args
-                                        .iter()
-                                        .map(|&arg| func.locals[arg])
-                                        .collect::<Vec<_>>(),
-                                    ret: func.ret_type,
-                                },
-                            }),
-                        };
-
-                        let else_bb_new = BasicBlock {
-                            id: BasicBlockId::from(2),
-                            exprs: vec![
-                                ExprAssign {
-                                    local: Some(boxed_func_ref),
-                                    expr: Expr::GlobalGet(self.jit_bbs[else_bb].global),
-                                },
-                                ExprAssign {
-                                    local: Some(func_ref),
-                                    expr: Expr::Unbox(ValType::FuncRef, boxed_func_ref),
-                                },
-                            ],
-                            next: BasicBlockNext::TailCallRef(ExprCallRef {
-                                func: func_ref,
-                                args: else_locals_to_pass,
-                                func_type: FuncType {
-                                    args: self.jit_bbs[else_bb]
-                                        .info
-                                        .args
-                                        .iter()
-                                        .map(|&arg| func.locals[arg])
-                                        .collect::<Vec<_>>(),
-                                    ret: func.ret_type,
-                                },
-                            }),
-                        };
-
-                        extra_bbs.push(then_bb_new);
-                        extra_bbs.push(else_bb_new);
-
-                        BasicBlockNext::If(cond, BasicBlockId::from(1), BasicBlockId::from(2))
-                    }
-                    BasicBlockNext::Jump(target_bb) => {
-                        let args_to_pass = calculate_args_to_pass(
-                            &self.jit_bbs[bb_id].info,
-                            &self.jit_bbs[target_bb].info,
-                        );
-
                         exprs.push(ExprAssign {
-                            local: Some(boxed_func_ref),
-                            expr: Expr::GlobalGet(self.jit_bbs[target_bb].global),
+                            local: local,
+                            expr: Expr::CallRef(ExprCallRef {
+                                func: func_ref,
+                                args: args.clone(),
+                                func_type: module.funcs[func_id].func_type(),
+                            }),
                         });
-                        exprs.push(ExprAssign {
-                            local: Some(func_ref),
-                            expr: Expr::Unbox(ValType::FuncRef, boxed_func_ref),
-                        });
+                    }
+                    ref expr => {
+                        exprs.push(expr.clone());
+                    }
+                }
+            }
 
-                        BasicBlockNext::TailCallRef(ExprCallRef {
+            // nextがtail callならexpr::callと同じようにget globalに置き換える
+            // nextがif/jumpなら、BBに対応する関数へのジャンプに置き換える
+            let next = match bb.next {
+                BasicBlockNext::TailCall(ExprCall { func_id, ref args }) => {
+                    exprs.push(ExprAssign {
+                        local: Some(boxed_func_ref),
+                        expr: Expr::GlobalGet(jit_module.func_to_globals[func_id]),
+                    });
+                    exprs.push(ExprAssign {
+                        local: Some(func_ref),
+                        expr: Expr::Unbox(ValType::FuncRef, boxed_func_ref),
+                    });
+                    BasicBlockNext::TailCallRef(ExprCallRef {
+                        func: func_ref,
+                        args: args.clone(),
+                        func_type: module.funcs[func_id].func_type(),
+                    })
+                }
+                BasicBlockNext::If(cond, then_bb, else_bb) => {
+                    let then_locals_to_pass = calculate_args_to_pass(
+                        &self.jit_bbs[bb_id].info,
+                        &self.jit_bbs[then_bb].info,
+                    );
+                    let else_locals_to_pass = calculate_args_to_pass(
+                        &self.jit_bbs[bb_id].info,
+                        &self.jit_bbs[else_bb].info,
+                    );
+
+                    let then_bb_new = BasicBlock {
+                        id: BasicBlockId::from(1),
+                        exprs: vec![
+                            ExprAssign {
+                                local: Some(boxed_func_ref),
+                                expr: Expr::GlobalGet(self.jit_bbs[then_bb].global),
+                            },
+                            ExprAssign {
+                                local: Some(func_ref),
+                                expr: Expr::Unbox(ValType::FuncRef, boxed_func_ref),
+                            },
+                        ],
+                        next: BasicBlockNext::TailCallRef(ExprCallRef {
                             func: func_ref,
-                            args: args_to_pass,
+                            args: then_locals_to_pass,
                             func_type: FuncType {
-                                args: self.jit_bbs[target_bb]
+                                args: self.jit_bbs[then_bb]
                                     .info
                                     .args
                                     .iter()
@@ -760,19 +691,87 @@ impl JitFunc {
                                     .collect::<Vec<_>>(),
                                 ret: func.ret_type,
                             },
-                        })
-                    }
-                    next @ (BasicBlockNext::TailCallRef(_) | BasicBlockNext::Return(_)) => {
-                        next.clone()
-                    }
-                };
+                        }),
+                    };
 
-                BasicBlock {
-                    id: BasicBlockId::from(0),
-                    exprs,
-                    next,
+                    let else_bb_new = BasicBlock {
+                        id: BasicBlockId::from(2),
+                        exprs: vec![
+                            ExprAssign {
+                                local: Some(boxed_func_ref),
+                                expr: Expr::GlobalGet(self.jit_bbs[else_bb].global),
+                            },
+                            ExprAssign {
+                                local: Some(func_ref),
+                                expr: Expr::Unbox(ValType::FuncRef, boxed_func_ref),
+                            },
+                        ],
+                        next: BasicBlockNext::TailCallRef(ExprCallRef {
+                            func: func_ref,
+                            args: else_locals_to_pass,
+                            func_type: FuncType {
+                                args: self.jit_bbs[else_bb]
+                                    .info
+                                    .args
+                                    .iter()
+                                    .map(|&arg| func.locals[arg])
+                                    .collect::<Vec<_>>(),
+                                ret: func.ret_type,
+                            },
+                        }),
+                    };
+
+                    extra_bbs.push(then_bb_new);
+                    extra_bbs.push(else_bb_new);
+
+                    BasicBlockNext::If(cond, BasicBlockId::from(1), BasicBlockId::from(2))
                 }
-            }],
+                BasicBlockNext::Jump(target_bb) => {
+                    let args_to_pass = calculate_args_to_pass(
+                        &self.jit_bbs[bb_id].info,
+                        &self.jit_bbs[target_bb].info,
+                    );
+
+                    exprs.push(ExprAssign {
+                        local: Some(boxed_func_ref),
+                        expr: Expr::GlobalGet(self.jit_bbs[target_bb].global),
+                    });
+                    exprs.push(ExprAssign {
+                        local: Some(func_ref),
+                        expr: Expr::Unbox(ValType::FuncRef, boxed_func_ref),
+                    });
+
+                    BasicBlockNext::TailCallRef(ExprCallRef {
+                        func: func_ref,
+                        args: args_to_pass,
+                        func_type: FuncType {
+                            args: self.jit_bbs[target_bb]
+                                .info
+                                .args
+                                .iter()
+                                .map(|&arg| func.locals[arg])
+                                .collect::<Vec<_>>(),
+                            ret: func.ret_type,
+                        },
+                    })
+                }
+                next @ (BasicBlockNext::TailCallRef(_) | BasicBlockNext::Return(_)) => next.clone(),
+            };
+
+            BasicBlock {
+                id: BasicBlockId::from(0),
+                exprs,
+                next,
+            }
+        };
+        let new_bb = bb_optimizer::remove_box(&mut new_locals, new_bb, &ti_vec![], &ti_vec![]);
+        let mut body_func = Func {
+            id: funcs.next_key(),
+            args: self.jit_bbs[bb_id].info.args.len(),
+            ret_type: func.ret_type,
+            locals: new_locals,
+            bb_entry: BasicBlockId::from(0),
+            bbs: ti_vec![new_bb],
             jit_strategy: FuncJitStrategy::Never,
         };
 
