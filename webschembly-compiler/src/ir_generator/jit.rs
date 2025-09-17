@@ -459,7 +459,7 @@ impl JitFunc {
         funcs.push(body_func);
 
         for jit_bb in self.jit_bbs.iter() {
-            let func = self.generate_bb_stub_func(
+            let func = Self::generate_bb_stub_func(
                 global_layout,
                 jit_module,
                 jit_bb,
@@ -483,7 +483,6 @@ impl JitFunc {
     }
 
     fn generate_bb_stub_func(
-        &self,
         global_layout: &GlobalLayout,
         jit_module: &JitModule,
         jit_bb: &JitBB,
@@ -588,7 +587,7 @@ impl JitFunc {
                         func: func_ref_local,
                         args: jit_bb.info.args.clone(),
                         func_type: FuncType {
-                            args: jit_bb.info.arg_types(func),
+                            args: jit_bb.info.arg_types_(func, type_args),
                             ret: func.ret_type,
                         },
                     }),
@@ -605,68 +604,13 @@ impl JitFunc {
         index: usize,
         global_layout: &mut GlobalLayout,
     ) -> Module {
+        let mut required_stubs = Vec::new();
+
         let module = &jit_module.module;
         let func = &module.funcs[self.func_id];
         let mut bb = func.bbs[bb_id].clone();
 
         let mut funcs = TiVec::new();
-
-        let entry_func = {
-            let mut locals = TiVec::new();
-            let func_ref_local =
-                locals.push_and_get_key(LocalType::Type(Type::Val(ValType::FuncRef)));
-            let boxed_local = locals.push_and_get_key(LocalType::Type(Type::Boxed));
-            let vector_local = locals.push_and_get_key(LocalType::Type(Type::Val(ValType::Vector)));
-            let index_local = locals.push_and_get_key(LocalType::Type(Type::Val(ValType::Int)));
-
-            Func {
-                id: funcs.next_key(),
-                args: vec![],
-                ret_type: LocalType::Type(Type::Val(ValType::FuncRef)), // TODO: Nilでも返したほうがよさそう
-                locals,
-                bb_entry: BasicBlockId::from(0),
-                bbs: ti_vec![BasicBlock {
-                    id: BasicBlockId::from(0),
-                    exprs: {
-                        let mut exprs = Vec::new();
-                        exprs.extend([
-                            ExprAssign {
-                                local: None,
-                                expr: Expr::InitModule,
-                            },
-                            ExprAssign {
-                                local: Some(index_local),
-                                expr: Expr::Int(index as i64),
-                            },
-                            ExprAssign {
-                                local: Some(boxed_local),
-                                expr: Expr::GlobalGet(self.jit_bbs[bb_id].global),
-                            },
-                            ExprAssign {
-                                local: Some(vector_local),
-                                expr: Expr::Unbox(ValType::Vector, boxed_local),
-                            },
-                            ExprAssign {
-                                local: Some(func_ref_local),
-                                expr: Expr::FuncRef(FuncId::from(1)),
-                            },
-                            ExprAssign {
-                                local: Some(boxed_local),
-                                expr: Expr::Box(ValType::FuncRef, func_ref_local),
-                            },
-                            ExprAssign {
-                                local: None,
-                                expr: Expr::VectorSet(vector_local, index_local, boxed_local),
-                            },
-                        ]);
-                        exprs
-                    },
-                    next: BasicBlockNext::Return(func_ref_local),
-                },],
-                jit_strategy: FuncJitStrategy::Never,
-            }
-        };
-        funcs.push(entry_func);
 
         let mut new_locals = TiVec::new();
         let bb_info = &self.jit_bbs[bb_id].info;
@@ -764,12 +708,14 @@ impl JitFunc {
                         &next_type_args,
                     );
                     let then_index = global_layout.to_idx(&then_type_args);
+                    required_stubs.push((then_bb, then_index));
                     let (else_locals_to_pass, else_type_args) = calculate_args_to_pass(
                         &self.jit_bbs[bb_id].info,
                         &self.jit_bbs[else_bb].info,
                         &next_type_args,
                     );
                     let else_index = global_layout.to_idx(&else_type_args);
+                    required_stubs.push((else_bb, else_index));
 
                     let then_bb_new = BasicBlock {
                         id: BasicBlockId::from(1),
@@ -851,6 +797,7 @@ impl JitFunc {
                         &next_type_args,
                     );
                     let target_index = global_layout.to_idx(&type_args);
+                    required_stubs.push((target_bb, target_index));
 
                     exprs.push(ExprAssign {
                         local: Some(boxed_local),
@@ -904,13 +851,162 @@ impl JitFunc {
         };
 
         body_func.bbs.extend(extra_bbs);
-
+        let body_func_id = body_func.id;
         funcs.push(body_func);
+
+        let required_stubs = required_stubs
+            .iter()
+            .filter(|(_, index)| *index != GLOBAL_LAYOUT_DEFAULT_INDEX)
+            .map(|&(bb_id, index)| {
+                let bb_stub_func_id = funcs.next_key();
+                let func = Self::generate_bb_stub_func(
+                    global_layout,
+                    jit_module,
+                    &self.jit_bbs[bb_id],
+                    func,
+                    bb_stub_func_id,
+                    index,
+                );
+                funcs.push(func);
+                (bb_id, index, bb_stub_func_id)
+            })
+            .collect::<Vec<_>>();
+
+        let entry_func = {
+            let mut locals = TiVec::new();
+            let func_ref_local =
+                locals.push_and_get_key(LocalType::Type(Type::Val(ValType::FuncRef)));
+            let boxed_local = locals.push_and_get_key(LocalType::Type(Type::Boxed));
+            let vector_local = locals.push_and_get_key(LocalType::Type(Type::Val(ValType::Vector)));
+            let index_local = locals.push_and_get_key(LocalType::Type(Type::Val(ValType::Int)));
+            let bool_local = locals.push_and_get_key(LocalType::Type(Type::Val(ValType::Bool)));
+            let boxed_stub0_local = locals.push_and_get_key(LocalType::Type(Type::Boxed));
+
+            let mut bbs = TiVec::new();
+
+            bbs.push(BasicBlock {
+                id: BasicBlockId::from(0),
+                exprs: vec![
+                    ExprAssign {
+                        local: None,
+                        expr: Expr::InitModule,
+                    },
+                    ExprAssign {
+                        local: Some(index_local),
+                        expr: Expr::Int(index as i64),
+                    },
+                    ExprAssign {
+                        local: Some(boxed_local),
+                        expr: Expr::GlobalGet(self.jit_bbs[bb_id].global),
+                    },
+                    ExprAssign {
+                        local: Some(vector_local),
+                        expr: Expr::Unbox(ValType::Vector, boxed_local),
+                    },
+                    ExprAssign {
+                        local: Some(func_ref_local),
+                        expr: Expr::FuncRef(body_func_id),
+                    },
+                    ExprAssign {
+                        local: Some(boxed_local),
+                        expr: Expr::Box(ValType::FuncRef, func_ref_local),
+                    },
+                    ExprAssign {
+                        local: None,
+                        expr: Expr::VectorSet(vector_local, index_local, boxed_local),
+                    },
+                ],
+                next: BasicBlockNext::Jump(BasicBlockId::from(1)),
+            });
+
+            /*
+            bbX_ref = get_global bbX_ref_global
+            if bbX_ref[0] != bbX_ref[index]
+                bbX_ref[index] = box(stub_func)
+            */
+
+            for &(bb_id, index, stub_func_id) in required_stubs.iter() {
+                let cond_bb_id = BasicBlockId::from(bbs.len());
+                let then_bb_id = BasicBlockId::from(bbs.len() + 1);
+                let next_bb_id = BasicBlockId::from(bbs.len() + 2);
+
+                bbs.push(BasicBlock {
+                    id: cond_bb_id,
+                    exprs: vec![
+                        ExprAssign {
+                            local: Some(boxed_local),
+                            expr: Expr::GlobalGet(self.jit_bbs[bb_id].global),
+                        },
+                        ExprAssign {
+                            local: Some(vector_local),
+                            expr: Expr::Unbox(ValType::Vector, boxed_local),
+                        },
+                        ExprAssign {
+                            local: Some(index_local),
+                            expr: Expr::Int(GLOBAL_LAYOUT_DEFAULT_INDEX as i64),
+                        },
+                        ExprAssign {
+                            local: Some(boxed_stub0_local),
+                            expr: Expr::VectorRef(vector_local, index_local),
+                        },
+                        ExprAssign {
+                            local: Some(index_local),
+                            expr: Expr::Int(index as i64),
+                        },
+                        ExprAssign {
+                            local: Some(boxed_local),
+                            expr: Expr::VectorRef(vector_local, index_local),
+                        },
+                        ExprAssign {
+                            local: Some(bool_local),
+                            expr: Expr::Eq(boxed_stub0_local, boxed_local),
+                        },
+                    ],
+                    next: BasicBlockNext::If(bool_local, then_bb_id, next_bb_id),
+                });
+                bbs.push(BasicBlock {
+                    id: then_bb_id,
+                    exprs: vec![
+                        ExprAssign {
+                            local: Some(boxed_local),
+                            expr: Expr::FuncRef(stub_func_id),
+                        },
+                        ExprAssign {
+                            local: Some(boxed_local),
+                            expr: Expr::Box(ValType::FuncRef, boxed_local),
+                        },
+                        ExprAssign {
+                            local: None,
+                            expr: Expr::VectorSet(vector_local, index_local, boxed_local),
+                        },
+                    ],
+                    next: BasicBlockNext::Jump(next_bb_id),
+                });
+            }
+
+            bbs.push(BasicBlock {
+                id: bbs.next_key(),
+                exprs: vec![],
+                next: BasicBlockNext::Return(func_ref_local),
+            });
+
+            Func {
+                id: funcs.next_key(),
+                args: vec![],
+                ret_type: LocalType::Type(Type::Val(ValType::FuncRef)), // TODO: Nilでも返したほうがよさそう
+                locals,
+                bb_entry: BasicBlockId::from(0),
+                bbs,
+                jit_strategy: FuncJitStrategy::Never,
+            }
+        };
+        let entry_func_id = entry_func.id;
+        funcs.push(entry_func);
 
         Module {
             globals: self.globals.clone(),
             funcs,
-            entry: FuncId::from(0),
+            entry: entry_func_id,
             meta: Meta {
                 // TODO:
                 local_metas: FxHashMap::default(),
