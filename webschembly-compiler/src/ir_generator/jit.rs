@@ -524,7 +524,7 @@ impl JitFunc {
                         },
                         ExprAssign {
                             local: Some(stub_local),
-                            expr: Expr::FuncRef(FuncId::from(2 + usize::from(jit_bb.bb_id))),
+                            expr: Expr::FuncRef(id),
                         },
                         ExprAssign {
                             local: Some(bool_local),
