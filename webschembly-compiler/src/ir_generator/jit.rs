@@ -263,8 +263,7 @@ impl JitModule {
 #[derive(Debug)]
 struct JitFunc {
     func_id: FuncId,
-    bb_to_globals: TiVec<BasicBlockId, GlobalId>,
-    bb_infos: TiVec<BasicBlockId, BBInfo>,
+    jit_bbs: TiVec<BasicBlockId, JitBB>,
     globals: FxHashSet<GlobalId>,
 }
 
@@ -288,8 +287,15 @@ impl JitFunc {
 
         Self {
             func_id,
-            bb_to_globals,
-            bb_infos,
+            jit_bbs: func
+                .bbs
+                .iter()
+                .map(|bb| JitBB {
+                    bb_id: bb.id,
+                    global: bb_to_globals[bb.id],
+                    info: bb_infos[bb.id].clone(),
+                })
+                .collect::<TiVec<BasicBlockId, _>>(),
             globals,
         }
     }
@@ -340,10 +346,10 @@ impl JitFunc {
                             ),
                         },
                     ]);
-                    for (bb_id, &bb_global) in self.bb_to_globals.iter_enumerated() {
+                    for jit_bb in self.jit_bbs.iter() {
                         exprs.push(ExprAssign {
                             local: Some(LocalId::from(0)),
-                            expr: Expr::FuncRef(FuncId::from(2 + usize::from(bb_id))),
+                            expr: Expr::FuncRef(FuncId::from(2 + usize::from(jit_bb.bb_id))),
                         });
                         exprs.push(ExprAssign {
                             local: Some(LocalId::from(1)),
@@ -351,7 +357,7 @@ impl JitFunc {
                         });
                         exprs.push(ExprAssign {
                             local: None,
-                            expr: Expr::GlobalSet(bb_global, LocalId::from(1)),
+                            expr: Expr::GlobalSet(jit_bb.global, LocalId::from(1)),
                         });
                     }
                     exprs
@@ -385,7 +391,7 @@ impl JitFunc {
                 exprs: vec![
                     ExprAssign {
                         local: Some(LocalId::from(func.args)),
-                        expr: Expr::GlobalGet(self.bb_to_globals[func.bb_entry]),
+                        expr: Expr::GlobalGet(self.jit_bbs[func.bb_entry].global),
                     },
                     ExprAssign {
                         local: Some(LocalId::from(func.args + 1)),
@@ -394,9 +400,10 @@ impl JitFunc {
                 ],
                 next: BasicBlockNext::TailCallRef(ExprCallRef {
                     func: LocalId::from(func.args + 1),
-                    args: self.bb_infos[func.bb_entry].args.clone(),
+                    args: self.jit_bbs[func.bb_entry].info.args.clone(),
                     func_type: FuncType {
-                        args: self.bb_infos[func.bb_entry]
+                        args: self.jit_bbs[func.bb_entry]
+                            .info
                             .args
                             .iter()
                             .map(|&arg| func.locals[arg])
@@ -410,7 +417,7 @@ impl JitFunc {
 
         funcs.push(body_func);
 
-        for (bb_id, &bb_global) in self.bb_to_globals.iter_enumerated() {
+        for (bb_id, jit_bb) in self.jit_bbs.iter_enumerated() {
             /*
             func bb0_stub(...) {
                 if bb0_ref == bb0_stub
@@ -419,9 +426,8 @@ impl JitFunc {
                 bb0(...)
             }
             */
-            let bb_info = &self.bb_infos[bb_id];
             let mut locals = TiVec::new();
-            locals.extend(bb_info.args.iter().map(|&arg| func.locals[arg]));
+            locals.extend(jit_bb.info.args.iter().map(|&arg| func.locals[arg]));
             locals.extend([
                 func.ret_type(),
                 LocalType::Type(Type::Boxed), // boxed bb0_ref
@@ -432,7 +438,7 @@ impl JitFunc {
 
             let func = Func {
                 id: funcs.next_key(),
-                args: bb_info.args.len(),
+                args: jit_bb.info.args.len(),
                 ret_type: func.ret_type,
                 locals,
                 bb_entry: BasicBlockId::from(0),
@@ -441,23 +447,23 @@ impl JitFunc {
                         id: BasicBlockId::from(0),
                         exprs: vec![
                             ExprAssign {
-                                local: Some(LocalId::from(bb_info.args.len() + 1)),
-                                expr: Expr::GlobalGet(bb_global),
+                                local: Some(LocalId::from(jit_bb.info.args.len() + 1)),
+                                expr: Expr::GlobalGet(jit_bb.global),
                             },
                             ExprAssign {
-                                local: Some(LocalId::from(bb_info.args.len() + 3)),
+                                local: Some(LocalId::from(jit_bb.info.args.len() + 3)),
                                 expr: Expr::FuncRef(FuncId::from(2 + usize::from(bb_id))),
                             },
                             ExprAssign {
-                                local: Some(LocalId::from(bb_info.args.len() + 4)),
+                                local: Some(LocalId::from(jit_bb.info.args.len() + 4)),
                                 expr: Expr::Eq(
-                                    LocalId::from(bb_info.args.len() + 1),
-                                    LocalId::from(bb_info.args.len() + 3),
+                                    LocalId::from(jit_bb.info.args.len() + 1),
+                                    LocalId::from(jit_bb.info.args.len() + 3),
                                 ),
                             },
                         ],
                         next: BasicBlockNext::If(
-                            LocalId::from(bb_info.args.len() + 4),
+                            LocalId::from(jit_bb.info.args.len() + 4),
                             BasicBlockId::from(1),
                             BasicBlockId::from(2),
                         ),
@@ -474,24 +480,25 @@ impl JitFunc {
                         id: BasicBlockId::from(2),
                         exprs: vec![
                             ExprAssign {
-                                local: Some(LocalId::from(bb_info.args.len() + 1)),
-                                expr: Expr::GlobalGet(bb_global),
+                                local: Some(LocalId::from(jit_bb.info.args.len() + 1)),
+                                expr: Expr::GlobalGet(jit_bb.global),
                             },
                             ExprAssign {
-                                local: Some(LocalId::from(bb_info.args.len() + 2)),
+                                local: Some(LocalId::from(jit_bb.info.args.len() + 2)),
                                 expr: Expr::Unbox(
                                     ValType::FuncRef,
-                                    LocalId::from(bb_info.args.len() + 1),
+                                    LocalId::from(jit_bb.info.args.len() + 1),
                                 ),
                             }
                         ],
                         next: BasicBlockNext::TailCallRef(ExprCallRef {
-                            func: LocalId::from(bb_info.args.len() + 2),
-                            args: (0..bb_info.args.len())
+                            func: LocalId::from(jit_bb.info.args.len() + 2),
+                            args: (0..jit_bb.info.args.len())
                                 .map(LocalId::from)
                                 .collect::<Vec<_>>(),
                             func_type: FuncType {
-                                args: bb_info
+                                args: jit_bb
+                                    .info
                                     .args
                                     .iter()
                                     .map(|&arg| func.locals[arg])
@@ -522,7 +529,6 @@ impl JitFunc {
         let module = &jit_module.module;
         let func = &module.funcs[self.func_id];
         let mut bb = func.bbs[bb_id].clone();
-        let bb_info = &self.bb_infos[bb_id];
 
         let mut funcs = TiVec::new();
 
@@ -554,7 +560,7 @@ impl JitFunc {
                         },
                         ExprAssign {
                             local: None,
-                            expr: Expr::GlobalSet(self.bb_to_globals[bb.id], LocalId::from(1)),
+                            expr: Expr::GlobalSet(self.jit_bbs[bb.id].global, LocalId::from(1)),
                         },
                     ]);
                     exprs
@@ -567,16 +573,16 @@ impl JitFunc {
 
         let mut new_locals = TiVec::new();
 
-        for &arg in &bb_info.args {
+        for &arg in &self.jit_bbs[bb_id].info.args {
             new_locals.push(func.locals[arg]);
         }
 
-        for &define in &bb_info.defines {
+        for &define in &self.jit_bbs[bb_id].info.defines {
             new_locals.push(func.locals[define]);
         }
 
         for (local_id, _) in bb.local_usages_mut() {
-            *local_id = bb_info.locals_mapping[local_id];
+            *local_id = self.jit_bbs[bb_id].info.locals_mapping[local_id];
         }
 
         let local_offset = new_locals.len();
@@ -589,7 +595,7 @@ impl JitFunc {
         let mut extra_bbs = Vec::new();
         let mut body_func = Func {
             id: funcs.next_key(),
-            args: bb_info.args.len(),
+            args: self.jit_bbs[bb_id].info.args.len(),
             ret_type: func.ret_type,
             locals: new_locals,
             bb_entry: BasicBlockId::from(0),
@@ -632,6 +638,8 @@ impl JitFunc {
                     }
                 }
 
+                // nextがtail callならexpr::callと同じようにget globalに置き換える
+                // nextがif/jumpなら、BBに対応する関数へのジャンプに置き換える
                 let next = match bb.next {
                     BasicBlockNext::TailCall(ExprCall { func_id, ref args }) => {
                         exprs.push(ExprAssign {
@@ -649,17 +657,21 @@ impl JitFunc {
                         })
                     }
                     BasicBlockNext::If(cond, then_bb, else_bb) => {
-                        let then_locals_to_pass =
-                            calculate_args_to_pass(bb_info, &self.bb_infos[then_bb]);
-                        let else_locals_to_pass =
-                            calculate_args_to_pass(bb_info, &self.bb_infos[else_bb]);
+                        let then_locals_to_pass = calculate_args_to_pass(
+                            &self.jit_bbs[bb_id].info,
+                            &self.jit_bbs[then_bb].info,
+                        );
+                        let else_locals_to_pass = calculate_args_to_pass(
+                            &self.jit_bbs[bb_id].info,
+                            &self.jit_bbs[else_bb].info,
+                        );
 
                         let then_bb_new = BasicBlock {
                             id: BasicBlockId::from(1),
                             exprs: vec![
                                 ExprAssign {
                                     local: Some(boxed_func_ref),
-                                    expr: Expr::GlobalGet(self.bb_to_globals[then_bb]),
+                                    expr: Expr::GlobalGet(self.jit_bbs[then_bb].global),
                                 },
                                 ExprAssign {
                                     local: Some(func_ref),
@@ -670,7 +682,8 @@ impl JitFunc {
                                 func: func_ref,
                                 args: then_locals_to_pass,
                                 func_type: FuncType {
-                                    args: self.bb_infos[then_bb]
+                                    args: self.jit_bbs[then_bb]
+                                        .info
                                         .args
                                         .iter()
                                         .map(|&arg| func.locals[arg])
@@ -685,7 +698,7 @@ impl JitFunc {
                             exprs: vec![
                                 ExprAssign {
                                     local: Some(boxed_func_ref),
-                                    expr: Expr::GlobalGet(self.bb_to_globals[else_bb]),
+                                    expr: Expr::GlobalGet(self.jit_bbs[else_bb].global),
                                 },
                                 ExprAssign {
                                     local: Some(func_ref),
@@ -696,7 +709,8 @@ impl JitFunc {
                                 func: func_ref,
                                 args: else_locals_to_pass,
                                 func_type: FuncType {
-                                    args: self.bb_infos[else_bb]
+                                    args: self.jit_bbs[else_bb]
+                                        .info
                                         .args
                                         .iter()
                                         .map(|&arg| func.locals[arg])
@@ -712,12 +726,14 @@ impl JitFunc {
                         BasicBlockNext::If(cond, BasicBlockId::from(1), BasicBlockId::from(2))
                     }
                     BasicBlockNext::Jump(target_bb) => {
-                        let args_to_pass =
-                            calculate_args_to_pass(bb_info, &self.bb_infos[target_bb]);
+                        let args_to_pass = calculate_args_to_pass(
+                            &self.jit_bbs[bb_id].info,
+                            &self.jit_bbs[target_bb].info,
+                        );
 
                         exprs.push(ExprAssign {
                             local: Some(boxed_func_ref),
-                            expr: Expr::GlobalGet(self.bb_to_globals[target_bb]),
+                            expr: Expr::GlobalGet(self.jit_bbs[target_bb].global),
                         });
                         exprs.push(ExprAssign {
                             local: Some(func_ref),
@@ -728,7 +744,8 @@ impl JitFunc {
                             func: func_ref,
                             args: args_to_pass,
                             func_type: FuncType {
-                                args: self.bb_infos[target_bb]
+                                args: self.jit_bbs[target_bb]
+                                    .info
                                     .args
                                     .iter()
                                     .map(|&arg| func.locals[arg])
@@ -766,6 +783,13 @@ impl JitFunc {
             },
         }
     }
+}
+
+#[derive(Debug)]
+struct JitBB {
+    bb_id: BasicBlockId,
+    global: GlobalId,
+    info: BBInfo,
 }
 
 #[derive(Debug, Clone, Default)]
