@@ -52,7 +52,7 @@ impl Jit {
         self.jit_module[module_id].jit_funcs[func_id]
             .as_ref()
             .unwrap()
-            .generate_stub_module(&self.jit_module[module_id])
+            .generate_stub_module(&self.global_layout, &self.jit_module[module_id])
     }
 
     pub fn instantiate_bb(
@@ -311,7 +311,7 @@ impl JitFunc {
         }
     }
 
-    fn generate_stub_module(&self, jit_module: &JitModule) -> Module {
+    fn generate_stub_module(&self, global_layout: &GlobalLayout, jit_module: &JitModule) -> Module {
         let module = &jit_module.module;
         let func = &module.funcs[self.func_id];
 
@@ -459,7 +459,14 @@ impl JitFunc {
         funcs.push(body_func);
 
         for jit_bb in self.jit_bbs.iter() {
-            let func = self.generate_bb_stub_func(jit_module, jit_bb, func, funcs.next_key());
+            let func = self.generate_bb_stub_func(
+                global_layout,
+                jit_module,
+                jit_bb,
+                func,
+                funcs.next_key(),
+                GLOBAL_LAYOUT_DEFAULT_INDEX,
+            );
             funcs.push(func);
         }
 
@@ -477,22 +484,25 @@ impl JitFunc {
 
     fn generate_bb_stub_func(
         &self,
+        global_layout: &GlobalLayout,
         jit_module: &JitModule,
         jit_bb: &JitBB,
         func: &Func,
         id: FuncId,
+        index: usize,
     ) -> Func {
         /*
         func bb0_stub(...) {
             bb0 <- get_global bb0_ref
-            if bb0 == bb0_stub
+            if bb0[index] == bb0_stub
                 instantiate_bb(..., index)
             bb0 <- get_global bb0_ref
             bb0(...)
         }
         */
+        let type_args = &*global_layout.from_idx(index, jit_bb.info.type_params.len());
         let mut locals = TiVec::new();
-        locals.extend(jit_bb.info.arg_types(func));
+        locals.extend(jit_bb.info.arg_types_(func, type_args));
         let boxed_local = locals.push_and_get_key(LocalType::Type(Type::Boxed)); // boxed bb0_ref
         let func_ref_local = locals.push_and_get_key(LocalType::Type(Type::Val(ValType::FuncRef))); // bb0_ref
         let stub_local = locals.push_and_get_key(LocalType::Type(Type::Boxed)); // bb0_stub
@@ -517,6 +527,10 @@ impl JitFunc {
                         ExprAssign {
                             local: Some(vector_local),
                             expr: Expr::Unbox(ValType::Vector, boxed_local,),
+                        },
+                        ExprAssign {
+                            local: Some(index_local),
+                            expr: Expr::Int(index as i64),
                         },
                         ExprAssign {
                             local: Some(boxed_local),
@@ -991,7 +1005,7 @@ fn analyze_locals(func: &Func) -> TiVec<BasicBlockId, AnalyzeResult> {
 struct BBInfo {
     args: Vec<LocalId>,
     defines: Vec<LocalId>,
-    type_params: TiVec<TypeParamId, LocalId>,
+    type_params: FxBiHashMap<TypeParamId, LocalId>,
     to_original_locals_mapping: TiVec<LocalId, LocalId>,
     from_original_locals_mapping: FxHashMap<LocalId, LocalId>,
 }
@@ -1001,7 +1015,26 @@ impl BBInfo {
         self.args
             .iter()
             .map(|&arg| func.locals[self.to_original_locals_mapping[arg]])
-            .collect()
+            .collect::<Vec<_>>()
+    }
+
+    fn arg_types_(
+        &self,
+        func: &Func,
+        type_args: &TiVec<TypeParamId, Option<ValType>>,
+    ) -> Vec<LocalType> {
+        self.args
+            .iter()
+            .map(|&arg| {
+                if let Some(&type_param_id) = self.type_params.get_by_right(&arg)
+                    && let Some(typ) = type_args[type_param_id]
+                {
+                    LocalType::Type(Type::Val(typ))
+                } else {
+                    func.locals[self.to_original_locals_mapping[arg]]
+                }
+            })
+            .collect::<Vec<_>>()
     }
 
     fn define_types(&self, func: &Func) -> Vec<LocalType> {
@@ -1054,7 +1087,7 @@ fn calculate_bb_info(
         let info = BBInfo {
             args,
             defines,
-            type_params,
+            type_params: type_params.into_iter_enumerated().collect(),
             to_original_locals_mapping,
             from_original_locals_mapping,
         };
@@ -1070,18 +1103,13 @@ fn calculate_args_to_pass(
     callee: &BBInfo,
     caller_next_type_args: &TiVec<LocalId, Option<NextTypeArg>>,
 ) -> (Vec<LocalId>, TiVec<TypeParamId, Option<ValType>>) {
-    let callee_type_params_rev = callee
-        .type_params
-        .iter_enumerated()
-        .map(|(k, &v)| (v, k))
-        .collect::<FxHashMap<_, _>>();
     let mut type_args = ti_vec![None; callee.type_params.len()];
     let mut args_to_pass = Vec::new();
 
     for &callee_arg in &callee.args {
         let caller_args =
             caller.from_original_locals_mapping[&callee.to_original_locals_mapping[callee_arg]];
-        let caller_args = if let Some(&type_param_id) = callee_type_params_rev.get(&callee_arg)
+        let caller_args = if let Some(&type_param_id) = callee.type_params.get_by_right(&callee_arg)
             && let Some(caller_next_type_arg) = caller_next_type_args[caller_args]
         {
             type_args[type_param_id] = Some(caller_next_type_arg.typ);

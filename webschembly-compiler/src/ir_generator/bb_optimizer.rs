@@ -1,6 +1,6 @@
 use typed_index_collections::{TiVec, ti_vec};
 
-use crate::ir::*;
+use crate::{fxbihashmap::FxBiHashMap, ir::*};
 
 /*
 ```
@@ -40,36 +40,30 @@ _ = add(l1, l1) // 上で記憶した左辺が出てきたらl1に置き換え
 pub fn remove_box(
     locals: &mut TiVec<LocalId, LocalType>,
     bb: BasicBlock,
-    type_params: &TiVec<TypeParamId, LocalId>,
+    type_params: &FxBiHashMap<TypeParamId, LocalId>,
     type_args: &TiVec<TypeParamId, Option<ValType>>,
     args: &Vec<LocalId>,
 ) -> (BasicBlock, TiVec<LocalId, Option<NextTypeArg>>) {
     let mut expr_assigns = Vec::new();
 
     // ローカルをBoxed -> Typeに書き換え
-    for (type_param_id, &local) in type_params.iter_enumerated() {
+    for (&type_param_id, &local) in type_params.iter() {
         if let Some(typ) = type_args[type_param_id] {
             debug_assert_eq!(locals[local], LocalType::Type(Type::Boxed));
             locals[local] = LocalType::Type(Type::Val(typ));
         }
     }
 
-    let mut type_params_rev = ti_vec![None; locals.len()];
-    for (type_param_id, &local) in type_params.iter_enumerated() {
-        type_params_rev[local] = Some(type_param_id);
-    }
-    let type_params_rev = type_params_rev;
-
     // 型代入されている変数のboxed版を用意(l1_boxedに対応)
     let mut boxed_locals = ti_vec![None; locals.len()];
     for (type_param_id, typ) in type_args.iter_enumerated() {
         if let Some(typ) = typ {
             let boxed_local = locals.push_and_get_key(LocalType::Type(Type::Boxed));
-            boxed_locals[type_params[type_param_id]] = Some(boxed_local);
+            boxed_locals[*type_params.get_by_left(&type_param_id).unwrap()] = Some(boxed_local);
 
             expr_assigns.push(ExprAssign {
                 local: Some(boxed_local),
-                expr: Expr::Box(*typ, type_params[type_param_id]),
+                expr: Expr::Box(*typ, *type_params.get_by_left(&type_param_id).unwrap()),
             });
         }
     }
@@ -116,7 +110,7 @@ pub fn remove_box(
                 if locals_immutability[value]
                     && let Some(local) = local
                     && locals_immutability[local]
-                    && let Some(type_param_id) = type_params_rev[value]
+                    && let Some(&type_param_id) = type_params.get_by_right(&value)
                     && let Some(type_arg) = type_args[type_param_id]
                 {
                     debug_assert_eq!(type_arg, typ);
