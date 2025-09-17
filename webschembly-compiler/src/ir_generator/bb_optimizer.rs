@@ -1,10 +1,6 @@
-use derive_more::{From, Into};
 use typed_index_collections::{TiVec, ti_vec};
 
 use crate::ir::*;
-
-#[derive(Debug, Clone, Copy, From, Into, Hash, PartialEq, Eq, Ord, PartialOrd)]
-pub struct TypeParamId(usize);
 
 /*
 ```
@@ -79,6 +75,7 @@ pub fn remove_box(
 
     // 再代入されている変数の特定
     let mut assign_counts = ti_vec![0; locals.len()];
+    // TODO: 引数は1度代入されているとみなす
     for expr_assign in &bb.exprs {
         if let Some(local) = expr_assign.local {
             assign_counts[local] += 1;

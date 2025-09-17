@@ -1122,3 +1122,7 @@ impl fmt::Display for Display<'_, &'_ Module> {
         Ok(())
     }
 }
+
+// TODO: ここに置くべきじゃない
+#[derive(Debug, Clone, Copy, From, Into, Hash, PartialEq, Eq, Ord, PartialOrd)]
+pub struct TypeParamId(usize);

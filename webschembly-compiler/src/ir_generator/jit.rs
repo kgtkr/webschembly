@@ -278,7 +278,7 @@ impl JitFunc {
             .map(|_| global_manager.gen_global_id())
             .collect::<TiVec<BasicBlockId, _>>();
 
-        let bb_infos = calculate_bb_info(analyze_locals(func));
+        let bb_infos = calculate_bb_info(&func.locals, analyze_locals(func));
 
         let globals = {
             let mut globals = jit_module.globals.clone();
@@ -375,6 +375,7 @@ impl JitFunc {
             bb0(...)
         }
         */
+        let entry_bb_info = &self.jit_bbs[func.bb_entry].info;
         let body_func = Func {
             id: funcs.next_key(),
             args: func.args,
@@ -401,13 +402,16 @@ impl JitFunc {
                 ],
                 next: BasicBlockNext::TailCallRef(ExprCallRef {
                     func: LocalId::from(func.args + 1),
-                    args: self.jit_bbs[func.bb_entry].info.args.clone(),
+                    args: entry_bb_info
+                        .args
+                        .iter()
+                        .map(|&arg| entry_bb_info.to_original_locals_mapping[arg])
+                        .collect::<Vec<_>>(),
                     func_type: FuncType {
-                        args: self.jit_bbs[func.bb_entry]
-                            .info
+                        args: entry_bb_info
                             .args
                             .iter()
-                            .map(|&arg| func.locals[arg])
+                            .map(|&arg| func.locals[entry_bb_info.to_original_locals_mapping[arg]])
                             .collect::<Vec<_>>(),
                         ret: func.ret_type,
                     },
@@ -428,7 +432,13 @@ impl JitFunc {
             }
             */
             let mut locals = TiVec::new();
-            locals.extend(jit_bb.info.args.iter().map(|&arg| func.locals[arg]));
+            locals.extend(
+                jit_bb
+                    .info
+                    .args
+                    .iter()
+                    .map(|&arg| func.locals[jit_bb.info.to_original_locals_mapping[arg]]),
+            );
             locals.extend([
                 func.ret_type(),
                 LocalType::Type(Type::Boxed), // boxed bb0_ref
@@ -502,7 +512,8 @@ impl JitFunc {
                                     .info
                                     .args
                                     .iter()
-                                    .map(|&arg| func.locals[arg])
+                                    .map(|&arg| func.locals
+                                        [jit_bb.info.to_original_locals_mapping[arg]])
                                     .collect::<Vec<_>>(),
                                 ret: func.ret_type,
                             },
@@ -573,17 +584,18 @@ impl JitFunc {
         funcs.push(entry_func);
 
         let mut new_locals = TiVec::new();
+        let bb_info = &self.jit_bbs[bb_id].info;
 
-        for &arg in &self.jit_bbs[bb_id].info.args {
-            new_locals.push(func.locals[arg]);
+        for &arg in &bb_info.args {
+            new_locals.push(func.locals[bb_info.to_original_locals_mapping[arg]]);
         }
 
-        for &define in &self.jit_bbs[bb_id].info.defines {
-            new_locals.push(func.locals[define]);
+        for &define in &bb_info.defines {
+            new_locals.push(func.locals[bb_info.to_original_locals_mapping[define]]);
         }
 
         for (local_id, _) in bb.local_usages_mut() {
-            *local_id = self.jit_bbs[bb_id].info.locals_mapping[local_id];
+            *local_id = bb_info.from_original_locals_mapping[local_id];
         }
 
         let local_offset = new_locals.len();
@@ -687,7 +699,11 @@ impl JitFunc {
                                     .info
                                     .args
                                     .iter()
-                                    .map(|&arg| func.locals[arg])
+                                    .map(|&arg| {
+                                        func.locals[self.jit_bbs[then_bb]
+                                            .info
+                                            .to_original_locals_mapping[arg]]
+                                    })
                                     .collect::<Vec<_>>(),
                                 ret: func.ret_type,
                             },
@@ -714,7 +730,11 @@ impl JitFunc {
                                     .info
                                     .args
                                     .iter()
-                                    .map(|&arg| func.locals[arg])
+                                    .map(|&arg| {
+                                        func.locals[self.jit_bbs[else_bb]
+                                            .info
+                                            .to_original_locals_mapping[arg]]
+                                    })
                                     .collect::<Vec<_>>(),
                                 ret: func.ret_type,
                             },
@@ -749,7 +769,11 @@ impl JitFunc {
                                 .info
                                 .args
                                 .iter()
-                                .map(|&arg| func.locals[arg])
+                                .map(|&arg| {
+                                    func.locals[self.jit_bbs[target_bb]
+                                        .info
+                                        .to_original_locals_mapping[arg]]
+                                })
                                 .collect::<Vec<_>>(),
                             ret: func.ret_type,
                         },
@@ -884,38 +908,59 @@ fn analyze_locals(func: &Func) -> TiVec<BasicBlockId, AnalyzeResult> {
 
 #[derive(Debug, Clone, Default)]
 struct BBInfo {
-    // argsとdefinesはorig func_id
     args: Vec<LocalId>,
     defines: Vec<LocalId>,
-    // orig func_id -> new func_id
-    locals_mapping: FxHashMap<LocalId, LocalId>,
+    type_params: TiVec<TypeParamId, LocalId>,
+    to_original_locals_mapping: TiVec<LocalId, LocalId>,
+    from_original_locals_mapping: FxHashMap<LocalId, LocalId>,
 }
 
 fn calculate_bb_info(
+    locals: &TiVec<LocalId, LocalType>,
     analyze_results: TiVec<BasicBlockId, AnalyzeResult>,
 ) -> TiVec<BasicBlockId, BBInfo> {
     let mut bb_info = TiVec::new();
 
     for result in analyze_results.into_iter() {
-        let mut args = result.used_locals.into_iter().collect::<Vec<_>>();
-        args.sort();
-        let mut defines = result.defined_locals.into_iter().collect::<Vec<_>>();
-        defines.sort();
-        let mut info = BBInfo {
+        let mut to_original_locals_mapping = TiVec::new();
+
+        let mut original_id_args = result.used_locals.into_iter().collect::<Vec<_>>();
+        original_id_args.sort();
+        let mut original_id_defines = result.defined_locals.into_iter().collect::<Vec<_>>();
+        original_id_defines.sort();
+
+        let mut args = Vec::new();
+        let mut defines = Vec::new();
+
+        for original_id_arg in original_id_args {
+            let local_id = to_original_locals_mapping.push_and_get_key(original_id_arg);
+            args.push(local_id);
+        }
+
+        for original_id_define in original_id_defines {
+            let local_id = to_original_locals_mapping.push_and_get_key(original_id_define);
+            defines.push(local_id);
+        }
+
+        let mut type_params = TiVec::new();
+        for &arg in &args {
+            if let LocalType::Type(Type::Boxed) = locals[arg] {
+                type_params.push(arg);
+            }
+        }
+
+        let from_original_locals_mapping = to_original_locals_mapping
+            .iter_enumerated()
+            .map(|(k, &v)| (v, k))
+            .collect::<FxHashMap<_, _>>();
+
+        let info = BBInfo {
             args,
             defines,
-            locals_mapping: FxHashMap::default(),
+            type_params,
+            to_original_locals_mapping,
+            from_original_locals_mapping,
         };
-
-        let mut local_id = LocalId::from(0);
-        for &arg in &info.args {
-            info.locals_mapping.insert(arg, local_id);
-            local_id = LocalId::from(usize::from(local_id) + 1);
-        }
-        for &define in &info.defines {
-            info.locals_mapping.insert(define, local_id);
-            local_id = LocalId::from(usize::from(local_id) + 1);
-        }
 
         bb_info.push(info);
     }
@@ -926,7 +971,8 @@ fn calculate_bb_info(
 fn calculate_args_to_pass(caller: &BBInfo, callee: &BBInfo) -> Vec<LocalId> {
     let mut args_to_pass = Vec::new();
     for &arg in &callee.args {
-        args_to_pass.push(caller.locals_mapping[&arg]);
+        args_to_pass
+            .push(caller.from_original_locals_mapping[&callee.to_original_locals_mapping[arg]]);
     }
     args_to_pass
 }
