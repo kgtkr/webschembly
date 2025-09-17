@@ -7,7 +7,8 @@
     associated_type_defaults,
     coroutines,
     stmt_expr_attributes,
-    iter_from_coroutine
+    iter_from_coroutine,
+    if_let_guard
 )]
 pub mod lexer;
 pub mod parser_combinator;

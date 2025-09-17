@@ -1023,6 +1023,9 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         expr: &ir::Expr,
     ) {
         match expr {
+            ir::Expr::Nop => {
+                function.instruction(&Instruction::I32Const(0));
+            }
             ir::Expr::InstantiateFunc(module_id, func_id) => {
                 function.instruction(&Instruction::I32Const(usize::from(*module_id) as i32));
                 function.instruction(&Instruction::I32Const(usize::from(*func_id) as i32));

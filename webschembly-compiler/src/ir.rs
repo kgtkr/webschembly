@@ -316,6 +316,7 @@ impl fmt::Display for DisplayInFunc<'_, &'_ ExprCallRef> {
 
 #[derive(Debug, Clone)]
 pub enum Expr {
+    Nop,
     InstantiateFunc(ModuleId, FuncId),
     InstantiateBB(ModuleId, FuncId, BasicBlockId),
     Bool(bool),
@@ -527,16 +528,17 @@ macro_rules! impl_Expr_local_ids {
                             yield id;
                         }
 
-                        Expr::InstantiateFunc(_, _)
-                        | Expr::InstantiateBB(_, _, _)
-                        | Expr::Bool(_)
-                        | Expr::Int(_)
-                        | Expr::String(_)
+                        Expr::Nop
+                        | Expr::InstantiateFunc(..)
+                        | Expr::InstantiateBB(..)
+                        | Expr::Bool(..)
+                        | Expr::Int(..)
+                        | Expr::String(..)
                         | Expr::Nil
-                        | Expr::Char(_)
-                        | Expr::CreateMutCell(_)
-                        | Expr::FuncRef(_)
-                        | Expr::GlobalGet(_)
+                        | Expr::Char(..)
+                        | Expr::CreateMutCell(..)
+                        | Expr::FuncRef(..)
+                        | Expr::GlobalGet(..)
                         | Expr::InitModule => {}
                     },
                 )
@@ -559,6 +561,7 @@ impl Expr {
 impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.value {
+            Expr::Nop => write!(f, "nop"),
             Expr::InstantiateFunc(module_id, func_id) => {
                 write!(
                     f,

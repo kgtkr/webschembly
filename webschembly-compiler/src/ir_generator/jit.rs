@@ -2,7 +2,8 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use typed_index_collections::{TiVec, ti_vec};
 
 use crate::ir::*;
-use crate::ir_generator::GlobalManager;
+use crate::ir_generator::bb_optimizer::BBOptimizer;
+use crate::ir_generator::{GlobalManager, bb_optimizer};
 
 #[derive(Debug)]
 pub struct Jit {
@@ -601,20 +602,27 @@ impl JitFunc {
             bb_entry: BasicBlockId::from(0),
             bbs: ti_vec![{
                 let mut exprs = Vec::new();
+                let mut bb_optimizer = BBOptimizer::new(&bb, ti_vec![None; local_offset]);
                 for expr in bb.exprs.iter() {
                     // FuncRefとCall命令はget global命令に置き換えられる
-                    match expr.expr {
-                        Expr::FuncRef(id) => {
+                    match bb_optimizer.optimize_expr(expr) {
+                        ExprAssign {
+                            local,
+                            expr: Expr::FuncRef(id),
+                        } => {
                             exprs.push(ExprAssign {
                                 local: Some(boxed_func_ref),
                                 expr: Expr::GlobalGet(jit_module.func_to_globals[id]),
                             });
                             exprs.push(ExprAssign {
-                                local: expr.local,
+                                local: local,
                                 expr: Expr::Unbox(ValType::FuncRef, boxed_func_ref),
                             });
                         }
-                        Expr::Call(ExprCall { func_id, ref args }) => {
+                        ExprAssign {
+                            local,
+                            expr: Expr::Call(ExprCall { func_id, args }),
+                        } => {
                             exprs.push(ExprAssign {
                                 local: Some(boxed_func_ref),
                                 expr: Expr::GlobalGet(jit_module.func_to_globals[func_id]),
@@ -624,16 +632,16 @@ impl JitFunc {
                                 expr: Expr::Unbox(ValType::FuncRef, boxed_func_ref),
                             });
                             exprs.push(ExprAssign {
-                                local: expr.local,
+                                local: local,
                                 expr: Expr::CallRef(ExprCallRef {
                                     func: func_ref,
-                                    args: args.clone(),
+                                    args: args,
                                     func_type: module.funcs[func_id].func_type(),
                                 }),
                             });
                         }
-                        _ => {
-                            exprs.push(expr.clone());
+                        expr => {
+                            exprs.push(expr);
                         }
                     }
                 }
