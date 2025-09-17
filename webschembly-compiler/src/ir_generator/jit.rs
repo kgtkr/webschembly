@@ -781,12 +781,6 @@ fn analyze_locals(func: &Func) -> TiVec<BasicBlockId, AnalyzeResult> {
         let mut defined = FxHashSet::default();
         let mut used = FxHashSet::default();
 
-        if bb.id == func.bb_entry {
-            for i in 0..func.args {
-                defined.insert(LocalId::from(i));
-            }
-        }
-
         for (local_id, flag) in bb.local_usages() {
             match flag {
                 LocalFlag::Defined => {
