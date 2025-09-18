@@ -861,6 +861,24 @@ impl JitFunc {
         };
 
         body_func.bbs.extend(extra_bbs);
+
+        let mut out_used_locals = Vec::new();
+        for bb in body_func.bbs.iter() {
+            if bb.id != body_func.bb_entry {
+                out_used_locals.extend(
+                    bb.local_usages()
+                        .filter(|(_, flag)| *flag == LocalFlag::Used)
+                        .map(|(local, _)| *local),
+                );
+            }
+        }
+        bb_optimizer::dead_code_elimination(
+            &body_func.locals,
+            &mut body_func.bbs[body_func.bb_entry],
+            &locals_immutability,
+            &out_used_locals,
+        );
+
         let body_func_id = body_func.id;
         funcs.push(body_func);
 

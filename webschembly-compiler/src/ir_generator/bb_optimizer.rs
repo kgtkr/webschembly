@@ -261,3 +261,37 @@ pub fn copy_propagate(
         *local = local_replacements[*local]
     }
 }
+
+/*
+デッドコード削除
+*/
+pub fn dead_code_elimination(
+    locals: &TiVec<LocalId, LocalType>,
+    bb: &mut BasicBlock,
+    _locals_immutability: &TiVec<LocalId, bool>,
+    // 別のBBなどで使われているローカル変数
+    out_used_locals: &Vec<LocalId>,
+) {
+    let mut used = ti_vec![false; locals.len()];
+    for &local in out_used_locals {
+        used[local] = true;
+    }
+    for &local in bb.next.local_ids() {
+        used[local] = true;
+    }
+
+    for expr_assign in bb.exprs.iter_mut().rev() {
+        let is_effectful = expr_assign.expr.is_effectful();
+        let expr_used = is_effectful || expr_assign.local.map(|l| used[l]).unwrap_or(false);
+        if expr_used {
+            for (&local, flag) in expr_assign.local_usages() {
+                if flag == LocalFlag::Used {
+                    used[local] = true;
+                }
+            }
+        } else {
+            expr_assign.expr = Expr::Nop;
+            expr_assign.local = None;
+        }
+    }
+}
