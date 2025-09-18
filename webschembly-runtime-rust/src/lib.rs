@@ -78,12 +78,10 @@ impl SymbolManager {
 }
 
 thread_local!(
-    static COMPILER: RefCell<webschembly_compiler::compiler::Compiler> = RefCell::new(
-        webschembly_compiler::compiler::Compiler::new(webschembly_compiler::compiler::Config {
-            enable_jit: true,
-            enable_split_bb: true,
-        }),
-    );
+    static COMPILER: RefCell<webschembly_compiler::compiler::Compiler> =
+        RefCell::new(webschembly_compiler::compiler::Compiler::new(
+            webschembly_compiler::compiler::Config { enable_jit: true },
+        ));
 );
 
 // const STDIN_FD: i32 = 0;
@@ -91,13 +89,30 @@ const STDOUT_FD: i32 = 1;
 const STDERR_FD: i32 = 2;
 
 fn load_src_inner(src: String, is_stdlib: bool) {
-    let wasm = COMPILER.with(|compiler| {
+    let result = COMPILER.with(|compiler| {
         let mut compiler = compiler.borrow_mut();
-        compiler.compile(&src, is_stdlib)
+        compiler.compile_module(&src, is_stdlib).map(|module| {
+            let wasm = webschembly_compiler::wasm_generator::generate(&module);
+            let ir = if cfg!(debug_assertions) {
+                let ir = format!("{}", module.display());
+                Some(ir.into_bytes())
+            } else {
+                None
+            };
+            (wasm, ir)
+        })
     });
 
-    match wasm {
-        Ok(wasm) => unsafe { env::js_instantiate(wasm.as_ptr() as i32, wasm.len() as i32, 1) },
+    match result {
+        Ok((wasm, ir)) => unsafe {
+            env::js_instantiate(
+                wasm.as_ptr() as i32,
+                wasm.len() as i32,
+                ir.as_ref().map(|ir| ir.as_ptr() as i32).unwrap_or(0),
+                ir.as_ref().map(|ir| ir.len() as i32).unwrap_or(0),
+                1,
+            )
+        },
         Err(err) => {
             let error_msg = format!("{}\n", err);
             WRITERS.with(|writers| {
@@ -133,6 +148,11 @@ pub extern "C" fn load_src(buf_ptr: i32, buf_len: i32) {
 pub extern "C" fn init() {
     log::set_logger(&logger::WasmLogger).unwrap();
     log::set_max_level(log::LevelFilter::Debug);
+    if cfg!(debug_assertions) {
+        std::panic::set_hook(Box::new(|info| {
+            log::error!("panic: {}", info);
+        }));
+    }
 }
 
 #[derive(Debug)]
@@ -267,13 +287,65 @@ pub extern "C" fn get_global_id(buf_ptr: i32, buf_len: i32) -> i32 {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn instantiate_module(module_id: i32) -> i32 {
-    let wasm = COMPILER.with(|compiler| {
-        let compiler = compiler.borrow();
-        compiler.instantiate_module(webschembly_compiler::ir::ModuleId::from(module_id as usize))
+pub extern "C" fn instantiate_func(module_id: i32, func_id: i32) -> i32 {
+    let (wasm, ir) = COMPILER.with(|compiler| {
+        let mut compiler = compiler.borrow_mut();
+        let module = compiler.instantiate_func(
+            webschembly_compiler::ir::ModuleId::from(module_id as usize),
+            webschembly_compiler::ir::FuncId::from(func_id as usize),
+        );
+        let wasm = webschembly_compiler::wasm_generator::generate(&module);
+        let ir = if cfg!(debug_assertions) {
+            let ir = format!("{}", module.display());
+            Some(ir.into_bytes())
+        } else {
+            None
+        };
+        (wasm, ir)
     });
 
-    unsafe { env::js_instantiate(wasm.as_ptr() as i32, wasm.len() as i32, 0) }
+    unsafe {
+        env::js_instantiate(
+            wasm.as_ptr() as i32,
+            wasm.len() as i32,
+            ir.as_ref().map(|ir| ir.as_ptr() as i32).unwrap_or(0),
+            ir.as_ref().map(|ir| ir.len() as i32).unwrap_or(0),
+            0,
+        )
+    }
+
+    0
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn instantiate_bb(module_id: i32, func_id: i32, bb_id: i32, index: i32) -> i32 {
+    let (wasm, ir) = COMPILER.with(|compiler| {
+        let mut compiler = compiler.borrow_mut();
+        let module = compiler.instantiate_bb(
+            webschembly_compiler::ir::ModuleId::from(module_id as usize),
+            webschembly_compiler::ir::FuncId::from(func_id as usize),
+            webschembly_compiler::ir::BasicBlockId::from(bb_id as usize),
+            index as usize,
+        );
+        let wasm = webschembly_compiler::wasm_generator::generate(&module);
+        let ir = if cfg!(debug_assertions) {
+            let ir = format!("{}", module.display());
+            Some(ir.into_bytes())
+        } else {
+            None
+        };
+        (wasm, ir)
+    });
+
+    unsafe {
+        env::js_instantiate(
+            wasm.as_ptr() as i32,
+            wasm.len() as i32,
+            ir.as_ref().map(|ir| ir.as_ptr() as i32).unwrap_or(0),
+            ir.as_ref().map(|ir| ir.len() as i32).unwrap_or(0),
+            0,
+        )
+    }
 
     0
 }

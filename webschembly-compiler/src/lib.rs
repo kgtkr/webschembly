@@ -7,7 +7,8 @@
     associated_type_defaults,
     coroutines,
     stmt_expr_attributes,
-    iter_from_coroutine
+    iter_from_coroutine,
+    if_let_guard
 )]
 pub mod lexer;
 pub mod parser_combinator;
@@ -18,6 +19,7 @@ pub mod compiler;
 pub mod wasm_generator;
 #[macro_use]
 pub mod error;
+pub mod fxbihashmap;
 pub mod ir;
 pub mod ir_generator;
 pub mod sexpr_parser;

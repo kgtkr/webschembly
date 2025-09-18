@@ -316,7 +316,9 @@ impl fmt::Display for DisplayInFunc<'_, &'_ ExprCallRef> {
 
 #[derive(Debug, Clone)]
 pub enum Expr {
-    InstantiateModule(ModuleId),
+    Nop,
+    InstantiateFunc(ModuleId, FuncId),
+    InstantiateBB(ModuleId, FuncId, BasicBlockId, LocalId /* index */),
     Bool(bool),
     Int(i64),
     String(String),
@@ -526,15 +528,17 @@ macro_rules! impl_Expr_local_ids {
                             yield id;
                         }
 
-                        Expr::InstantiateModule(_)
-                        | Expr::Bool(_)
-                        | Expr::Int(_)
-                        | Expr::String(_)
+                        Expr::Nop
+                        | Expr::InstantiateFunc(..)
+                        | Expr::InstantiateBB(..)
+                        | Expr::Bool(..)
+                        | Expr::Int(..)
+                        | Expr::String(..)
                         | Expr::Nil
-                        | Expr::Char(_)
-                        | Expr::CreateMutCell(_)
-                        | Expr::FuncRef(_)
-                        | Expr::GlobalGet(_)
+                        | Expr::Char(..)
+                        | Expr::CreateMutCell(..)
+                        | Expr::FuncRef(..)
+                        | Expr::GlobalGet(..)
                         | Expr::InitModule => {}
                     },
                 )
@@ -557,8 +561,24 @@ impl Expr {
 impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.value {
-            Expr::InstantiateModule(id) => {
-                write!(f, "instantiate_module({})", id.display(self.meta.meta))
+            Expr::Nop => write!(f, "nop"),
+            Expr::InstantiateFunc(module_id, func_id) => {
+                write!(
+                    f,
+                    "instantiate_func({}, {})",
+                    module_id.display(self.meta.meta),
+                    func_id.display(self.meta.meta)
+                )
+            }
+            Expr::InstantiateBB(module_id, func_id, bb_id, index) => {
+                write!(
+                    f,
+                    "instantiate_bb({}, {}, {}, {})",
+                    module_id.display(self.meta.meta),
+                    func_id.display(self.meta.meta),
+                    bb_id.display(self.meta.meta),
+                    index.display(self.meta),
+                )
             }
             Expr::Bool(b) => write!(f, "{}", b),
             Expr::Int(i) => write!(f, "{}", i),
@@ -978,8 +998,7 @@ pub enum FuncJitStrategy {
 pub struct Func {
     pub id: FuncId,
     pub locals: TiVec<LocalId, LocalType>,
-    // localsの先頭何個が引数か
-    pub args: usize,
+    pub args: Vec<LocalId>,
     pub ret_type: LocalType,
     pub bb_entry: BasicBlockId,
     pub bbs: TiVec<BasicBlockId, BasicBlock>,
@@ -992,9 +1011,7 @@ impl Func {
     }
 
     pub fn arg_types(&self) -> Vec<LocalType> {
-        (0..self.args)
-            .map(|i| self.locals[LocalId::from(i)])
-            .collect()
+        self.args.iter().map(|&arg| self.locals[arg]).collect()
     }
 
     pub fn ret_type(&self) -> LocalType {
@@ -1022,13 +1039,9 @@ impl fmt::Display for Display<'_, &'_ Func> {
             )?;
         }
         write!(f, "{}args: ", DISPLAY_INDENT)?;
-        for i in 0..self.value.args {
-            write!(
-                f,
-                "{}",
-                LocalId::from(i).display(self.meta.in_func(self.value.id))
-            )?;
-            if i < self.value.args - 1 {
+        for (i, arg) in self.value.args.iter().enumerate() {
+            write!(f, "{}", arg.display(self.meta.in_func(self.value.id)))?;
+            if i < self.value.args.len() - 1 {
                 write!(f, ",")?;
             }
         }
@@ -1103,3 +1116,7 @@ impl fmt::Display for Display<'_, &'_ Module> {
         Ok(())
     }
 }
+
+// TODO: ここに置くべきじゃない
+#[derive(Debug, Clone, Copy, From, Into, Hash, PartialEq, Eq, Ord, PartialOrd)]
+pub struct TypeParamId(usize);

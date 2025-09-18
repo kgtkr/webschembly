@@ -15,7 +15,7 @@ struct Args {
     #[arg(long, default_value = "false")]
     ir: bool,
     #[arg(long, default_value = "false")]
-    split_bb: bool,
+    jit: bool,
     #[arg(required = true)]
     inputs: Vec<String>,
 }
@@ -35,8 +35,7 @@ fn main() -> anyhow::Result<()> {
     let output_extension = output.extension().unwrap_or_default();
 
     let mut compiler = Compiler::new(Config {
-        enable_jit: false,
-        enable_split_bb: args.split_bb,
+        enable_jit: args.jit,
     });
     let mut srcs = Vec::new();
 
@@ -59,13 +58,14 @@ fn main() -> anyhow::Result<()> {
         output.add_extension(output_extension);
         let mut o = std::fs::File::create(output)?;
 
+        let module = compiler.compile_module(&src, is_stdlib)?;
+
         if args.ir {
-            let module = compiler.compile_module(&src, is_stdlib)?;
             let s = module.display().to_string();
             let bs = s.as_bytes();
             o.write_all(bs)?;
         } else {
-            let bs: Vec<u8> = compiler.compile(&src, is_stdlib)?;
+            let bs: Vec<u8> = webschembly_compiler::wasm_generator::generate(&module);
             o.write_all(&bs)?;
         }
     }

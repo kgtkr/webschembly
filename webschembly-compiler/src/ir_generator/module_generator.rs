@@ -1,7 +1,7 @@
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::ir::*;
-use crate::ir_generator::IrGenerator;
+use crate::ir_generator::GlobalManager;
 use crate::{
     ast::{self, Desugared, TailCall, Used},
     x::{RunX, TypeMap, type_map},
@@ -14,18 +14,18 @@ pub struct Config {
 }
 
 pub fn generate_module(
-    ir_generator: &mut IrGenerator,
+    global_manager: &mut GlobalManager,
     ast: &ast::Ast<ast::Final>,
     config: Config,
 ) -> Module {
-    let module_gen = ModuleGenerator::new(config, ir_generator, ast);
+    let module_gen = ModuleGenerator::new(config, global_manager, ast);
 
     module_gen.generate()
 }
 
 #[derive(Debug)]
 struct ModuleGenerator<'a> {
-    ir_generator: &'a mut IrGenerator,
+    global_manager: &'a mut GlobalManager,
     ast: &'a ast::Ast<ast::Final>,
     funcs: TiVec<FuncId, Option<Func>>,
     config: Config,
@@ -37,12 +37,12 @@ struct ModuleGenerator<'a> {
 impl<'a> ModuleGenerator<'a> {
     fn new(
         config: Config,
-        ir_generator: &'a mut IrGenerator,
+        ir_generator: &'a mut GlobalManager,
         ast: &'a ast::Ast<ast::Final>,
     ) -> Self {
         Self {
             ast,
-            ir_generator,
+            global_manager: ir_generator,
             funcs: TiVec::new(),
             config,
             local_metas: FxHashMap::default(),
@@ -78,7 +78,7 @@ impl<'a> ModuleGenerator<'a> {
     }
 
     fn global_id(&mut self, id: ast::GlobalVarId) -> GlobalId {
-        let global_id = self.ir_generator.global_id(id);
+        let global_id = self.global_manager.global_id(id);
         let ast_meta = self
             .ast
             .x
@@ -153,7 +153,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         self.close_bb(Some(BasicBlockNext::Return(boxed_local)));
         Func {
             id: self.id,
-            args: 0,
+            args: vec![],
             ret_type: LocalType::Type(Type::Boxed),
             locals: self.locals,
             bb_entry: BasicBlockId::from(0), // TODO: もっと綺麗な書き方があるはず
@@ -244,7 +244,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         self.close_bb(Some(BasicBlockNext::Return(ret)));
         Func {
             id: self.id,
-            args: 2,
+            args: vec![self_closure, args],
             ret_type: LocalType::Type(Type::Boxed),
             locals: self.locals,
             bb_entry: BasicBlockId::from(0), // TODO: もっと綺麗な書き方があるはず

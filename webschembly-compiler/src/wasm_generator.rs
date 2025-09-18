@@ -33,7 +33,8 @@ struct ModuleGenerator<'a> {
     global_count: u32,
     table_count: u32,
     // runtime functions
-    instantiate_module_func: u32,
+    instantiate_func_func: u32,
+    instantiate_bb_func: u32,
     display_func: u32,
     display_fd_func: u32,
     string_to_symbol_func: u32,
@@ -87,7 +88,8 @@ impl<'a> ModuleGenerator<'a> {
             type_count: 0,
             func_count: 0,
             global_count: 0,
-            instantiate_module_func: 0,
+            instantiate_func_func: 0,
+            instantiate_bb_func: 0,
             display_func: 0,
             display_fd_func: 0,
             string_to_symbol_func: 0,
@@ -579,11 +581,14 @@ impl<'a> ModuleGenerator<'a> {
             }),
         );
 
-        self.instantiate_module_func =
-            self.add_runtime_function("instantiate_module", WasmFuncType {
-                params: vec![ValType::I32],
-                results: vec![ValType::I32],
-            });
+        self.instantiate_func_func = self.add_runtime_function("instantiate_func", WasmFuncType {
+            params: vec![ValType::I32, ValType::I32],
+            results: vec![ValType::I32],
+        });
+        self.instantiate_bb_func = self.add_runtime_function("instantiate_bb", WasmFuncType {
+            params: vec![ValType::I32, ValType::I32, ValType::I32, ValType::I32],
+            results: vec![ValType::I32],
+        });
 
         self.display_func = self.add_runtime_function("display", WasmFuncType {
             params: vec![ValType::Ref(RefType {
@@ -863,13 +868,21 @@ fn reloop_rec(
                 &if_rejoin_points,
                 &mut else_bbs,
             );
-            assert_eq!(rejoin_point1, rejoin_point2);
+            // 片方の分岐がtail cailの場合、片方だけNoneになる
+            let rejoin_point = match (rejoin_point1, rejoin_point2) {
+                (Some(p1), Some(p2)) => {
+                    assert_eq!(p1, p2);
+                    Some(p1)
+                }
+                (Some(p), None) | (None, Some(p)) => Some(p),
+                (None, None) => None,
+            };
             results.push(StructuredBasicBlock::If {
                 cond,
                 then: then_bbs,
                 else_: else_bbs,
             });
-            if let Some(rejoin_point) = rejoin_point1 {
+            if let Some(rejoin_point) = rejoin_point {
                 reloop_rec(rejoin_point, bbs, reversed_doms, rejoin_points, results)
             } else {
                 None
@@ -916,7 +929,20 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
     }
 
     fn gen_func(mut self) {
-        for (local_id, _) in self.func.locals.iter_enumerated() {
+        let mut is_args = ti_vec![false; self.func.locals.len()];
+        for arg in &self.func.args {
+            is_args[*arg] = true;
+        }
+
+        for local_id in
+            // ローカル変数をargs, argsでない変数の順に並べる
+            self.func.args.iter().copied().chain(
+                self.func
+                    .locals
+                    .keys()
+                    .filter(|local_id| !is_args[*local_id]),
+            )
+        {
             let idx = self.local_count;
             self.local_ids.insert(local_id, idx);
             self.local_count += 1;
@@ -930,9 +956,9 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         let mut function = Function::new(
             self.func
                 .locals
-                .iter()
-                .skip(self.func.args)
-                .map(|ty| {
+                .iter_enumerated()
+                .filter(|(local_id, _)| !is_args[*local_id])
+                .map(|(_, ty)| {
                     let ty = self.module_generator.convert_local_type(ty);
                     (1, ty)
                 })
@@ -1010,10 +1036,24 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         expr: &ir::Expr,
     ) {
         match expr {
-            ir::Expr::InstantiateModule(id) => {
-                function.instruction(&Instruction::I32Const(usize::from(*id) as i32));
+            ir::Expr::Nop => {
+                function.instruction(&Instruction::I32Const(0));
+            }
+            ir::Expr::InstantiateFunc(module_id, func_id) => {
+                function.instruction(&Instruction::I32Const(usize::from(*module_id) as i32));
+                function.instruction(&Instruction::I32Const(usize::from(*func_id) as i32));
                 function.instruction(&Instruction::Call(
-                    self.module_generator.instantiate_module_func,
+                    self.module_generator.instantiate_func_func,
+                ));
+            }
+            ir::Expr::InstantiateBB(module_id, func_id, bb_id, index_local) => {
+                function.instruction(&Instruction::I32Const(usize::from(*module_id) as i32));
+                function.instruction(&Instruction::I32Const(usize::from(*func_id) as i32));
+                function.instruction(&Instruction::I32Const(usize::from(*bb_id) as i32));
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*index_local)));
+                function.instruction(&Instruction::I32WrapI64);
+                function.instruction(&Instruction::Call(
+                    self.module_generator.instantiate_bb_func,
                 ));
             }
             ir::Expr::Bool(b) => {

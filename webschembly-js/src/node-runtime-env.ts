@@ -1,4 +1,6 @@
+import * as fsSync from "fs";
 import * as fs from "fs/promises";
+
 import * as path from "path";
 import { type RuntimeLogger, type RuntimeEnv } from "./runtime";
 
@@ -6,34 +8,40 @@ export async function createLogger({
   logDir = process.env.LOG_DIR || null,
   runtimeName = "untitled",
 }): Promise<RuntimeLogger> {
-  const logBasename = path.basename(runtimeName) + "-" + Date.now();
+  const logBasename = Date.now() + "-" + path.basename(runtimeName);
   let logFile = null;
   if (logDir !== null) {
     try {
-      await fs.mkdir(logDir);
+      fsSync.mkdirSync(logDir);
     } catch (e: any) {
       if (e.code !== "EEXIST") {
         throw e;
       }
     }
 
-    logFile = await fs.open(path.join(logDir, logBasename + ".log"), "a");
+    logFile = fsSync.openSync(path.join(logDir, logBasename + ".log"), "a");
   }
   let instantiateCount = 0;
 
   return {
-    instantiate: (buf) => {
+    instantiate: (buf, ir) => {
       if (logDir !== null) {
-        void fs.writeFile(
+        fsSync.writeFileSync(
           path.join(logDir, logBasename + "-" + instantiateCount + ".wasm"),
           buf
         );
+        if (ir !== null) {
+          fsSync.writeFileSync(
+            path.join(logDir, logBasename + "-" + instantiateCount + ".ir"),
+            ir
+          );
+        }
       }
       instantiateCount++;
     },
     log: (s) => {
       if (logFile !== null) {
-        void fs.writeFile(logFile, s + "\n");
+        fsSync.writeFileSync(logFile, s + "\n", { flush: true });
       }
     },
   };
