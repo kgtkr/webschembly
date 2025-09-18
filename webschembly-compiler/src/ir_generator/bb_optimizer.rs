@@ -163,11 +163,9 @@ pub struct NextTypeArg {
 
 pub fn remove_move(
     locals: &TiVec<LocalId, LocalType>,
-    bb: BasicBlock,
+    mut bb: BasicBlock,
     args: &Vec<LocalId>,
 ) -> BasicBlock {
-    let mut expr_assigns = Vec::new();
-
     // 再代入されている変数の特定
     let mut assign_counts = ti_vec![0; locals.len()];
     for &arg in args {
@@ -190,41 +188,31 @@ pub fn remove_move(
         local_replacements.push(local);
     }
 
-    for mut expr_assign in bb.exprs {
+    for expr_assign in bb.exprs.iter_mut() {
         use Expr::*;
+
         for (local, _) in expr_assign.local_usages_mut() {
             *local = local_replacements[*local];
         }
 
-        let new_expr_assign = match expr_assign {
+        match *expr_assign {
             ExprAssign {
                 local: Some(local),
                 expr: Move(value),
             } if locals_immutability[value] && locals_immutability[local] => {
                 local_replacements[local] = value;
-                /*
-
-                TODO: ここでNopにするとtak.b.scmが動かない
-                推移的な置き換えが必要かも
-                */
-                ExprAssign {
-                    local: Some(local),
-                    expr: Expr::Move(value),
-                }
+                /* *expr_assign = ExprAssign {
+                    local: None,
+                    expr: Expr::Nop,
+                };*/
             }
-            expr_assign => expr_assign,
+            _ => {}
         };
-        expr_assigns.push(new_expr_assign);
     }
 
-    let mut new_next = bb.next;
-    for local in new_next.local_ids_mut() {
+    for local in bb.next.local_ids_mut() {
         *local = local_replacements[*local]
     }
 
-    BasicBlock {
-        id: bb.id,
-        exprs: expr_assigns,
-        next: new_next,
-    }
+    bb
 }
