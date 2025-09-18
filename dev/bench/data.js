@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1757931470891,
+  "lastUpdate": 1758193438584,
   "repoUrl": "https://github.com/kgtkr/webschembly",
   "entries": {
     "Benchmark": [
@@ -152,6 +152,44 @@ window.BENCHMARK_DATA = {
             "range": "±1.61%",
             "unit": "ops/sec",
             "extra": "38 samples"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "me@kgtkr.net",
+            "name": "kgtkr",
+            "username": "kgtkr"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "448cac1a3d8b6c7640d5707dab243ca343fdab75",
+          "message": "Merge pull request #13 from kgtkr/work-20250916\n\n20250816",
+          "timestamp": "2025-09-18T20:02:17+09:00",
+          "tree_id": "c3a985f12d887ea60ceb1bf7b9b6e7e10acadcbc",
+          "url": "https://github.com/kgtkr/webschembly/commit/448cac1a3d8b6c7640d5707dab243ca343fdab75"
+        },
+        "date": 1758193438218,
+        "tool": "benchmarkjs",
+        "benches": [
+          {
+            "name": "div2.b.scm",
+            "value": 2.32,
+            "range": "±3.19%",
+            "unit": "ops/sec",
+            "extra": "10 samples"
+          },
+          {
+            "name": "tak.b.scm",
+            "value": 17.01,
+            "range": "±0.61%",
+            "unit": "ops/sec",
+            "extra": "46 samples"
           }
         ]
       }
