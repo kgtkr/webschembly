@@ -200,9 +200,9 @@ d = g a
 */
 pub fn copy_propagate(
     locals: &TiVec<LocalId, LocalType>,
-    mut bb: BasicBlock,
+    bb: &mut BasicBlock,
     locals_immutability: &TiVec<LocalId, bool>,
-) -> BasicBlock {
+) {
     // ローカル変数の置き換え情報
     let mut local_replacements = TiVec::new();
     for local in locals.keys() {
@@ -260,6 +260,4 @@ pub fn copy_propagate(
     for local in bb.next.local_ids_mut() {
         *local = local_replacements[*local]
     }
-
-    bb
 }

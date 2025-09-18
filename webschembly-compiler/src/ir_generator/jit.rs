@@ -626,7 +626,7 @@ impl JitFunc {
 
         let mut locals_immutability =
             bb_optimizer::analyze_locals_immutability(&new_locals, &bb, &bb_info.args);
-        let bb = bb_optimizer::copy_propagate(&new_locals, bb, &locals_immutability);
+        bb_optimizer::copy_propagate(&new_locals, &mut bb, &locals_immutability);
         let (bb, next_type_args) = bb_optimizer::remove_box(
             &mut new_locals,
             bb,
@@ -640,6 +640,11 @@ impl JitFunc {
             new_locals.push_and_get_key(LocalType::Type(Type::Val(ValType::FuncRef))); // bb1_ref
         let index_local = new_locals.push_and_get_key(LocalType::Type(Type::Val(ValType::Int)));
         let vector_local = new_locals.push_and_get_key(LocalType::Type(Type::Val(ValType::Vector)));
+        let new_locals = new_locals;
+        // locals_immutabilityを拡張
+        while locals_immutability.len() < new_locals.len() {
+            locals_immutability.push(false); // 再代入される可能性がある
+        }
 
         let mut extra_bbs = Vec::new();
 
