@@ -188,11 +188,16 @@ pub fn remove_move(
         local_replacements.push(local);
     }
 
+    let mut box_replacements = ti_vec![None; locals.len()];
+    let mut unbox_replacements = ti_vec![None; locals.len()];
+
     for expr_assign in bb.exprs.iter_mut() {
         use Expr::*;
 
-        for (local, _) in expr_assign.local_usages_mut() {
-            *local = local_replacements[*local];
+        for (local, flag) in expr_assign.local_usages_mut() {
+            if flag == LocalFlag::Used {
+                *local = local_replacements[*local];
+            }
         }
 
         match *expr_assign {
@@ -201,10 +206,30 @@ pub fn remove_move(
                 expr: Move(value),
             } if locals_immutability[value] && locals_immutability[local] => {
                 local_replacements[local] = value;
-                /* *expr_assign = ExprAssign {
-                    local: None,
-                    expr: Expr::Nop,
-                };*/
+            }
+            ExprAssign {
+                local: Some(local),
+                expr: Box(typ, value),
+            } if locals_immutability[value] && locals_immutability[local] => {
+                box_replacements[local] = Some((value, typ));
+
+                if let Some((unboxed, unboxed_typ)) = unbox_replacements[value]
+                    && unboxed_typ == typ
+                {
+                    local_replacements[local] = unboxed;
+                }
+            }
+            ExprAssign {
+                local: Some(local),
+                expr: Unbox(typ, value),
+            } if locals_immutability[value] && locals_immutability[local] => {
+                unbox_replacements[local] = Some((value, typ));
+
+                if let Some((boxed, boxed_typ)) = box_replacements[value]
+                    && boxed_typ == typ
+                {
+                    local_replacements[local] = boxed;
+                }
             }
             _ => {}
         };
