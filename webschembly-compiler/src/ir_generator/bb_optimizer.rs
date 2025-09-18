@@ -42,7 +42,7 @@ pub fn remove_box(
     bb: BasicBlock,
     type_params: &FxBiHashMap<TypeParamId, LocalId>,
     type_args: &TiVec<TypeParamId, Option<ValType>>,
-    args: &Vec<LocalId>,
+    locals_immutability: &mut TiVec<LocalId, bool>,
 ) -> (BasicBlock, TiVec<LocalId, Option<NextTypeArg>>) {
     let mut expr_assigns = Vec::new();
 
@@ -57,26 +57,11 @@ pub fn remove_box(
                 local: Some(boxed_local),
                 expr: Expr::Box(*typ, *type_params.get_by_left(&type_param_id).unwrap()),
             });
+            locals_immutability.push(true); // boxed_localは再代入されない
         }
     }
 
     let boxed_locals = boxed_locals;
-
-    // 再代入されている変数の特定
-    let mut assign_counts = ti_vec![0; locals.len()];
-    for &arg in args {
-        assign_counts[arg] += 1;
-    }
-    for expr_assign in &bb.exprs {
-        if let Some(local) = expr_assign.local {
-            assign_counts[local] += 1;
-        }
-    }
-
-    let locals_immutability = assign_counts
-        .into_iter()
-        .map(|count| count <= 1)
-        .collect::<TiVec<LocalId, bool>>();
 
     // ローカル変数の置き換え情報
     let mut local_replacements = TiVec::new();
@@ -161,12 +146,12 @@ pub struct NextTypeArg {
     pub typ: ValType,
 }
 
-pub fn remove_move(
+// 変数の不変判定
+pub fn analyze_locals_immutability(
     locals: &TiVec<LocalId, LocalType>,
-    mut bb: BasicBlock,
+    bb: &BasicBlock,
     args: &Vec<LocalId>,
-) -> BasicBlock {
-    // 再代入されている変数の特定
+) -> TiVec<LocalId, bool> {
     let mut assign_counts = ti_vec![0; locals.len()];
     for &arg in args {
         assign_counts[arg] += 1;
@@ -177,11 +162,47 @@ pub fn remove_move(
         }
     }
 
-    let locals_immutability = assign_counts
+    assign_counts
         .into_iter()
         .map(|count| count <= 1)
-        .collect::<TiVec<LocalId, bool>>();
+        .collect::<TiVec<LocalId, bool>>()
+}
 
+/*
+コピー伝播を行う
+対象はmove, box-unbox, unbox-box
+
+例:
+
+b = move a
+c = f b
+-->
+b = move a
+c = f a
+
+b = box<int> a
+c = unbox<int> b
+d = g c
+-->
+b = box<int> a
+c = unbox<int> a
+d = g a
+
+b = unbox<int> a
+c = box<int> b
+d = g c
+-->
+b = unbox<int> a
+c = box<int> a
+d = g a
+
+ここでは、デッドコードの削除は行わない
+*/
+pub fn copy_propagate(
+    locals: &TiVec<LocalId, LocalType>,
+    mut bb: BasicBlock,
+    locals_immutability: &TiVec<LocalId, bool>,
+) -> BasicBlock {
     // ローカル変数の置き換え情報
     let mut local_replacements = TiVec::new();
     for local in locals.keys() {
@@ -215,6 +236,7 @@ pub fn remove_move(
 
                 if let Some((unboxed, unboxed_typ)) = unbox_replacements[value]
                     && unboxed_typ == typ
+                // TODO: unboxed_typ == typは必要？
                 {
                     local_replacements[local] = unboxed;
                 }

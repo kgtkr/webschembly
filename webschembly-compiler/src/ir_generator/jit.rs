@@ -624,13 +624,15 @@ impl JitFunc {
             *local_id = bb_info.from_original_locals_mapping[local_id];
         }
 
-        let bb = bb_optimizer::remove_move(&new_locals, bb, &bb_info.args);
+        let mut locals_immutability =
+            bb_optimizer::analyze_locals_immutability(&new_locals, &bb, &bb_info.args);
+        let bb = bb_optimizer::copy_propagate(&new_locals, bb, &locals_immutability);
         let (bb, next_type_args) = bb_optimizer::remove_box(
             &mut new_locals,
             bb,
             &bb_info.type_params,
             type_args,
-            &bb_info.args,
+            &mut locals_immutability,
         );
 
         let boxed_local = new_locals.push_and_get_key(LocalType::Type(Type::Boxed)); // boxed bb1_ref
