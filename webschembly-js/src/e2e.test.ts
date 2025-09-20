@@ -69,7 +69,15 @@ describe("E2E test", () => {
       const stdout = new TextDecoder().decode(concatBufs(stdoutBufs));
       const stderr = new TextDecoder().decode(concatBufs(stderrBufs));
 
-      expect({ exitCode, stdout, stderr }).toMatchSnapshot();
+      await expect(exitCode).toMatchFileSnapshot(
+        `e2e_snapshots/${filename}-exitCode`
+      );
+      await expect(stdout).toMatchFileSnapshot(
+        `e2e_snapshots/${filename}-stdout`
+      );
+      await expect(stderr).toMatchFileSnapshot(
+        `e2e_snapshots/${filename}-stderr`
+      );
     });
   });
 });

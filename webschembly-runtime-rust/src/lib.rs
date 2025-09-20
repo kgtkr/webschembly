@@ -142,13 +142,26 @@ pub extern "C" fn load_src(buf_ptr: i32, buf_len: i32) {
     load_src_inner(src, false);
 }
 
+thread_local!(
+    static COMPILER_CONFIG: RefCell<webschembly_compiler::compiler::Config> =
+        RefCell::new(webschembly_compiler::compiler::Config { enable_jit: true });
+);
+
+#[unsafe(no_mangle)]
+pub extern "C" fn compiler_config_enable_jit(enable: i32) {
+    let enable = enable != 0;
+    COMPILER_CONFIG.with(|c| {
+        c.borrow_mut().enable_jit = enable;
+    });
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn init() {
+    let config = COMPILER_CONFIG.with(|c| c.borrow().clone());
+
     COMPILER.with(|compiler| {
         let mut compiler = compiler.borrow_mut();
-        *compiler = Some(webschembly_compiler::compiler::Compiler::new(
-            webschembly_compiler::compiler::Config { enable_jit: true },
-        ));
+        *compiler = Some(webschembly_compiler::compiler::Compiler::new(config));
     });
     log::set_logger(&logger::WasmLogger).unwrap();
     log::set_max_level(log::LevelFilter::Debug);
