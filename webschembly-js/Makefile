@@ -68,7 +68,7 @@ clean:
 all: $(WASM) $(WAT)
 
 benchmark.result: $(WEBSCHEMBLY_RUNTIME)
-	WEBSCHEMBLY_RUNTIME=$(WEBSCHEMBLY_RUNTIME) npx tsx src/e2e.benchmark.ts | tee $@
+	WEBSCHEMBLY_RUNTIME=$(WEBSCHEMBLY_RUNTIME) npm run benchmark
 
 .PHONY: benchmark
 benchmark: benchmark.result

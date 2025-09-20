@@ -1,4 +1,4 @@
-import Benchmark from "benchmark";
+import { Bench } from "tinybench";
 
 import * as fs from "fs/promises";
 import * as path from "path";
@@ -23,7 +23,7 @@ const runtimeModule = new WebAssembly.Module(
   await fs.readFile(process.env["WEBSCHEMBLY_RUNTIME"]!)
 );
 
-const suite = new Benchmark.Suite();
+const bench = new Bench({ iterations: 2 });
 
 for (const compilerConfig of compilerConfigs) {
   for (const filename of filenames) {
@@ -40,7 +40,7 @@ for (const compilerConfig of compilerConfigs) {
       }
     );
 
-    suite.add(`${filename},${compilerConfigToString(compilerConfig)}`, () => {
+    bench.add(`${filename},${compilerConfigToString(compilerConfig)}`, () => {
       runtime.loadStdlib();
       runtime.loadSrc(srcBuf);
       runtime.cleanup();
@@ -48,8 +48,19 @@ for (const compilerConfig of compilerConfigs) {
   }
 }
 
-suite
-  .on("cycle", (event: any) => {
-    console.log(String(event.target));
-  })
-  .run();
+await bench.run();
+console.table(bench.table());
+
+// benchmark.js互換形式で保存
+const outputFile = await fs.open("benchmark.result", "w");
+bench.tasks.forEach((task) => {
+  const result = task.result!;
+  outputFile.write(
+    `${task.name} x ${result.throughput.mean.toFixed(
+      2
+    )} ops/sec ±${result.latency.rme.toFixed(2)}% (${
+      result.latency.samples.length
+    } runs sampled)\n`
+  );
+});
+await outputFile.close();
