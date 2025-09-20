@@ -29,14 +29,13 @@ const bench = new Bench();
 for (const compilerConfig of compilerConfigs) {
   for (const filename of filenames) {
     const srcBuf = await fs.readFile(path.join(sourceDir, filename));
+    const runMainSrcBuf = new TextEncoder().encode("(main)");
     let runtime: Runtime;
 
     bench.add(
       `${filename},${compilerConfigToString(compilerConfig)}`,
       () => {
-        runtime.loadStdlib();
         runtime.loadSrc(srcBuf);
-        runtime.cleanup();
       },
       {
         beforeEach: async () => {
@@ -51,6 +50,37 @@ for (const compilerConfig of compilerConfigs) {
               compilerConfig,
             }
           );
+          runtime.loadStdlib();
+        },
+        afterEach: () => {
+          runtime.cleanup();
+        },
+      }
+    );
+
+    bench.add(
+      `${filename},with warm-up,${compilerConfigToString(compilerConfig)}`,
+      () => {
+        runtime.loadSrc(runMainSrcBuf);
+      },
+      {
+        beforeEach: async () => {
+          runtime = await createRuntime(
+            await createNodeRuntimeEnv({
+              runtimeName: filename,
+              exit: () => {},
+              writeBuf: () => {},
+              loadRuntimeModule: async () => runtimeModule,
+            }),
+            {
+              compilerConfig,
+            }
+          );
+          runtime.loadStdlib();
+          runtime.loadSrc(srcBuf);
+        },
+        afterEach: () => {
+          runtime.cleanup();
         },
       }
     );

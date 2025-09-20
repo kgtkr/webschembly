@@ -17,12 +17,15 @@
 (define l (create-n 10))
 (write (div2 l))(newline)
 
-(write "start")(newline)
 (define (loop n)
   (if (= n 0)
       '()
       (begin
         (div2 l)
         (loop (- n 1)))))
-(loop 300000)
+(define (main)
+  (loop 300000))
+
+(write "start")(newline)
+(main)
 (write "done")(newline)
