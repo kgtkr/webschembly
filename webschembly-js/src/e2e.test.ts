@@ -2,7 +2,7 @@ import * as fs from "fs/promises";
 import * as fsLegacy from "fs";
 import { beforeAll, describe, expect, test } from "vitest";
 import * as path from "path";
-import { createRuntime } from "./runtime";
+import { createRuntime, type CompilerConfig } from "./runtime";
 import { createNodeRuntimeEnv } from "./node-runtime-env";
 
 function concatBufs(bufs: Uint8Array[]) {
@@ -16,10 +16,16 @@ function concatBufs(bufs: Uint8Array[]) {
   return resultBuf;
 }
 
+const snapshotDir = "e2e_snapshots";
 const sourceDir = "fixtures";
 const filenames = fsLegacy
   .readdirSync(sourceDir)
   .filter((file) => file.endsWith(".scm"));
+
+const compilerConfigs: CompilerConfig[] = [
+  { enableJit: true },
+  { enableJit: false },
+];
 
 describe("E2E test", () => {
   let runtimeModule: WebAssembly.Module;
@@ -29,55 +35,57 @@ describe("E2E test", () => {
     );
   });
 
-  describe.each(filenames)("%s", (filename) => {
-    let srcBuf: Buffer;
-    beforeAll(async () => {
-      srcBuf = await fs.readFile(path.join(sourceDir, filename));
-    });
+  describe.each(compilerConfigs)("enableJit=$enableJit", (compilerConfig) => {
+    describe.each(filenames)("%s", (filename) => {
+      let srcBuf: Buffer;
+      beforeAll(async () => {
+        srcBuf = await fs.readFile(path.join(sourceDir, filename));
+      });
 
-    test("snapshot test", async () => {
-      let exitCode = 0;
-      const stdoutBufs: Uint8Array[] = [];
-      const stderrBufs: Uint8Array[] = [];
-      const runtime = await createRuntime(
-        await createNodeRuntimeEnv({
-          runtimeName: filename,
-          exit: (code) => {
-            exitCode = code;
-          },
-          writeBuf: (fd, buf) => {
-            switch (fd) {
-              case 1:
-                stdoutBufs.push(new Uint8Array(buf));
-                break;
-              case 2:
-                stderrBufs.push(new Uint8Array(buf));
-                break;
-              default:
-                throw new Error(`Unsupported file descriptor: ${fd}`);
-            }
-          },
-          loadRuntimeModule: async () => runtimeModule,
-        }),
-        {}
-      );
+      test("snapshot test", async () => {
+        let exitCode = 0;
+        const stdoutBufs: Uint8Array[] = [];
+        const stderrBufs: Uint8Array[] = [];
+        const runtime = await createRuntime(
+          await createNodeRuntimeEnv({
+            runtimeName: filename,
+            exit: (code) => {
+              exitCode = code;
+            },
+            writeBuf: (fd, buf) => {
+              switch (fd) {
+                case 1:
+                  stdoutBufs.push(new Uint8Array(buf));
+                  break;
+                case 2:
+                  stderrBufs.push(new Uint8Array(buf));
+                  break;
+                default:
+                  throw new Error(`Unsupported file descriptor: ${fd}`);
+              }
+            },
+            loadRuntimeModule: async () => runtimeModule,
+          }),
+          {}
+        );
 
-      runtime.loadStdlib();
-      runtime.loadSrc(srcBuf);
-      runtime.cleanup();
+        runtime.loadStdlib();
+        runtime.loadSrc(srcBuf);
+        runtime.cleanup();
 
-      const stdout = new TextDecoder().decode(concatBufs(stdoutBufs));
-      const stderr = new TextDecoder().decode(concatBufs(stderrBufs));
+        const stdout = new TextDecoder().decode(concatBufs(stdoutBufs));
+        const stderr = new TextDecoder().decode(concatBufs(stderrBufs));
 
-      await expect(exitCode).toMatchFileSnapshot(
-        `e2e_snapshots/${filename}-exitCode`
-      );
-      await expect(stdout).toMatchFileSnapshot(
-        `e2e_snapshots/${filename}-stdout`
-      );
-      await expect(stderr).toMatchFileSnapshot(
-        `e2e_snapshots/${filename}-stderr`
-      );
+        await expect(exitCode).toMatchFileSnapshot(
+          `${snapshotDir}/${filename}-exitCode`
+        );
+        await expect(stdout).toMatchFileSnapshot(
+          `${snapshotDir}/${filename}-stdout`
+        );
+        await expect(stderr).toMatchFileSnapshot(
+          `${snapshotDir}/${filename}-stderr`
+        );
+      });
     });
   });
 });
