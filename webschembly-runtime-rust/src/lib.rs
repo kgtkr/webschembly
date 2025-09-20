@@ -1,6 +1,7 @@
 #![feature(ptr_as_ref_unchecked, allocator_api, slice_ptr_get)]
 use core::cell::RefCell;
 use rustc_hash::FxHashMap;
+use std::cell::{Ref, RefMut};
 use std::vec;
 mod logger;
 use std::alloc::{Allocator, Global, Layout};
@@ -78,10 +79,7 @@ impl SymbolManager {
 }
 
 thread_local!(
-    static COMPILER: RefCell<webschembly_compiler::compiler::Compiler> =
-        RefCell::new(webschembly_compiler::compiler::Compiler::new(
-            webschembly_compiler::compiler::Config { enable_jit: true },
-        ));
+    static COMPILER: RefCell<Option<webschembly_compiler::compiler::Compiler>> = RefCell::new(None);
 );
 
 // const STDIN_FD: i32 = 0;
@@ -90,7 +88,7 @@ const STDERR_FD: i32 = 2;
 
 fn load_src_inner(src: String, is_stdlib: bool) {
     let result = COMPILER.with(|compiler| {
-        let mut compiler = compiler.borrow_mut();
+        let mut compiler = RefMut::map(compiler.borrow_mut(), |c| c.as_mut().unwrap());
         compiler.compile_module(&src, is_stdlib).map(|module| {
             let wasm = webschembly_compiler::wasm_generator::generate(&module);
             let ir = if cfg!(debug_assertions) {
@@ -146,6 +144,12 @@ pub extern "C" fn load_src(buf_ptr: i32, buf_len: i32) {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn init() {
+    COMPILER.with(|compiler| {
+        let mut compiler = compiler.borrow_mut();
+        *compiler = Some(webschembly_compiler::compiler::Compiler::new(
+            webschembly_compiler::compiler::Config { enable_jit: true },
+        ));
+    });
     log::set_logger(&logger::WasmLogger).unwrap();
     log::set_max_level(log::LevelFilter::Debug);
     if cfg!(debug_assertions) {
@@ -281,7 +285,7 @@ pub extern "C" fn get_global_id(buf_ptr: i32, buf_len: i32) -> i32 {
     }
     let name = String::from_utf8(bytes).unwrap();
     COMPILER.with(|compiler| {
-        let compiler = compiler.borrow();
+        let compiler = Ref::map(compiler.borrow(), |c| c.as_ref().unwrap());
         compiler.get_global_id(&name).unwrap_or(-1)
     })
 }
@@ -289,7 +293,7 @@ pub extern "C" fn get_global_id(buf_ptr: i32, buf_len: i32) -> i32 {
 #[unsafe(no_mangle)]
 pub extern "C" fn instantiate_func(module_id: i32, func_id: i32) -> i32 {
     let (wasm, ir) = COMPILER.with(|compiler| {
-        let mut compiler = compiler.borrow_mut();
+        let mut compiler = RefMut::map(compiler.borrow_mut(), |c| c.as_mut().unwrap());
         let module = compiler.instantiate_func(
             webschembly_compiler::ir::ModuleId::from(module_id as usize),
             webschembly_compiler::ir::FuncId::from(func_id as usize),
@@ -320,7 +324,7 @@ pub extern "C" fn instantiate_func(module_id: i32, func_id: i32) -> i32 {
 #[unsafe(no_mangle)]
 pub extern "C" fn instantiate_bb(module_id: i32, func_id: i32, bb_id: i32, index: i32) -> i32 {
     let (wasm, ir) = COMPILER.with(|compiler| {
-        let mut compiler = compiler.borrow_mut();
+        let mut compiler = RefMut::map(compiler.borrow_mut(), |c| c.as_mut().unwrap());
         let module = compiler.instantiate_bb(
             webschembly_compiler::ir::ModuleId::from(module_id as usize),
             webschembly_compiler::ir::FuncId::from(func_id as usize),
