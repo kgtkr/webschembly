@@ -712,19 +712,19 @@ impl JitFunc {
                     })
                 }
                 BasicBlockNext::If(cond, then_bb, else_bb) => {
-                    let (then_locals_to_pass, then_type_args) = calculate_args_to_pass(
+                    let (then_locals_to_pass, then_type_args, then_index) = calculate_args_to_pass(
                         &self.jit_bbs[bb_id].info,
                         &self.jit_bbs[then_bb].info,
                         &next_type_args,
+                        global_layout,
                     );
-                    let then_index = global_layout.to_idx(&then_type_args);
                     required_stubs.push((then_bb, then_index));
-                    let (else_locals_to_pass, else_type_args) = calculate_args_to_pass(
+                    let (else_locals_to_pass, else_type_args, else_index) = calculate_args_to_pass(
                         &self.jit_bbs[bb_id].info,
                         &self.jit_bbs[else_bb].info,
                         &next_type_args,
+                        global_layout,
                     );
-                    let else_index = global_layout.to_idx(&else_type_args);
                     required_stubs.push((else_bb, else_index));
 
                     let then_bb_new = BasicBlock {
@@ -801,12 +801,12 @@ impl JitFunc {
                     BasicBlockNext::If(cond, BasicBlockId::from(1), BasicBlockId::from(2))
                 }
                 BasicBlockNext::Jump(target_bb) => {
-                    let (args_to_pass, type_args) = calculate_args_to_pass(
+                    let (args_to_pass, type_args, target_index) = calculate_args_to_pass(
                         &self.jit_bbs[bb_id].info,
                         &self.jit_bbs[target_bb].info,
                         &next_type_args,
+                        global_layout,
                     );
-                    let target_index = global_layout.to_idx(&type_args);
                     required_stubs.push((target_bb, target_index));
 
                     exprs.push(ExprAssign {
@@ -1219,7 +1219,8 @@ fn calculate_args_to_pass(
     caller: &BBInfo,
     callee: &BBInfo,
     caller_next_type_args: &TiVec<LocalId, Option<NextTypeArg>>,
-) -> (Vec<LocalId>, TiVec<TypeParamId, Option<ValType>>) {
+    global_layout: &mut GlobalLayout,
+) -> (Vec<LocalId>, TiVec<TypeParamId, Option<ValType>>, usize) {
     let mut type_args = ti_vec![None; callee.type_params.len()];
     let mut args_to_pass = Vec::new();
 
@@ -1227,7 +1228,8 @@ fn calculate_args_to_pass(
         let caller_args =
             caller.from_original_locals_mapping[&callee.to_original_locals_mapping[callee_arg]];
         let caller_args = if let Some(&type_param_id) = callee.type_params.get_by_right(&callee_arg)
-            && let Some(caller_next_type_arg) = caller_next_type_args[caller_args]
+            && let Some(caller_next_type_arg) =
+                caller_next_type_args.get(caller_args).copied().flatten()
         {
             type_args[type_param_id] = Some(caller_next_type_arg.typ);
             caller_next_type_arg.unboxed
@@ -1237,7 +1239,14 @@ fn calculate_args_to_pass(
 
         args_to_pass.push(caller_args);
     }
-    (args_to_pass, type_args)
+
+    if let Some(idx) = global_layout.to_idx(&type_args) {
+        (args_to_pass, type_args, idx)
+    } else {
+        // global layoutが満杯なら型パラメータなしで再計算
+        // 型パラメータなしで呼び出すとto_idxの結果はSomeになるので無限ループしない
+        calculate_args_to_pass(caller, callee, &TiVec::new(), global_layout)
+    }
 }
 
 pub const GLOBAL_LAYOUT_MAX_SIZE: usize = 32;
@@ -1263,18 +1272,18 @@ impl GlobalLayout {
         }
     }
 
-    pub fn to_idx(&mut self, type_params: &TiVec<TypeParamId, Option<ValType>>) -> usize {
+    pub fn to_idx(&mut self, type_params: &TiVec<TypeParamId, Option<ValType>>) -> Option<usize> {
         if type_params.iter().all(|t| t.is_none()) {
             // 全ての型パラメータがNoneなら0を返す
-            GLOBAL_LAYOUT_DEFAULT_INDEX
+            Some(GLOBAL_LAYOUT_DEFAULT_INDEX)
         } else if let Some(&index) = self.type_params_to_index.get_by_left(type_params) {
-            index
+            Some(index)
         } else if self.type_params_to_index.len() < GLOBAL_LAYOUT_MAX_SIZE {
             let index = self.type_params_to_index.len();
             self.type_params_to_index.insert(type_params.clone(), index);
-            index
+            Some(index)
         } else {
-            GLOBAL_LAYOUT_DEFAULT_INDEX
+            None
         }
     }
 
