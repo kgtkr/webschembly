@@ -15,6 +15,13 @@ export type CompilerConfig = {
   enableJit?: boolean;
 };
 
+export function compilerConfigToString(config: CompilerConfig): string {
+  return Object.entries(config)
+    .filter(([, v]) => v !== undefined)
+    .map(([k, v]) => `${k}=${v}`)
+    .join(",");
+}
+
 export type RuntimeLogger = {
   log: (s: string) => void;
   instantiate: (buf: Uint8Array, ir: string | null) => void;

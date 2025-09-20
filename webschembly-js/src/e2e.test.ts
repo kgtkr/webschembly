@@ -2,7 +2,11 @@ import * as fs from "fs/promises";
 import * as fsLegacy from "fs";
 import { beforeAll, describe, expect, test } from "vitest";
 import * as path from "path";
-import { createRuntime, type CompilerConfig } from "./runtime";
+import {
+  compilerConfigToString,
+  createRuntime,
+  type CompilerConfig,
+} from "./runtime";
 import { createNodeRuntimeEnv } from "./node-runtime-env";
 
 function concatBufs(bufs: Uint8Array[]) {
@@ -35,7 +39,12 @@ describe("E2E test", () => {
     );
   });
 
-  describe.each(compilerConfigs)("enableJit=$enableJit", (compilerConfig) => {
+  describe.each(
+    compilerConfigs.map((compilerConfig) => [
+      compilerConfigToString(compilerConfig),
+      compilerConfig,
+    ])
+  )("%s", (_, compilerConfig) => {
     describe.each(filenames)("%s", (filename) => {
       let srcBuf: Buffer;
       beforeAll(async () => {
@@ -66,7 +75,9 @@ describe("E2E test", () => {
             },
             loadRuntimeModule: async () => runtimeModule,
           }),
-          {}
+          {
+            compilerConfig,
+          }
         );
 
         runtime.loadStdlib();
