@@ -1,0 +1,26 @@
+export WEBSCHEMBLY_RUNTIME := "../webschembly-runtime/webschembly_runtime.wasm"
+LOG := "0"
+export LOG_DIR := if LOG == "1" { invocation_directory() / "log" } else { "" }
+
+[private]
+build:
+	make -C ../webschembly-runtime
+
+test: build
+	npm test
+
+test-update: build
+	npm test -- --update
+
+repl: build
+	npx tsx src/repl.ts
+
+run src: build
+	npx tsx src/run.ts "{{src}}"
+
+benchmark: build
+	npm run benchmark
+
+run-aot wasm: #runtimeは不要
+	make "{{wasm}}"
+	npx tsx src/run-aot.ts "{{wasm}}"

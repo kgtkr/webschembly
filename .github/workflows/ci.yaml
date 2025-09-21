@@ -44,11 +44,11 @@ jobs:
       - run: npm run check
       - name: E2E Test
         run: |
-          make test
+          just test
         working-directory: ./webschembly-js
       - name: E2E Benchmark
         run: |
-          make benchmark
+          just benchmark
         working-directory: ./webschembly-js
       - name: Store benchmark result
         uses: benchmark-action/github-action-benchmark@v1

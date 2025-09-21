@@ -42,27 +42,6 @@ $(WEBSCHEMBLY_COMPILER_CLI):
 %.wat: %.wasm
 	wasm-dis $< -o $@
 
-.PHONY: test
-test: $(WEBSCHEMBLY_RUNTIME)
-	WEBSCHEMBLY_RUNTIME=$(WEBSCHEMBLY_RUNTIME) npm test
-
-.PHONY: test-update
-test-update: $(WEBSCHEMBLY_RUNTIME)
-	WEBSCHEMBLY_RUNTIME=$(WEBSCHEMBLY_RUNTIME) npm test -- --update
-
-.PHONY: repl
-repl: $(WEBSCHEMBLY_RUNTIME)
-	WEBSCHEMBLY_RUNTIME=$(WEBSCHEMBLY_RUNTIME) npx tsx src/repl.ts
-
-.PHONY: run
-run: $(WEBSCHEMBLY_RUNTIME)
-	WEBSCHEMBLY_RUNTIME=$(WEBSCHEMBLY_RUNTIME) npx tsx src/run.ts $(SRC)
-
-.PHONY: run-aot
-run-aot: $(WASM)
-	npx tsx src/run-aot.ts $(WASM)
-
-
 .PHONY: clean
 clean:
 	rm -f $(WASM) $(WAT)
