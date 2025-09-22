@@ -27,7 +27,8 @@ const filenames = fsLegacy
   .filter((file) => file.endsWith(".scm"));
 
 const compilerConfigs: CompilerConfig[] = [
-  { enableJit: true },
+  {},
+  { enableJitOptimization: false },
   { enableJit: false },
 ];
 

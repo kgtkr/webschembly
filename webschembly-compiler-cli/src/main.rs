@@ -3,7 +3,7 @@
 use clap::Parser;
 use std::io::Write;
 use std::path::Path;
-use webschembly_compiler::compiler::{Compiler, Config};
+use webschembly_compiler::compiler::{Compiler, FlatConfig};
 
 #[derive(Parser, Debug)]
 #[command(version)]
@@ -34,9 +34,13 @@ fn main() -> anyhow::Result<()> {
     let output_stem = output.file_stem().unwrap_or_default();
     let output_extension = output.extension().unwrap_or_default();
 
-    let mut compiler = Compiler::new(Config {
-        enable_jit: args.jit,
-    });
+    let mut compiler = Compiler::new(
+        FlatConfig {
+            enable_jit: args.jit,
+            enable_jit_optimization: true,
+        }
+        .into(),
+    );
     let mut srcs = Vec::new();
 
     if !args.no_stdlib {

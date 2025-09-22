@@ -13,6 +13,7 @@ export type RuntimeConfig = {
 
 export type CompilerConfig = {
   enableJit?: boolean;
+  enableJitOptimization?: boolean;
 };
 
 export function compilerConfigToString(config: CompilerConfig): string {
@@ -65,6 +66,7 @@ export type RuntimeExports = {
   cleanup: () => void;
   init: () => void;
   compiler_config_enable_jit: (enable: number) => void;
+  compiler_config_enable_jit_optimization: (enable: number) => void;
 };
 
 export type ModuleImports = {
@@ -155,6 +157,12 @@ export async function createRuntime(
       Number(compilerConfig.enableJit)
     );
   }
+  if (compilerConfig?.enableJitOptimization !== undefined) {
+    runtimeInstance.exports.compiler_config_enable_jit_optimization(
+      Number(compilerConfig.enableJitOptimization)
+    );
+  }
+
   runtimeInstance.exports.init();
 
   const importObject: ModuleImports = {

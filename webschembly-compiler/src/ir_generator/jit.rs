@@ -9,21 +9,35 @@ use crate::ir::*;
 use crate::ir_generator::GlobalManager;
 use crate::ir_generator::bb_optimizer::NextTypeArg;
 
-#[derive(Debug)]
-pub struct Jit {
-    jit_module: TiVec<ModuleId, JitModule>,
-    global_layout: GlobalLayout,
+#[derive(Debug, Clone, Copy)]
+pub struct JitConfig {
+    pub enable_optimization: bool,
 }
 
-impl Default for Jit {
+impl Default for JitConfig {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl Jit {
-    pub fn new() -> Self {
+impl JitConfig {
+    pub const fn new() -> Self {
         Self {
+            enable_optimization: true,
+        }
+    }
+}
+#[derive(Debug)]
+pub struct Jit {
+    config: JitConfig,
+    jit_module: TiVec<ModuleId, JitModule>,
+    global_layout: GlobalLayout,
+}
+
+impl Jit {
+    pub fn new(config: JitConfig) -> Self {
+        Self {
+            config,
             jit_module: TiVec::new(),
             global_layout: GlobalLayout::new(),
         }
@@ -66,7 +80,13 @@ impl Jit {
         let jit_func = self.jit_module[module_id].jit_funcs[func_id]
             .as_ref()
             .unwrap();
-        jit_func.generate_bb_module(jit_module, bb_id, index, &mut self.global_layout) // TODO: index
+        jit_func.generate_bb_module(
+            &self.config,
+            jit_module,
+            bb_id,
+            index,
+            &mut self.global_layout,
+        ) // TODO: index
     }
 }
 
@@ -600,6 +620,7 @@ impl JitFunc {
 
     fn generate_bb_module(
         &self,
+        config: &JitConfig,
         jit_module: &JitModule,
         bb_id: BasicBlockId,
         index: usize,
@@ -626,7 +647,9 @@ impl JitFunc {
 
         let mut locals_immutability =
             bb_optimizer::analyze_locals_immutability(&new_locals, &bb, &bb_info.args);
-        bb_optimizer::copy_propagate(&new_locals, &mut bb, &locals_immutability);
+        if config.enable_optimization {
+            bb_optimizer::copy_propagate(&new_locals, &mut bb, &locals_immutability);
+        }
         let (bb, next_type_args) = bb_optimizer::remove_box(
             &mut new_locals,
             bb,
@@ -872,12 +895,15 @@ impl JitFunc {
                 );
             }
         }
-        bb_optimizer::dead_code_elimination(
-            &body_func.locals,
-            &mut body_func.bbs[body_func.bb_entry],
-            &locals_immutability,
-            &out_used_locals,
-        );
+
+        if config.enable_optimization {
+            bb_optimizer::dead_code_elimination(
+                &body_func.locals,
+                &mut body_func.bbs[body_func.bb_entry],
+                &locals_immutability,
+                &out_used_locals,
+            );
+        }
 
         let body_func_id = body_func.id;
         funcs.push(body_func);

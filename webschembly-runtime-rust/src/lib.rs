@@ -144,8 +144,12 @@ pub extern "C" fn load_src(buf_ptr: i32, buf_len: i32) {
 }
 
 thread_local!(
-    static COMPILER_CONFIG: RefCell<webschembly_compiler::compiler::Config> =
-        const { RefCell::new(webschembly_compiler::compiler::Config { enable_jit: true }) };
+    static COMPILER_CONFIG: RefCell<webschembly_compiler::compiler::FlatConfig> = const {
+        RefCell::new(webschembly_compiler::compiler::FlatConfig {
+            enable_jit: true,
+            enable_jit_optimization: true,
+        })
+    };
 );
 
 #[unsafe(no_mangle)]
@@ -157,12 +161,20 @@ pub extern "C" fn compiler_config_enable_jit(enable: i32) {
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn compiler_config_enable_jit_optimization(enable: i32) {
+    let enable = enable != 0;
+    COMPILER_CONFIG.with(|c| {
+        c.borrow_mut().enable_jit_optimization = enable;
+    });
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn init() {
-    let config = COMPILER_CONFIG.with(|c| c.borrow().clone());
+    let config = COMPILER_CONFIG.with(|c| *c.borrow());
 
     COMPILER.with(|compiler| {
         let mut compiler = compiler.borrow_mut();
-        *compiler = Some(webschembly_compiler::compiler::Compiler::new(config));
+        *compiler = Some(webschembly_compiler::compiler::Compiler::new(config.into()));
     });
     log::set_logger(&logger::WasmLogger).unwrap();
     log::set_max_level(log::LevelFilter::Debug);

@@ -16,7 +16,8 @@ const filenames = (await fs.readdir(sourceDir)).filter((file) =>
 );
 
 const compilerConfigs: CompilerConfig[] = [
-  { enableJit: true },
+  {},
+  { enableJitOptimization: false },
   { enableJit: false },
 ];
 
