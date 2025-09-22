@@ -1,26 +1,35 @@
-export WEBSCHEMBLY_RUNTIME := "../webschembly-runtime/webschembly_runtime.wasm"
+WEBSCHEMBLY_RUNTIME_DIR := clean(justfile_directory() / "../webschembly-runtime")
+WEBSCHEMBLY_RUNTIME_FILE := "webschembly_runtime.wasm"
+WEBSCHEMBLY_RUNTIME := WEBSCHEMBLY_RUNTIME_DIR / WEBSCHEMBLY_RUNTIME_FILE
 LOG := "0"
-export LOG_DIR := if LOG == "1" { invocation_directory() / "log" } else { "" }
+LOG_DIR_ENV := if LOG == "1" { "LOG_DIR=" + '"' + (justfile_directory() / "log") + '"' + " " } else { "" }
+WEBSCHEMBLY_RUNTIME_ENV := "WEBSCHEMBLY_RUNTIME=" + '"' + WEBSCHEMBLY_RUNTIME + '"' + " "
+
+default: test
 
 [private]
-build:
-	make -C ../webschembly-runtime
+build-runtime:
+	make -C "{{WEBSCHEMBLY_RUNTIME_DIR}}" "{{WEBSCHEMBLY_RUNTIME_FILE}}"
 
-test: build
-	npm test
+[private]
+build-runtime-release:
+	make -C "{{WEBSCHEMBLY_RUNTIME_DIR}}" CARGO_RELEASE=1 "{{WEBSCHEMBLY_RUNTIME_FILE}}"
 
-test-update: build
-	npm test -- --update
+test: build-runtime
+	{{LOG_DIR_ENV}}{{WEBSCHEMBLY_RUNTIME_ENV}}npm test
 
-repl: build
-	npx tsx src/repl.ts
+test-update: build-runtime
+	{{LOG_DIR_ENV}}{{WEBSCHEMBLY_RUNTIME_ENV}}npm test -- --update
 
-run src: build
-	npx tsx src/run.ts "{{src}}"
+repl: build-runtime
+	{{LOG_DIR_ENV}}{{WEBSCHEMBLY_RUNTIME_ENV}}npx tsx src/repl.ts
 
-benchmark: build
-	npm run benchmark
+run src: build-runtime
+	{{LOG_DIR_ENV}}{{WEBSCHEMBLY_RUNTIME_ENV}}npx tsx src/run.ts "{{src}}"
 
-run-aot wasm: #runtimeは不要
+benchmark: build-runtime-release
+	{{LOG_DIR_ENV}}{{WEBSCHEMBLY_RUNTIME_ENV}}npm run benchmark
+
+run-aot wasm:
 	make "{{wasm}}"
-	npx tsx src/run-aot.ts "{{wasm}}"
+	{{LOG_DIR_ENV}}npx tsx src/run-aot.ts "{{wasm}}"
