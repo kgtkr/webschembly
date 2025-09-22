@@ -79,7 +79,8 @@ impl SymbolManager {
 }
 
 thread_local!(
-    static COMPILER: RefCell<Option<webschembly_compiler::compiler::Compiler>> = RefCell::new(None);
+    static COMPILER: RefCell<Option<webschembly_compiler::compiler::Compiler>> =
+        const { RefCell::new(None) };
 );
 
 // const STDIN_FD: i32 = 0;
@@ -144,7 +145,7 @@ pub extern "C" fn load_src(buf_ptr: i32, buf_len: i32) {
 
 thread_local!(
     static COMPILER_CONFIG: RefCell<webschembly_compiler::compiler::Config> =
-        RefCell::new(webschembly_compiler::compiler::Config { enable_jit: true });
+        const { RefCell::new(webschembly_compiler::compiler::Config { enable_jit: true }) };
 );
 
 #[unsafe(no_mangle)]
