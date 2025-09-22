@@ -196,7 +196,7 @@ pub enum LocalFlag {
     Used,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExprCall {
     pub func_id: FuncId,
     pub args: Vec<LocalId>,
@@ -262,7 +262,7 @@ impl fmt::Display for DisplayInFunc<'_, &'_ ExprCall> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExprCallRef {
     pub func: LocalId,
     pub args: Vec<LocalId>,
@@ -314,7 +314,7 @@ impl fmt::Display for DisplayInFunc<'_, &'_ ExprCallRef> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Expr {
     Nop,
     InstantiateFunc(ModuleId, FuncId),
@@ -782,7 +782,7 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExprAssign {
     pub local: Option<LocalId>,
     pub expr: Expr,
