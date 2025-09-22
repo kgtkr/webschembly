@@ -196,7 +196,7 @@ pub enum LocalFlag {
     Used,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExprCall {
     pub func_id: FuncId,
     pub args: Vec<LocalId>,
@@ -262,7 +262,7 @@ impl fmt::Display for DisplayInFunc<'_, &'_ ExprCall> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExprCallRef {
     pub func: LocalId,
     pub args: Vec<LocalId>,
@@ -314,7 +314,7 @@ impl fmt::Display for DisplayInFunc<'_, &'_ ExprCallRef> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Expr {
     Nop,
     InstantiateFunc(ModuleId, FuncId),
@@ -552,6 +552,71 @@ impl Expr {
         DisplayInFunc { value: self, meta }
     }
 
+    // 結果が使われていなければ削除しても良い命令か？
+    pub fn is_effectful(&self) -> bool {
+        match self {
+            Expr::Nop
+            | Expr::Bool(..)
+            | Expr::Int(..)
+            | Expr::String(..)
+            | Expr::StringToSymbol(..)
+            | Expr::Nil
+            | Expr::Char(..)
+            | Expr::Vector(..)
+            | Expr::Cons(..)
+            | Expr::FuncRef(..)
+            | Expr::Move(..)
+            | Expr::Box(..)
+            // 型エラーが起きる可能性があるので厳密には副作用ありだが一旦
+            | Expr::Unbox(..)
+            | Expr::Closure { .. }
+            | Expr::ClosureEnv(..)
+            | Expr::ClosureFuncRef(..)
+            | Expr::GlobalGet(..)
+            | Expr::IsPair(..)
+            | Expr::IsSymbol(..)
+            | Expr::IsString(..)
+            | Expr::IsNumber(..)
+            | Expr::IsBoolean(..)
+            | Expr::IsProcedure(..)
+            | Expr::IsChar(..)
+            | Expr::IsVector(..)
+            | Expr::VectorLength(..)
+            | Expr::VectorRef(..)
+            | Expr::Eq(..)
+            | Expr::Not(..)
+            | Expr::Car(..)
+            | Expr::Cdr(..)
+            | Expr::SymbolToString(..)
+            | Expr::NumberToString(..)
+            | Expr::EqNum(..)
+            | Expr::Lt(..)
+            | Expr::Gt(..)
+            | Expr::Le(..)
+            | Expr::Ge(..)
+            | Expr::Args(..)
+            | Expr::ArgsRef(..)
+            | Expr::CreateMutCell(..)
+            | Expr::DerefMutCell(..)
+            | Expr::Add(..)
+            | Expr::Sub(..)
+            | Expr::Mul(..)
+            | Expr::Div(..) => false,
+
+            Expr::InstantiateFunc(..)
+            | Expr::InstantiateBB(..)
+            | Expr::SetMutCell(..)
+            | Expr::Call(..)
+            | Expr::CallRef(..)
+            | Expr::GlobalSet(..)
+            | Expr::Error(..)
+            | Expr::InitModule
+            | Expr::Display(..)
+            | Expr::WriteChar(..)
+            | Expr::VectorSet(..) => true,
+        }
+    }
+
     impl_Expr_func_ids!(_mut, mut);
     impl_Expr_func_ids!(,);
     impl_Expr_local_ids!(_mut, mut);
@@ -717,7 +782,7 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExprAssign {
     pub local: Option<LocalId>,
     pub expr: Expr,

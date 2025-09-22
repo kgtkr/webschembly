@@ -27,7 +27,6 @@
   (type $Args (array (mut (ref null $ValType))))
   (type $ClosureFunc (func (param (ref $Closure)) (param (ref $Args)) (result (ref null $ValType))))
   
-  (import "runtime" "init" (func $init))
   (import "runtime" "malloc" (func $malloc (param i32) (result i32)))
   (import "runtime" "free" (func $free (param i32)))
   (import "runtime" "memory" (memory 1))
@@ -181,8 +180,6 @@
   (func $throw_webassembly_exception (export "throw_webassembly_exception")
     (throw $WEBSCHEMBLY_EXCEPTION)
   )
-
-  (start $init)
 
   (func $get_global (export "get_global") (param $buf_ptr i32) (param $buf_len i32) (result eqref)
     (local $global_id i32)

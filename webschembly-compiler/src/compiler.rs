@@ -3,6 +3,7 @@ use crate::compiler_error;
 use crate::ir;
 use crate::ir_generator;
 use crate::ir_generator::Jit;
+use crate::ir_generator::JitConfig;
 use crate::lexer;
 use crate::sexpr_parser;
 
@@ -10,13 +11,32 @@ use crate::sexpr_parser;
 pub struct Compiler {
     ast_generator: ast::ASTGenerator,
     global_manager: ir_generator::GlobalManager,
-    jit: Jit,
-    config: Config,
+    jit: Option<Jit>,
 }
 
-#[derive(Debug, Clone)]
-pub struct Config {
+#[derive(Debug, Clone, Copy)]
+pub struct FlatConfig {
     pub enable_jit: bool,
+    pub enable_jit_optimization: bool,
+}
+
+impl From<FlatConfig> for Config {
+    fn from(config: FlatConfig) -> Self {
+        Self {
+            jit: if config.enable_jit {
+                Some(JitConfig {
+                    enable_optimization: config.enable_jit_optimization,
+                })
+            } else {
+                None
+            },
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct Config {
+    pub jit: Option<JitConfig>,
 }
 
 impl Compiler {
@@ -24,8 +44,7 @@ impl Compiler {
         Self {
             ast_generator: ast::ASTGenerator::new(),
             global_manager: ir_generator::GlobalManager::new(),
-            jit: Jit::new(),
-            config,
+            jit: config.jit.map(Jit::new),
         }
     }
 
@@ -43,8 +62,8 @@ impl Compiler {
                 allow_set_builtin: is_stdlib,
             });
 
-        if self.config.enable_jit {
-            Ok(self.jit.register_module(&mut self.global_manager, module))
+        if let Some(jit) = &mut self.jit {
+            Ok(jit.register_module(&mut self.global_manager, module))
         } else {
             Ok(module)
         }
@@ -55,11 +74,9 @@ impl Compiler {
     }
 
     pub fn instantiate_func(&mut self, module_id: ir::ModuleId, func_id: ir::FuncId) -> ir::Module {
-        if !self.config.enable_jit {
-            panic!("JIT is not enabled");
-        }
-
         self.jit
+            .as_mut()
+            .expect("JIT is not enabled")
             .instantiate_func(&mut self.global_manager, module_id, func_id)
     }
 
@@ -70,10 +87,9 @@ impl Compiler {
         bb_id: ir::BasicBlockId,
         index: usize,
     ) -> ir::Module {
-        if !self.config.enable_jit {
-            panic!("JIT is not enabled");
-        }
-
-        self.jit.instantiate_bb(module_id, func_id, bb_id, index)
+        self.jit
+            .as_mut()
+            .expect("JIT is not enabled")
+            .instantiate_bb(module_id, func_id, bb_id, index)
     }
 }

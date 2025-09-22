@@ -1021,6 +1021,9 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         locals: &TiSlice<ir::LocalId, ir::LocalType>,
         expr: &ir::ExprAssign,
     ) {
+        if let ir::Expr::Nop = expr.expr {
+            return;
+        }
         self.gen_expr(function, locals, &expr.expr);
         if let Some(local) = &expr.local {
             function.instruction(&Instruction::LocalSet(self.local_id_to_idx(*local)));
@@ -1037,6 +1040,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
     ) {
         match expr {
             ir::Expr::Nop => {
+                // unreachableなはず
                 function.instruction(&Instruction::I32Const(0));
             }
             ir::Expr::InstantiateFunc(module_id, func_id) => {

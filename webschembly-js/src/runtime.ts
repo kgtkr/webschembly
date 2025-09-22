@@ -8,7 +8,20 @@ export type RuntimeEnv = {
 export type RuntimeConfig = {
   exitWhenException?: boolean;
   printEvalResult?: boolean;
+  compilerConfig?: CompilerConfig;
 };
+
+export type CompilerConfig = {
+  enableJit?: boolean;
+  enableJitOptimization?: boolean;
+};
+
+export function compilerConfigToString(config: CompilerConfig): string {
+  return Object.entries(config)
+    .filter(([, v]) => v !== undefined)
+    .map(([k, v]) => `${k}=${v}`)
+    .join(",");
+}
 
 export type RuntimeLogger = {
   log: (s: string) => void;
@@ -51,6 +64,9 @@ export type RuntimeExports = {
   load_src: (srcPtr: number, srcLen: number) => void;
   flush_all: () => void;
   cleanup: () => void;
+  init: () => void;
+  compiler_config_enable_jit: (enable: number) => void;
+  compiler_config_enable_jit_optimization: (enable: number) => void;
 };
 
 export type ModuleImports = {
@@ -67,7 +83,11 @@ export type TypedWebAssemblyInstance<Exports> = WebAssembly.Instance & {
 
 export async function createRuntime(
   { exit, logger, loadRuntimeModule, writeBuf }: RuntimeEnv,
-  { exitWhenException = true, printEvalResult = false }: RuntimeConfig
+  {
+    exitWhenException = true,
+    printEvalResult = false,
+    compilerConfig,
+  }: RuntimeConfig
 ): Promise<Runtime> {
   const runtimeImportObjects: RuntimeImportsEnv = {
     js_instantiate: (bufPtr, bufSize, irBufPtr, irBufSize, fromSrc) => {
@@ -131,6 +151,19 @@ export async function createRuntime(
   const runtimeInstance = new WebAssembly.Instance(await loadRuntimeModule(), {
     env: runtimeImportObjects,
   } satisfies RuntimeImports) as TypedWebAssemblyInstance<RuntimeExports>;
+
+  if (compilerConfig?.enableJit !== undefined) {
+    runtimeInstance.exports.compiler_config_enable_jit(
+      Number(compilerConfig.enableJit)
+    );
+  }
+  if (compilerConfig?.enableJitOptimization !== undefined) {
+    runtimeInstance.exports.compiler_config_enable_jit_optimization(
+      Number(compilerConfig.enableJitOptimization)
+    );
+  }
+
+  runtimeInstance.exports.init();
 
   const importObject: ModuleImports = {
     runtime: runtimeInstance.exports,

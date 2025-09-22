@@ -9,21 +9,35 @@ use crate::ir::*;
 use crate::ir_generator::GlobalManager;
 use crate::ir_generator::bb_optimizer::NextTypeArg;
 
-#[derive(Debug)]
-pub struct Jit {
-    jit_module: TiVec<ModuleId, JitModule>,
-    global_layout: GlobalLayout,
+#[derive(Debug, Clone, Copy)]
+pub struct JitConfig {
+    pub enable_optimization: bool,
 }
 
-impl Default for Jit {
+impl Default for JitConfig {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl Jit {
-    pub fn new() -> Self {
+impl JitConfig {
+    pub const fn new() -> Self {
         Self {
+            enable_optimization: true,
+        }
+    }
+}
+#[derive(Debug)]
+pub struct Jit {
+    config: JitConfig,
+    jit_module: TiVec<ModuleId, JitModule>,
+    global_layout: GlobalLayout,
+}
+
+impl Jit {
+    pub fn new(config: JitConfig) -> Self {
+        Self {
+            config,
             jit_module: TiVec::new(),
             global_layout: GlobalLayout::new(),
         }
@@ -66,7 +80,13 @@ impl Jit {
         let jit_func = self.jit_module[module_id].jit_funcs[func_id]
             .as_ref()
             .unwrap();
-        jit_func.generate_bb_module(jit_module, bb_id, index, &mut self.global_layout) // TODO: index
+        jit_func.generate_bb_module(
+            &self.config,
+            jit_module,
+            bb_id,
+            index,
+            &mut self.global_layout,
+        ) // TODO: index
     }
 }
 
@@ -600,6 +620,7 @@ impl JitFunc {
 
     fn generate_bb_module(
         &self,
+        config: &JitConfig,
         jit_module: &JitModule,
         bb_id: BasicBlockId,
         index: usize,
@@ -624,20 +645,34 @@ impl JitFunc {
             *local_id = bb_info.from_original_locals_mapping[local_id];
         }
 
-        let bb = bb_optimizer::remove_move(&new_locals, bb, &bb_info.args);
-        let (bb, next_type_args) = bb_optimizer::remove_box(
+        let mut locals_immutability =
+            bb_optimizer::analyze_locals_immutability(&new_locals, &bb, &bb_info.args);
+        if config.enable_optimization {
+            // bb_optimizer::remove_boxを効果的に行うために、事前に行う
+            bb_optimizer::copy_propagate(&new_locals, &mut bb, &locals_immutability);
+        }
+        let next_type_args = bb_optimizer::remove_box(
             &mut new_locals,
-            bb,
+            &mut bb,
             &bb_info.type_params,
             type_args,
-            &bb_info.args,
+            &mut locals_immutability,
         );
+        if config.enable_optimization {
+            // bb_optimizer::remove_boxの結果出来たbox-unboxの除去が主な目的
+            bb_optimizer::copy_propagate(&new_locals, &mut bb, &locals_immutability);
+        }
 
         let boxed_local = new_locals.push_and_get_key(LocalType::Type(Type::Boxed)); // boxed bb1_ref
         let func_ref_local =
             new_locals.push_and_get_key(LocalType::Type(Type::Val(ValType::FuncRef))); // bb1_ref
         let index_local = new_locals.push_and_get_key(LocalType::Type(Type::Val(ValType::Int)));
         let vector_local = new_locals.push_and_get_key(LocalType::Type(Type::Val(ValType::Vector)));
+        let new_locals = new_locals;
+        // locals_immutabilityを拡張
+        while locals_immutability.len() < new_locals.len() {
+            locals_immutability.push(false); // 再代入される可能性がある
+        }
 
         let mut extra_bbs = Vec::new();
 
@@ -705,19 +740,19 @@ impl JitFunc {
                     })
                 }
                 BasicBlockNext::If(cond, then_bb, else_bb) => {
-                    let (then_locals_to_pass, then_type_args) = calculate_args_to_pass(
+                    let (then_locals_to_pass, then_type_args, then_index) = calculate_args_to_pass(
                         &self.jit_bbs[bb_id].info,
                         &self.jit_bbs[then_bb].info,
                         &next_type_args,
+                        global_layout,
                     );
-                    let then_index = global_layout.to_idx(&then_type_args);
                     required_stubs.push((then_bb, then_index));
-                    let (else_locals_to_pass, else_type_args) = calculate_args_to_pass(
+                    let (else_locals_to_pass, else_type_args, else_index) = calculate_args_to_pass(
                         &self.jit_bbs[bb_id].info,
                         &self.jit_bbs[else_bb].info,
                         &next_type_args,
+                        global_layout,
                     );
-                    let else_index = global_layout.to_idx(&else_type_args);
                     required_stubs.push((else_bb, else_index));
 
                     let then_bb_new = BasicBlock {
@@ -794,12 +829,12 @@ impl JitFunc {
                     BasicBlockNext::If(cond, BasicBlockId::from(1), BasicBlockId::from(2))
                 }
                 BasicBlockNext::Jump(target_bb) => {
-                    let (args_to_pass, type_args) = calculate_args_to_pass(
+                    let (args_to_pass, type_args, target_index) = calculate_args_to_pass(
                         &self.jit_bbs[bb_id].info,
                         &self.jit_bbs[target_bb].info,
                         &next_type_args,
+                        global_layout,
                     );
-                    let target_index = global_layout.to_idx(&type_args);
                     required_stubs.push((target_bb, target_index));
 
                     exprs.push(ExprAssign {
@@ -854,6 +889,27 @@ impl JitFunc {
         };
 
         body_func.bbs.extend(extra_bbs);
+
+        let mut out_used_locals = Vec::new();
+        for bb in body_func.bbs.iter() {
+            if bb.id != body_func.bb_entry {
+                out_used_locals.extend(
+                    bb.local_usages()
+                        .filter(|(_, flag)| *flag == LocalFlag::Used)
+                        .map(|(local, _)| *local),
+                );
+            }
+        }
+
+        if config.enable_optimization {
+            bb_optimizer::dead_code_elimination(
+                &body_func.locals,
+                &mut body_func.bbs[body_func.bb_entry],
+                &locals_immutability,
+                &out_used_locals,
+            );
+        }
+
         let body_func_id = body_func.id;
         funcs.push(body_func);
 
@@ -1194,7 +1250,8 @@ fn calculate_args_to_pass(
     caller: &BBInfo,
     callee: &BBInfo,
     caller_next_type_args: &TiVec<LocalId, Option<NextTypeArg>>,
-) -> (Vec<LocalId>, TiVec<TypeParamId, Option<ValType>>) {
+    global_layout: &mut GlobalLayout,
+) -> (Vec<LocalId>, TiVec<TypeParamId, Option<ValType>>, usize) {
     let mut type_args = ti_vec![None; callee.type_params.len()];
     let mut args_to_pass = Vec::new();
 
@@ -1202,7 +1259,8 @@ fn calculate_args_to_pass(
         let caller_args =
             caller.from_original_locals_mapping[&callee.to_original_locals_mapping[callee_arg]];
         let caller_args = if let Some(&type_param_id) = callee.type_params.get_by_right(&callee_arg)
-            && let Some(caller_next_type_arg) = caller_next_type_args[caller_args]
+            && let Some(caller_next_type_arg) =
+                caller_next_type_args.get(caller_args).copied().flatten()
         {
             type_args[type_param_id] = Some(caller_next_type_arg.typ);
             caller_next_type_arg.unboxed
@@ -1212,7 +1270,14 @@ fn calculate_args_to_pass(
 
         args_to_pass.push(caller_args);
     }
-    (args_to_pass, type_args)
+
+    if let Some(idx) = global_layout.to_idx(&type_args) {
+        (args_to_pass, type_args, idx)
+    } else {
+        // global layoutが満杯なら型パラメータなしで再計算
+        // 型パラメータなしで呼び出すとto_idxの結果はSomeになるので無限ループしない
+        calculate_args_to_pass(caller, callee, &TiVec::new(), global_layout)
+    }
 }
 
 pub const GLOBAL_LAYOUT_MAX_SIZE: usize = 32;
@@ -1238,18 +1303,18 @@ impl GlobalLayout {
         }
     }
 
-    pub fn to_idx(&mut self, type_params: &TiVec<TypeParamId, Option<ValType>>) -> usize {
+    pub fn to_idx(&mut self, type_params: &TiVec<TypeParamId, Option<ValType>>) -> Option<usize> {
         if type_params.iter().all(|t| t.is_none()) {
             // 全ての型パラメータがNoneなら0を返す
-            GLOBAL_LAYOUT_DEFAULT_INDEX
+            Some(GLOBAL_LAYOUT_DEFAULT_INDEX)
         } else if let Some(&index) = self.type_params_to_index.get_by_left(type_params) {
-            index
+            Some(index)
         } else if self.type_params_to_index.len() < GLOBAL_LAYOUT_MAX_SIZE {
             let index = self.type_params_to_index.len();
             self.type_params_to_index.insert(type_params.clone(), index);
-            index
+            Some(index)
         } else {
-            GLOBAL_LAYOUT_DEFAULT_INDEX
+            None
         }
     }
 

@@ -4,7 +4,8 @@
   "version": "0.1.0",
   "scripts": {
     "build": "tsc",
-    "test": "vitest run"
+    "test": "vitest run",
+    "benchmark": "tsx src/e2e.benchmark.ts"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -12,9 +13,8 @@
     "dist/"
   ],
   "devDependencies": {
-    "@types/benchmark": "^2.1.5",
     "@types/node": "^22.0.0",
-    "benchmark": "^2.1.4",
+    "tinybench": "^5.0.1",
     "tsx": "^4.20.3",
     "typescript": "^5.5.0",
     "vitest": "^3.0.6"

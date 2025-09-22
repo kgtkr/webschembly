@@ -43,6 +43,7 @@
               pkgs.nixpkgs-fmt
               pkgs.binaryen
               pkgs.wasm-tools
+              pkgs.just
             ];
           };
         };
