@@ -648,15 +648,20 @@ impl JitFunc {
         let mut locals_immutability =
             bb_optimizer::analyze_locals_immutability(&new_locals, &bb, &bb_info.args);
         if config.enable_optimization {
+            // bb_optimizer::remove_boxを効果的に行うために、事前に行う
             bb_optimizer::copy_propagate(&new_locals, &mut bb, &locals_immutability);
         }
-        let (bb, next_type_args) = bb_optimizer::remove_box(
+        let next_type_args = bb_optimizer::remove_box(
             &mut new_locals,
-            bb,
+            &mut bb,
             &bb_info.type_params,
             type_args,
             &mut locals_immutability,
         );
+        if config.enable_optimization {
+            // bb_optimizer::remove_boxの結果出来たbox-unboxの除去が主な目的
+            bb_optimizer::copy_propagate(&new_locals, &mut bb, &locals_immutability);
+        }
 
         let boxed_local = new_locals.push_and_get_key(LocalType::Type(Type::Boxed)); // boxed bb1_ref
         let func_ref_local =

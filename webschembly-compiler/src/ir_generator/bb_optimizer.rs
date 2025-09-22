@@ -27,10 +27,10 @@ local l1_boxed: boxed // boxedバージョンを追加
 args: l1
 
 l1_boxed = boxed<int>(l1) // BBの先頭に追加。不要なら後々の最適化で削除する
-_ = cons(l1_boxed, l1_boxed) // unbox以外でl1を参照している式はl1_boxedに置き換える
-_ = nop // unboxでl1を参照している場合、nopに置き換え、左辺を記憶
-_ = nop // 同様
-_ = add(l1, l1) // 上で記憶した左辺が出てきたらl1に置き換え
+_ = cons(l1_boxed, l1_boxed) // l1を参照している式はl1_boxedに置き換える
+l2 = unbox<int>(l1_boxed)
+l3 = unbox<int>(l1_boxed)
+_ = add(l1, l1)
 ```
 
 次のBBに引き継ぐ情報:
@@ -39,12 +39,12 @@ _ = add(l1, l1) // 上で記憶した左辺が出てきたらl1に置き換え
 
 pub fn remove_box(
     locals: &mut TiVec<LocalId, LocalType>,
-    bb: BasicBlock,
+    bb: &mut BasicBlock,
     type_params: &FxBiHashMap<TypeParamId, LocalId>,
     type_args: &TiVec<TypeParamId, Option<ValType>>,
     locals_immutability: &mut TiVec<LocalId, bool>,
-) -> (BasicBlock, TiVec<LocalId, Option<NextTypeArg>>) {
-    let mut expr_assigns = Vec::new();
+) -> TiVec<LocalId, Option<NextTypeArg>> {
+    let mut additional_expr_assigns = Vec::new();
 
     // 型代入されている変数のboxed版を用意(l1_boxedに対応)
     let mut boxed_locals = ti_vec![None; locals.len()];
@@ -53,7 +53,7 @@ pub fn remove_box(
             let boxed_local = locals.push_and_get_key(LocalType::Type(Type::Boxed));
             boxed_locals[*type_params.get_by_left(&type_param_id).unwrap()] = Some(boxed_local);
 
-            expr_assigns.push(ExprAssign {
+            additional_expr_assigns.push(ExprAssign {
                 local: Some(boxed_local),
                 expr: Expr::Box(*typ, *type_params.get_by_left(&type_param_id).unwrap()),
             });
@@ -72,49 +72,27 @@ pub fn remove_box(
     // 次のBBに引き継ぐ型情報
     let mut next_type_args = ti_vec![None; locals.len()];
 
-    for mut expr_assign in bb.exprs {
-        use Expr::*;
+    for expr_assign in bb.exprs.iter_mut() {
+        if let ExprAssign {
+            local,
+            expr: Expr::Unbox(typ, value),
+        } = *expr_assign
+            && locals_immutability[value]
+            && let Some(local) = local
+            && locals_immutability[local]
+        {
+            next_type_args[value] = Some(NextTypeArg {
+                unboxed: local,
+                typ,
+            });
+        }
 
-        expr_assign = match expr_assign {
-            ExprAssign {
-                local,
-                expr: Unbox(typ, value),
-            } => {
-                if locals_immutability[value]
-                    && let Some(local) = local
-                    && locals_immutability[local]
-                    && let Some(&type_param_id) = type_params.get_by_right(&value)
-                    && let Some(type_arg) = type_args[type_param_id]
-                {
-                    debug_assert_eq!(type_arg, typ);
-                    local_replacements[local] = value;
-                    ExprAssign {
-                        local: None,
-                        expr: Expr::Nop,
-                    }
-                } else {
-                    if locals_immutability[value]
-                        && let Some(local) = local
-                        && locals_immutability[local]
-                    {
-                        next_type_args[value] = Some(NextTypeArg {
-                            unboxed: local,
-                            typ,
-                        });
-                    }
-                    expr_assign
-                }
-            }
-            expr_assign => expr_assign,
-        };
         for (local, _) in expr_assign.local_usages_mut() {
             *local = local_replacements[*local];
         }
-        expr_assigns.push(expr_assign);
     }
 
-    let mut new_next = bb.next;
-    for local in new_next.local_ids_mut() {
+    for local in bb.next.local_ids_mut() {
         *local = local_replacements[*local]
     }
 
@@ -130,14 +108,9 @@ pub fn remove_box(
         }
     }
 
-    (
-        BasicBlock {
-            id: bb.id,
-            exprs: expr_assigns,
-            next: new_next,
-        },
-        next_type_args,
-    )
+    bb.exprs.splice(0..0, additional_expr_assigns);
+
+    next_type_args
 }
 
 #[derive(Debug, Clone, Copy)]
