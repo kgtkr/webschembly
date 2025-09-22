@@ -27,64 +27,68 @@ const runtimeModule = new WebAssembly.Module(
 
 const bench = new Bench();
 
-for (const compilerConfig of compilerConfigs) {
-  for (const filename of filenames) {
-    const srcBuf = await fs.readFile(path.join(sourceDir, filename));
-    const runMainSrcBuf = new TextEncoder().encode("(main)");
-    let runtime: Runtime;
+for (const filename of filenames) {
+  for (const warmup of [false, true]) {
+    for (const compilerConfig of compilerConfigs) {
+      const srcBuf = await fs.readFile(path.join(sourceDir, filename));
+      const runMainSrcBuf = new TextEncoder().encode("(main)");
+      let runtime: Runtime;
 
-    bench.add(
-      `${filename},${compilerConfigToString(compilerConfig)}`,
-      () => {
-        runtime.loadSrc(srcBuf);
-      },
-      {
-        beforeEach: async () => {
-          runtime = await createRuntime(
-            await createNodeRuntimeEnv({
-              runtimeName: filename,
-              exit: () => {},
-              writeBuf: () => {},
-              loadRuntimeModule: async () => runtimeModule,
-            }),
-            {
-              compilerConfig,
-            }
-          );
-          runtime.loadStdlib();
-        },
-        afterEach: () => {
-          runtime.cleanup();
-        },
+      if (warmup) {
+        bench.add(
+          `${filename},with warmup,${compilerConfigToString(compilerConfig)}`,
+          () => {
+            runtime.loadSrc(runMainSrcBuf);
+          },
+          {
+            beforeEach: async () => {
+              runtime = await createRuntime(
+                await createNodeRuntimeEnv({
+                  runtimeName: filename,
+                  exit: () => {},
+                  writeBuf: () => {},
+                  loadRuntimeModule: async () => runtimeModule,
+                }),
+                {
+                  compilerConfig,
+                }
+              );
+              runtime.loadStdlib();
+              runtime.loadSrc(srcBuf);
+            },
+            afterEach: () => {
+              runtime.cleanup();
+            },
+          }
+        );
+      } else {
+        bench.add(
+          `${filename},${compilerConfigToString(compilerConfig)}`,
+          () => {
+            runtime.loadSrc(srcBuf);
+          },
+          {
+            beforeEach: async () => {
+              runtime = await createRuntime(
+                await createNodeRuntimeEnv({
+                  runtimeName: filename,
+                  exit: () => {},
+                  writeBuf: () => {},
+                  loadRuntimeModule: async () => runtimeModule,
+                }),
+                {
+                  compilerConfig,
+                }
+              );
+              runtime.loadStdlib();
+            },
+            afterEach: () => {
+              runtime.cleanup();
+            },
+          }
+        );
       }
-    );
-
-    bench.add(
-      `${filename},with warm-up,${compilerConfigToString(compilerConfig)}`,
-      () => {
-        runtime.loadSrc(runMainSrcBuf);
-      },
-      {
-        beforeEach: async () => {
-          runtime = await createRuntime(
-            await createNodeRuntimeEnv({
-              runtimeName: filename,
-              exit: () => {},
-              writeBuf: () => {},
-              loadRuntimeModule: async () => runtimeModule,
-            }),
-            {
-              compilerConfig,
-            }
-          );
-          runtime.loadStdlib();
-          runtime.loadSrc(srcBuf);
-        },
-        afterEach: () => {
-          runtime.cleanup();
-        },
-      }
-    );
+    }
   }
 }
 
