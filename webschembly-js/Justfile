@@ -3,6 +3,7 @@ WEBSCHEMBLY_RUNTIME_FILE := "webschembly_runtime.wasm"
 WEBSCHEMBLY_RUNTIME := WEBSCHEMBLY_RUNTIME_DIR / WEBSCHEMBLY_RUNTIME_FILE
 LOG := "0"
 LOG_DIR_ENV := if LOG == "1" { "LOG_DIR=" + '"' + (justfile_directory() / "log") + '"' + " " } else { "" }
+export LOG_STDOUT := "0"
 WEBSCHEMBLY_RUNTIME_ENV := "WEBSCHEMBLY_RUNTIME=" + '"' + WEBSCHEMBLY_RUNTIME + '"' + " "
 
 default: test

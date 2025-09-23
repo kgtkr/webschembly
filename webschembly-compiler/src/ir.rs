@@ -298,8 +298,12 @@ impl ExprCallRef {
 
 impl fmt::Display for DisplayInFunc<'_, &'_ ExprCallRef> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // TODO: func_typeを表示する
-        write!(f, "call_ref({})", self.value.func.display(self.meta))?;
+        write!(
+            f,
+            "call_ref({}:{})",
+            self.value.func.display(self.meta),
+            self.value.func_type
+        )?;
         if !self.value.args.is_empty() {
             write!(f, "(")?;
             for (i, arg) in self.value.args.iter().enumerate() {
@@ -1129,6 +1133,19 @@ impl fmt::Display for Display<'_, &'_ Func> {
 pub struct FuncType {
     pub args: Vec<LocalType>,
     pub ret: LocalType,
+}
+
+impl std::fmt::Display for FuncType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "(")?;
+        for (i, arg) in self.args.iter().enumerate() {
+            if i > 0 {
+                write!(f, ",")?;
+            }
+            write!(f, "{}", arg)?;
+        }
+        write!(f, ") -> {}", self.ret)
+    }
 }
 
 #[derive(Debug, Clone, Copy, From, Into, Hash, PartialEq, Eq)]

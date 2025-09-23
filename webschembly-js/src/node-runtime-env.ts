@@ -6,6 +6,7 @@ import { type RuntimeLogger, type RuntimeEnv } from "./runtime";
 
 export async function createLogger({
   logDir = process.env.LOG_DIR || null,
+  logStdout = process.env.LOG_STDOUT === "1",
   runtimeName = "untitled",
 }): Promise<RuntimeLogger> {
   const logBasename = Date.now() + "-" + path.basename(runtimeName);
@@ -37,11 +38,19 @@ export async function createLogger({
           );
         }
       }
+      if (logStdout) {
+        console.log(
+          `called instantiate: id:${instantiateCount}, buf_size:${buf.length}`
+        );
+      }
       instantiateCount++;
     },
     log: (s) => {
       if (logFile !== null) {
         fsSync.writeFileSync(logFile, s + "\n", { flush: true });
+      }
+      if (logStdout) {
+        console.log(s);
       }
     },
   };
