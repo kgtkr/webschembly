@@ -7,7 +7,7 @@ use super::bb_optimizer;
 use crate::fxbihashmap::FxBiHashMap;
 use crate::ir::*;
 use crate::ir_generator::GlobalManager;
-use crate::ir_generator::bb_optimizer::NextTypeArg;
+use crate::ir_generator::bb_optimizer::TypedBox;
 
 #[derive(Debug, Clone, Copy)]
 pub struct JitConfig {
@@ -638,7 +638,7 @@ impl JitFunc {
         let mut new_locals = TiVec::new();
         let bb_info = &self.jit_bbs[bb_id].info;
 
-        new_locals.extend(bb_info.arg_types(func, type_args));
+        new_locals.extend(bb_info.arg_types_without_type_args(func));
         new_locals.extend(bb_info.define_types(func));
 
         for (local_id, _) in bb.local_usages_mut() {
@@ -647,11 +647,7 @@ impl JitFunc {
 
         let mut locals_immutability =
             bb_optimizer::analyze_locals_immutability(&new_locals, &bb, &bb_info.args);
-        if config.enable_optimization {
-            // bb_optimizer::remove_boxを効果的に行うために、事前に行う
-            bb_optimizer::copy_propagate(&new_locals, &mut bb, &locals_immutability);
-        }
-        let next_type_args = bb_optimizer::remove_box(
+        let assigned_local_to_box = bb_optimizer::assign_type_args(
             &mut new_locals,
             &mut bb,
             &bb_info.type_params,
@@ -659,7 +655,13 @@ impl JitFunc {
             &mut locals_immutability,
         );
         if config.enable_optimization {
-            // bb_optimizer::remove_boxの結果出来たbox-unboxの除去が主な目的
+            // bb_optimizer::analyze_typed_boxを効果的に行うために、事前に行う
+            bb_optimizer::copy_propagate(&new_locals, &mut bb, &locals_immutability);
+        }
+        let next_type_args =
+            bb_optimizer::analyze_typed_box(&new_locals, &bb, &locals_immutability);
+        if config.enable_optimization {
+            // bb_optimizer::assign_type_argsの結果出来たbox-unboxの除去が主な目的
             bb_optimizer::copy_propagate(&new_locals, &mut bb, &locals_immutability);
         }
 
@@ -744,6 +746,7 @@ impl JitFunc {
                         &self.jit_bbs[bb_id].info,
                         &self.jit_bbs[then_bb].info,
                         &next_type_args,
+                        &assigned_local_to_box,
                         global_layout,
                     );
                     required_stubs.push((then_bb, then_index));
@@ -751,6 +754,7 @@ impl JitFunc {
                         &self.jit_bbs[bb_id].info,
                         &self.jit_bbs[else_bb].info,
                         &next_type_args,
+                        &assigned_local_to_box,
                         global_layout,
                     );
                     required_stubs.push((else_bb, else_index));
@@ -833,6 +837,7 @@ impl JitFunc {
                         &self.jit_bbs[bb_id].info,
                         &self.jit_bbs[target_bb].info,
                         &next_type_args,
+                        &assigned_local_to_box,
                         global_layout,
                     );
                     required_stubs.push((target_bb, target_index));
@@ -1027,12 +1032,12 @@ impl JitFunc {
                     id: then_bb_id,
                     exprs: vec![
                         ExprAssign {
-                            local: Some(boxed_local),
+                            local: Some(func_ref_local),
                             expr: Expr::FuncRef(stub_func_id),
                         },
                         ExprAssign {
                             local: Some(boxed_local),
-                            expr: Expr::Box(ValType::FuncRef, boxed_local),
+                            expr: Expr::Box(ValType::FuncRef, func_ref_local),
                         },
                         ExprAssign {
                             local: None,
@@ -1166,6 +1171,10 @@ struct BBInfo {
 }
 
 impl BBInfo {
+    fn arg_types_without_type_args(&self, func: &Func) -> Vec<LocalType> {
+        self.arg_types(func, &TiVec::new())
+    }
+
     fn arg_types(
         &self,
         func: &Func,
@@ -1175,7 +1184,7 @@ impl BBInfo {
             .iter()
             .map(|&arg| {
                 if let Some(&type_param_id) = self.type_params.get_by_right(&arg)
-                    && let Some(typ) = type_args[type_param_id]
+                    && let Some(typ) = type_args.get(type_param_id).copied().flatten()
                 {
                     LocalType::Type(Type::Val(typ))
                 } else {
@@ -1249,7 +1258,8 @@ fn calculate_bb_info(
 fn calculate_args_to_pass(
     caller: &BBInfo,
     callee: &BBInfo,
-    caller_next_type_args: &TiVec<LocalId, Option<NextTypeArg>>,
+    caller_typed_boxes: &TiVec<LocalId, Option<TypedBox>>,
+    caller_assigned_local_to_box: &TiVec<LocalId, Option<LocalId>>,
     global_layout: &mut GlobalLayout,
 ) -> (Vec<LocalId>, TiVec<TypeParamId, Option<ValType>>, usize) {
     let mut type_args = ti_vec![None; callee.type_params.len()];
@@ -1259,11 +1269,12 @@ fn calculate_args_to_pass(
         let caller_args =
             caller.from_original_locals_mapping[&callee.to_original_locals_mapping[callee_arg]];
         let caller_args = if let Some(&type_param_id) = callee.type_params.get_by_right(&callee_arg)
-            && let Some(caller_next_type_arg) =
-                caller_next_type_args.get(caller_args).copied().flatten()
+            && let Some(caller_typed_box) = caller_typed_boxes.get(caller_args).copied().flatten()
         {
-            type_args[type_param_id] = Some(caller_next_type_arg.typ);
-            caller_next_type_arg.unboxed
+            type_args[type_param_id] = Some(caller_typed_box.typ);
+            caller_typed_box.unboxed
+        } else if let Some(boxed_local) = caller_assigned_local_to_box[caller_args] {
+            boxed_local
         } else {
             caller_args
         };
@@ -1275,8 +1286,14 @@ fn calculate_args_to_pass(
         (args_to_pass, type_args, idx)
     } else {
         // global layoutが満杯なら型パラメータなしで再計算
-        // 型パラメータなしで呼び出すとto_idxの結果はSomeになるので無限ループしない
-        calculate_args_to_pass(caller, callee, &TiVec::new(), global_layout)
+        // 型パラメータなしで呼び出すとto_idxの結果は必ずSomeになるので無限ループすることはない
+        calculate_args_to_pass(
+            caller,
+            callee,
+            &TiVec::new(),
+            caller_assigned_local_to_box,
+            global_layout,
+        )
     }
 }
 

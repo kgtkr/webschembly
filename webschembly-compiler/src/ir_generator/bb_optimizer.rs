@@ -3,6 +3,140 @@ use typed_index_collections::{TiVec, ti_vec};
 use crate::{fxbihashmap::FxBiHashMap, ir::*};
 
 /*
+BBに型代入を行う
+
+```
+local l1: boxed
+local l2: int
+local l3: int
+
+args: l1
+
+_ = cons(l1, l1)
+l2 = unbox<int>(l1)
+l3 = unbox<int>(l1)
+_ = add(l2, l3)
+```
+
+`l1 = int` を代入した場合:
+
+```
+local l1: int // intに更新
+local l2: int
+local l3: int
+local l1_boxed: boxed // boxedバージョンを追加
+
+args: l1
+
+l1_boxed = boxed<int>(l1) // BBの先頭に追加。不要なら後々の最適化で削除する
+_ = cons(l1_boxed, l1_boxed) // l1を参照している式はl1_boxedに置き換える
+l2 = unbox<int>(l1_boxed)
+l3 = unbox<int>(l1_boxed)
+_ = add(l2, l3)
+```
+*/
+
+pub fn assign_type_args(
+    locals: &mut TiVec<LocalId, LocalType>,
+    bb: &mut BasicBlock,
+    type_params: &FxBiHashMap<TypeParamId, LocalId>,
+    type_args: &TiVec<TypeParamId, Option<ValType>>,
+    locals_immutability: &mut TiVec<LocalId, bool>,
+) -> TiVec<LocalId, Option<LocalId>> {
+    let mut additional_expr_assigns = Vec::new();
+
+    // 型代入されている変数のboxed版を用意(l1_boxedに対応)
+    let mut assigned_local_to_box = ti_vec![None; locals.len()];
+    for (type_param_id, typ) in type_args.iter_enumerated() {
+        if let Some(typ) = typ {
+            let local = *type_params.get_by_left(&type_param_id).unwrap();
+
+            // ローカル変数の型に代入
+            debug_assert_eq!(locals[local], LocalType::Type(Type::Boxed));
+            locals[local] = LocalType::Type(Type::Val(*typ));
+
+            // boxed版のローカル変数を用意
+            let boxed_local = locals.push_and_get_key(LocalType::Type(Type::Boxed));
+            assigned_local_to_box[local] = Some(boxed_local);
+            additional_expr_assigns.push(ExprAssign {
+                local: Some(boxed_local),
+                expr: Expr::Box(*typ, *type_params.get_by_left(&type_param_id).unwrap()),
+            });
+            locals_immutability.push(true); // boxed_localは再代入されない
+        }
+    }
+
+    for (local, _) in bb.local_usages_mut() {
+        if let Some(boxed_local) = assigned_local_to_box[*local] {
+            *local = boxed_local;
+        }
+    }
+
+    bb.exprs.splice(0..0, additional_expr_assigns);
+
+    assigned_local_to_box
+}
+
+/*
+静的に型が分かっているboxed型の変数を収集する
+
+```
+local l1: int
+local l2: int
+local l3: int
+local l1_boxed: boxed
+local l4: cons
+local l5: boxed
+
+args: l1
+
+l1_boxed = boxed<int>(l1) // l1_boxedは中身がintであり、unboxed版はl1にある
+_ = cons(l1_boxed, l1_boxed)
+l2 = unbox<int>(l1_boxed) // 1行目と同じ情報が得られる
+l3 = unbox<int>(l1_boxed) // 同様
+_ = add(l2, l3)
+```
+
+次のBBに引き継ぐ情報:
+- boxedな値→unboxedな値の対応とその型(どちらも再代入されない場合のみ)
+*/
+
+pub fn analyze_typed_box(
+    locals: &TiVec<LocalId, LocalType>,
+    bb: &BasicBlock,
+    locals_immutability: &TiVec<LocalId, bool>,
+) -> TiVec<LocalId, Option<TypedBox>> {
+    // 次のBBに引き継ぐ型情報
+    let mut typed_boxes = ti_vec![None; locals.len()];
+
+    for expr_assign in bb.exprs.iter() {
+        match *expr_assign {
+            ExprAssign {
+                local: Some(local),
+                expr: Expr::Unbox(typ, value),
+            } if locals_immutability[value] && locals_immutability[local] => {
+                typed_boxes[value] = Some(TypedBox {
+                    unboxed: local,
+                    typ,
+                });
+            }
+            ExprAssign {
+                local: Some(local),
+                expr: Expr::Box(typ, value),
+            } if locals_immutability[value] && locals_immutability[local] => {
+                typed_boxes[local] = Some(TypedBox {
+                    unboxed: value,
+                    typ,
+                });
+            }
+            _ => {}
+        }
+    }
+
+    typed_boxes
+}
+
+/*
 ```
 local l1: boxed
 local l2: int
@@ -43,7 +177,7 @@ pub fn remove_box(
     type_params: &FxBiHashMap<TypeParamId, LocalId>,
     type_args: &TiVec<TypeParamId, Option<ValType>>,
     locals_immutability: &mut TiVec<LocalId, bool>,
-) -> TiVec<LocalId, Option<NextTypeArg>> {
+) -> TiVec<LocalId, Option<TypedBox>> {
     let mut additional_expr_assigns = Vec::new();
 
     // 型代入されている変数のboxed版を用意(l1_boxedに対応)
@@ -81,7 +215,7 @@ pub fn remove_box(
             && let Some(local) = local
             && locals_immutability[local]
         {
-            next_type_args[value] = Some(NextTypeArg {
+            next_type_args[value] = Some(TypedBox {
                 unboxed: local,
                 typ,
             });
@@ -104,7 +238,7 @@ pub fn remove_box(
             let LocalType::Type(Type::Val(typ)) = locals[unboxed] else {
                 unreachable!("expect val type, actual: {:?}", locals[unboxed]);
             };
-            next_type_args[boxed] = Some(NextTypeArg { unboxed, typ });
+            next_type_args[boxed] = Some(TypedBox { unboxed, typ });
         }
     }
 
@@ -114,7 +248,7 @@ pub fn remove_box(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct NextTypeArg {
+pub struct TypedBox {
     pub unboxed: LocalId,
     pub typ: ValType,
 }
@@ -431,13 +565,13 @@ mod tests {
         assert_eq!(locals_immutability, ti_vec![true, true, true, true]);
         assert_eq!(next_type_args, ti_vec![
             // TODO: ここがNoneにならないのAPI設計として汚い
-            Some(NextTypeArg {
+            Some(TypedBox {
                 unboxed: LocalId::from(2),
                 typ: ValType::Int
             }),
             None,
             None,
-            Some(NextTypeArg {
+            Some(TypedBox {
                 unboxed: LocalId::from(0),
                 typ: ValType::Int
             })
@@ -475,7 +609,7 @@ mod tests {
         // unbox式により、next_type_argsにunboxed情報が設定される
         assert_eq!(
             next_type_args[LocalId::from(0)],
-            Some(NextTypeArg {
+            Some(TypedBox {
                 unboxed: LocalId::from(1),
                 typ: ValType::Int,
             })
