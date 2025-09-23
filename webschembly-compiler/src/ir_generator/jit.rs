@@ -339,8 +339,8 @@ impl JitFunc {
         /*
         func entry() {
             set_global f0_ref f0
-            set_global bb0_ref [bb0_stub, bb0_stub, ..., bb0_stub]
-            set_global bb1_ref [bb1_stub, bb1_stub, ..., bb1_stub]
+            set_global bb0_ref [bb0_stub, nil, ..., nil]
+            set_global bb1_ref [bb1_stub, nil, ..., nil]
         }
         */
         let entry_func = {
@@ -349,6 +349,8 @@ impl JitFunc {
                 locals.push_and_get_key(LocalType::Type(Type::Val(ValType::FuncRef)));
             let vector_local = locals.push_and_get_key(LocalType::Type(Type::Val(ValType::Vector)));
             let boxed_local = locals.push_and_get_key(LocalType::Type(Type::Boxed));
+            let nil_local = locals.push_and_get_key(LocalType::Type(Type::Val(ValType::Nil)));
+            let boxed_nil_local = locals.push_and_get_key(LocalType::Type(Type::Boxed));
 
             Func {
                 id: funcs.next_key(),
@@ -380,6 +382,14 @@ impl JitFunc {
                                     boxed_local,
                                 ),
                             },
+                            ExprAssign {
+                                local: Some(nil_local),
+                                expr: Expr::Nil,
+                            },
+                            ExprAssign {
+                                local: Some(boxed_nil_local),
+                                expr: Expr::Box(ValType::Nil, nil_local),
+                            },
                         ]);
                         for jit_bb in self.jit_bbs.iter() {
                             exprs.push(ExprAssign {
@@ -393,7 +403,12 @@ impl JitFunc {
                             // TODO: Boxedの列であるVectorに入れるのは非効率なのでFuncTableのようなものが欲しい
                             exprs.push(ExprAssign {
                                 local: Some(vector_local),
-                                expr: Expr::Vector(vec![boxed_local; GLOBAL_LAYOUT_MAX_SIZE]),
+                                expr: Expr::Vector({
+                                    let mut v = Vec::new();
+                                    v.push(boxed_local);
+                                    v.resize(GLOBAL_LAYOUT_MAX_SIZE, boxed_nil_local);
+                                    v
+                                }),
                             });
                             exprs.push(ExprAssign {
                                 local: Some(boxed_local),
@@ -944,7 +959,8 @@ impl JitFunc {
             let vector_local = locals.push_and_get_key(LocalType::Type(Type::Val(ValType::Vector)));
             let index_local = locals.push_and_get_key(LocalType::Type(Type::Val(ValType::Int)));
             let bool_local = locals.push_and_get_key(LocalType::Type(Type::Val(ValType::Bool)));
-            let boxed_stub0_local = locals.push_and_get_key(LocalType::Type(Type::Boxed));
+            let nil_local = locals.push_and_get_key(LocalType::Type(Type::Val(ValType::Nil)));
+            let boxed_nil_local = locals.push_and_get_key(LocalType::Type(Type::Boxed));
 
             let mut bbs = TiVec::new();
 
@@ -998,20 +1014,20 @@ impl JitFunc {
                     id: cond_bb_id,
                     exprs: vec![
                         ExprAssign {
+                            local: Some(nil_local),
+                            expr: Expr::Nil,
+                        },
+                        ExprAssign {
+                            local: Some(boxed_nil_local),
+                            expr: Expr::Box(ValType::Nil, nil_local),
+                        },
+                        ExprAssign {
                             local: Some(boxed_local),
                             expr: Expr::GlobalGet(self.jit_bbs[bb_id].global),
                         },
                         ExprAssign {
                             local: Some(vector_local),
                             expr: Expr::Unbox(ValType::Vector, boxed_local),
-                        },
-                        ExprAssign {
-                            local: Some(index_local),
-                            expr: Expr::Int(GLOBAL_LAYOUT_DEFAULT_INDEX as i64),
-                        },
-                        ExprAssign {
-                            local: Some(boxed_stub0_local),
-                            expr: Expr::VectorRef(vector_local, index_local),
                         },
                         ExprAssign {
                             local: Some(index_local),
@@ -1023,7 +1039,7 @@ impl JitFunc {
                         },
                         ExprAssign {
                             local: Some(bool_local),
-                            expr: Expr::Eq(boxed_stub0_local, boxed_local),
+                            expr: Expr::Eq(boxed_nil_local, boxed_local),
                         },
                     ],
                     next: BasicBlockNext::If(bool_local, then_bb_id, next_bb_id),
