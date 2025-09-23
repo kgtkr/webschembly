@@ -166,7 +166,6 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     next: bb.next.unwrap(),
                 })
                 .collect(),
-            jit_strategy: FuncJitStrategy::Never,
         }
     }
 
@@ -257,7 +256,6 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     next: bb.next.unwrap(),
                 })
                 .collect(),
-            jit_strategy: FuncJitStrategy::Lambda { args },
         }
     }
 

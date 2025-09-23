@@ -183,7 +183,6 @@ impl JitModule {
                     args: vec![],
                 })
             },],
-            jit_strategy: FuncJitStrategy::Never,
         };
         funcs.push(func);
         for func in self.module.funcs.iter() {
@@ -269,7 +268,6 @@ impl JitModule {
                         })
                     },
                 ],
-                jit_strategy: FuncJitStrategy::Never,
             };
             funcs.push(func);
         }
@@ -423,7 +421,6 @@ impl JitFunc {
                     },
                     next: BasicBlockNext::Return(func_ref_local),
                 },],
-                jit_strategy: FuncJitStrategy::Never,
             }
         };
         funcs.push(entry_func);
@@ -488,7 +485,6 @@ impl JitFunc {
                         },
                     })
                 },],
-                jit_strategy: FuncJitStrategy::BasicBlock,
             }
         };
 
@@ -629,7 +625,6 @@ impl JitFunc {
                     }),
                 },
             ],
-            jit_strategy: FuncJitStrategy::Never,
         }
     }
 
@@ -905,7 +900,6 @@ impl JitFunc {
             locals: new_locals,
             bb_entry: BasicBlockId::from(0),
             bbs: ti_vec![bb],
-            jit_strategy: FuncJitStrategy::Never,
         };
 
         body_func.bbs.extend(extra_bbs);
@@ -1077,7 +1071,6 @@ impl JitFunc {
                 locals,
                 bb_entry: BasicBlockId::from(0),
                 bbs,
-                jit_strategy: FuncJitStrategy::Never,
             }
         };
         let entry_func_id = entry_func.id;
