@@ -1,11 +1,11 @@
 // https://dl.acm.org/doi/abs/10.1145/3547621
 // by gemini
 
-use std::collections::{HashMap, HashSet};
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::ir::{BasicBlock, BasicBlockId, BasicBlockNext, BasicBlockTerminator, Func, LocalId};
 
-pub type CFG = HashMap<BasicBlockId, BasicBlock>;
+pub type CFG = FxHashMap<BasicBlockId, BasicBlock>;
 
 // --- 出力 (Output) ---
 
@@ -49,9 +49,9 @@ enum ContainingSyntax {
 struct Translator<'a> {
     cfg: &'a CFG,
     dom_tree: &'a DomTreeNode,
-    rpo: &'a HashMap<BasicBlockId, usize>, // 逆後順序番号
-    loop_headers: &'a HashSet<BasicBlockId>,
-    merge_nodes: &'a HashSet<BasicBlockId>,
+    rpo: &'a FxHashMap<BasicBlockId, usize>, // 逆後順序番号
+    loop_headers: &'a FxHashSet<BasicBlockId>,
+    merge_nodes: &'a FxHashSet<BasicBlockId>,
 }
 
 impl<'a> Translator<'a> {
@@ -196,10 +196,10 @@ pub fn reloop(func: &Func) -> Vec<Structured> {
         .bbs
         .clone()
         .into_iter_enumerated()
-        .collect::<HashMap<_, _>>();
+        .collect::<FxHashMap<_, _>>();
 
-    fn find_reachable_nodes(cfg: &CFG, entry_id: BasicBlockId) -> HashSet<BasicBlockId> {
-        let mut reachable = HashSet::new();
+    fn find_reachable_nodes(cfg: &CFG, entry_id: BasicBlockId) -> FxHashSet<BasicBlockId> {
+        let mut reachable = FxHashSet::default();
         let mut worklist = vec![entry_id];
         reachable.insert(entry_id);
 
@@ -238,8 +238,8 @@ fn reloop_cfg(cfg: &CFG, entry_id: BasicBlockId) -> Vec<Structured> {
 }
 
 /// 1. 逆後順序 (RPO) 番号を計算する
-fn calculate_rpo(cfg: &CFG, entry_id: BasicBlockId) -> HashMap<BasicBlockId, usize> {
-    let mut visited = HashSet::new();
+fn calculate_rpo(cfg: &CFG, entry_id: BasicBlockId) -> FxHashMap<BasicBlockId, usize> {
+    let mut visited = FxHashSet::default();
     let mut postorder = Vec::new();
 
     // DFSを行い、帰りがけ順でノードを記録する
@@ -260,7 +260,7 @@ fn calculate_rpo(cfg: &CFG, entry_id: BasicBlockId) -> HashMap<BasicBlockId, usi
 fn dfs_postorder(
     current_id: BasicBlockId,
     cfg: &CFG,
-    visited: &mut HashSet<BasicBlockId>,
+    visited: &mut FxHashSet<BasicBlockId>,
     postorder: &mut Vec<BasicBlockId>,
 ) {
     visited.insert(current_id);
@@ -277,8 +277,8 @@ fn dfs_postorder(
 }
 
 /// 2. マージノードを特定する
-fn find_merge_nodes(cfg: &CFG, rpo: &HashMap<BasicBlockId, usize>) -> HashSet<BasicBlockId> {
-    let mut predecessors: HashMap<BasicBlockId, Vec<BasicBlockId>> = HashMap::new();
+fn find_merge_nodes(cfg: &CFG, rpo: &FxHashMap<BasicBlockId, usize>) -> FxHashSet<BasicBlockId> {
+    let mut predecessors: FxHashMap<BasicBlockId, Vec<BasicBlockId>> = FxHashMap::default();
 
     // 全ノードの先行ノード(predecessor)のリストを作成
     for (id, block) in cfg.iter() {
@@ -287,7 +287,7 @@ fn find_merge_nodes(cfg: &CFG, rpo: &HashMap<BasicBlockId, usize>) -> HashSet<Ba
         }
     }
 
-    let mut merge_nodes = HashSet::new();
+    let mut merge_nodes = FxHashSet::default();
     for (&id, preds) in &predecessors {
         // 先行ノードからのエッジが「前方エッジ」であるものの数を数える
         let forward_preds_count = preds
@@ -304,8 +304,8 @@ fn find_merge_nodes(cfg: &CFG, rpo: &HashMap<BasicBlockId, usize>) -> HashSet<Ba
 }
 
 /// 3. ループヘッダを特定する
-fn find_loop_headers(cfg: &CFG, rpo: &HashMap<BasicBlockId, usize>) -> HashSet<BasicBlockId> {
-    let mut headers = HashSet::new();
+fn find_loop_headers(cfg: &CFG, rpo: &FxHashMap<BasicBlockId, usize>) -> FxHashSet<BasicBlockId> {
+    let mut headers = FxHashSet::default();
     for (source_id, block) in cfg.iter() {
         for target_id in block.next.successors() {
             let source_rpo = rpo.get(&source_id).unwrap();
@@ -323,11 +323,11 @@ fn find_loop_headers(cfg: &CFG, rpo: &HashMap<BasicBlockId, usize>) -> HashSet<B
 /// 4. ドミネーターツリーを構築する
 fn build_dom_tree(
     cfg: &CFG,
-    rpo: &HashMap<BasicBlockId, usize>,
+    rpo: &FxHashMap<BasicBlockId, usize>,
     entry_id: BasicBlockId,
 ) -> DomTreeNode {
     // --- Step A: 先行ノードのマップを作成 ---
-    let mut predecessors: HashMap<BasicBlockId, Vec<BasicBlockId>> = HashMap::new();
+    let mut predecessors: FxHashMap<BasicBlockId, Vec<BasicBlockId>> = FxHashMap::default();
     for (id, block) in cfg.iter() {
         for successor in block.next.successors() {
             predecessors.entry(successor).or_default().push(*id);
@@ -335,8 +335,8 @@ fn build_dom_tree(
     }
 
     // --- Step B: データフロー解析で各ノードの支配ノード集合を計算 ---
-    let all_nodes: HashSet<BasicBlockId> = cfg.keys().copied().collect();
-    let mut doms: HashMap<BasicBlockId, HashSet<BasicBlockId>> = HashMap::new();
+    let all_nodes: FxHashSet<BasicBlockId> = cfg.keys().copied().collect();
+    let mut doms: FxHashMap<BasicBlockId, FxHashSet<BasicBlockId>> = FxHashMap::default();
 
     // 初期化
     doms.insert(entry_id, [entry_id].iter().cloned().collect());
@@ -382,7 +382,7 @@ fn build_dom_tree(
     }
 
     // --- Step C: 即時支配ノード (idom) を見つける ---
-    let mut idoms: HashMap<BasicBlockId, BasicBlockId> = HashMap::new();
+    let mut idoms: FxHashMap<BasicBlockId, BasicBlockId> = FxHashMap::default();
     for &id in &all_nodes {
         if id == entry_id {
             continue;
@@ -400,7 +400,7 @@ fn build_dom_tree(
     }
 
     // --- Step D: idom関係から木構造を構築 ---
-    let mut children_map: HashMap<BasicBlockId, Vec<BasicBlockId>> = HashMap::new();
+    let mut children_map: FxHashMap<BasicBlockId, Vec<BasicBlockId>> = FxHashMap::default();
     for (child, parent) in idoms {
         children_map.entry(parent).or_default().push(child);
     }
@@ -411,7 +411,7 @@ fn build_dom_tree(
 // `build_dom_tree`のための再帰的な木構築ヘルパー
 fn build_tree_recursive(
     id: BasicBlockId,
-    children_map: &HashMap<BasicBlockId, Vec<BasicBlockId>>,
+    children_map: &FxHashMap<BasicBlockId, Vec<BasicBlockId>>,
 ) -> DomTreeNode {
     let children = match children_map.get(&id) {
         Some(child_ids) => child_ids
