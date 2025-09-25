@@ -1,10 +1,11 @@
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashMap;
 use std::borrow::Cow;
 use typed_index_collections::{TiSlice, ti_vec};
 
-use crate::ir::{BasicBlockNext, BasicBlockTerminator};
+use crate::ir::BasicBlockTerminator;
 
 use crate::ir;
+use crate::wasm_generator::relooper::{Structured, reloop};
 use wasm_encoder::{
     BlockType, CodeSection, CompositeInnerType, CompositeType, ConstExpr, DataCountSection,
     DataSection, ElementSection, Elements, EntityType, ExportKind, ExportSection, FieldType,
@@ -764,139 +765,6 @@ impl<'a> ModuleGenerator<'a> {
 }
 
 #[derive(Debug)]
-enum StructuredBasicBlock {
-    Simple(ir::BasicBlockId),
-    If {
-        cond: ir::LocalId,
-        then: Vec<StructuredBasicBlock>,
-        else_: Vec<StructuredBasicBlock>,
-    },
-    Terminator(ir::BasicBlockTerminator),
-}
-
-// relooper algorithmのような動作をするもの
-// 閉路がないので単純
-fn reloop(
-    entry: ir::BasicBlockId,
-    bbs: &TiSlice<ir::BasicBlockId, ir::BasicBlock>,
-) -> Vec<StructuredBasicBlock> {
-    let mut preds = ti_vec![FxHashSet::default(); bbs.len()];
-    for bb in bbs.iter() {
-        for next in bb.next.successors() {
-            preds[next].insert(bb.id);
-        }
-    }
-
-    let all_ids = FxHashSet::from_iter(bbs.iter().map(|bb| bb.id));
-    let mut doms = ti_vec![all_ids.clone(); bbs.len()];
-    doms[entry] = FxHashSet::from_iter(vec![entry]);
-    let mut changed = true;
-    while changed {
-        changed = false;
-        for bb in bbs.iter() {
-            if bb.id == entry {
-                continue;
-            }
-            let mut new_dom = all_ids.clone();
-            for pred in preds[bb.id].iter() {
-                new_dom.retain(|id| doms[*pred].contains(id));
-            }
-            new_dom.insert(bb.id);
-            if new_dom.len() != doms[bb.id].len() {
-                doms[bb.id] = new_dom;
-                changed = true;
-            }
-        }
-    }
-
-    let mut reversed_doms = ti_vec![FxHashSet::default(); bbs.len()];
-    for bb in bbs.iter() {
-        for dom in doms[bb.id].iter() {
-            reversed_doms[*dom].insert(bb.id);
-        }
-    }
-
-    let mut results = Vec::new();
-    let rejoin_point = reloop_rec(
-        entry,
-        bbs,
-        &reversed_doms,
-        &FxHashSet::default(),
-        &mut results,
-    );
-    assert_eq!(rejoin_point, None);
-    results
-}
-
-// rejoin pointを返す
-fn reloop_rec(
-    cur: ir::BasicBlockId,
-    bbs: &TiSlice<ir::BasicBlockId, ir::BasicBlock>,
-    reversed_doms: &TiSlice<ir::BasicBlockId, FxHashSet<ir::BasicBlockId>>,
-    rejoin_points: &FxHashSet<ir::BasicBlockId>,
-    results: &mut Vec<StructuredBasicBlock>,
-) -> Option<ir::BasicBlockId> {
-    if rejoin_points.contains(&cur) {
-        return Some(cur);
-    }
-    results.push(StructuredBasicBlock::Simple(cur));
-    let bb = &bbs[cur];
-    // TODO: cloneを避ける
-    match bb.next.clone() {
-        BasicBlockNext::If(cond, then_target, else_target) => {
-            let mut if_rejoin_points = reversed_doms[cur].clone();
-            if_rejoin_points.retain(|bb_id| {
-                !reversed_doms[then_target].contains(bb_id)
-                    && !reversed_doms[else_target].contains(bb_id)
-            });
-
-            let mut then_bbs = Vec::new();
-            let mut else_bbs = Vec::new();
-            let rejoin_point1 = reloop_rec(
-                then_target,
-                bbs,
-                reversed_doms,
-                &if_rejoin_points,
-                &mut then_bbs,
-            );
-            let rejoin_point2 = reloop_rec(
-                else_target,
-                bbs,
-                reversed_doms,
-                &if_rejoin_points,
-                &mut else_bbs,
-            );
-            // 片方の分岐がtail cailの場合、片方だけNoneになる
-            let rejoin_point = match (rejoin_point1, rejoin_point2) {
-                (Some(p1), Some(p2)) => {
-                    assert_eq!(p1, p2);
-                    Some(p1)
-                }
-                (Some(p), None) | (None, Some(p)) => Some(p),
-                (None, None) => None,
-            };
-            results.push(StructuredBasicBlock::If {
-                cond,
-                then: then_bbs,
-                else_: else_bbs,
-            });
-            if let Some(rejoin_point) = rejoin_point {
-                reloop_rec(rejoin_point, bbs, reversed_doms, rejoin_points, results)
-            } else {
-                None
-            }
-        }
-        BasicBlockNext::Jump(target) => {
-            reloop_rec(target, bbs, reversed_doms, rejoin_points, results)
-        }
-        BasicBlockNext::Terminator(terminator) => {
-            results.push(StructuredBasicBlock::Terminator(terminator));
-            None
-        }
-    }
-}
-
-#[derive(Debug)]
 struct FuncGenerator<'a, 'b> {
     module_generator: &'a mut ModuleGenerator<'b>,
     func: &'a ir::Func,
@@ -955,7 +823,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 .collect::<Vec<_>>(),
         );
 
-        let structured_bbs = reloop(self.func.bb_entry, &self.func.bbs);
+        let structured_bbs = reloop(&self.func);
         for structured_bb in &structured_bbs {
             self.gen_bb(&mut function, self.func, structured_bb);
         }
@@ -967,20 +835,15 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         self.module_generator.code.function(&function);
     }
 
-    fn gen_bb(
-        &mut self,
-        function: &mut Function,
-        func: &ir::Func,
-        structured_bb: &StructuredBasicBlock,
-    ) {
+    fn gen_bb(&mut self, function: &mut Function, func: &ir::Func, structured_bb: &Structured) {
         match structured_bb {
-            StructuredBasicBlock::Simple(bb_id) => {
+            Structured::Simple(bb_id) => {
                 let bb = &func.bbs[*bb_id];
                 for expr in &bb.exprs {
                     self.gen_assign(function, &func.locals, expr);
                 }
             }
-            StructuredBasicBlock::If { cond, then, else_ } => {
+            Structured::If { cond, then, else_ } => {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*cond)));
                 function.instruction(&Instruction::If(BlockType::Empty));
                 for structured_bb in then {
@@ -992,7 +855,24 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 }
                 function.instruction(&Instruction::End);
             }
-            StructuredBasicBlock::Terminator(terminator) => match terminator {
+            Structured::Block { body } => {
+                function.instruction(&Instruction::Block(BlockType::Empty));
+                for structured_bb in body {
+                    self.gen_bb(function, func, structured_bb);
+                }
+                function.instruction(&Instruction::End);
+            }
+            Structured::Loop { body } => {
+                function.instruction(&Instruction::Loop(BlockType::Empty));
+                for structured_bb in body {
+                    self.gen_bb(function, func, structured_bb);
+                }
+                function.instruction(&Instruction::End);
+            }
+            Structured::Break(index) => {
+                function.instruction(&Instruction::Br(*index as u32));
+            }
+            Structured::Terminator(terminator) => match terminator {
                 BasicBlockTerminator::Return(local) => {
                     function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*local)));
                     function.instruction(&Instruction::Return);

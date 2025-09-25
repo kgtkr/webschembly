@@ -3,11 +3,9 @@
 
 use std::collections::{HashMap, HashSet};
 
-use typed_index_collections::TiVec;
-
 use crate::ir::{BasicBlock, BasicBlockId, BasicBlockNext, BasicBlockTerminator, Func, LocalId};
 
-pub type CFG = TiVec<BasicBlockId, BasicBlock>;
+pub type CFG = HashMap<BasicBlockId, BasicBlock>;
 
 // --- 出力 (Output) ---
 
@@ -15,9 +13,9 @@ pub type CFG = TiVec<BasicBlockId, BasicBlock>;
 pub enum Structured {
     Simple(BasicBlockId),
     If {
-        condition: LocalId,
-        then_branch: Vec<Structured>,
-        else_branch: Vec<Structured>,
+        cond: LocalId,
+        then: Vec<Structured>,
+        else_: Vec<Structured>,
     },
     Block {
         body: Vec<Structured>,
@@ -117,7 +115,7 @@ impl<'a> Translator<'a> {
         } else {
             // [ベースケース] マージノードの子をすべて処理した場合
             let x = tree_node.id;
-            let block = &self.cfg[x];
+            let block = self.cfg.get(&x).unwrap();
 
             let mut result = Vec::new();
             result.push(Structured::Simple(block.id));
@@ -134,9 +132,9 @@ impl<'a> Translator<'a> {
                     let else_branch = self.do_branch(x, *else_block, &new_context);
 
                     result.push(Structured::If {
-                        condition: *condition,
-                        then_branch,
-                        else_branch,
+                        cond: *condition,
+                        then: then_branch,
+                        else_: else_branch,
                     });
                 }
                 BasicBlockNext::Terminator(terminator) => {
@@ -191,7 +189,35 @@ impl<'a> Translator<'a> {
 }
 
 pub fn reloop(func: &Func) -> Vec<Structured> {
-    reloop_cfg(&func.bbs, func.bb_entry)
+    // TODO: 余計なclone
+    // 事前にTiVecではなくFxHashMapで保持しておき、到達不能ノードを削除しておく
+    // irreducible graphへの対応を行っておいていいかも
+    let mut cfg = func
+        .bbs
+        .clone()
+        .into_iter_enumerated()
+        .collect::<HashMap<_, _>>();
+
+    fn find_reachable_nodes(cfg: &CFG, entry_id: BasicBlockId) -> HashSet<BasicBlockId> {
+        let mut reachable = HashSet::new();
+        let mut worklist = vec![entry_id];
+        reachable.insert(entry_id);
+
+        while let Some(id) = worklist.pop() {
+            let node = cfg.get(&id).unwrap();
+
+            for successor in node.next.successors() {
+                if reachable.insert(successor) {
+                    worklist.push(successor);
+                }
+            }
+        }
+        reachable
+    }
+    let reachable = find_reachable_nodes(&cfg, func.bb_entry);
+    cfg.retain(|id, _| reachable.contains(id));
+
+    reloop_cfg(&cfg, func.bb_entry)
 }
 
 fn reloop_cfg(cfg: &CFG, entry_id: BasicBlockId) -> Vec<Structured> {
@@ -238,7 +264,7 @@ fn dfs_postorder(
     postorder: &mut Vec<BasicBlockId>,
 ) {
     visited.insert(current_id);
-    let node = &cfg[current_id];
+    let node = cfg.get(&current_id).unwrap();
 
     for successor in node.next.successors() {
         if !visited.contains(&successor) {
@@ -255,9 +281,9 @@ fn find_merge_nodes(cfg: &CFG, rpo: &HashMap<BasicBlockId, usize>) -> HashSet<Ba
     let mut predecessors: HashMap<BasicBlockId, Vec<BasicBlockId>> = HashMap::new();
 
     // 全ノードの先行ノード(predecessor)のリストを作成
-    for (id, block) in cfg.iter_enumerated() {
+    for (id, block) in cfg.iter() {
         for successor in block.next.successors() {
-            predecessors.entry(successor).or_default().push(id);
+            predecessors.entry(successor).or_default().push(*id);
         }
     }
 
@@ -280,7 +306,7 @@ fn find_merge_nodes(cfg: &CFG, rpo: &HashMap<BasicBlockId, usize>) -> HashSet<Ba
 /// 3. ループヘッダを特定する
 fn find_loop_headers(cfg: &CFG, rpo: &HashMap<BasicBlockId, usize>) -> HashSet<BasicBlockId> {
     let mut headers = HashSet::new();
-    for (source_id, block) in cfg.iter_enumerated() {
+    for (source_id, block) in cfg.iter() {
         for target_id in block.next.successors() {
             let source_rpo = rpo.get(&source_id).unwrap();
             let target_rpo = rpo.get(&target_id).unwrap();
@@ -302,14 +328,14 @@ fn build_dom_tree(
 ) -> DomTreeNode {
     // --- Step A: 先行ノードのマップを作成 ---
     let mut predecessors: HashMap<BasicBlockId, Vec<BasicBlockId>> = HashMap::new();
-    for (id, block) in cfg.iter_enumerated() {
+    for (id, block) in cfg.iter() {
         for successor in block.next.successors() {
-            predecessors.entry(successor).or_default().push(id);
+            predecessors.entry(successor).or_default().push(*id);
         }
     }
 
     // --- Step B: データフロー解析で各ノードの支配ノード集合を計算 ---
-    let all_nodes: HashSet<BasicBlockId> = cfg.keys().collect();
+    let all_nodes: HashSet<BasicBlockId> = cfg.keys().copied().collect();
     let mut doms: HashMap<BasicBlockId, HashSet<BasicBlockId>> = HashMap::new();
 
     // 初期化
@@ -322,14 +348,14 @@ fn build_dom_tree(
 
     // RPO順で計算すると収束が速い
     let mut rpo_nodes: Vec<_> = cfg.keys().collect();
-    rpo_nodes.sort_by_key(|id| rpo.get(id).unwrap());
+    rpo_nodes.sort_by_key(|id| rpo.get(id).expect("RPO must contain all nodes"));
 
     // 集合が変化しなくなるまで反復計算
     let mut changed = true;
     while changed {
         changed = false;
         for &id in &rpo_nodes {
-            if id == entry_id {
+            if *id == entry_id {
                 continue;
             }
 
@@ -346,10 +372,10 @@ fn build_dom_tree(
                 .cloned()
                 .reduce(|acc, set| acc.intersection(&set).cloned().collect())
                 .unwrap_or_default();
-            new_dom.insert(id);
+            new_dom.insert(*id);
 
             if &new_dom != doms.get(&id).unwrap() {
-                doms.insert(id, new_dom);
+                doms.insert(*id, new_dom);
                 changed = true;
             }
         }
@@ -403,16 +429,14 @@ mod tests {
 
     fn setup_cfg(data: &[(usize, BasicBlockNext)]) -> CFG {
         data.iter()
-            .enumerate()
-            .map(|(i, &(id, ref next))| {
-                assert_eq!(i, id);
+            .map(|&(id, ref next)| {
                 let block_id = BasicBlockId::from(id);
                 let block = BasicBlock {
                     id: block_id,
                     exprs: vec![],
                     next: next.clone(),
                 };
-                block
+                (block_id, block)
             })
             .collect()
     }
@@ -462,12 +486,12 @@ mod tests {
         let expected = vec![
             Structured::Block {
                 body: vec![Structured::Simple(BasicBlockId::from(0)), Structured::If {
-                    condition: LocalId::from(100),
-                    then_branch: vec![
+                    cond: LocalId::from(100),
+                    then: vec![
                         Structured::Simple(BasicBlockId::from(1)),
                         Structured::Break(1),
                     ],
-                    else_branch: vec![
+                    else_: vec![
                         Structured::Simple(BasicBlockId::from(2)),
                         Structured::Break(1),
                     ],
@@ -513,19 +537,19 @@ mod tests {
         let expected = vec![
             Structured::Block {
                 body: vec![Structured::Simple(BasicBlockId::from(0)), Structured::If {
-                    condition: LocalId::from(100),
-                    then_branch: vec![Structured::Simple(BasicBlockId::from(1)), Structured::If {
-                        condition: LocalId::from(101),
-                        then_branch: vec![
+                    cond: LocalId::from(100),
+                    then: vec![Structured::Simple(BasicBlockId::from(1)), Structured::If {
+                        cond: LocalId::from(101),
+                        then: vec![
                             Structured::Simple(BasicBlockId::from(2)),
                             Structured::Break(2),
                         ],
-                        else_branch: vec![
+                        else_: vec![
                             Structured::Simple(BasicBlockId::from(3)),
                             Structured::Break(2),
                         ],
                     }],
-                    else_branch: vec![
+                    else_: vec![
                         Structured::Simple(BasicBlockId::from(4)),
                         Structured::Break(1),
                     ],
@@ -563,12 +587,12 @@ mod tests {
             Structured::Simple(BasicBlockId::from(0)),
             Structured::Loop {
                 body: vec![Structured::Simple(BasicBlockId::from(1)), Structured::If {
-                    condition: LocalId::from(101),
-                    then_branch: vec![
+                    cond: LocalId::from(101),
+                    then: vec![
                         Structured::Simple(BasicBlockId::from(2)),
                         Structured::Break(1), // ループ継続
                     ],
-                    else_branch: vec![
+                    else_: vec![
                         Structured::Simple(BasicBlockId::from(3)),
                         Structured::Terminator(BasicBlockTerminator::Return(LocalId::from(500))), // ループ脱出
                     ],
@@ -629,15 +653,15 @@ mod tests {
         let expected = vec![
             Structured::Block {
                 body: vec![Structured::Simple(BasicBlockId::from(0)), Structured::If {
-                    condition: LocalId::from(100),
-                    then_branch: vec![Structured::Loop {
+                    cond: LocalId::from(100),
+                    then: vec![Structured::Loop {
                         body: vec![Structured::Simple(BasicBlockId::from(1)), Structured::If {
-                            condition: LocalId::from(101),
-                            then_branch: vec![Structured::Break(1)],
-                            else_branch: vec![Structured::Break(3)],
+                            cond: LocalId::from(101),
+                            then: vec![Structured::Break(1)],
+                            else_: vec![Structured::Break(3)],
                         }],
                     }],
-                    else_branch: vec![Structured::Break(1)],
+                    else_: vec![Structured::Break(1)],
                 }],
             },
             Structured::Simple(BasicBlockId::from(2)),
@@ -729,24 +753,24 @@ mod tests {
                         body: vec![
                             Structured::Simple(BasicBlockId::from(0)), // A
                             Structured::If {
-                                condition: LocalId::from(100),
-                                then_branch: vec![
+                                cond: LocalId::from(100),
+                                then: vec![
                                     Structured::Simple(BasicBlockId::from(1)),
                                     Structured::If {
-                                        condition: LocalId::from(101),
-                                        then_branch: vec![
+                                        cond: LocalId::from(101),
+                                        then: vec![
                                             Structured::Simple(BasicBlockId::from(2)),
                                             Structured::Break(3),
                                         ], // C -> F
-                                        else_branch: vec![Structured::Break(2)], // B -> E
+                                        else_: vec![Structured::Break(2)], // B -> E
                                     },
                                 ],
-                                else_branch: vec![
+                                else_: vec![
                                     Structured::Simple(BasicBlockId::from(3)),
                                     Structured::If {
-                                        condition: LocalId::from(102),
-                                        then_branch: vec![Structured::Break(2)], // D -> E
-                                        else_branch: vec![Structured::Break(3)], // D -> F
+                                        cond: LocalId::from(102),
+                                        then: vec![Structured::Break(2)], // D -> E
+                                        else_: vec![Structured::Break(3)], // D -> F
                                     },
                                 ],
                             },
@@ -761,5 +785,20 @@ mod tests {
         ];
 
         assert_eq!(result, expected);
+    }
+
+    #[test]
+    #[should_panic(expected = "RPO must contain all nodes")]
+    fn test_unreadable_bb() {
+        let cfg = setup_cfg(&[
+            (0, BasicBlockNext::Jump(BasicBlockId::from(2))),
+            (1, BasicBlockNext::Jump(BasicBlockId::from(2))),
+            (
+                2,
+                BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(500))),
+            ),
+        ]);
+
+        reloop_cfg(&cfg, BasicBlockId::from(0));
     }
 }
