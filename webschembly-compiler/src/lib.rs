@@ -23,7 +23,6 @@ pub mod fxbihashmap;
 pub mod ir;
 pub mod ir_generator;
 mod relooper;
-mod relooper2;
 pub mod sexpr_parser;
 pub mod span;
 pub mod stdlib;
