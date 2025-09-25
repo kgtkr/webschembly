@@ -3,30 +3,11 @@
 
 use std::collections::{HashMap, HashSet};
 
-// --- 識別子 ---
-pub type LocalId = usize;
-pub type BasicBlockId = usize;
+use typed_index_collections::TiVec;
 
-// --- 入力 (Input) ---
+use crate::ir::{BasicBlock, BasicBlockId, BasicBlockNext, BasicBlockTerminator, Func, LocalId};
 
-#[derive(Debug, Clone)]
-pub enum Terminator {
-    If {
-        condition: LocalId,
-        then_block: BasicBlockId,
-        else_block: BasicBlockId,
-    },
-    Jump(BasicBlockId),
-    Return,
-}
-
-#[derive(Debug, Clone)]
-pub struct BasicBlock {
-    pub id: BasicBlockId,
-    pub terminator: Terminator,
-}
-
-pub type CFG = HashMap<BasicBlockId, BasicBlock>;
+pub type CFG = TiVec<BasicBlockId, BasicBlock>;
 
 // --- 出力 (Output) ---
 
@@ -45,7 +26,7 @@ pub enum Structured {
         body: Vec<Structured>,
     },
     Break(usize),
-    Return,
+    Terminator(BasicBlockTerminator),
 }
 
 // --- 事前解析で必要となるデータ構造 ---
@@ -136,20 +117,16 @@ impl<'a> Translator<'a> {
         } else {
             // [ベースケース] マージノードの子をすべて処理した場合
             let x = tree_node.id;
-            let block = self.cfg.get(&x).unwrap();
+            let block = &self.cfg[x];
 
             let mut result = Vec::new();
             result.push(Structured::Simple(block.id));
 
-            match &block.terminator {
-                Terminator::Jump(target) => {
+            match &block.next {
+                BasicBlockNext::Jump(target) => {
                     result.extend(self.do_branch(x, *target, context));
                 }
-                Terminator::If {
-                    condition,
-                    then_block,
-                    else_block,
-                } => {
+                BasicBlockNext::If(condition, then_block, else_block) => {
                     let mut new_context = context.to_vec();
                     new_context.insert(0, ContainingSyntax::IfThenElse);
 
@@ -162,8 +139,8 @@ impl<'a> Translator<'a> {
                         else_branch,
                     });
                 }
-                Terminator::Return => {
-                    result.push(Structured::Return);
+                BasicBlockNext::Terminator(terminator) => {
+                    result.push(Structured::Terminator(terminator.clone()));
                 }
             }
             result
@@ -213,13 +190,16 @@ impl<'a> Translator<'a> {
     }
 }
 
-pub fn structured_control(cfg: &CFG, entry_id: BasicBlockId) -> Vec<Structured> {
+pub fn reloop(func: &Func) -> Vec<Structured> {
+    reloop_cfg(&func.bbs, func.bb_entry)
+}
+
+fn reloop_cfg(cfg: &CFG, entry_id: BasicBlockId) -> Vec<Structured> {
     let rpo = calculate_rpo(cfg, entry_id);
     let dom_tree = build_dom_tree(cfg, &rpo, entry_id);
     let loop_headers = find_loop_headers(cfg, &rpo);
     let merge_nodes = find_merge_nodes(cfg, &rpo);
 
-    // 2. Translatorを初期化
     let translator = Translator {
         cfg,
         dom_tree: &dom_tree,
@@ -228,7 +208,6 @@ pub fn structured_control(cfg: &CFG, entry_id: BasicBlockId) -> Vec<Structured> 
         merge_nodes: &merge_nodes,
     };
 
-    // 3. 変換を開始
     translator.do_tree(&dom_tree, &[])
 }
 
@@ -259,20 +238,9 @@ fn dfs_postorder(
     postorder: &mut Vec<BasicBlockId>,
 ) {
     visited.insert(current_id);
-    let node = cfg.get(&current_id).unwrap();
+    let node = &cfg[current_id];
 
-    // 後続ノードを探索
-    let successors = match &node.terminator {
-        Terminator::Jump(target) => vec![*target],
-        Terminator::If {
-            then_block,
-            else_block,
-            ..
-        } => vec![*then_block, *else_block],
-        Terminator::Return => vec![],
-    };
-
-    for &successor in &successors {
+    for successor in node.next.successors() {
         if !visited.contains(&successor) {
             dfs_postorder(successor, cfg, visited, postorder);
         }
@@ -287,17 +255,8 @@ fn find_merge_nodes(cfg: &CFG, rpo: &HashMap<BasicBlockId, usize>) -> HashSet<Ba
     let mut predecessors: HashMap<BasicBlockId, Vec<BasicBlockId>> = HashMap::new();
 
     // 全ノードの先行ノード(predecessor)のリストを作成
-    for (&id, block) in cfg {
-        let successors = match &block.terminator {
-            Terminator::Jump(target) => vec![*target],
-            Terminator::If {
-                then_block,
-                else_block,
-                ..
-            } => vec![*then_block, *else_block],
-            Terminator::Return => vec![],
-        };
-        for &successor in &successors {
+    for (id, block) in cfg.iter_enumerated() {
+        for successor in block.next.successors() {
             predecessors.entry(successor).or_default().push(id);
         }
     }
@@ -321,18 +280,8 @@ fn find_merge_nodes(cfg: &CFG, rpo: &HashMap<BasicBlockId, usize>) -> HashSet<Ba
 /// 3. ループヘッダを特定する
 fn find_loop_headers(cfg: &CFG, rpo: &HashMap<BasicBlockId, usize>) -> HashSet<BasicBlockId> {
     let mut headers = HashSet::new();
-    for (&source_id, block) in cfg {
-        let successors = match &block.terminator {
-            Terminator::Jump(target) => vec![*target],
-            Terminator::If {
-                then_block,
-                else_block,
-                ..
-            } => vec![*then_block, *else_block],
-            Terminator::Return => vec![],
-        };
-
-        for &target_id in &successors {
+    for (source_id, block) in cfg.iter_enumerated() {
+        for target_id in block.next.successors() {
             let source_rpo = rpo.get(&source_id).unwrap();
             let target_rpo = rpo.get(&target_id).unwrap();
 
@@ -353,23 +302,14 @@ fn build_dom_tree(
 ) -> DomTreeNode {
     // --- Step A: 先行ノードのマップを作成 ---
     let mut predecessors: HashMap<BasicBlockId, Vec<BasicBlockId>> = HashMap::new();
-    for (&id, block) in cfg {
-        let successors = match &block.terminator {
-            Terminator::Jump(target) => vec![*target],
-            Terminator::If {
-                then_block,
-                else_block,
-                ..
-            } => vec![*then_block, *else_block],
-            Terminator::Return => vec![],
-        };
-        for &successor in &successors {
+    for (id, block) in cfg.iter_enumerated() {
+        for successor in block.next.successors() {
             predecessors.entry(successor).or_default().push(id);
         }
     }
 
     // --- Step B: データフロー解析で各ノードの支配ノード集合を計算 ---
-    let all_nodes: HashSet<BasicBlockId> = cfg.keys().cloned().collect();
+    let all_nodes: HashSet<BasicBlockId> = cfg.keys().collect();
     let mut doms: HashMap<BasicBlockId, HashSet<BasicBlockId>> = HashMap::new();
 
     // 初期化
@@ -381,7 +321,7 @@ fn build_dom_tree(
     }
 
     // RPO順で計算すると収束が速い
-    let mut rpo_nodes: Vec<_> = cfg.keys().cloned().collect();
+    let mut rpo_nodes: Vec<_> = cfg.keys().collect();
     rpo_nodes.sort_by_key(|id| rpo.get(id).unwrap());
 
     // 集合が変化しなくなるまで反復計算
@@ -461,28 +401,38 @@ fn build_tree_recursive(
 mod tests {
     use super::*;
 
-    fn setup_cfg(data: &[(BasicBlockId, Terminator)]) -> CFG {
+    fn setup_cfg(data: &[(usize, BasicBlockNext)]) -> CFG {
         data.iter()
-            .map(|&(id, ref term)| {
+            .enumerate()
+            .map(|(i, &(id, ref next))| {
+                assert_eq!(i, id);
+                let block_id = BasicBlockId::from(id);
                 let block = BasicBlock {
-                    id,
-                    terminator: term.clone(),
+                    id: block_id,
+                    exprs: vec![],
+                    next: next.clone(),
                 };
-                (id, block)
+                block
             })
             .collect()
     }
 
     #[test]
     fn test_linear() {
-        let cfg = setup_cfg(&[(0, Terminator::Jump(1)), (1, Terminator::Return)]);
+        let cfg = setup_cfg(&[
+            (0, BasicBlockNext::Jump(BasicBlockId::from(1))),
+            (
+                1,
+                BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(500))),
+            ),
+        ]);
 
-        let result = structured_control(&cfg, 0);
+        let result = reloop_cfg(&cfg, BasicBlockId::from(0));
 
         let expected = vec![
-            Structured::Simple(0),
-            Structured::Simple(1),
-            Structured::Return,
+            Structured::Simple(BasicBlockId::from(0)),
+            Structured::Simple(BasicBlockId::from(1)),
+            Structured::Terminator(BasicBlockTerminator::Return(LocalId::from(500))),
         ];
 
         assert_eq!(result, expected);
@@ -491,28 +441,40 @@ mod tests {
     #[test]
     fn test_simple_if_else() {
         let cfg = setup_cfg(&[
-            (0, Terminator::If {
-                condition: 100,
-                then_block: 1,
-                else_block: 2,
-            }),
-            (1, Terminator::Jump(3)),
-            (2, Terminator::Jump(3)),
-            (3, Terminator::Return),
+            (
+                0,
+                BasicBlockNext::If(
+                    LocalId::from(100),
+                    BasicBlockId::from(1),
+                    BasicBlockId::from(2),
+                ),
+            ),
+            (1, BasicBlockNext::Jump(BasicBlockId::from(3))),
+            (2, BasicBlockNext::Jump(BasicBlockId::from(3))),
+            (
+                3,
+                BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(500))),
+            ),
         ]);
 
-        let result = structured_control(&cfg, 0);
+        let result = reloop_cfg(&cfg, BasicBlockId::from(0));
 
         let expected = vec![
             Structured::Block {
-                body: vec![Structured::Simple(0), Structured::If {
-                    condition: 100,
-                    then_branch: vec![Structured::Simple(1), Structured::Break(1)],
-                    else_branch: vec![Structured::Simple(2), Structured::Break(1)],
+                body: vec![Structured::Simple(BasicBlockId::from(0)), Structured::If {
+                    condition: LocalId::from(100),
+                    then_branch: vec![
+                        Structured::Simple(BasicBlockId::from(1)),
+                        Structured::Break(1),
+                    ],
+                    else_branch: vec![
+                        Structured::Simple(BasicBlockId::from(2)),
+                        Structured::Break(1),
+                    ],
                 }],
             },
-            Structured::Simple(3),
-            Structured::Return,
+            Structured::Simple(BasicBlockId::from(3)),
+            Structured::Terminator(BasicBlockTerminator::Return(LocalId::from(500))),
         ];
 
         assert_eq!(result, expected);
@@ -521,38 +483,56 @@ mod tests {
     #[test]
     fn test_nested_if_else() {
         let cfg = setup_cfg(&[
-            (0, Terminator::If {
-                condition: 100,
-                then_block: 1,
-                else_block: 4,
-            }),
-            (1, Terminator::If {
-                condition: 101,
-                then_block: 2,
-                else_block: 3,
-            }),
-            (2, Terminator::Jump(5)),
-            (3, Terminator::Jump(5)),
-            (4, Terminator::Jump(5)),
-            (5, Terminator::Return),
+            (
+                0,
+                BasicBlockNext::If(
+                    LocalId::from(100),
+                    BasicBlockId::from(1),
+                    BasicBlockId::from(4),
+                ),
+            ),
+            (
+                1,
+                BasicBlockNext::If(
+                    LocalId::from(101),
+                    BasicBlockId::from(2),
+                    BasicBlockId::from(3),
+                ),
+            ),
+            (2, BasicBlockNext::Jump(BasicBlockId::from(5))),
+            (3, BasicBlockNext::Jump(BasicBlockId::from(5))),
+            (4, BasicBlockNext::Jump(BasicBlockId::from(5))),
+            (
+                5,
+                BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(500))),
+            ),
         ]);
 
-        let result = structured_control(&cfg, 0);
+        let result = reloop_cfg(&cfg, BasicBlockId::from(0));
 
         let expected = vec![
             Structured::Block {
-                body: vec![Structured::Simple(0), Structured::If {
-                    condition: 100,
-                    then_branch: vec![Structured::Simple(1), Structured::If {
-                        condition: 101,
-                        then_branch: vec![Structured::Simple(2), Structured::Break(2)],
-                        else_branch: vec![Structured::Simple(3), Structured::Break(2)],
+                body: vec![Structured::Simple(BasicBlockId::from(0)), Structured::If {
+                    condition: LocalId::from(100),
+                    then_branch: vec![Structured::Simple(BasicBlockId::from(1)), Structured::If {
+                        condition: LocalId::from(101),
+                        then_branch: vec![
+                            Structured::Simple(BasicBlockId::from(2)),
+                            Structured::Break(2),
+                        ],
+                        else_branch: vec![
+                            Structured::Simple(BasicBlockId::from(3)),
+                            Structured::Break(2),
+                        ],
                     }],
-                    else_branch: vec![Structured::Simple(4), Structured::Break(1)],
+                    else_branch: vec![
+                        Structured::Simple(BasicBlockId::from(4)),
+                        Structured::Break(1),
+                    ],
                 }],
             },
-            Structured::Simple(5),
-            Structured::Return,
+            Structured::Simple(BasicBlockId::from(5)),
+            Structured::Terminator(BasicBlockTerminator::Return(LocalId::from(500))),
         ];
 
         assert_eq!(result, expected);
@@ -561,45 +541,57 @@ mod tests {
     #[test]
     fn test_simple_loop() {
         let cfg = setup_cfg(&[
-            (0, Terminator::Jump(1)),
-            (1, Terminator::If {
-                condition: 101,
-                then_block: 2,
-                else_block: 3,
-            }),
-            (2, Terminator::Jump(1)),
-            (3, Terminator::Return),
+            (0, BasicBlockNext::Jump(BasicBlockId::from(1))),
+            (
+                1,
+                BasicBlockNext::If(
+                    LocalId::from(101),
+                    BasicBlockId::from(2),
+                    BasicBlockId::from(3),
+                ),
+            ),
+            (2, BasicBlockNext::Jump(BasicBlockId::from(1))),
+            (
+                3,
+                BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(500))),
+            ),
         ]);
 
-        let result = structured_control(&cfg, 0);
+        let result = reloop_cfg(&cfg, BasicBlockId::from(0));
 
-        let expected = vec![Structured::Simple(0), Structured::Loop {
-            body: vec![Structured::Simple(1), Structured::If {
-                condition: 101,
-                then_branch: vec![
-                    Structured::Simple(2),
-                    Structured::Break(1), // ループ継続
-                ],
-                else_branch: vec![
-                    Structured::Simple(3),
-                    Structured::Return, // ループ脱出
-                ],
-            }],
-        }];
+        let expected = vec![
+            Structured::Simple(BasicBlockId::from(0)),
+            Structured::Loop {
+                body: vec![Structured::Simple(BasicBlockId::from(1)), Structured::If {
+                    condition: LocalId::from(101),
+                    then_branch: vec![
+                        Structured::Simple(BasicBlockId::from(2)),
+                        Structured::Break(1), // ループ継続
+                    ],
+                    else_branch: vec![
+                        Structured::Simple(BasicBlockId::from(3)),
+                        Structured::Terminator(BasicBlockTerminator::Return(LocalId::from(500))), // ループ脱出
+                    ],
+                }],
+            },
+        ];
 
         assert_eq!(result, expected);
     }
 
     #[test]
     fn test_simple_infinite_loop() {
-        let cfg = setup_cfg(&[(0, Terminator::Jump(1)), (1, Terminator::Jump(0))]);
+        let cfg = setup_cfg(&[
+            (0, BasicBlockNext::Jump(BasicBlockId::from(1))),
+            (1, BasicBlockNext::Jump(BasicBlockId::from(0))),
+        ]);
 
-        let result = structured_control(&cfg, 0);
+        let result = reloop_cfg(&cfg, BasicBlockId::from(0));
 
         let expected = vec![Structured::Loop {
             body: vec![
-                Structured::Simple(0),
-                Structured::Simple(1),
+                Structured::Simple(BasicBlockId::from(0)),
+                Structured::Simple(BasicBlockId::from(1)),
                 Structured::Break(0),
             ],
         }];
@@ -610,28 +602,37 @@ mod tests {
     #[test]
     fn test_self_loop() {
         let cfg = setup_cfg(&[
-            (0, Terminator::If {
-                condition: 100,
-                then_block: 1,
-                else_block: 2,
-            }),
-            (1, Terminator::If {
-                condition: 101,
-                then_block: 1,
-                else_block: 2,
-            }),
-            (2, Terminator::Return),
+            (
+                0,
+                BasicBlockNext::If(
+                    LocalId::from(100),
+                    BasicBlockId::from(1),
+                    BasicBlockId::from(2),
+                ),
+            ),
+            (
+                1,
+                BasicBlockNext::If(
+                    LocalId::from(101),
+                    BasicBlockId::from(1),
+                    BasicBlockId::from(2),
+                ),
+            ),
+            (
+                2,
+                BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(500))),
+            ),
         ]);
 
-        let result = structured_control(&cfg, 0);
+        let result = reloop_cfg(&cfg, BasicBlockId::from(0));
 
         let expected = vec![
             Structured::Block {
-                body: vec![Structured::Simple(0), Structured::If {
-                    condition: 100,
+                body: vec![Structured::Simple(BasicBlockId::from(0)), Structured::If {
+                    condition: LocalId::from(100),
                     then_branch: vec![Structured::Loop {
-                        body: vec![Structured::Simple(1), Structured::If {
-                            condition: 101,
+                        body: vec![Structured::Simple(BasicBlockId::from(1)), Structured::If {
+                            condition: LocalId::from(101),
                             then_branch: vec![Structured::Break(1)],
                             else_branch: vec![Structured::Break(3)],
                         }],
@@ -639,8 +640,8 @@ mod tests {
                     else_branch: vec![Structured::Break(1)],
                 }],
             },
-            Structured::Simple(2),
-            Structured::Return,
+            Structured::Simple(BasicBlockId::from(2)),
+            Structured::Terminator(BasicBlockTerminator::Return(LocalId::from(500))),
         ];
 
         assert_eq!(result, expected);
@@ -648,12 +649,15 @@ mod tests {
 
     #[test]
     fn test_self_infinite_loop() {
-        let cfg = setup_cfg(&[(0, Terminator::Jump(0))]);
+        let cfg = setup_cfg(&[(0, BasicBlockNext::Jump(BasicBlockId::from(0)))]);
 
-        let result = structured_control(&cfg, 0);
+        let result = reloop_cfg(&cfg, BasicBlockId::from(0));
 
         let expected = vec![Structured::Loop {
-            body: vec![Structured::Simple(0), Structured::Break(0)],
+            body: vec![
+                Structured::Simple(BasicBlockId::from(0)),
+                Structured::Break(0),
+            ],
         }];
 
         assert_eq!(result, expected);
@@ -665,71 +669,95 @@ mod tests {
         // irreducible graphでは動かない
         // ノード分割が必要だが、ここでは実装しない
         let cfg = setup_cfg(&[
-            (0, Terminator::If {
-                condition: 100,
-                then_block: 1,
-                else_block: 2,
-            }),
-            (1, Terminator::Jump(2)),
-            (2, Terminator::Jump(1)),
+            (
+                0,
+                BasicBlockNext::If(
+                    LocalId::from(100),
+                    BasicBlockId::from(1),
+                    BasicBlockId::from(2),
+                ),
+            ),
+            (1, BasicBlockNext::Jump(BasicBlockId::from(2))),
+            (2, BasicBlockNext::Jump(BasicBlockId::from(1))),
         ]);
 
-        structured_control(&cfg, 0);
+        reloop_cfg(&cfg, BasicBlockId::from(0));
     }
 
     // 論文の複雑な合流パターン
     #[test]
     fn test_unusual_merge_pattern() {
         let cfg = setup_cfg(&[
-            (0, Terminator::If {
-                condition: 100,
-                then_block: 1,
-                else_block: 3,
-            }), // A
-            (1, Terminator::If {
-                condition: 101,
-                then_block: 2,
-                else_block: 4,
-            }), // B
-            (2, Terminator::Jump(5)), // C
-            (3, Terminator::If {
-                condition: 102,
-                then_block: 4,
-                else_block: 5,
-            }), // D
-            (4, Terminator::Jump(5)), // E (Merge Node)
-            (5, Terminator::Return),  // F (Merge Node)
+            (
+                0,
+                BasicBlockNext::If(
+                    LocalId::from(100),
+                    BasicBlockId::from(1),
+                    BasicBlockId::from(3),
+                ),
+            ), // A
+            (
+                1,
+                BasicBlockNext::If(
+                    LocalId::from(101),
+                    BasicBlockId::from(2),
+                    BasicBlockId::from(4),
+                ),
+            ), // B
+            (2, BasicBlockNext::Jump(BasicBlockId::from(5))), // C
+            (
+                3,
+                BasicBlockNext::If(
+                    LocalId::from(102),
+                    BasicBlockId::from(4),
+                    BasicBlockId::from(5),
+                ),
+            ), // D
+            (4, BasicBlockNext::Jump(BasicBlockId::from(5))), // E (Merge Node)
+            (
+                5,
+                BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(500))),
+            ), // F (Merge Node)
         ]);
 
-        let result = structured_control(&cfg, 0);
+        let result = reloop_cfg(&cfg, BasicBlockId::from(0));
 
         let expected = vec![
             Structured::Block {
                 body: vec![
                     Structured::Block {
                         body: vec![
-                            Structured::Simple(0), // A
+                            Structured::Simple(BasicBlockId::from(0)), // A
                             Structured::If {
-                                condition: 100,
-                                then_branch: vec![Structured::Simple(1), Structured::If {
-                                    condition: 101,
-                                    then_branch: vec![Structured::Simple(2), Structured::Break(3)], // C -> F
-                                    else_branch: vec![Structured::Break(2)], // B -> E
-                                }],
-                                else_branch: vec![Structured::Simple(3), Structured::If {
-                                    condition: 102,
-                                    then_branch: vec![Structured::Break(2)], // D -> E
-                                    else_branch: vec![Structured::Break(3)], // D -> F
-                                }],
+                                condition: LocalId::from(100),
+                                then_branch: vec![
+                                    Structured::Simple(BasicBlockId::from(1)),
+                                    Structured::If {
+                                        condition: LocalId::from(101),
+                                        then_branch: vec![
+                                            Structured::Simple(BasicBlockId::from(2)),
+                                            Structured::Break(3),
+                                        ], // C -> F
+                                        else_branch: vec![Structured::Break(2)], // B -> E
+                                    },
+                                ],
+                                else_branch: vec![
+                                    Structured::Simple(BasicBlockId::from(3)),
+                                    Structured::If {
+                                        condition: LocalId::from(102),
+                                        then_branch: vec![Structured::Break(2)], // D -> E
+                                        else_branch: vec![Structured::Break(3)], // D -> F
+                                    },
+                                ],
                             },
                         ],
                     },
-                    Structured::Simple(4), // E
-                    Structured::Break(0),  // E -> F
+                    Structured::Simple(BasicBlockId::from(4)), // E
+                    Structured::Break(0),                      // E -> F
                 ],
             },
-            Structured::Simple(5), // F
-            Structured::Return,
+            Structured::Simple(BasicBlockId::from(5)), // F
+            Structured::Terminator(BasicBlockTerminator::Return(LocalId::from(500))),
         ];
 
         assert_eq!(result, expected);

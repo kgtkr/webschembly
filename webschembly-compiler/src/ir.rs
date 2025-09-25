@@ -940,7 +940,7 @@ impl fmt::Display for Display<'_, BasicBlockId> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BasicBlockTerminator {
     Return(LocalId),
     TailCall(ExprCall),
