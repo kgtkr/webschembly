@@ -5,42 +5,34 @@ use std::collections::{HashMap, HashSet};
 
 // --- 識別子 ---
 pub type LocalId = usize;
-pub type BlockId = usize;
+pub type BasicBlockId = usize;
 
 // --- 入力 (Input) ---
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Action {
-    Do(BlockId),
-}
 
 #[derive(Debug, Clone)]
 pub enum Terminator {
     If {
         condition: LocalId,
-        then_block: BlockId,
-        else_block: BlockId,
+        then_block: BasicBlockId,
+        else_block: BasicBlockId,
     },
-    Jump(BlockId),
+    Jump(BasicBlockId),
     Return,
 }
 
 #[derive(Debug, Clone)]
 pub struct BasicBlock {
-    pub actions: Vec<Action>,
+    pub id: BasicBlockId,
     pub terminator: Terminator,
 }
 
-pub type CFG = HashMap<BlockId, BasicBlock>;
+pub type CFG = HashMap<BasicBlockId, BasicBlock>;
 
 // --- 出力 (Output) ---
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum WasmAction {
-    Do(BlockId),
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Structured {
-    Actions(Vec<WasmAction>),
+    Simple(BasicBlockId),
     If {
         condition: LocalId,
         then_branch: Vec<Structured>,
@@ -61,7 +53,7 @@ pub enum Structured {
 // ドミネーターツリーのノード
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DomTreeNode {
-    pub id: BlockId,
+    pub id: BasicBlockId,
     pub children: Vec<DomTreeNode>,
 }
 
@@ -69,8 +61,8 @@ pub struct DomTreeNode {
 #[derive(Debug, Clone, Copy)]
 enum ContainingSyntax {
     IfThenElse,
-    LoopHeadedBy(BlockId),
-    BlockFollowedBy(BlockId),
+    LoopHeadedBy(BasicBlockId),
+    BlockFollowedBy(BasicBlockId),
 }
 
 // --- メインの変換ロジック ---
@@ -78,13 +70,13 @@ enum ContainingSyntax {
 struct Translator<'a> {
     cfg: &'a CFG,
     dom_tree: &'a DomTreeNode,
-    rpo: &'a HashMap<BlockId, usize>, // 逆後順序番号
-    loop_headers: &'a HashSet<BlockId>,
-    merge_nodes: &'a HashSet<BlockId>,
+    rpo: &'a HashMap<BasicBlockId, usize>, // 逆後順序番号
+    loop_headers: &'a HashSet<BasicBlockId>,
+    merge_nodes: &'a HashSet<BasicBlockId>,
 }
 
 impl<'a> Translator<'a> {
-    fn index(&self, target_id: BlockId, context: &[ContainingSyntax]) -> Option<usize> {
+    fn index(&self, target_id: BasicBlockId, context: &[ContainingSyntax]) -> Option<usize> {
         for (i, syntax) in context.iter().enumerate() {
             match syntax {
                 ContainingSyntax::LoopHeadedBy(id) if *id == target_id => return Some(i),
@@ -93,16 +85,6 @@ impl<'a> Translator<'a> {
             }
         }
         None // 本来は見つかるはず
-    }
-
-    // ActionをWasmActionに変換するヘルパー
-    fn convert_actions(&self, actions: &[Action]) -> Vec<WasmAction> {
-        actions
-            .iter()
-            .map(|action| match action {
-                Action::Do(id) => WasmAction::Do(*id),
-            })
-            .collect()
     }
 
     /// 論文の doTree (line 1-7)
@@ -157,9 +139,7 @@ impl<'a> Translator<'a> {
             let block = self.cfg.get(&x).unwrap();
 
             let mut result = Vec::new();
-            if !block.actions.is_empty() {
-                result.push(Structured::Actions(self.convert_actions(&block.actions)));
-            }
+            result.push(Structured::Simple(block.id));
 
             match &block.terminator {
                 Terminator::Jump(target) => {
@@ -193,8 +173,8 @@ impl<'a> Translator<'a> {
     /// 論文の doBranch (line 22-26)
     fn do_branch(
         &self,
-        source: BlockId,
-        target: BlockId,
+        source: BasicBlockId,
+        target: BasicBlockId,
         context: &[ContainingSyntax],
     ) -> Vec<Structured> {
         let is_backward = self.rpo[&source] >= self.rpo[&target];
@@ -219,7 +199,7 @@ impl<'a> Translator<'a> {
     fn find_dom_tree_node<'b>(
         &self,
         node: &'b DomTreeNode,
-        id: BlockId,
+        id: BasicBlockId,
     ) -> Option<&'b DomTreeNode> {
         if node.id == id {
             return Some(node);
@@ -233,7 +213,7 @@ impl<'a> Translator<'a> {
     }
 }
 
-pub fn structured_control(cfg: &CFG, entry_id: BlockId) -> Vec<Structured> {
+pub fn structured_control(cfg: &CFG, entry_id: BasicBlockId) -> Vec<Structured> {
     let rpo = calculate_rpo(cfg, entry_id);
     let dom_tree = build_dom_tree(cfg, &rpo, entry_id);
     let loop_headers = find_loop_headers(cfg, &rpo);
@@ -253,7 +233,7 @@ pub fn structured_control(cfg: &CFG, entry_id: BlockId) -> Vec<Structured> {
 }
 
 /// 1. 逆後順序 (RPO) 番号を計算する
-fn calculate_rpo(cfg: &CFG, entry_id: BlockId) -> HashMap<BlockId, usize> {
+fn calculate_rpo(cfg: &CFG, entry_id: BasicBlockId) -> HashMap<BasicBlockId, usize> {
     let mut visited = HashSet::new();
     let mut postorder = Vec::new();
 
@@ -273,10 +253,10 @@ fn calculate_rpo(cfg: &CFG, entry_id: BlockId) -> HashMap<BlockId, usize> {
 
 // `calculate_rpo` のための再帰的なDFSヘルパー
 fn dfs_postorder(
-    current_id: BlockId,
+    current_id: BasicBlockId,
     cfg: &CFG,
-    visited: &mut HashSet<BlockId>,
-    postorder: &mut Vec<BlockId>,
+    visited: &mut HashSet<BasicBlockId>,
+    postorder: &mut Vec<BasicBlockId>,
 ) {
     visited.insert(current_id);
     let node = cfg.get(&current_id).unwrap();
@@ -303,8 +283,8 @@ fn dfs_postorder(
 }
 
 /// 2. マージノードを特定する
-fn find_merge_nodes(cfg: &CFG, rpo: &HashMap<BlockId, usize>) -> HashSet<BlockId> {
-    let mut predecessors: HashMap<BlockId, Vec<BlockId>> = HashMap::new();
+fn find_merge_nodes(cfg: &CFG, rpo: &HashMap<BasicBlockId, usize>) -> HashSet<BasicBlockId> {
+    let mut predecessors: HashMap<BasicBlockId, Vec<BasicBlockId>> = HashMap::new();
 
     // 全ノードの先行ノード(predecessor)のリストを作成
     for (&id, block) in cfg {
@@ -339,7 +319,7 @@ fn find_merge_nodes(cfg: &CFG, rpo: &HashMap<BlockId, usize>) -> HashSet<BlockId
 }
 
 /// 3. ループヘッダを特定する
-fn find_loop_headers(cfg: &CFG, rpo: &HashMap<BlockId, usize>) -> HashSet<BlockId> {
+fn find_loop_headers(cfg: &CFG, rpo: &HashMap<BasicBlockId, usize>) -> HashSet<BasicBlockId> {
     let mut headers = HashSet::new();
     for (&source_id, block) in cfg {
         let successors = match &block.terminator {
@@ -366,9 +346,13 @@ fn find_loop_headers(cfg: &CFG, rpo: &HashMap<BlockId, usize>) -> HashSet<BlockI
 }
 
 /// 4. ドミネーターツリーを構築する
-fn build_dom_tree(cfg: &CFG, rpo: &HashMap<BlockId, usize>, entry_id: BlockId) -> DomTreeNode {
+fn build_dom_tree(
+    cfg: &CFG,
+    rpo: &HashMap<BasicBlockId, usize>,
+    entry_id: BasicBlockId,
+) -> DomTreeNode {
     // --- Step A: 先行ノードのマップを作成 ---
-    let mut predecessors: HashMap<BlockId, Vec<BlockId>> = HashMap::new();
+    let mut predecessors: HashMap<BasicBlockId, Vec<BasicBlockId>> = HashMap::new();
     for (&id, block) in cfg {
         let successors = match &block.terminator {
             Terminator::Jump(target) => vec![*target],
@@ -385,8 +369,8 @@ fn build_dom_tree(cfg: &CFG, rpo: &HashMap<BlockId, usize>, entry_id: BlockId) -
     }
 
     // --- Step B: データフロー解析で各ノードの支配ノード集合を計算 ---
-    let all_nodes: HashSet<BlockId> = cfg.keys().cloned().collect();
-    let mut doms: HashMap<BlockId, HashSet<BlockId>> = HashMap::new();
+    let all_nodes: HashSet<BasicBlockId> = cfg.keys().cloned().collect();
+    let mut doms: HashMap<BasicBlockId, HashSet<BasicBlockId>> = HashMap::new();
 
     // 初期化
     doms.insert(entry_id, [entry_id].iter().cloned().collect());
@@ -432,7 +416,7 @@ fn build_dom_tree(cfg: &CFG, rpo: &HashMap<BlockId, usize>, entry_id: BlockId) -
     }
 
     // --- Step C: 即時支配ノード (idom) を見つける ---
-    let mut idoms: HashMap<BlockId, BlockId> = HashMap::new();
+    let mut idoms: HashMap<BasicBlockId, BasicBlockId> = HashMap::new();
     for &id in &all_nodes {
         if id == entry_id {
             continue;
@@ -450,7 +434,7 @@ fn build_dom_tree(cfg: &CFG, rpo: &HashMap<BlockId, usize>, entry_id: BlockId) -
     }
 
     // --- Step D: idom関係から木構造を構築 ---
-    let mut children_map: HashMap<BlockId, Vec<BlockId>> = HashMap::new();
+    let mut children_map: HashMap<BasicBlockId, Vec<BasicBlockId>> = HashMap::new();
     for (child, parent) in idoms {
         children_map.entry(parent).or_default().push(child);
     }
@@ -459,7 +443,10 @@ fn build_dom_tree(cfg: &CFG, rpo: &HashMap<BlockId, usize>, entry_id: BlockId) -
 }
 
 // `build_dom_tree`のための再帰的な木構築ヘルパー
-fn build_tree_recursive(id: BlockId, children_map: &HashMap<BlockId, Vec<BlockId>>) -> DomTreeNode {
+fn build_tree_recursive(
+    id: BasicBlockId,
+    children_map: &HashMap<BasicBlockId, Vec<BasicBlockId>>,
+) -> DomTreeNode {
     let children = match children_map.get(&id) {
         Some(child_ids) => child_ids
             .iter()
@@ -476,21 +463,16 @@ mod tests {
     use super::*;
 
     // テスト用のCFGを簡単に作るためのヘルパー
-    fn setup_cfg(data: &[(BlockId, Terminator)]) -> CFG {
+    fn setup_cfg(data: &[(BasicBlockId, Terminator)]) -> CFG {
         data.iter()
-            .map(|(id, term)| {
+            .map(|&(id, ref term)| {
                 let block = BasicBlock {
-                    actions: vec![Action::Do(*id)], // 各ブロックは自身のIDを実行する
+                    id,
                     terminator: term.clone(),
                 };
-                (*id, block)
+                (id, block)
             })
             .collect()
-    }
-
-    // テスト用のActionsを簡単に作るためのヘルパー
-    fn actions(id: BlockId) -> Structured {
-        Structured::Actions(vec![WasmAction::Do(id)])
     }
 
     /// テストケース1: 単純なif-else
@@ -511,13 +493,13 @@ mod tests {
 
         let expected = vec![
             Structured::Block {
-                body: vec![actions(0), Structured::If {
+                body: vec![Structured::Simple(0), Structured::If {
                     condition: 100,
-                    then_branch: vec![actions(1), Structured::BreakTo(1)],
-                    else_branch: vec![actions(2), Structured::BreakTo(1)],
+                    then_branch: vec![Structured::Simple(1), Structured::BreakTo(1)],
+                    else_branch: vec![Structured::Simple(2), Structured::BreakTo(1)],
                 }],
             },
-            actions(3),
+            Structured::Simple(3),
             Structured::Return,
         ];
 
@@ -540,15 +522,15 @@ mod tests {
 
         let result = structured_control(&cfg, 0);
 
-        let expected = vec![actions(0), Structured::Loop {
-            body: vec![actions(1), Structured::If {
+        let expected = vec![Structured::Simple(0), Structured::Loop {
+            body: vec![Structured::Simple(1), Structured::If {
                 condition: 101,
                 then_branch: vec![
-                    actions(2),
+                    Structured::Simple(2),
                     Structured::BreakTo(1), // ループ継続
                 ],
                 else_branch: vec![
-                    actions(3),
+                    Structured::Simple(3),
                     Structured::Return, // ループ脱出
                 ],
             }],
@@ -590,21 +572,24 @@ mod tests {
                     Structured::Block {
                         // Eのための内側ブロック
                         body: vec![
-                            actions(0), // A
+                            Structured::Simple(0), // A
                             Structured::If {
                                 condition: 100,
                                 then_branch: vec![
                                     // Bのサブツリー
-                                    actions(1),
+                                    Structured::Simple(1),
                                     Structured::If {
                                         condition: 101,
-                                        then_branch: vec![actions(2), Structured::BreakTo(3)], // C -> F
+                                        then_branch: vec![
+                                            Structured::Simple(2),
+                                            Structured::BreakTo(3),
+                                        ], // C -> F
                                         else_branch: vec![Structured::BreakTo(2)], // B -> E
                                     },
                                 ],
                                 else_branch: vec![
                                     // Dのサブツリー
-                                    actions(3),
+                                    Structured::Simple(3),
                                     Structured::If {
                                         condition: 102,
                                         then_branch: vec![Structured::BreakTo(2)], // D -> E
@@ -614,11 +599,11 @@ mod tests {
                             },
                         ],
                     },
-                    actions(4),             // E
+                    Structured::Simple(4),  // E
                     Structured::BreakTo(0), // E -> F
                 ],
             },
-            actions(5), // F
+            Structured::Simple(5), // F
             Structured::Return,
         ];
 
