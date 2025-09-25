@@ -328,7 +328,7 @@ mod tests {
                     expr: Expr::Int(0),
                 },
             ],
-            next: BasicBlockNext::Return(LocalId::from(1)),
+            next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(1))),
         };
 
         let args = vec![LocalId::from(0), LocalId::from(1)];
@@ -406,7 +406,7 @@ mod tests {
                     expr: Expr::Add(LocalId::from(1), LocalId::from(2)),
                 },
             ],
-            next: BasicBlockNext::Return(LocalId::from(1)),
+            next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(1))),
         };
 
         let type_params = FxBiHashMap::from_iter(vec![(TypeParamId::from(0), LocalId::from(0))]);
@@ -533,7 +533,7 @@ mod tests {
                     expr: Expr::Add(LocalId::from(1), LocalId::from(1)),
                 },
             ],
-            next: BasicBlockNext::Return(LocalId::from(2)),
+            next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(2))),
         };
 
         let locals_immutability = ti_vec![true, true, true];
@@ -581,7 +581,7 @@ mod tests {
                     expr: Expr::Add(LocalId::from(2), LocalId::from(2)),
                 },
             ],
-            next: BasicBlockNext::Return(LocalId::from(3)),
+            next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(3))),
         };
 
         let locals_immutability = ti_vec![true, true, true, true];
@@ -623,7 +623,7 @@ mod tests {
                     expr: Expr::Add(LocalId::from(0), LocalId::from(0)),
                 },
             ],
-            next: BasicBlockNext::Return(LocalId::from(2)),
+            next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(2))),
         };
 
         let locals_immutability = ti_vec![true, true, true];

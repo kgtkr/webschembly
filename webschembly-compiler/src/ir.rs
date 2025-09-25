@@ -940,14 +940,90 @@ impl fmt::Display for Display<'_, BasicBlockId> {
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum BasicBlockTerminator {
+    Return(LocalId),
+    TailCall(ExprCall),
+    TailCallRef(ExprCallRef),
+}
+macro_rules! impl_BasicBlockTerminator_local_ids {
+    ($($suffix: ident)?,$($mutability: tt)?) => {
+        paste::paste! {
+            pub fn [<local_ids $($suffix)?>](&$($mutability)? self) -> impl Iterator<Item = &$($mutability)? LocalId> {
+                from_coroutine(
+                    #[coroutine]
+                    move || match self {
+                        BasicBlockTerminator::Return(local) => yield local,
+                        BasicBlockTerminator::TailCall(call) => {
+                            for id in call.[<local_ids $($suffix)?>]() {
+                                yield id;
+                            }
+                        }
+                        BasicBlockTerminator::TailCallRef(call_ref) => {
+                            for id in call_ref.[<local_ids $($suffix)?>]() {
+                                yield id;
+                            }
+                        }
+                    },
+                )
+            }
+        }
+    };
+}
+
+macro_rules! impl_BasicBlockTerminator_func_ids {
+    ($($suffix: ident)?,$($mutability: tt)?) => {
+        paste::paste! {
+            pub fn [<func_ids $($suffix)?>](&$($mutability)? self) -> impl Iterator<Item = &$($mutability)? FuncId> {
+                from_coroutine(
+                    #[coroutine]
+                    move || match self {
+                        BasicBlockTerminator::Return(_)
+                        | BasicBlockTerminator::TailCallRef(_) => {}
+                        BasicBlockTerminator::TailCall(call) => {
+                            for id in call.[<func_ids $($suffix)?>]() {
+                                yield id;
+                            }
+                        }
+                    },
+                )
+            }
+        }
+    };
+}
+
+impl BasicBlockTerminator {
+    pub fn display<'a>(&self, meta: MetaInFunc<'a>) -> DisplayInFunc<'a, &BasicBlockTerminator> {
+        DisplayInFunc { value: self, meta }
+    }
+
+    impl_BasicBlockTerminator_local_ids!(_mut, mut);
+    impl_BasicBlockTerminator_local_ids!(,);
+
+    impl_BasicBlockTerminator_func_ids!(_mut, mut);
+    impl_BasicBlockTerminator_func_ids!(,);
+}
+
+impl fmt::Display for DisplayInFunc<'_, &BasicBlockTerminator> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.value {
+            BasicBlockTerminator::Return(local) => write!(f, "return {}", local.display(self.meta)),
+            BasicBlockTerminator::TailCall(call) => {
+                write!(f, "tail_call {}", call.display(self.meta))
+            }
+            BasicBlockTerminator::TailCallRef(call_ref) => {
+                write!(f, "tail_call_ref {}", call_ref.display(self.meta))
+            }
+        }
+    }
+}
+
 // 閉路を作ってはいけない
 #[derive(Debug, Clone)]
 pub enum BasicBlockNext {
     If(LocalId, BasicBlockId, BasicBlockId),
     Jump(BasicBlockId),
-    Return(LocalId),
-    TailCall(ExprCall),
-    TailCallRef(ExprCallRef),
+    Terminator(BasicBlockTerminator),
 }
 
 macro_rules! impl_BasicBlockNext_local_ids {
@@ -959,14 +1035,8 @@ macro_rules! impl_BasicBlockNext_local_ids {
                     move || match self {
                         BasicBlockNext::If(cond, _, _) => yield cond,
                         BasicBlockNext::Jump(_) => {}
-                        BasicBlockNext::Return(local) => yield local,
-                        BasicBlockNext::TailCall(call) => {
-                            for id in call.[<local_ids $($suffix)?>]() {
-                                yield id;
-                            }
-                        }
-                        BasicBlockNext::TailCallRef(call_ref) => {
-                            for id in call_ref.[<local_ids $($suffix)?>]() {
+                        BasicBlockNext::Terminator(terminator) => {
+                            for id in terminator.[<local_ids $($suffix)?>]() {
                                 yield id;
                             }
                         }
@@ -985,11 +1055,9 @@ macro_rules! impl_BasicBlockNext_func_ids {
                     #[coroutine]
                     move || match self {
                         BasicBlockNext::If(_, _, _)
-                        | BasicBlockNext::Jump(_)
-                        | BasicBlockNext::Return(_)
-                        | BasicBlockNext::TailCallRef(_) => {}
-                        BasicBlockNext::TailCall(call) => {
-                            for id in call.[<func_ids $($suffix)?>]() {
+                        | BasicBlockNext::Jump(_) => {}
+                        BasicBlockNext::Terminator(terminator) => {
+                            for id in terminator.[<func_ids $($suffix)?>]() {
                                 yield id;
                             }
                         }
@@ -1025,12 +1093,8 @@ impl fmt::Display for DisplayInFunc<'_, &BasicBlockNext> {
                 )
             }
             BasicBlockNext::Jump(bb) => write!(f, "jump {}", bb.display(self.meta.meta)),
-            BasicBlockNext::Return(local) => write!(f, "return {}", local.display(self.meta)),
-            BasicBlockNext::TailCall(call) => {
-                write!(f, "tail_call {}", call.display(self.meta))
-            }
-            BasicBlockNext::TailCallRef(call_ref) => {
-                write!(f, "tail_call_ref {}", call_ref.display(self.meta))
+            BasicBlockNext::Terminator(terminator) => {
+                write!(f, "{}", terminator.display(self.meta))
             }
         }
     }
@@ -1048,9 +1112,7 @@ impl BasicBlockNext {
                 BasicBlockNext::Jump(bb) => {
                     yield *bb;
                 }
-                BasicBlockNext::Return(_)
-                | BasicBlockNext::TailCall(_)
-                | BasicBlockNext::TailCallRef(_) => {}
+                BasicBlockNext::Terminator(_) => {}
             },
         )
     }

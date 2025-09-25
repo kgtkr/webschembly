@@ -178,10 +178,10 @@ impl JitModule {
                     }
                     exprs
                 },
-                next: BasicBlockNext::TailCall(ExprCall {
+                next: BasicBlockNext::Terminator(BasicBlockTerminator::TailCall(ExprCall {
                     func_id: stub_func_ids[self.module.entry],
                     args: vec![],
-                })
+                }))
             },],
         };
         funcs.push(func);
@@ -261,11 +261,13 @@ impl JitModule {
                                 ),
                             },
                         ],
-                        next: BasicBlockNext::TailCallRef(ExprCallRef {
-                            func: LocalId::from(func.args.len() + 2),
-                            args: func.args.clone(),
-                            func_type: func.func_type()
-                        })
+                        next: BasicBlockNext::Terminator(BasicBlockTerminator::TailCallRef(
+                            ExprCallRef {
+                                func: LocalId::from(func.args.len() + 2),
+                                args: func.args.clone(),
+                                func_type: func.func_type()
+                            }
+                        ))
                     },
                 ],
             };
@@ -419,7 +421,7 @@ impl JitFunc {
                         }
                         exprs
                     },
-                    next: BasicBlockNext::Return(func_ref_local),
+                    next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(func_ref_local)),
                 },],
             }
         };
@@ -471,19 +473,23 @@ impl JitFunc {
                             expr: Expr::Unbox(ValType::FuncRef, boxed_local),
                         },
                     ],
-                    next: BasicBlockNext::TailCallRef(ExprCallRef {
-                        func: func_ref_local,
-                        args: entry_bb_info
-                            .args
-                            .iter()
-                            .map(|&arg| entry_bb_info.to_original_locals_mapping[arg])
-                            .collect(),
-                        func_type: FuncType {
+                    next: BasicBlockNext::Terminator(BasicBlockTerminator::TailCallRef(
+                        ExprCallRef {
+                            func: func_ref_local,
                             args: entry_bb_info
-                                .arg_types(func, &ti_vec![None; entry_bb_info.type_params.len()]),
-                            ret: func.ret_type,
-                        },
-                    })
+                                .args
+                                .iter()
+                                .map(|&arg| entry_bb_info.to_original_locals_mapping[arg])
+                                .collect(),
+                            func_type: FuncType {
+                                args: entry_bb_info.arg_types(
+                                    func,
+                                    &ti_vec![None; entry_bb_info.type_params.len()]
+                                ),
+                                ret: func.ret_type,
+                            },
+                        }
+                    ))
                 },],
             }
         };
@@ -615,14 +621,16 @@ impl JitFunc {
                             expr: Expr::Unbox(ValType::FuncRef, boxed_local,),
                         }
                     ],
-                    next: BasicBlockNext::TailCallRef(ExprCallRef {
-                        func: func_ref_local,
-                        args: jit_bb.info.args.clone(),
-                        func_type: FuncType {
-                            args: jit_bb.info.arg_types(func, type_args),
-                            ret: func.ret_type,
-                        },
-                    }),
+                    next: BasicBlockNext::Terminator(BasicBlockTerminator::TailCallRef(
+                        ExprCallRef {
+                            func: func_ref_local,
+                            args: jit_bb.info.args.clone(),
+                            func_type: FuncType {
+                                args: jit_bb.info.arg_types(func, type_args),
+                                ret: func.ret_type,
+                            },
+                        }
+                    )),
                 },
             ],
         }
@@ -736,7 +744,10 @@ impl JitFunc {
             // nextがtail callならexpr::callと同じようにget globalに置き換える
             // nextがif/jumpなら、BBに対応する関数へのジャンプに置き換える
             let next = match bb.next {
-                BasicBlockNext::TailCall(ExprCall { func_id, ref args }) => {
+                BasicBlockNext::Terminator(BasicBlockTerminator::TailCall(ExprCall {
+                    func_id,
+                    ref args,
+                })) => {
                     exprs.push(ExprAssign {
                         local: Some(boxed_local),
                         expr: Expr::GlobalGet(jit_module.func_to_globals[func_id]),
@@ -745,11 +756,11 @@ impl JitFunc {
                         local: Some(func_ref_local),
                         expr: Expr::Unbox(ValType::FuncRef, boxed_local),
                     });
-                    BasicBlockNext::TailCallRef(ExprCallRef {
+                    BasicBlockNext::Terminator(BasicBlockTerminator::TailCallRef(ExprCallRef {
                         func: func_ref_local,
                         args: args.clone(),
                         func_type: module.funcs[func_id].func_type(),
-                    })
+                    }))
                 }
                 BasicBlockNext::If(cond, then_bb, else_bb) => {
                     let (then_locals_to_pass, then_type_args, then_index) = calculate_args_to_pass(
@@ -793,14 +804,18 @@ impl JitFunc {
                                 expr: Expr::Unbox(ValType::FuncRef, boxed_local),
                             },
                         ],
-                        next: BasicBlockNext::TailCallRef(ExprCallRef {
-                            func: func_ref_local,
-                            args: then_locals_to_pass,
-                            func_type: FuncType {
-                                args: self.jit_bbs[then_bb].info.arg_types(func, &then_type_args),
-                                ret: func.ret_type,
+                        next: BasicBlockNext::Terminator(BasicBlockTerminator::TailCallRef(
+                            ExprCallRef {
+                                func: func_ref_local,
+                                args: then_locals_to_pass,
+                                func_type: FuncType {
+                                    args: self.jit_bbs[then_bb]
+                                        .info
+                                        .arg_types(func, &then_type_args),
+                                    ret: func.ret_type,
+                                },
                             },
-                        }),
+                        )),
                     };
 
                     let else_bb_new = BasicBlock {
@@ -827,14 +842,18 @@ impl JitFunc {
                                 expr: Expr::Unbox(ValType::FuncRef, boxed_local),
                             },
                         ],
-                        next: BasicBlockNext::TailCallRef(ExprCallRef {
-                            func: func_ref_local,
-                            args: else_locals_to_pass,
-                            func_type: FuncType {
-                                args: self.jit_bbs[else_bb].info.arg_types(func, &else_type_args),
-                                ret: func.ret_type,
+                        next: BasicBlockNext::Terminator(BasicBlockTerminator::TailCallRef(
+                            ExprCallRef {
+                                func: func_ref_local,
+                                args: else_locals_to_pass,
+                                func_type: FuncType {
+                                    args: self.jit_bbs[else_bb]
+                                        .info
+                                        .arg_types(func, &else_type_args),
+                                    ret: func.ret_type,
+                                },
                             },
-                        }),
+                        )),
                     };
 
                     extra_bbs.push(then_bb_new);
@@ -874,16 +893,17 @@ impl JitFunc {
                         expr: Expr::Unbox(ValType::FuncRef, boxed_local),
                     });
 
-                    BasicBlockNext::TailCallRef(ExprCallRef {
+                    BasicBlockNext::Terminator(BasicBlockTerminator::TailCallRef(ExprCallRef {
                         func: func_ref_local,
                         args: args_to_pass,
                         func_type: FuncType {
                             args: self.jit_bbs[target_bb].info.arg_types(func, &type_args),
                             ret: func.ret_type,
                         },
-                    })
+                    }))
                 }
-                next @ (BasicBlockNext::TailCallRef(_) | BasicBlockNext::Return(_)) => next.clone(),
+                next @ (BasicBlockNext::Terminator(BasicBlockTerminator::TailCallRef(_))
+                | BasicBlockNext::Terminator(BasicBlockTerminator::Return(_))) => next.clone(),
             };
 
             BasicBlock {
@@ -1061,7 +1081,7 @@ impl JitFunc {
             bbs.push(BasicBlock {
                 id: bbs.next_key(),
                 exprs: vec![],
-                next: BasicBlockNext::Return(func_ref_local),
+                next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(func_ref_local)),
             });
 
             Func {

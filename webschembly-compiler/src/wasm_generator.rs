@@ -2,7 +2,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use std::borrow::Cow;
 use typed_index_collections::{TiSlice, ti_vec};
 
-use crate::ir::BasicBlockNext;
+use crate::ir::{BasicBlockNext, BasicBlockTerminator};
 
 use super::ir;
 use wasm_encoder::{
@@ -771,9 +771,7 @@ enum StructuredBasicBlock {
         then: Vec<StructuredBasicBlock>,
         else_: Vec<StructuredBasicBlock>,
     },
-    Return(ir::LocalId),
-    TailCall(ir::ExprCall),
-    TailCallRef(ir::ExprCallRef),
+    Terminator(ir::BasicBlockTerminator),
 }
 
 // relooper algorithmのような動作をするもの
@@ -891,16 +889,8 @@ fn reloop_rec(
         BasicBlockNext::Jump(target) => {
             reloop_rec(target, bbs, reversed_doms, rejoin_points, results)
         }
-        BasicBlockNext::Return(local) => {
-            results.push(StructuredBasicBlock::Return(local));
-            None
-        }
-        BasicBlockNext::TailCall(call) => {
-            results.push(StructuredBasicBlock::TailCall(call));
-            None
-        }
-        BasicBlockNext::TailCallRef(call_ref) => {
-            results.push(StructuredBasicBlock::TailCallRef(call_ref));
+        BasicBlockNext::Terminator(terminator) => {
+            results.push(StructuredBasicBlock::Terminator(terminator));
             None
         }
     }
@@ -1002,16 +992,18 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 }
                 function.instruction(&Instruction::End);
             }
-            StructuredBasicBlock::Return(local) => {
-                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*local)));
-                function.instruction(&Instruction::Return);
-            }
-            StructuredBasicBlock::TailCall(call) => {
-                self.gen_call(function, true, call);
-            }
-            StructuredBasicBlock::TailCallRef(call_ref) => {
-                self.gen_call_ref(function, true, call_ref);
-            }
+            StructuredBasicBlock::Terminator(terminator) => match terminator {
+                BasicBlockTerminator::Return(local) => {
+                    function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*local)));
+                    function.instruction(&Instruction::Return);
+                }
+                BasicBlockTerminator::TailCall(call) => {
+                    self.gen_call(function, true, call);
+                }
+                BasicBlockTerminator::TailCallRef(call_ref) => {
+                    self.gen_call_ref(function, true, call_ref);
+                }
+            },
         }
     }
 

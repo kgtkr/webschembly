@@ -150,7 +150,9 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         );
 
         self.gen_exprs(Some(boxed_local), &self.module_generator.ast.exprs);
-        self.close_bb(Some(BasicBlockNext::Return(boxed_local)));
+        self.close_bb(Some(BasicBlockNext::Terminator(
+            BasicBlockTerminator::Return(boxed_local),
+        )));
         Func {
             id: self.id,
             args: vec![],
@@ -240,7 +242,9 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
 
         let ret = self.local(Type::Boxed);
         self.gen_exprs(Some(ret), &lambda.body);
-        self.close_bb(Some(BasicBlockNext::Return(ret)));
+        self.close_bb(Some(BasicBlockNext::Terminator(
+            BasicBlockTerminator::Return(ret),
+        )));
         Func {
             id: self.id,
             args: vec![self_closure, args],
@@ -558,7 +562,9 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                         },
                     };
                     if is_tail {
-                        self.close_bb(Some(BasicBlockNext::TailCallRef(call_ref)));
+                        self.close_bb(Some(BasicBlockNext::Terminator(
+                            BasicBlockTerminator::TailCallRef(call_ref),
+                        )));
                     } else {
                         self.exprs.push(ExprAssign {
                             local: result,
