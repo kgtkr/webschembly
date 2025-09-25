@@ -4,7 +4,7 @@ use typed_index_collections::{TiSlice, ti_vec};
 
 use crate::ir::{BasicBlockNext, BasicBlockTerminator};
 
-use super::ir;
+use crate::ir;
 use wasm_encoder::{
     BlockType, CodeSection, CompositeInnerType, CompositeType, ConstExpr, DataCountSection,
     DataSection, ElementSection, Elements, EntityType, ExportKind, ExportSection, FieldType,

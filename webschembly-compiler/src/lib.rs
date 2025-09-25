@@ -22,7 +22,6 @@ pub mod error;
 pub mod fxbihashmap;
 pub mod ir;
 pub mod ir_generator;
-mod relooper;
 pub mod sexpr_parser;
 pub mod span;
 pub mod stdlib;
