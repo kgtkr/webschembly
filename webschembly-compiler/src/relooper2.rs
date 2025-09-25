@@ -44,7 +44,7 @@ pub enum Structured {
     Loop {
         body: Vec<Structured>,
     },
-    BreakTo(usize),
+    Break(usize),
     Return,
 }
 
@@ -184,7 +184,7 @@ impl<'a> Translator<'a> {
                 .index(target, context)
                 .expect("Target label not found in context");
             // 後方分岐、またはマージノードへの分岐は BreakTo になる
-            vec![Structured::BreakTo(relative_index)]
+            vec![Structured::Break(relative_index)]
         } else {
             // それ以外は、ターゲットのサブツリーをインライン展開する
             // (ターゲットはドミネーターツリーでsourceの子であるはず)
@@ -459,10 +459,8 @@ fn build_tree_recursive(
 
 #[cfg(test)]
 mod tests {
-    // 親モジュールから必要なものをすべてインポート
     use super::*;
 
-    // テスト用のCFGを簡単に作るためのヘルパー
     fn setup_cfg(data: &[(BasicBlockId, Terminator)]) -> CFG {
         data.iter()
             .map(|&(id, ref term)| {
@@ -475,7 +473,21 @@ mod tests {
             .collect()
     }
 
-    /// テストケース1: 単純なif-else
+    #[test]
+    fn test_linear() {
+        let cfg = setup_cfg(&[(0, Terminator::Jump(1)), (1, Terminator::Return)]);
+
+        let result = structured_control(&cfg, 0);
+
+        let expected = vec![
+            Structured::Simple(0),
+            Structured::Simple(1),
+            Structured::Return,
+        ];
+
+        assert_eq!(result, expected);
+    }
+
     #[test]
     fn test_simple_if_else() {
         let cfg = setup_cfg(&[
@@ -495,8 +507,8 @@ mod tests {
             Structured::Block {
                 body: vec![Structured::Simple(0), Structured::If {
                     condition: 100,
-                    then_branch: vec![Structured::Simple(1), Structured::BreakTo(1)],
-                    else_branch: vec![Structured::Simple(2), Structured::BreakTo(1)],
+                    then_branch: vec![Structured::Simple(1), Structured::Break(1)],
+                    else_branch: vec![Structured::Simple(2), Structured::Break(1)],
                 }],
             },
             Structured::Simple(3),
@@ -506,9 +518,48 @@ mod tests {
         assert_eq!(result, expected);
     }
 
-    /// テストケース2: 出口のあるループ
     #[test]
-    fn test_loop_with_exit() {
+    fn test_nested_if_else() {
+        let cfg = setup_cfg(&[
+            (0, Terminator::If {
+                condition: 100,
+                then_block: 1,
+                else_block: 4,
+            }),
+            (1, Terminator::If {
+                condition: 101,
+                then_block: 2,
+                else_block: 3,
+            }),
+            (2, Terminator::Jump(5)),
+            (3, Terminator::Jump(5)),
+            (4, Terminator::Jump(5)),
+            (5, Terminator::Return),
+        ]);
+
+        let result = structured_control(&cfg, 0);
+
+        let expected = vec![
+            Structured::Block {
+                body: vec![Structured::Simple(0), Structured::If {
+                    condition: 100,
+                    then_branch: vec![Structured::Simple(1), Structured::If {
+                        condition: 101,
+                        then_branch: vec![Structured::Simple(2), Structured::Break(2)],
+                        else_branch: vec![Structured::Simple(3), Structured::Break(2)],
+                    }],
+                    else_branch: vec![Structured::Simple(4), Structured::Break(1)],
+                }],
+            },
+            Structured::Simple(5),
+            Structured::Return,
+        ];
+
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_simple_loop() {
         let cfg = setup_cfg(&[
             (0, Terminator::Jump(1)),
             (1, Terminator::If {
@@ -516,8 +567,8 @@ mod tests {
                 then_block: 2,
                 else_block: 3,
             }),
-            (2, Terminator::Jump(1)), // ループする後方エッジ
-            (3, Terminator::Return),  // ループの出口
+            (2, Terminator::Jump(1)),
+            (3, Terminator::Return),
         ]);
 
         let result = structured_control(&cfg, 0);
@@ -527,7 +578,7 @@ mod tests {
                 condition: 101,
                 then_branch: vec![
                     Structured::Simple(2),
-                    Structured::BreakTo(1), // ループ継続
+                    Structured::Break(1), // ループ継続
                 ],
                 else_branch: vec![
                     Structured::Simple(3),
@@ -539,7 +590,94 @@ mod tests {
         assert_eq!(result, expected);
     }
 
-    /// テストケース3: 論文の複雑な合流パターン
+    #[test]
+    fn test_simple_infinite_loop() {
+        let cfg = setup_cfg(&[(0, Terminator::Jump(1)), (1, Terminator::Jump(0))]);
+
+        let result = structured_control(&cfg, 0);
+
+        let expected = vec![Structured::Loop {
+            body: vec![
+                Structured::Simple(0),
+                Structured::Simple(1),
+                Structured::Break(0),
+            ],
+        }];
+
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_self_loop() {
+        let cfg = setup_cfg(&[
+            (0, Terminator::If {
+                condition: 100,
+                then_block: 1,
+                else_block: 2,
+            }),
+            (1, Terminator::If {
+                condition: 101,
+                then_block: 1,
+                else_block: 2,
+            }),
+            (2, Terminator::Return),
+        ]);
+
+        let result = structured_control(&cfg, 0);
+
+        let expected = vec![
+            Structured::Block {
+                body: vec![Structured::Simple(0), Structured::If {
+                    condition: 100,
+                    then_branch: vec![Structured::Loop {
+                        body: vec![Structured::Simple(1), Structured::If {
+                            condition: 101,
+                            then_branch: vec![Structured::Break(1)],
+                            else_branch: vec![Structured::Break(3)],
+                        }],
+                    }],
+                    else_branch: vec![Structured::Break(1)],
+                }],
+            },
+            Structured::Simple(2),
+            Structured::Return,
+        ];
+
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_self_infinite_loop() {
+        let cfg = setup_cfg(&[(0, Terminator::Jump(0))]);
+
+        let result = structured_control(&cfg, 0);
+
+        let expected = vec![Structured::Loop {
+            body: vec![Structured::Simple(0), Structured::Break(0)],
+        }];
+
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    #[should_panic(expected = "Target label not found in context")]
+    fn test_irreducible_graph_fails() {
+        // irreducible graphでは動かない
+        // ノード分割が必要だが、ここでは実装しない
+        let cfg = setup_cfg(&[
+            (0, Terminator::If {
+                condition: 100,
+                then_block: 1,
+                else_block: 2,
+            }),
+            (1, Terminator::Jump(2)),
+            (2, Terminator::Jump(1)),
+        ]);
+
+        structured_control(&cfg, 0);
+    }
+
+    // 論文の複雑な合流パターン
     #[test]
     fn test_unusual_merge_pattern() {
         let cfg = setup_cfg(&[
@@ -567,40 +705,27 @@ mod tests {
 
         let expected = vec![
             Structured::Block {
-                // Fのための外側ブロック
                 body: vec![
                     Structured::Block {
-                        // Eのための内側ブロック
                         body: vec![
                             Structured::Simple(0), // A
                             Structured::If {
                                 condition: 100,
-                                then_branch: vec![
-                                    // Bのサブツリー
-                                    Structured::Simple(1),
-                                    Structured::If {
-                                        condition: 101,
-                                        then_branch: vec![
-                                            Structured::Simple(2),
-                                            Structured::BreakTo(3),
-                                        ], // C -> F
-                                        else_branch: vec![Structured::BreakTo(2)], // B -> E
-                                    },
-                                ],
-                                else_branch: vec![
-                                    // Dのサブツリー
-                                    Structured::Simple(3),
-                                    Structured::If {
-                                        condition: 102,
-                                        then_branch: vec![Structured::BreakTo(2)], // D -> E
-                                        else_branch: vec![Structured::BreakTo(3)], // D -> F
-                                    },
-                                ],
+                                then_branch: vec![Structured::Simple(1), Structured::If {
+                                    condition: 101,
+                                    then_branch: vec![Structured::Simple(2), Structured::Break(3)], // C -> F
+                                    else_branch: vec![Structured::Break(2)], // B -> E
+                                }],
+                                else_branch: vec![Structured::Simple(3), Structured::If {
+                                    condition: 102,
+                                    then_branch: vec![Structured::Break(2)], // D -> E
+                                    else_branch: vec![Structured::Break(3)], // D -> F
+                                }],
                             },
                         ],
                     },
-                    Structured::Simple(4),  // E
-                    Structured::BreakTo(0), // E -> F
+                    Structured::Simple(4), // E
+                    Structured::Break(0),  // E -> F
                 ],
             },
             Structured::Simple(5), // F
