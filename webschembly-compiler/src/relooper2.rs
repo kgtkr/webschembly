@@ -47,14 +47,12 @@ pub enum Structured {
         else_branch: Vec<Structured>,
     },
     Block {
-        id: BlockId,
         body: Vec<Structured>,
     },
     Loop {
-        id: BlockId,
         body: Vec<Structured>,
     },
-    BreakTo(BlockId),
+    BreakTo(usize),
     Return,
 }
 
@@ -86,6 +84,17 @@ struct Translator<'a> {
 }
 
 impl<'a> Translator<'a> {
+    fn index(&self, target_id: BlockId, context: &[ContainingSyntax]) -> Option<usize> {
+        for (i, syntax) in context.iter().enumerate() {
+            match syntax {
+                ContainingSyntax::LoopHeadedBy(id) if *id == target_id => return Some(i),
+                ContainingSyntax::BlockFollowedBy(id) if *id == target_id => return Some(i),
+                _ => {}
+            }
+        }
+        None // 本来は見つかるはず
+    }
+
     // ActionをWasmActionに変換するヘルパー
     fn convert_actions(&self, actions: &[Action]) -> Vec<WasmAction> {
         actions
@@ -100,7 +109,6 @@ impl<'a> Translator<'a> {
     fn do_tree(&self, tree_node: &DomTreeNode, context: &[ContainingSyntax]) -> Vec<Structured> {
         let x = tree_node.id;
 
-        // マージノードである子を特定し、RPOの降順（大きい方から）にソート
         let mut merge_children: Vec<_> = tree_node
             .children
             .iter()
@@ -108,20 +116,17 @@ impl<'a> Translator<'a> {
             .collect();
         merge_children.sort_by_key(|child| -(*self.rpo.get(&child.id).unwrap_or(&0) as isize));
 
-        // ノード本体とマージしない子の変換
-        let code_for_x = self.node_within(tree_node, &merge_children, context);
-
         if self.loop_headers.contains(&x) {
-            // ループヘッダの場合、Loopでラップする
-            // コンテキストにLoopHeadedByを追加
+            // ループヘッダの場合
             let mut new_context = context.to_vec();
             new_context.insert(0, ContainingSyntax::LoopHeadedBy(x));
+
             vec![Structured::Loop {
-                id: x,
                 body: self.node_within(tree_node, &merge_children, &new_context),
             }]
         } else {
-            code_for_x
+            // ループヘッdaではない場合
+            self.node_within(tree_node, &merge_children, context)
         }
     }
 
@@ -142,7 +147,6 @@ impl<'a> Translator<'a> {
 
             let mut result = Vec::new();
             result.push(Structured::Block {
-                id: y_n,
                 body: self.node_within(tree_node, rest_ys, &new_context),
             });
             result.extend(self.do_tree(y_n_node, context));
@@ -154,8 +158,7 @@ impl<'a> Translator<'a> {
 
             let mut result = Vec::new();
             if !block.actions.is_empty() {
-                let wasm_actions = self.convert_actions(&block.actions);
-                result.push(Structured::Actions(wasm_actions));
+                result.push(Structured::Actions(self.convert_actions(&block.actions)));
             }
 
             match &block.terminator {
@@ -197,8 +200,11 @@ impl<'a> Translator<'a> {
         let is_backward = self.rpo[&source] >= self.rpo[&target];
 
         if is_backward || self.merge_nodes.contains(&target) {
+            let relative_index = self
+                .index(target, context)
+                .expect("Target label not found in context");
             // 後方分岐、またはマージノードへの分岐は BreakTo になる
-            vec![Structured::BreakTo(target)]
+            vec![Structured::BreakTo(relative_index)]
         } else {
             // それ以外は、ターゲットのサブツリーをインライン展開する
             // (ターゲットはドミネーターツリーでsourceの子であるはず)
@@ -228,7 +234,6 @@ impl<'a> Translator<'a> {
 }
 
 pub fn structured_control(cfg: &CFG, entry_id: BlockId) -> Vec<Structured> {
-    // 1. 事前解析を行う（これらの関数の実装は複雑なため省略）
     let rpo = calculate_rpo(cfg, entry_id);
     let dom_tree = build_dom_tree(cfg, &rpo, entry_id);
     let loop_headers = find_loop_headers(cfg, &rpo);
@@ -506,11 +511,10 @@ mod tests {
 
         let expected = vec![
             Structured::Block {
-                id: 3,
                 body: vec![actions(0), Structured::If {
                     condition: 100,
-                    then_branch: vec![actions(1), Structured::BreakTo(3)],
-                    else_branch: vec![actions(2), Structured::BreakTo(3)],
+                    then_branch: vec![actions(1), Structured::BreakTo(1)],
+                    else_branch: vec![actions(2), Structured::BreakTo(1)],
                 }],
             },
             actions(3),
@@ -537,7 +541,6 @@ mod tests {
         let result = structured_control(&cfg, 0);
 
         let expected = vec![actions(0), Structured::Loop {
-            id: 1,
             body: vec![actions(1), Structured::If {
                 condition: 101,
                 then_branch: vec![
@@ -582,10 +585,10 @@ mod tests {
 
         let expected = vec![
             Structured::Block {
-                id: 5, // Fのための外側ブロック
+                // Fのための外側ブロック
                 body: vec![
                     Structured::Block {
-                        id: 4, // Eのための内側ブロック
+                        // Eのための内側ブロック
                         body: vec![
                             actions(0), // A
                             Structured::If {
@@ -595,8 +598,8 @@ mod tests {
                                     actions(1),
                                     Structured::If {
                                         condition: 101,
-                                        then_branch: vec![actions(2), Structured::BreakTo(5)], // C -> F
-                                        else_branch: vec![Structured::BreakTo(4)], // B -> E
+                                        then_branch: vec![actions(2), Structured::BreakTo(3)], // C -> F
+                                        else_branch: vec![Structured::BreakTo(2)], // B -> E
                                     },
                                 ],
                                 else_branch: vec![
@@ -604,15 +607,15 @@ mod tests {
                                     actions(3),
                                     Structured::If {
                                         condition: 102,
-                                        then_branch: vec![Structured::BreakTo(4)], // D -> E
-                                        else_branch: vec![Structured::BreakTo(5)], // D -> F
+                                        then_branch: vec![Structured::BreakTo(2)], // D -> E
+                                        else_branch: vec![Structured::BreakTo(3)], // D -> F
                                     },
                                 ],
                             },
                         ],
                     },
                     actions(4),             // E
-                    Structured::BreakTo(5), // E -> F
+                    Structured::BreakTo(0), // E -> F
                 ],
             },
             actions(5), // F
