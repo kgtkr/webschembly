@@ -5,6 +5,18 @@ use crate::{
     ir::{BasicBlock, BasicBlockId},
 };
 
+pub fn calc_predecessors(
+    cfg: &VecMap<BasicBlockId, BasicBlock>,
+) -> FxHashMap<BasicBlockId, Vec<BasicBlockId>> {
+    let mut predecessors: FxHashMap<BasicBlockId, Vec<BasicBlockId>> = FxHashMap::default();
+    for (id, block) in cfg.iter() {
+        for successor in block.next.successors() {
+            predecessors.entry(successor).or_default().push(id);
+        }
+    }
+    predecessors
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DomTreeNode {
     pub id: BasicBlockId,
@@ -15,15 +27,8 @@ pub fn build_dom_tree(
     cfg: &VecMap<BasicBlockId, BasicBlock>,
     rpo: &FxHashMap<BasicBlockId, usize>,
     entry_id: BasicBlockId,
+    predecessors: &FxHashMap<BasicBlockId, Vec<BasicBlockId>>,
 ) -> DomTreeNode {
-    // --- Step A: 先行ノードのマップを作成 ---
-    let mut predecessors: FxHashMap<BasicBlockId, Vec<BasicBlockId>> = FxHashMap::default();
-    for (id, block) in cfg.iter() {
-        for successor in block.next.successors() {
-            predecessors.entry(successor).or_default().push(id);
-        }
-    }
-
     // --- Step B: データフロー解析で各ノードの支配ノード集合を計算 ---
     let all_nodes: FxHashSet<BasicBlockId> = cfg.keys().collect();
     let mut doms: FxHashMap<BasicBlockId, FxHashSet<BasicBlockId>> = FxHashMap::default();
@@ -172,20 +177,11 @@ pub fn find_loop_headers(
 }
 
 pub fn find_merge_nodes(
-    cfg: &VecMap<BasicBlockId, BasicBlock>,
     rpo: &FxHashMap<BasicBlockId, usize>,
+    predecessors: &FxHashMap<BasicBlockId, Vec<BasicBlockId>>,
 ) -> FxHashSet<BasicBlockId> {
-    let mut predecessors: FxHashMap<BasicBlockId, Vec<BasicBlockId>> = FxHashMap::default();
-
-    // 全ノードの先行ノード(predecessor)のリストを作成
-    for (id, block) in cfg.iter() {
-        for successor in block.next.successors() {
-            predecessors.entry(successor).or_default().push(id);
-        }
-    }
-
     let mut merge_nodes = FxHashSet::default();
-    for (&id, preds) in &predecessors {
+    for (&id, preds) in predecessors {
         // 先行ノードからのエッジが「前方エッジ」であるものの数を数える
         let forward_preds_count = preds
             .iter()
