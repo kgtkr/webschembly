@@ -8,6 +8,7 @@ use crate::fxbihashmap::FxBiHashMap;
 use crate::ir::*;
 use crate::ir_generator::GlobalManager;
 use crate::ir_generator::bb_optimizer::TypedBox;
+use crate::vec_map::VecMap;
 
 #[derive(Debug, Clone, Copy)]
 pub struct JitConfig {
@@ -154,7 +155,7 @@ impl JitModule {
                 LocalType::Type(Type::Boxed),
             ],
             bb_entry: BasicBlockId::from(0),
-            bbs: ti_vec![BasicBlock {
+            bbs: [BasicBlock {
                 id: BasicBlockId::from(0),
                 exprs: {
                     let mut exprs = Vec::new();
@@ -181,8 +182,10 @@ impl JitModule {
                 next: BasicBlockNext::Terminator(BasicBlockTerminator::TailCall(ExprCall {
                     func_id: stub_func_ids[self.module.entry],
                     args: vec![],
-                }))
-            },],
+                })),
+            }]
+            .into_iter()
+            .collect(),
         };
         funcs.push(func);
         for func in self.module.funcs.iter() {
@@ -212,7 +215,7 @@ impl JitModule {
                     locals
                 },
                 bb_entry: BasicBlockId::from(0),
-                bbs: ti_vec![
+                bbs: [
                     BasicBlock {
                         id: BasicBlockId::from(0),
                         exprs: vec![
@@ -257,7 +260,7 @@ impl JitModule {
                                 local: Some(LocalId::from(func.args.len() + 2)),
                                 expr: Expr::Unbox(
                                     ValType::FuncRef,
-                                    LocalId::from(func.args.len() + 1)
+                                    LocalId::from(func.args.len() + 1),
                                 ),
                             },
                         ],
@@ -265,11 +268,13 @@ impl JitModule {
                             ExprCallRef {
                                 func: LocalId::from(func.args.len() + 2),
                                 args: func.args.clone(),
-                                func_type: func.func_type()
-                            }
-                        ))
+                                func_type: func.func_type(),
+                            },
+                        )),
                     },
-                ],
+                ]
+                .into_iter()
+                .collect(),
             };
             funcs.push(func);
         }
@@ -321,8 +326,8 @@ impl JitFunc {
             jit_bbs: func
                 .bbs
                 .iter()
-                .map(|bb| JitBB {
-                    bb_id: bb.id,
+                .map(|(bb_id, bb)| JitBB {
+                    bb_id: bb_id,
                     global: bb_to_globals[bb.id],
                     info: bb_infos[bb.id].clone(),
                 })
@@ -358,7 +363,7 @@ impl JitFunc {
                 ret_type: LocalType::Type(Type::Val(ValType::FuncRef)), // TODO: Nilでも返したほうがよさそう
                 locals,
                 bb_entry: BasicBlockId::from(0),
-                bbs: ti_vec![BasicBlock {
+                bbs: [BasicBlock {
                     id: BasicBlockId::from(0),
                     exprs: {
                         let mut exprs = Vec::new();
@@ -422,7 +427,9 @@ impl JitFunc {
                         exprs
                     },
                     next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(func_ref_local)),
-                },],
+                }]
+                .into_iter()
+                .collect(),
             }
         };
         funcs.push(entry_func);
@@ -449,7 +456,7 @@ impl JitFunc {
                 ret_type: func.ret_type,
                 locals,
                 bb_entry: BasicBlockId::from(0),
-                bbs: ti_vec![BasicBlock {
+                bbs: [BasicBlock {
                     id: BasicBlockId::from(0),
                     exprs: vec![
                         ExprAssign {
@@ -458,7 +465,7 @@ impl JitFunc {
                         },
                         ExprAssign {
                             local: Some(vector_local),
-                            expr: Expr::Unbox(ValType::Vector, boxed_local,),
+                            expr: Expr::Unbox(ValType::Vector, boxed_local),
                         },
                         ExprAssign {
                             local: Some(index_local),
@@ -484,13 +491,15 @@ impl JitFunc {
                             func_type: FuncType {
                                 args: entry_bb_info.arg_types(
                                     func,
-                                    &ti_vec![None; entry_bb_info.type_params.len()]
+                                    &ti_vec![None; entry_bb_info.type_params.len()],
                                 ),
                                 ret: func.ret_type,
                             },
-                        }
-                    ))
-                },],
+                        },
+                    )),
+                }]
+                .into_iter()
+                .collect(),
             }
         };
 
@@ -553,7 +562,7 @@ impl JitFunc {
             ret_type: func.ret_type,
             locals,
             bb_entry: BasicBlockId::from(0),
-            bbs: ti_vec![
+            bbs: [
                 BasicBlock {
                     id: BasicBlockId::from(0),
                     exprs: vec![
@@ -563,7 +572,7 @@ impl JitFunc {
                         },
                         ExprAssign {
                             local: Some(vector_local),
-                            expr: Expr::Unbox(ValType::Vector, boxed_local,),
+                            expr: Expr::Unbox(ValType::Vector, boxed_local),
                         },
                         ExprAssign {
                             local: Some(index_local),
@@ -579,7 +588,7 @@ impl JitFunc {
                         },
                         ExprAssign {
                             local: Some(bool_local),
-                            expr: Expr::Eq(boxed_local, stub_local,),
+                            expr: Expr::Eq(boxed_local, stub_local),
                         },
                     ],
                     next: BasicBlockNext::If(
@@ -596,7 +605,7 @@ impl JitFunc {
                             jit_module.module_id,
                             func.id,
                             jit_bb.bb_id,
-                            index_local
+                            index_local,
                         ),
                     }],
                     next: BasicBlockNext::Jump(BasicBlockId::from(2)),
@@ -610,7 +619,7 @@ impl JitFunc {
                         },
                         ExprAssign {
                             local: Some(vector_local),
-                            expr: Expr::Unbox(ValType::Vector, boxed_local,),
+                            expr: Expr::Unbox(ValType::Vector, boxed_local),
                         },
                         ExprAssign {
                             local: Some(boxed_local),
@@ -618,8 +627,8 @@ impl JitFunc {
                         },
                         ExprAssign {
                             local: Some(func_ref_local),
-                            expr: Expr::Unbox(ValType::FuncRef, boxed_local,),
-                        }
+                            expr: Expr::Unbox(ValType::FuncRef, boxed_local),
+                        },
                     ],
                     next: BasicBlockNext::Terminator(BasicBlockTerminator::TailCallRef(
                         ExprCallRef {
@@ -629,10 +638,12 @@ impl JitFunc {
                                 args: jit_bb.info.arg_types(func, type_args),
                                 ret: func.ret_type,
                             },
-                        }
+                        },
                     )),
                 },
-            ],
+            ]
+            .into_iter()
+            .collect(),
         }
     }
 
@@ -856,8 +867,8 @@ impl JitFunc {
                         )),
                     };
 
-                    extra_bbs.push(then_bb_new);
-                    extra_bbs.push(else_bb_new);
+                    extra_bbs.push((then_bb_new.id, then_bb_new));
+                    extra_bbs.push((else_bb_new.id, else_bb_new));
 
                     BasicBlockNext::If(cond, BasicBlockId::from(1), BasicBlockId::from(2))
                 }
@@ -919,13 +930,13 @@ impl JitFunc {
             ret_type: func.ret_type,
             locals: new_locals,
             bb_entry: BasicBlockId::from(0),
-            bbs: ti_vec![bb],
+            bbs: [bb].into_iter().collect(),
         };
 
         body_func.bbs.extend(extra_bbs);
 
         let mut out_used_locals = Vec::new();
-        for bb in body_func.bbs.iter() {
+        for bb in body_func.bbs.values() {
             if bb.id != body_func.bb_entry {
                 out_used_locals.extend(
                     bb.local_usages()
@@ -976,9 +987,9 @@ impl JitFunc {
             let nil_local = locals.push_and_get_key(LocalType::Type(Type::Val(ValType::Nil)));
             let boxed_nil_local = locals.push_and_get_key(LocalType::Type(Type::Boxed));
 
-            let mut bbs = TiVec::new();
+            let mut bbs = VecMap::new();
 
-            bbs.push(BasicBlock {
+            bbs.insert_node(BasicBlock {
                 id: BasicBlockId::from(0),
                 exprs: vec![
                     ExprAssign {
@@ -1020,11 +1031,11 @@ impl JitFunc {
             */
 
             for &(bb_id, index, stub_func_id) in required_stubs.iter() {
-                let cond_bb_id = BasicBlockId::from(bbs.len());
-                let then_bb_id = BasicBlockId::from(bbs.len() + 1);
-                let next_bb_id = BasicBlockId::from(bbs.len() + 2);
+                let cond_bb_id = bbs.allocate_key();
+                let then_bb_id = bbs.allocate_key();
+                let next_bb_id = bbs.next_key();
 
-                bbs.push(BasicBlock {
+                bbs.insert_node(BasicBlock {
                     id: cond_bb_id,
                     exprs: vec![
                         ExprAssign {
@@ -1058,7 +1069,7 @@ impl JitFunc {
                     ],
                     next: BasicBlockNext::If(bool_local, then_bb_id, next_bb_id),
                 });
-                bbs.push(BasicBlock {
+                bbs.insert_node(BasicBlock {
                     id: then_bb_id,
                     exprs: vec![
                         ExprAssign {
@@ -1078,8 +1089,8 @@ impl JitFunc {
                 });
             }
 
-            bbs.push(BasicBlock {
-                id: bbs.next_key(),
+            bbs.push_with(|id| BasicBlock {
+                id,
                 exprs: vec![],
                 next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(func_ref_local)),
             });
@@ -1125,7 +1136,7 @@ struct AnalyzeResult {
 fn analyze_locals(func: &Func) -> TiVec<BasicBlockId, AnalyzeResult> {
     let mut results = TiVec::new();
 
-    for bb in func.bbs.iter() {
+    for bb in func.bbs.values() {
         let mut defined = FxHashSet::default();
         let mut used = FxHashSet::default();
 
@@ -1148,7 +1159,7 @@ fn analyze_locals(func: &Func) -> TiVec<BasicBlockId, AnalyzeResult> {
 
     // BBは前方ジャンプがないことを仮定している
     // 複雑な制御フローを持つ場合はトポロジカルソートなどが必要
-    let bb_ids = func.bbs.iter().map(|bb| bb.id).collect::<Vec<_>>();
+    let bb_ids = func.bbs.values().map(|bb| bb.id).collect::<Vec<_>>();
 
     // defineの集計は前から行う
     // 自分より前のブロックで定義済みの関数

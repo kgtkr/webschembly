@@ -1,7 +1,7 @@
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::ir::*;
 use crate::ir_generator::GlobalManager;
+use crate::{VecMap, ir::*};
 use crate::{
     ast::{self, Desugared, TailCall, Used},
     x::{RunX, TypeMap, type_map},
@@ -113,7 +113,7 @@ struct FuncGenerator<'a, 'b> {
     id: FuncId,
     locals: TiVec<LocalId, LocalType>,
     local_ids: FxHashMap<ast::LocalVarId, LocalId>,
-    bbs: TiVec<BasicBlockId, BasicBlockOptionalNext>,
+    bbs: VecMap<BasicBlockId, BasicBlockOptionalNext>,
     next_undecided_bb_ids: FxHashSet<BasicBlockId>,
     module_generator: &'a mut ModuleGenerator<'b>,
     exprs: Vec<ExprAssign>,
@@ -125,7 +125,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             id,
             locals: TiVec::new(),
             local_ids: FxHashMap::default(),
-            bbs: TiVec::new(),
+            bbs: VecMap::new(),
             next_undecided_bb_ids: FxHashSet::default(),
             module_generator,
             exprs: Vec::new(),
@@ -161,7 +161,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             bb_entry: BasicBlockId::from(0), // TODO: もっと綺麗な書き方があるはず
             bbs: self
                 .bbs
-                .into_iter_enumerated()
+                .into_iter()
                 .map(|(id, bb)| BasicBlock {
                     id,
                     exprs: bb.exprs,
@@ -253,7 +253,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             bb_entry: BasicBlockId::from(0), // TODO: もっと綺麗な書き方があるはず
             bbs: self
                 .bbs
-                .into_iter_enumerated()
+                .into_iter()
                 .map(|(id, bb)| BasicBlock {
                     id,
                     exprs: bb.exprs,
@@ -724,7 +724,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
 
     fn close_bb(&mut self, next: Option<BasicBlockNext>) -> BasicBlockId {
         let bb_exprs = std::mem::take(&mut self.exprs);
-        let bb_id = self.bbs.push_and_get_key(BasicBlockOptionalNext {
+        let bb_id = self.bbs.push(BasicBlockOptionalNext {
             exprs: bb_exprs,
             next,
         });

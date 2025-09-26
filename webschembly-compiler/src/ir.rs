@@ -5,13 +5,15 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use strum_macros::EnumIter;
 use typed_index_collections::TiVec;
 
+use crate::{HasId, vec_map::VecMap};
+
 const DISPLAY_INDENT: &str = "  ";
 
 #[derive(Debug, Clone)]
 pub struct VarMeta {
     pub name: String,
 }
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Meta {
     pub local_metas: FxHashMap<(FuncId, LocalId), VarMeta>,
     pub global_metas: FxHashMap<GlobalId, VarMeta>,
@@ -894,6 +896,15 @@ impl BasicBlock {
     impl_BasicBlock_func_ids!(_mut, mut);
     impl_BasicBlock_func_ids!(,);
 }
+
+impl HasId for BasicBlock {
+    type Id = BasicBlockId;
+
+    fn id(&self) -> Self::Id {
+        self.id
+    }
+}
+
 impl fmt::Display for DisplayInFunc<'_, &'_ BasicBlock> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // きれいな実装ではないがインデントは決め打ちする
@@ -1125,7 +1136,7 @@ pub struct Func {
     pub args: Vec<LocalId>,
     pub ret_type: LocalType,
     pub bb_entry: BasicBlockId,
-    pub bbs: TiVec<BasicBlockId, BasicBlock>,
+    pub bbs: VecMap<BasicBlockId, BasicBlock>,
 }
 
 impl Func {
@@ -1176,7 +1187,7 @@ impl fmt::Display for Display<'_, &'_ Func> {
             DISPLAY_INDENT,
             self.value.bb_entry.display(self.meta)
         )?;
-        for bb in self.value.bbs.iter() {
+        for bb in self.value.bbs.values() {
             write!(f, "{}", bb.display(self.meta.in_func(self.value.id)))?;
         }
         Ok(())
