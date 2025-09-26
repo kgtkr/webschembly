@@ -209,64 +209,57 @@ impl JitModule {
                 f0(x1, x2)
             }
             */
+            let mut new_locals = func.locals.clone();
+            let boxed_f0_ref_local = new_locals.push_with(|id| Local {
+                id,
+                typ: LocalType::Type(Type::Boxed),
+            });
+            let f0_ref_local = new_locals.push_with(|id| Local {
+                id,
+                typ: LocalType::Type(Type::Val(ValType::FuncRef)),
+            });
+            let boxed_f0_stub_local = new_locals.push_with(|id| Local {
+                id,
+                typ: LocalType::Type(Type::Boxed),
+            });
+            let f0_stub_local = new_locals.push_with(|id| Local {
+                id,
+                typ: LocalType::Type(Type::Boxed),
+            });
+            let eq_local = new_locals.push_with(|id| Local {
+                id,
+                typ: LocalType::Type(Type::Val(ValType::Bool)),
+            });
+
             let func = Func {
                 id: funcs.next_key(),
                 args: func.args.clone(),
                 ret_type: func.ret_type,
-                locals: {
-                    let mut locals = VecMap::new();
-                    for typ in func.arg_types().into_iter() {
-                        locals.push_with(|id| Local { id, typ });
-                    }
-                    locals.push_with(|id| Local {
-                        id,
-                        typ: func.ret_type(),
-                    });
-                    // boxed f0_ref
-                    locals.push_with(|id| Local {
-                        id,
-                        typ: LocalType::Type(Type::Boxed),
-                    });
-                    // f0_ref
-                    locals.push_with(|id| Local {
-                        id,
-                        typ: LocalType::Type(Type::Val(ValType::FuncRef)),
-                    });
-                    // f0_stub
-                    locals.push_with(|id| Local {
-                        id,
-                        typ: LocalType::Type(Type::Boxed),
-                    });
-                    // f0_ref != f0_stub
-                    locals.push_with(|id| Local {
-                        id,
-                        typ: LocalType::Type(Type::Val(ValType::Bool)),
-                    });
-                    locals
-                },
+                locals: new_locals,
                 bb_entry: BasicBlockId::from(0),
                 bbs: [
                     BasicBlock {
                         id: BasicBlockId::from(0),
                         exprs: vec![
                             ExprAssign {
-                                local: Some(LocalId::from(func.args.len() + 1)),
+                                local: Some(boxed_f0_ref_local),
                                 expr: Expr::GlobalGet(self.func_to_globals[func.id]),
                             },
                             ExprAssign {
-                                local: Some(LocalId::from(func.args.len() + 3)),
+                                local: Some(f0_stub_local),
                                 expr: Expr::FuncRef(stub_func_ids[func.id]),
                             },
                             ExprAssign {
-                                local: Some(LocalId::from(func.args.len() + 4)),
-                                expr: Expr::Eq(
-                                    LocalId::from(func.args.len() + 1),
-                                    LocalId::from(func.args.len() + 3),
-                                ),
+                                local: Some(boxed_f0_stub_local),
+                                expr: Expr::Box(ValType::FuncRef, f0_stub_local),
+                            },
+                            ExprAssign {
+                                local: Some(eq_local),
+                                expr: Expr::Eq(boxed_f0_ref_local, boxed_f0_stub_local),
                             },
                         ],
                         next: BasicBlockNext::If(
-                            LocalId::from(func.args.len() + 4),
+                            eq_local,
                             BasicBlockId::from(1),
                             BasicBlockId::from(2),
                         ),
@@ -283,20 +276,17 @@ impl JitModule {
                         id: BasicBlockId::from(2),
                         exprs: vec![
                             ExprAssign {
-                                local: Some(LocalId::from(func.args.len() + 1)),
+                                local: Some(boxed_f0_ref_local),
                                 expr: Expr::GlobalGet(self.func_to_globals[func.id]),
                             },
                             ExprAssign {
-                                local: Some(LocalId::from(func.args.len() + 2)),
-                                expr: Expr::Unbox(
-                                    ValType::FuncRef,
-                                    LocalId::from(func.args.len() + 1),
-                                ),
+                                local: Some(f0_ref_local),
+                                expr: Expr::Unbox(ValType::FuncRef, boxed_f0_ref_local),
                             },
                         ],
                         next: BasicBlockNext::Terminator(BasicBlockTerminator::TailCallRef(
                             ExprCallRef {
-                                func: LocalId::from(func.args.len() + 2),
+                                func: f0_ref_local,
                                 args: func.args.clone(),
                                 func_type: func.func_type(),
                             },
@@ -492,10 +482,7 @@ impl JitFunc {
         */
         let entry_bb_info = &self.jit_bbs[func.bb_entry].info;
         let body_func = {
-            let mut locals = VecMap::new();
-            for typ in func.arg_types() {
-                locals.push_with(|id| Local { id, typ });
-            }
+            let mut locals = func.locals.clone();
             let boxed_local = locals.push_with(|id| Local {
                 id,
                 typ: LocalType::Type(Type::Boxed),
@@ -546,11 +533,7 @@ impl JitFunc {
                     next: BasicBlockNext::Terminator(BasicBlockTerminator::TailCallRef(
                         ExprCallRef {
                             func: func_ref_local,
-                            args: entry_bb_info
-                                .args
-                                .iter()
-                                .map(|&arg| entry_bb_info.to_original_locals_mapping[arg])
-                                .collect(),
+                            args: entry_bb_info.args.iter().copied().collect(),
                             func_type: FuncType {
                                 args: entry_bb_info.arg_types(
                                     func,
@@ -610,9 +593,12 @@ impl JitFunc {
         }
         */
         let type_args = &*global_layout.from_idx(index, jit_bb.info.type_params.len());
-        let mut locals = VecMap::new();
-        for typ in jit_bb.info.arg_types(func, type_args) {
-            locals.push_with(|id| Local { id, typ });
+        let mut locals = func.locals.clone();
+        for (type_param_id, type_arg) in type_args.iter_enumerated() {
+            if let Some(typ) = type_arg {
+                let local = *jit_bb.info.type_params.get_by_left(&type_param_id).unwrap();
+                locals[local].typ = LocalType::Type(Type::Val(*typ));
+            }
         }
         let boxed_local = locals.push_with(|id| Local {
             id,
@@ -747,19 +733,8 @@ impl JitFunc {
 
         let mut funcs = TiVec::new();
 
-        let mut new_locals = VecMap::new();
+        let mut new_locals = func.locals.clone();
         let bb_info = &self.jit_bbs[bb_id].info;
-
-        for typ in bb_info.arg_types_without_type_args(func) {
-            new_locals.push_with(|id| Local { id, typ });
-        }
-        for typ in bb_info.define_types(func) {
-            new_locals.push_with(|id| Local { id, typ });
-        }
-
-        for (local_id, _) in bb.local_usages_mut() {
-            *local_id = bb_info.from_original_locals_mapping[local_id];
-        }
 
         let mut locals_immutability =
             bb_optimizer::analyze_locals_immutability(&new_locals, &bb, &bb_info.args);
@@ -1256,8 +1231,8 @@ impl HasId for JitBB {
 #[derive(Debug, Clone)]
 struct AnalyzeResult {
     bb_id: BasicBlockId,
-    defined_locals: FxHashSet<LocalId>,
     used_locals: FxHashSet<LocalId>,
+    defined_locals: FxHashSet<LocalId>,
 }
 
 impl HasId for AnalyzeResult {
@@ -1337,10 +1312,7 @@ fn analyze_locals(func: &Func) -> VecMap<BasicBlockId, AnalyzeResult> {
 struct BBInfo {
     bb_id: BasicBlockId,
     args: Vec<LocalId>,
-    defines: Vec<LocalId>,
     type_params: FxBiHashMap<TypeParamId, LocalId>,
-    to_original_locals_mapping: VecMap<LocalId, LocalId>,
-    from_original_locals_mapping: FxHashMap<LocalId, LocalId>,
 }
 
 impl BBInfo {
@@ -1361,17 +1333,10 @@ impl BBInfo {
                 {
                     LocalType::Type(Type::Val(typ))
                 } else {
-                    func.locals[self.to_original_locals_mapping[arg]].typ
+                    func.locals[arg].typ
                 }
             })
             .collect::<Vec<_>>()
-    }
-
-    fn define_types(&self, func: &Func) -> Vec<LocalType> {
-        self.defines
-            .iter()
-            .map(|&define| func.locals[self.to_original_locals_mapping[define]].typ)
-            .collect()
     }
 }
 
@@ -1389,45 +1354,26 @@ fn calculate_bb_info(
     let mut bb_info = VecMap::new();
 
     for (_, result) in analyze_results.into_iter() {
-        let mut to_original_locals_mapping = VecMap::new();
-
         let mut original_id_args = result.used_locals.into_iter().collect::<Vec<_>>();
         original_id_args.sort();
-        let mut original_id_defines = result.defined_locals.into_iter().collect::<Vec<_>>();
-        original_id_defines.sort();
 
         let mut args = Vec::new();
-        let mut defines = Vec::new();
 
-        for original_id_arg in original_id_args {
-            let local_id = to_original_locals_mapping.push(original_id_arg);
-            args.push(local_id);
-        }
-
-        for original_id_define in original_id_defines {
-            let local_id = to_original_locals_mapping.push(original_id_define);
-            defines.push(local_id);
+        for arg in original_id_args {
+            args.push(arg);
         }
 
         let mut type_params = TiVec::new();
         for &arg in &args {
-            if let LocalType::Type(Type::Boxed) = locals[to_original_locals_mapping[arg]].typ {
+            if let LocalType::Type(Type::Boxed) = locals[arg].typ {
                 type_params.push(arg);
             }
         }
 
-        let from_original_locals_mapping = to_original_locals_mapping
-            .iter()
-            .map(|(k, &v)| (v, k))
-            .collect::<FxHashMap<_, _>>();
-
         let info = BBInfo {
             bb_id: result.bb_id,
             args,
-            defines,
             type_params: type_params.into_iter_enumerated().collect(),
-            to_original_locals_mapping,
-            from_original_locals_mapping,
         };
 
         bb_info.insert_node(info);
@@ -1445,18 +1391,16 @@ fn calculate_args_to_pass(
     let mut type_args = ti_vec![None; callee.type_params.len()];
     let mut args_to_pass = Vec::new();
 
-    for &callee_arg in &callee.args {
-        let caller_args =
-            caller.from_original_locals_mapping[&callee.to_original_locals_mapping[callee_arg]];
-        let caller_args = if let Some(&type_param_id) = callee.type_params.get_by_right(&callee_arg)
-            && let Some(caller_typed_box) = caller_typed_boxes.get(caller_args).copied()
+    for &arg in &callee.args {
+        let caller_args = if let Some(&type_param_id) = callee.type_params.get_by_right(&arg)
+            && let Some(caller_typed_box) = caller_typed_boxes.get(arg).copied()
         {
             type_args[type_param_id] = Some(caller_typed_box.typ);
             caller_typed_box.unboxed
-        } else if let Some(&boxed_local) = caller_assigned_local_to_box.get(caller_args) {
+        } else if let Some(&boxed_local) = caller_assigned_local_to_box.get(arg) {
             boxed_local
         } else {
-            caller_args
+            arg
         };
 
         args_to_pass.push(caller_args);

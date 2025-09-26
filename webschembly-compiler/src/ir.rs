@@ -1151,10 +1151,9 @@ impl Local {
 
 impl fmt::Display for DisplayInFunc<'_, &'_ Local> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(
+        write!(
             f,
-            "{}local {}: {}",
-            DISPLAY_INDENT,
+            "local {}: {}",
             self.value.id.display(self.meta),
             self.value.typ
         )?;
@@ -1197,7 +1196,12 @@ impl fmt::Display for Display<'_, &'_ Func> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "{}:", self.value.id.display(self.meta))?;
         for local in self.value.locals.values() {
-            writeln!(f, "{}", local.display(self.meta.in_func(self.value.id)))?;
+            writeln!(
+                f,
+                "{}{}",
+                DISPLAY_INDENT,
+                local.display(self.meta.in_func(self.value.id))
+            )?;
         }
         write!(f, "{}args: ", DISPLAY_INDENT)?;
         for (i, arg) in self.value.args.iter().enumerate() {
