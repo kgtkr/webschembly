@@ -533,7 +533,7 @@ impl JitFunc {
                     next: BasicBlockNext::Terminator(BasicBlockTerminator::TailCallRef(
                         ExprCallRef {
                             func: func_ref_local,
-                            args: entry_bb_info.args.iter().copied().collect(),
+                            args: entry_bb_info.args.to_vec(),
                             func_type: FuncType {
                                 args: entry_bb_info.arg_types(
                                     func,
@@ -849,7 +849,6 @@ impl JitFunc {
                 }
                 BasicBlockNext::If(cond, then_bb, else_bb) => {
                     let (then_locals_to_pass, then_type_args, then_index) = calculate_args_to_pass(
-                        &self.jit_bbs[bb_id].info,
                         &self.jit_bbs[then_bb].info,
                         &next_type_args,
                         &assigned_local_to_box,
@@ -857,7 +856,6 @@ impl JitFunc {
                     );
                     required_stubs.push((then_bb, then_index));
                     let (else_locals_to_pass, else_type_args, else_index) = calculate_args_to_pass(
-                        &self.jit_bbs[bb_id].info,
                         &self.jit_bbs[else_bb].info,
                         &next_type_args,
                         &assigned_local_to_box,
@@ -948,7 +946,6 @@ impl JitFunc {
                 }
                 BasicBlockNext::Jump(target_bb) => {
                     let (args_to_pass, type_args, target_index) = calculate_args_to_pass(
-                        &self.jit_bbs[bb_id].info,
                         &self.jit_bbs[target_bb].info,
                         &next_type_args,
                         &assigned_local_to_box,
@@ -1316,10 +1313,6 @@ struct BBInfo {
 }
 
 impl BBInfo {
-    fn arg_types_without_type_args(&self, func: &Func) -> Vec<LocalType> {
-        self.arg_types(func, &TiVec::new())
-    }
-
     fn arg_types(
         &self,
         func: &Func,
@@ -1382,7 +1375,6 @@ fn calculate_bb_info(
 }
 
 fn calculate_args_to_pass(
-    caller: &BBInfo,
     callee: &BBInfo,
     caller_typed_boxes: &VecMap<LocalId, TypedBox>,
     caller_assigned_local_to_box: &VecMap<LocalId, LocalId>,
@@ -1412,7 +1404,6 @@ fn calculate_args_to_pass(
         // global layoutが満杯なら型パラメータなしで再計算
         // 型パラメータなしで呼び出すとto_idxの結果は必ずSomeになるので無限ループすることはない
         calculate_args_to_pass(
-            caller,
             callee,
             &VecMap::new(),
             caller_assigned_local_to_box,
