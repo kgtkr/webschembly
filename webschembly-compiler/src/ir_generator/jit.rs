@@ -4,6 +4,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use typed_index_collections::{TiVec, ti_vec};
 
 use super::bb_optimizer;
+use crate::cfg::{analyze_liveness, calc_def_use, calculate_rpo};
 use crate::fxbihashmap::FxBiHashMap;
 use crate::ir_generator::GlobalManager;
 use crate::ir_generator::bb_optimizer::TypedBox;
@@ -332,7 +333,7 @@ impl JitFunc {
             .keys()
             .map(|bb_id| (bb_id, global_manager.gen_global_id()))
             .collect::<VecMap<BasicBlockId, _>>();
-        let bb_infos = calculate_bb_info(&func.locals, analyze_locals(func));
+        let bb_infos = calculate_bb_info(func);
 
         let globals = {
             let mut globals = jit_module.globals.clone();
@@ -1226,86 +1227,6 @@ impl HasId for JitBB {
 }
 
 #[derive(Debug, Clone)]
-struct AnalyzeResult {
-    bb_id: BasicBlockId,
-    used_locals: FxHashSet<LocalId>,
-    defined_locals: FxHashSet<LocalId>,
-}
-
-impl HasId for AnalyzeResult {
-    type Id = BasicBlockId;
-    fn id(&self) -> Self::Id {
-        self.bb_id
-    }
-}
-
-fn analyze_locals(func: &Func) -> VecMap<BasicBlockId, AnalyzeResult> {
-    let mut results = VecMap::new();
-
-    for bb in func.bbs.values() {
-        let mut defined = FxHashSet::default();
-        let mut used = FxHashSet::default();
-
-        for (local_id, flag) in bb.local_usages() {
-            match flag {
-                LocalFlag::Defined => {
-                    defined.insert(*local_id);
-                }
-                LocalFlag::Used => {
-                    used.insert(*local_id);
-                }
-            }
-        }
-
-        results.insert_node(AnalyzeResult {
-            bb_id: bb.id,
-            defined_locals: defined,
-            used_locals: used,
-        });
-    }
-
-    // BBは前方ジャンプがないことを仮定している
-    // 複雑な制御フローを持つ場合はトポロジカルソートなどが必要
-    let bb_ids = func.bbs.values().map(|bb| bb.id).collect::<Vec<_>>();
-    // defineの集計は前から行う
-    // 自分より前のブロックで定義済みの関数
-    let mut prev_defines = VecMap::new();
-    for &bb_id in bb_ids.iter() {
-        prev_defines.insert(bb_id, FxHashSet::<LocalId>::default());
-    }
-    for &bb_id in bb_ids.iter() {
-        let result = &mut results[bb_id];
-        for prev_define in prev_defines[bb_id].iter() {
-            let removed = result.defined_locals.remove(prev_define);
-            if removed {
-                result.used_locals.insert(*prev_define);
-            }
-        }
-
-        let prev_define = prev_defines[bb_id].clone();
-        for succ in func.bbs[bb_id].next.successors() {
-            prev_defines[succ].extend(&result.defined_locals);
-            prev_defines[succ].extend(&prev_define);
-        }
-    }
-    for &bb_id in bb_ids.iter().rev() {
-        let mut result = results[bb_id].clone();
-
-        for succ in func.bbs[bb_id].next.successors() {
-            let succ_result = &results[succ];
-            result.used_locals.extend(&succ_result.used_locals);
-        }
-
-        for define in &result.defined_locals {
-            result.used_locals.remove(define);
-        }
-
-        results[bb_id] = result;
-    }
-    results
-}
-
-#[derive(Debug, Clone)]
 struct BBInfo {
     bb_id: BasicBlockId,
     args: Vec<LocalId>,
@@ -1340,31 +1261,32 @@ impl HasId for BBInfo {
     }
 }
 
-fn calculate_bb_info(
-    locals: &VecMap<LocalId, Local>,
-    analyze_results: VecMap<BasicBlockId, AnalyzeResult>,
-) -> VecMap<BasicBlockId, BBInfo> {
+fn calculate_bb_info(func: &Func) -> VecMap<BasicBlockId, BBInfo> {
+    let rpo = calculate_rpo(&func.bbs, func.bb_entry);
+    let def_use = calc_def_use(&func.bbs);
+    let liveness = analyze_liveness(&func.bbs, &def_use, &rpo);
+
     let mut bb_info = VecMap::new();
 
-    for (_, result) in analyze_results.into_iter() {
-        let mut original_id_args = result.used_locals.into_iter().collect::<Vec<_>>();
-        original_id_args.sort();
-
-        let mut args = Vec::new();
-
-        for arg in original_id_args {
-            args.push(arg);
-        }
+    for bb_id in func.bbs.keys() {
+        let mut args = liveness
+            .live_in
+            .get(&bb_id)
+            .unwrap()
+            .iter()
+            .copied()
+            .collect::<Vec<_>>();
+        args.sort();
 
         let mut type_params = TiVec::new();
         for &arg in &args {
-            if let LocalType::Type(Type::Boxed) = locals[arg].typ {
+            if let LocalType::Type(Type::Boxed) = func.locals[arg].typ {
                 type_params.push(arg);
             }
         }
 
         let info = BBInfo {
-            bb_id: result.bb_id,
+            bb_id,
             args,
             type_params: type_params.into_iter_enumerated().collect(),
         };
