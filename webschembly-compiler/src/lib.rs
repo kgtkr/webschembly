@@ -8,7 +8,8 @@
     coroutines,
     stmt_expr_attributes,
     iter_from_coroutine,
-    if_let_guard
+    if_let_guard,
+    impl_trait_in_assoc_type
 )]
 pub mod lexer;
 pub mod parser_combinator;

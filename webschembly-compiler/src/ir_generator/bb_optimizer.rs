@@ -1,6 +1,6 @@
-use typed_index_collections::{TiVec, ti_vec};
+use typed_index_collections::TiVec;
 
-use crate::{fxbihashmap::FxBiHashMap, ir::*};
+use crate::{VecMap, fxbihashmap::FxBiHashMap, ir::*};
 
 /*
 BBに型代入を行う
@@ -37,27 +37,31 @@ _ = add(l2, l3)
 */
 
 pub fn assign_type_args(
-    locals: &mut TiVec<LocalId, LocalType>,
+    locals: &mut VecMap<LocalId, Local>,
     bb: &mut BasicBlock,
     type_params: &FxBiHashMap<TypeParamId, LocalId>,
     type_args: &TiVec<TypeParamId, Option<ValType>>,
-    locals_immutability: &mut TiVec<LocalId, bool>,
-) -> TiVec<LocalId, Option<LocalId>> {
+    locals_immutability: &mut VecMap<LocalId, bool>,
+) -> VecMap<LocalId, LocalId> {
     let mut additional_expr_assigns = Vec::new();
 
     // 型代入されている変数のboxed版を用意(l1_boxedに対応)
-    let mut assigned_local_to_box = ti_vec![None; locals.len()];
+    let mut assigned_local_to_box = VecMap::new();
+
     for (type_param_id, typ) in type_args.iter_enumerated() {
         if let Some(typ) = typ {
             let local = *type_params.get_by_left(&type_param_id).unwrap();
 
             // ローカル変数の型に代入
-            debug_assert_eq!(locals[local], LocalType::Type(Type::Boxed));
-            locals[local] = LocalType::Type(Type::Val(*typ));
+            debug_assert_eq!(locals[local].typ, LocalType::Type(Type::Boxed));
+            locals[local].typ = LocalType::Type(Type::Val(*typ));
 
             // boxed版のローカル変数を用意
-            let boxed_local = locals.push_and_get_key(LocalType::Type(Type::Boxed));
-            assigned_local_to_box[local] = Some(boxed_local);
+            let boxed_local = locals.push_with(|id| Local {
+                id,
+                typ: LocalType::Type(Type::Boxed),
+            });
+            assigned_local_to_box.insert(local, boxed_local);
             additional_expr_assigns.push(ExprAssign {
                 local: Some(boxed_local),
                 expr: Expr::Box(*typ, *type_params.get_by_left(&type_param_id).unwrap()),
@@ -67,7 +71,7 @@ pub fn assign_type_args(
     }
 
     for (local, _) in bb.local_usages_mut() {
-        if let Some(boxed_local) = assigned_local_to_box[*local] {
+        if let Some(&boxed_local) = assigned_local_to_box.get(*local) {
             *local = boxed_local;
         }
     }
@@ -102,12 +106,11 @@ _ = add(l2, l3)
 */
 
 pub fn analyze_typed_box(
-    locals: &TiVec<LocalId, LocalType>,
     bb: &BasicBlock,
-    locals_immutability: &TiVec<LocalId, bool>,
-) -> TiVec<LocalId, Option<TypedBox>> {
+    locals_immutability: &VecMap<LocalId, bool>,
+) -> VecMap<LocalId, TypedBox> {
     // 次のBBに引き継ぐ型情報
-    let mut typed_boxes = ti_vec![None; locals.len()];
+    let mut typed_boxes = VecMap::new();
 
     for expr_assign in bb.exprs.iter() {
         match *expr_assign {
@@ -115,7 +118,7 @@ pub fn analyze_typed_box(
                 local: Some(local),
                 expr: Expr::Unbox(typ, value),
             } if locals_immutability[value] && locals_immutability[local] => {
-                typed_boxes[value] = Some(TypedBox {
+                typed_boxes.insert(value, TypedBox {
                     unboxed: local,
                     typ,
                 });
@@ -124,7 +127,7 @@ pub fn analyze_typed_box(
                 local: Some(local),
                 expr: Expr::Box(typ, value),
             } if locals_immutability[value] && locals_immutability[local] => {
-                typed_boxes[local] = Some(TypedBox {
+                typed_boxes.insert(local, TypedBox {
                     unboxed: value,
                     typ,
                 });
@@ -144,11 +147,14 @@ pub struct TypedBox {
 
 // 変数の不変判定
 pub fn analyze_locals_immutability(
-    locals: &TiVec<LocalId, LocalType>,
+    locals: &VecMap<LocalId, Local>,
     bb: &BasicBlock,
     args: &Vec<LocalId>,
-) -> TiVec<LocalId, bool> {
-    let mut assign_counts = ti_vec![0; locals.len()];
+) -> VecMap<LocalId, bool> {
+    let mut assign_counts = VecMap::new();
+    for local in locals.keys() {
+        assign_counts.insert(local, 0);
+    }
     for &arg in args {
         assign_counts[arg] += 1;
     }
@@ -160,8 +166,8 @@ pub fn analyze_locals_immutability(
 
     assign_counts
         .into_iter()
-        .map(|count| count <= 1)
-        .collect::<TiVec<LocalId, bool>>()
+        .map(|(id, count)| (id, count <= 1))
+        .collect::<VecMap<LocalId, bool>>()
 }
 
 /*
@@ -195,18 +201,20 @@ d = g a
 ここでは、デッドコードの削除は行わない
 */
 pub fn copy_propagate(
-    locals: &TiVec<LocalId, LocalType>,
+    locals: &VecMap<LocalId, Local>,
     bb: &mut BasicBlock,
-    locals_immutability: &TiVec<LocalId, bool>,
+    locals_immutability: &VecMap<LocalId, bool>,
 ) {
     // ローカル変数の置き換え情報
-    let mut local_replacements = TiVec::new();
+    let mut local_replacements = VecMap::new();
+    // box-unboxの置き換え情報
+    let mut box_replacements = VecMap::new();
+    let mut unbox_replacements = VecMap::new();
     for local in locals.keys() {
-        local_replacements.push(local);
+        local_replacements.insert(local, local);
+        box_replacements.insert(local, None);
+        unbox_replacements.insert(local, None);
     }
-
-    let mut box_replacements = ti_vec![None; locals.len()];
-    let mut unbox_replacements = ti_vec![None; locals.len()];
 
     for expr_assign in bb.exprs.iter_mut() {
         use Expr::*;
@@ -262,13 +270,16 @@ pub fn copy_propagate(
 デッドコード削除
 */
 pub fn dead_code_elimination(
-    locals: &TiVec<LocalId, LocalType>,
+    locals: &VecMap<LocalId, Local>,
     bb: &mut BasicBlock,
-    _locals_immutability: &TiVec<LocalId, bool>,
+    _locals_immutability: &VecMap<LocalId, bool>,
     // 別のBBなどで使われているローカル変数
     out_used_locals: &Vec<LocalId>,
 ) {
-    let mut used = ti_vec![false; locals.len()];
+    let mut used = VecMap::new();
+    for local in locals.keys() {
+        used.insert(local, false);
+    }
     for &local in out_used_locals {
         used[local] = true;
     }
@@ -297,16 +308,30 @@ mod tests {
     // TODO: test_analyze_locals_immutability / test_remove_box以外のテストが微妙なので書き直す
     use super::*;
     use crate::fxbihashmap::FxBiHashMap;
-    use typed_index_collections::{TiVec, ti_vec};
+    use typed_index_collections::ti_vec;
 
     #[test]
     fn test_analyze_locals_immutability() {
-        let locals = ti_vec![
-            LocalType::Type(Type::Val(ValType::Int)),
-            LocalType::Type(Type::Val(ValType::Int)),
-            LocalType::Type(Type::Val(ValType::Int)),
-            LocalType::Type(Type::Val(ValType::Int)),
-        ];
+        let locals = [
+            Local {
+                id: LocalId::from(0),
+                typ: LocalType::Type(Type::Val(ValType::Int)),
+            },
+            Local {
+                id: LocalId::from(1),
+                typ: LocalType::Type(Type::Val(ValType::Int)),
+            },
+            Local {
+                id: LocalId::from(2),
+                typ: LocalType::Type(Type::Val(ValType::Int)),
+            },
+            Local {
+                id: LocalId::from(3),
+                typ: LocalType::Type(Type::Val(ValType::Int)),
+            },
+        ]
+        .into_iter()
+        .collect::<VecMap<LocalId, _>>();
 
         let bb = BasicBlock {
             id: BasicBlockId::from(0),
@@ -335,7 +360,17 @@ mod tests {
 
         let immutability = analyze_locals_immutability(&locals, &bb, &args);
 
-        assert_eq!(immutability, ti_vec![false, true, false, true]);
+        assert_eq!(
+            immutability,
+            [
+                (LocalId::from(0), false),
+                (LocalId::from(1), true),
+                (LocalId::from(2), false),
+                (LocalId::from(3), true),
+            ]
+            .into_iter()
+            .collect::<VecMap<_, _>>()
+        );
     }
 
     /*
@@ -380,11 +415,22 @@ mod tests {
     // TODO: assign_type_argsとanalyze_typed_boxのテストは分割したほうがいいかも？
     #[test]
     fn test_assign_type_args_and_analyze_typed_box() {
-        let mut locals = ti_vec![
-            LocalType::Type(Type::Boxed),
-            LocalType::Type(Type::Val(ValType::Int)),
-            LocalType::Type(Type::Val(ValType::Int)),
-        ];
+        let mut locals = [
+            Local {
+                id: LocalId::from(0),
+                typ: LocalType::Type(Type::Boxed),
+            },
+            Local {
+                id: LocalId::from(1),
+                typ: LocalType::Type(Type::Val(ValType::Int)),
+            },
+            Local {
+                id: LocalId::from(2),
+                typ: LocalType::Type(Type::Val(ValType::Int)),
+            },
+        ]
+        .into_iter()
+        .collect::<VecMap<LocalId, _>>();
 
         let mut bb = BasicBlock {
             id: BasicBlockId::from(0),
@@ -411,7 +457,13 @@ mod tests {
 
         let type_params = FxBiHashMap::from_iter(vec![(TypeParamId::from(0), LocalId::from(0))]);
         let type_args = ti_vec![Some(ValType::Int)];
-        let mut locals_immutability = ti_vec![true, true, true];
+        let mut locals_immutability = [
+            (LocalId::from(0), true),
+            (LocalId::from(1), true),
+            (LocalId::from(2), true),
+        ]
+        .into_iter()
+        .collect::<VecMap<LocalId, _>>();
 
         let assigned_local_to_box = assign_type_args(
             &mut locals,
@@ -421,12 +473,29 @@ mod tests {
             &mut locals_immutability,
         );
 
-        assert_eq!(locals, ti_vec![
-            LocalType::Type(Type::Val(ValType::Int)),
-            LocalType::Type(Type::Val(ValType::Int)),
-            LocalType::Type(Type::Val(ValType::Int)),
-            LocalType::Type(Type::Boxed),
-        ]);
+        assert_eq!(
+            locals,
+            [
+                Local {
+                    id: LocalId::from(0),
+                    typ: LocalType::Type(Type::Val(ValType::Int)),
+                },
+                Local {
+                    id: LocalId::from(1),
+                    typ: LocalType::Type(Type::Val(ValType::Int)),
+                },
+                Local {
+                    id: LocalId::from(2),
+                    typ: LocalType::Type(Type::Val(ValType::Int)),
+                },
+                Local {
+                    id: LocalId::from(3),
+                    typ: LocalType::Type(Type::Boxed),
+                },
+            ]
+            .into_iter()
+            .collect::<VecMap<LocalId, _>>()
+        );
 
         assert_eq!(bb.exprs, vec![
             ExprAssign {
@@ -451,25 +520,36 @@ mod tests {
             },
         ]);
 
-        assert_eq!(locals_immutability, ti_vec![true, true, true, true]);
-        assert_eq!(assigned_local_to_box, ti_vec![
-            Some(LocalId::from(3)),
-            None,
-            None,
-        ]);
+        assert_eq!(
+            locals_immutability,
+            [
+                (LocalId::from(0), true),
+                (LocalId::from(1), true),
+                (LocalId::from(2), true),
+                (LocalId::from(3), true),
+            ]
+            .into_iter()
+            .collect::<VecMap<LocalId, _>>()
+        );
 
-        let typed_boxes: TiVec<LocalId, Option<TypedBox>> =
-            analyze_typed_box(&locals, &bb, &locals_immutability);
+        assert_eq!(
+            assigned_local_to_box,
+            vec![(LocalId::from(0), LocalId::from(3)),]
+                .into_iter()
+                .collect::<VecMap<LocalId, _>>()
+        );
 
-        assert_eq!(typed_boxes, ti_vec![
-            None,
-            None,
-            None,
-            Some(TypedBox {
+        let typed_boxes = analyze_typed_box(&bb, &locals_immutability);
+
+        assert_eq!(
+            typed_boxes,
+            [(LocalId::from(3), TypedBox {
                 unboxed: LocalId::from(2),
                 typ: ValType::Int
-            })
-        ]);
+            })]
+            .into_iter()
+            .collect::<VecMap<LocalId, _>>()
+        );
     }
 
     /*
@@ -513,11 +593,22 @@ mod tests {
 
     #[test]
     fn test_copy_propagate_move() {
-        let locals = ti_vec![
-            LocalType::Type(Type::Val(ValType::Int)), // l0
-            LocalType::Type(Type::Val(ValType::Int)), // l1
-            LocalType::Type(Type::Val(ValType::Int)), // l2
-        ];
+        let locals = [
+            Local {
+                id: LocalId::from(0),
+                typ: LocalType::Type(Type::Val(ValType::Int)),
+            },
+            Local {
+                id: LocalId::from(1),
+                typ: LocalType::Type(Type::Val(ValType::Int)),
+            },
+            Local {
+                id: LocalId::from(2),
+                typ: LocalType::Type(Type::Val(ValType::Int)),
+            },
+        ]
+        .into_iter()
+        .collect::<VecMap<LocalId, _>>();
 
         let mut bb = BasicBlock {
             id: BasicBlockId::from(0),
@@ -536,7 +627,13 @@ mod tests {
             next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(2))),
         };
 
-        let locals_immutability = ti_vec![true, true, true];
+        let locals_immutability = [
+            (LocalId::from(0), true),
+            (LocalId::from(1), true),
+            (LocalId::from(2), true),
+        ]
+        .into_iter()
+        .collect::<VecMap<LocalId, _>>();
 
         copy_propagate(&locals, &mut bb, &locals_immutability);
 
@@ -555,12 +652,26 @@ mod tests {
 
     #[test]
     fn test_copy_propagate_box_unbox() {
-        let locals = ti_vec![
-            LocalType::Type(Type::Val(ValType::Int)), // l0
-            LocalType::Type(Type::Boxed),             // l1 - box先
-            LocalType::Type(Type::Val(ValType::Int)), // l2 - unbox先
-            LocalType::Type(Type::Val(ValType::Int)), // l3
-        ];
+        let locals = [
+            Local {
+                id: LocalId::from(0),
+                typ: LocalType::Type(Type::Val(ValType::Int)),
+            },
+            Local {
+                id: LocalId::from(1),
+                typ: LocalType::Type(Type::Boxed), // box先
+            },
+            Local {
+                id: LocalId::from(2),
+                typ: LocalType::Type(Type::Val(ValType::Int)), // unbox先
+            },
+            Local {
+                id: LocalId::from(3),
+                typ: LocalType::Type(Type::Val(ValType::Int)),
+            },
+        ]
+        .into_iter()
+        .collect::<VecMap<LocalId, _>>();
 
         let mut bb = BasicBlock {
             id: BasicBlockId::from(0),
@@ -584,7 +695,14 @@ mod tests {
             next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(3))),
         };
 
-        let locals_immutability = ti_vec![true, true, true, true];
+        let locals_immutability = [
+            (LocalId::from(0), true),
+            (LocalId::from(1), true),
+            (LocalId::from(2), true),
+            (LocalId::from(3), true),
+        ]
+        .into_iter()
+        .collect::<VecMap<LocalId, _>>();
 
         copy_propagate(&locals, &mut bb, &locals_immutability);
 
@@ -603,11 +721,22 @@ mod tests {
 
     #[test]
     fn test_dead_code_elimination() {
-        let locals = ti_vec![
-            LocalType::Type(Type::Val(ValType::Int)), // l0
-            LocalType::Type(Type::Val(ValType::Int)), // l1
-            LocalType::Type(Type::Val(ValType::Int)), // l2
-        ];
+        let locals = [
+            Local {
+                id: LocalId::from(0),
+                typ: LocalType::Type(Type::Val(ValType::Int)),
+            },
+            Local {
+                id: LocalId::from(1),
+                typ: LocalType::Type(Type::Val(ValType::Int)),
+            },
+            Local {
+                id: LocalId::from(2),
+                typ: LocalType::Type(Type::Val(ValType::Int)),
+            },
+        ]
+        .into_iter()
+        .collect::<VecMap<LocalId, _>>();
 
         let mut bb = BasicBlock {
             id: BasicBlockId::from(0),
@@ -626,7 +755,13 @@ mod tests {
             next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(2))),
         };
 
-        let locals_immutability = ti_vec![true, true, true];
+        let locals_immutability = [
+            (LocalId::from(0), true),
+            (LocalId::from(1), true),
+            (LocalId::from(2), true),
+        ]
+        .into_iter()
+        .collect::<VecMap<LocalId, _>>();
         let out_used_locals = vec![];
 
         dead_code_elimination(&locals, &mut bb, &locals_immutability, &out_used_locals);

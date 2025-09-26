@@ -111,7 +111,7 @@ impl<'a> ModuleGenerator<'a> {
 #[derive(Debug)]
 struct FuncGenerator<'a, 'b> {
     id: FuncId,
-    locals: TiVec<LocalId, LocalType>,
+    locals: VecMap<LocalId, Local>,
     local_ids: FxHashMap<ast::LocalVarId, LocalId>,
     bbs: VecMap<BasicBlockId, BasicBlockOptionalNext>,
     next_undecided_bb_ids: FxHashSet<BasicBlockId>,
@@ -123,7 +123,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
     fn new(module_generator: &'a mut ModuleGenerator<'b>, id: FuncId) -> Self {
         Self {
             id,
-            locals: TiVec::new(),
+            locals: VecMap::new(),
             local_ids: FxHashMap::default(),
             bbs: VecMap::new(),
             next_undecided_bb_ids: FxHashSet::default(),
@@ -221,7 +221,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             .get_ref(type_map::key::<Used>())
             .captures
             .iter()
-            .map(|id| self.locals[*self.local_ids.get(id).unwrap()])
+            .map(|id| self.locals[*self.local_ids.get(id).unwrap()].typ)
             .collect::<Vec<_>>();
         // 環境を復元する処理を追加
         for (i, var_id) in x
@@ -264,7 +264,10 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
     }
 
     fn local<T: Into<LocalType>>(&mut self, typ: T) -> LocalId {
-        self.locals.push_and_get_key(typ.into())
+        self.locals.push_with(|id| Local {
+            id,
+            typ: typ.into(),
+        })
     }
 
     fn define_all_ast_local_and_create_mut_cell(&mut self, locals: &[ast::LocalVarId]) {

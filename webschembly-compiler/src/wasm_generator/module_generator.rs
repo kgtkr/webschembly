@@ -1,11 +1,10 @@
 use rustc_hash::FxHashMap;
 use std::borrow::Cow;
-use typed_index_collections::{TiSlice, ti_vec};
 
 use crate::ir::BasicBlockTerminator;
 
-use crate::ir;
 use crate::wasm_generator::relooper::{Structured, reloop};
+use crate::{VecMap, ir};
 use wasm_encoder::{
     BlockType, CodeSection, CompositeInnerType, CompositeType, ConstExpr, DataCountSection,
     DataSection, ElementSection, Elements, EntityType, ExportKind, ExportSection, FieldType,
@@ -162,9 +161,9 @@ impl<'a> ModuleGenerator<'a> {
         let params = ir_func_type
             .args
             .iter()
-            .map(|ty| self.convert_local_type(ty))
+            .map(|&ty| self.convert_local_type(ty))
             .collect();
-        let results = vec![self.convert_local_type(&ir_func_type.ret)];
+        let results = vec![self.convert_local_type(ir_func_type.ret)];
         self.func_type(WasmFuncType { params, results })
     }
 
@@ -202,7 +201,7 @@ impl<'a> ModuleGenerator<'a> {
     fn closure_type_from_ir(&mut self, env_types: &[ir::LocalType]) -> u32 {
         let types = env_types
             .iter()
-            .map(|ty| self.convert_local_type(ty))
+            .map(|&ty| self.convert_local_type(ty))
             .collect();
         self.closure_type(types)
     }
@@ -693,10 +692,10 @@ impl<'a> ModuleGenerator<'a> {
         usize::from(global) as i32
     }
 
-    fn mut_cell_type(&mut self, inner_ty: &ir::Type) -> u32 {
+    fn mut_cell_type(&mut self, inner_ty: ir::Type) -> u32 {
         let ty = self.convert_type(inner_ty);
 
-        *self.mut_cell_types.entry(*inner_ty).or_insert_with(|| {
+        *self.mut_cell_types.entry(inner_ty).or_insert_with(|| {
             let type_id = self.type_count;
             self.type_count += 1;
             self.types.ty().struct_(vec![FieldType {
@@ -707,7 +706,7 @@ impl<'a> ModuleGenerator<'a> {
         })
     }
 
-    fn convert_local_type(&mut self, ty: &ir::LocalType) -> ValType {
+    fn convert_local_type(&mut self, ty: ir::LocalType) -> ValType {
         match ty {
             ir::LocalType::MutCell(inner_ty) => {
                 let mut_cell_type = self.mut_cell_type(inner_ty);
@@ -724,7 +723,7 @@ impl<'a> ModuleGenerator<'a> {
         }
     }
 
-    fn convert_type(&self, ty: &ir::Type) -> ValType {
+    fn convert_type(&self, ty: ir::Type) -> ValType {
         match ty {
             ir::Type::Boxed => ValType::Ref(RefType {
                 nullable: true,
@@ -787,9 +786,12 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
     }
 
     fn gen_func(mut self) {
-        let mut is_args = ti_vec![false; self.func.locals.len()];
+        let mut is_args = VecMap::new();
+        for local_id in self.func.locals.keys() {
+            is_args.insert(local_id, false);
+        }
         for arg in &self.func.args {
-            is_args[*arg] = true;
+            is_args.insert(*arg, true);
         }
 
         for local_id in
@@ -814,16 +816,16 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         let mut function = Function::new(
             self.func
                 .locals
-                .iter_enumerated()
-                .filter(|(local_id, _)| !is_args[*local_id])
-                .map(|(_, ty)| {
-                    let ty = self.module_generator.convert_local_type(ty);
+                .values()
+                .filter(|local| !is_args[local.id])
+                .map(|local| {
+                    let ty = self.module_generator.convert_local_type(local.typ);
                     (1, ty)
                 })
                 .collect::<Vec<_>>(),
         );
 
-        let structured_bbs = reloop(&self.func);
+        let structured_bbs = reloop(self.func);
         for structured_bb in &structured_bbs {
             self.gen_bb(&mut function, self.func, structured_bb);
         }
@@ -890,7 +892,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
     fn gen_assign(
         &mut self,
         function: &mut Function,
-        locals: &TiSlice<ir::LocalId, ir::LocalType>,
+        locals: &VecMap<ir::LocalId, ir::Local>,
         expr: &ir::ExprAssign,
     ) {
         if let ir::Expr::Nop = expr.expr {
@@ -907,7 +909,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
     fn gen_expr(
         &mut self,
         function: &mut Function,
-        locals: &TiSlice<ir::LocalId, ir::LocalType>,
+        locals: &VecMap<ir::LocalId, ir::Local>,
         expr: &ir::Expr,
     ) {
         match expr {
@@ -1004,13 +1006,13 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     self.module_generator.val_type,
                 )));
                 function.instruction(&Instruction::StructNew(
-                    self.module_generator.mut_cell_type(typ),
+                    self.module_generator.mut_cell_type(*typ),
                 ));
             }
             ir::Expr::DerefMutCell(typ, cell) => {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*cell)));
                 function.instruction(&Instruction::StructGet {
-                    struct_type_index: self.module_generator.mut_cell_type(typ),
+                    struct_type_index: self.module_generator.mut_cell_type(*typ),
                     field_index: ModuleGenerator::MUT_CELL_VALUE_FIELD,
                 });
             }
@@ -1018,7 +1020,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*cell)));
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
                 function.instruction(&Instruction::StructSet {
-                    struct_type_index: self.module_generator.mut_cell_type(typ),
+                    struct_type_index: self.module_generator.mut_cell_type(*typ),
                     field_index: ModuleGenerator::MUT_CELL_VALUE_FIELD,
                 });
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
@@ -1039,7 +1041,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
 
                 function.instruction(&Instruction::StructNew(
                     self.module_generator.closure_type_from_ir(
-                        &envs.iter().map(|env| locals[*env]).collect::<Vec<_>>(),
+                        &envs.iter().map(|env| locals[*env].typ).collect::<Vec<_>>(),
                     ),
                 ));
             }

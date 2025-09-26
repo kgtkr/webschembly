@@ -1129,10 +1129,43 @@ impl BasicBlockNext {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Local {
+    pub id: LocalId,
+    pub typ: LocalType,
+}
+
+impl HasId for Local {
+    type Id = LocalId;
+
+    fn id(&self) -> Self::Id {
+        self.id
+    }
+}
+
+impl Local {
+    pub fn display<'a>(&self, meta: MetaInFunc<'a>) -> DisplayInFunc<'a, &'_ Local> {
+        DisplayInFunc { value: self, meta }
+    }
+}
+
+impl fmt::Display for DisplayInFunc<'_, &'_ Local> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(
+            f,
+            "{}local {}: {}",
+            DISPLAY_INDENT,
+            self.value.id.display(self.meta),
+            self.value.typ
+        )?;
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Func {
     pub id: FuncId,
-    pub locals: TiVec<LocalId, LocalType>,
+    pub locals: VecMap<LocalId, Local>,
     pub args: Vec<LocalId>,
     pub ret_type: LocalType,
     pub bb_entry: BasicBlockId,
@@ -1145,7 +1178,7 @@ impl Func {
     }
 
     pub fn arg_types(&self) -> Vec<LocalType> {
-        self.args.iter().map(|&arg| self.locals[arg]).collect()
+        self.args.iter().map(|&arg| self.locals[arg].typ).collect()
     }
 
     pub fn ret_type(&self) -> LocalType {
@@ -1163,14 +1196,8 @@ impl Func {
 impl fmt::Display for Display<'_, &'_ Func> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "{}:", self.value.id.display(self.meta))?;
-        for (local_id, local_type) in self.value.locals.iter_enumerated() {
-            writeln!(
-                f,
-                "{}local {}: {}",
-                DISPLAY_INDENT,
-                local_id.display(self.meta.in_func(self.value.id)),
-                local_type
-            )?;
+        for local in self.value.locals.values() {
+            writeln!(f, "{}", local.display(self.meta.in_func(self.value.id)))?;
         }
         write!(f, "{}args: ", DISPLAY_INDENT)?;
         for (i, arg) in self.value.args.iter().enumerate() {

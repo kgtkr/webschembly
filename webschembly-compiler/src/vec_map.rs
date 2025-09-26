@@ -13,6 +13,15 @@ pub struct VecMap<K, V> {
     _marker: PhantomData<fn(K) -> K>,
 }
 
+impl<K: From<usize> + Copy, V> Default for VecMap<K, V>
+where
+    usize: From<K>,
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<K: From<usize> + Copy, V> VecMap<K, V>
 where
     usize: From<K>,
@@ -24,19 +33,19 @@ where
         }
     }
 
+    pub fn entry(&mut self, key: K) -> Entry<'_, K, V> {
+        if self.get(key).is_some() {
+            Entry::Occupied(OccupiedEntry { key, map: self })
+        } else {
+            Entry::Vacant(VacantEntry { key, map: self })
+        }
+    }
+
     pub fn from_ti_vec(vec: TiVec<K, Option<V>>) -> Self {
         Self {
             vec: vec.raw,
             _marker: PhantomData,
         }
-    }
-
-    pub fn from_iter<I: IntoIterator<Item = (K, V)>>(iter: I) -> Self {
-        let mut map = Self::new();
-        for (k, v) in iter {
-            map.insert(k, v);
-        }
-        map
     }
 
     pub fn insert(&mut self, key: K, value: V) {
@@ -92,13 +101,6 @@ where
             .iter_mut()
             .enumerate()
             .filter_map(|(i, v)| v.as_mut().map(|v| (K::from(i), v)))
-    }
-
-    pub fn into_iter(self) -> impl Iterator<Item = (K, V)> {
-        self.vec
-            .into_iter()
-            .enumerate()
-            .filter_map(|(i, v)| v.map(|v| (K::from(i), v)))
     }
 
     pub fn retain<F>(&mut self, mut f: F)
@@ -172,7 +174,26 @@ where
     usize: From<K>,
 {
     fn from_iter<I: IntoIterator<Item = (K, V)>>(iter: I) -> Self {
-        Self::from_iter(iter)
+        let mut map = Self::new();
+        for (k, v) in iter {
+            map.insert(k, v);
+        }
+        map
+    }
+}
+
+impl<K: From<usize> + Copy, V> IntoIterator for VecMap<K, V>
+where
+    usize: From<K>,
+{
+    type Item = (K, V);
+    type IntoIter = impl Iterator<Item = (K, V)>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.vec
+            .into_iter()
+            .enumerate()
+            .filter_map(|(i, v)| v.map(|v| (K::from(i), v)))
     }
 }
 
@@ -201,5 +222,74 @@ where
 {
     fn from_iter<I: IntoIterator<Item = V>>(iter: I) -> Self {
         Self::from_nodes(iter)
+    }
+}
+
+pub struct OccupiedEntry<'a, K, V> {
+    key: K,
+    map: &'a mut VecMap<K, V>,
+}
+
+impl<'a, K: From<usize> + Copy + 'a, V: 'a> OccupiedEntry<'a, K, V>
+where
+    usize: From<K>,
+{
+    pub fn get(&self) -> &V {
+        &self.map[self.key]
+    }
+
+    pub fn get_mut(&mut self) -> &mut V {
+        &mut self.map[self.key]
+    }
+
+    pub fn into_mut(self) -> &'a mut V {
+        self.map.get_mut(self.key).unwrap()
+    }
+
+    pub fn remove(self) -> V {
+        self.map.remove(self.key).unwrap()
+    }
+
+    pub fn insert(&mut self, value: V) -> V {
+        std::mem::replace(self.get_mut(), value)
+    }
+}
+
+pub struct VacantEntry<'a, K, V> {
+    key: K,
+    map: &'a mut VecMap<K, V>,
+}
+
+impl<'a, K: From<usize> + Copy + 'a, V: 'a> VacantEntry<'a, K, V>
+where
+    usize: From<K>,
+{
+    pub fn insert(self, value: V) -> &'a mut V {
+        self.map.insert(self.key, value);
+        self.map.get_mut(self.key).unwrap()
+    }
+}
+
+pub enum Entry<'a, K, V> {
+    Occupied(OccupiedEntry<'a, K, V>),
+    Vacant(VacantEntry<'a, K, V>),
+}
+
+impl<'a, K: From<usize> + Copy + 'a, V: 'a> Entry<'a, K, V>
+where
+    usize: From<K>,
+{
+    pub fn or_insert(self, default: V) -> &'a mut V {
+        match self {
+            Entry::Occupied(entry) => entry.into_mut(),
+            Entry::Vacant(entry) => entry.insert(default),
+        }
+    }
+
+    pub fn or_insert_with(self, default: impl FnOnce() -> V) -> &'a mut V {
+        match self {
+            Entry::Occupied(entry) => entry.into_mut(),
+            Entry::Vacant(entry) => entry.insert(default()),
+        }
     }
 }

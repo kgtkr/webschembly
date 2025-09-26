@@ -42,7 +42,7 @@ struct Translator<'a> {
     merge_nodes: &'a FxHashSet<BasicBlockId>,
 }
 
-impl<'a> Translator<'a> {
+impl Translator<'_> {
     fn index(&self, target_id: BasicBlockId, context: &[ContainingSyntax]) -> Option<usize> {
         for (i, syntax) in context.iter().enumerate() {
             match syntax {
@@ -151,24 +151,19 @@ impl<'a> Translator<'a> {
         } else {
             // それ以外は、ターゲットのサブツリーをインライン展開する
             // (ターゲットはドミネーターツリーでsourceの子であるはず)
-            let target_node = self
-                .find_dom_tree_node(self.dom_tree, target)
+            let target_node = Self::find_dom_tree_node(self.dom_tree, target)
                 .expect("Branch target must be in the dominator tree");
             self.do_tree(target_node, context)
         }
     }
 
     // --- ヘルパー関数 ---
-    fn find_dom_tree_node<'b>(
-        &self,
-        node: &'b DomTreeNode,
-        id: BasicBlockId,
-    ) -> Option<&'b DomTreeNode> {
+    fn find_dom_tree_node(node: &DomTreeNode, id: BasicBlockId) -> Option<&DomTreeNode> {
         if node.id == id {
             return Some(node);
         }
         for child in &node.children {
-            if let Some(found) = self.find_dom_tree_node(child, id) {
+            if let Some(found) = Self::find_dom_tree_node(child, id) {
                 return Some(found);
             }
         }
