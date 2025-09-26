@@ -5,10 +5,10 @@ use typed_index_collections::{TiVec, ti_vec};
 
 use super::bb_optimizer;
 use crate::fxbihashmap::FxBiHashMap;
-use crate::ir::*;
 use crate::ir_generator::GlobalManager;
 use crate::ir_generator::bb_optimizer::TypedBox;
 use crate::vec_map::VecMap;
+use crate::{HasId, ir::*};
 
 #[derive(Debug, Clone, Copy)]
 pub struct JitConfig {
@@ -87,7 +87,7 @@ impl Jit {
             bb_id,
             index,
             &mut self.global_layout,
-        ) // TODO: index
+        )
     }
 }
 
@@ -299,7 +299,7 @@ impl JitModule {
 #[derive(Debug)]
 struct JitFunc {
     func_id: FuncId,
-    jit_bbs: TiVec<BasicBlockId, JitBB>,
+    jit_bbs: VecMap<BasicBlockId, JitBB>,
     globals: FxHashSet<GlobalId>,
 }
 
@@ -309,15 +309,14 @@ impl JitFunc {
         let func = &module.funcs[func_id];
         let bb_to_globals = func
             .bbs
-            .iter()
-            .map(|_| global_manager.gen_global_id())
-            .collect::<TiVec<BasicBlockId, _>>();
-
+            .keys()
+            .map(|bb_id| (bb_id, global_manager.gen_global_id()))
+            .collect::<VecMap<BasicBlockId, _>>();
         let bb_infos = calculate_bb_info(&func.locals, analyze_locals(func));
 
         let globals = {
             let mut globals = jit_module.globals.clone();
-            globals.extend(bb_to_globals.iter());
+            globals.extend(bb_to_globals.values());
             globals
         };
 
@@ -325,13 +324,13 @@ impl JitFunc {
             func_id,
             jit_bbs: func
                 .bbs
-                .iter()
-                .map(|(bb_id, bb)| JitBB {
-                    bb_id: bb_id,
+                .values()
+                .map(|bb| JitBB {
+                    bb_id: bb.id,
                     global: bb_to_globals[bb.id],
                     info: bb_infos[bb.id].clone(),
                 })
-                .collect::<TiVec<BasicBlockId, _>>(),
+                .collect::<VecMap<BasicBlockId, _>>(),
             globals,
         }
     }
@@ -348,6 +347,13 @@ impl JitFunc {
             set_global bb1_ref [bb1_stub, nil, ..., nil]
         }
         */
+        let entry_func_id = funcs.push_and_get_key(None);
+        let body_func_id = funcs.push_and_get_key(None);
+        let bb_stub_func_ids = self
+            .jit_bbs
+            .values()
+            .map(|jit_bb| (jit_bb.bb_id, funcs.push_and_get_key(None)))
+            .collect::<VecMap<BasicBlockId, _>>();
         let entry_func = {
             let mut locals = TiVec::new();
             let func_ref_local =
@@ -358,7 +364,7 @@ impl JitFunc {
             let boxed_nil_local = locals.push_and_get_key(LocalType::Type(Type::Boxed));
 
             Func {
-                id: funcs.next_key(),
+                id: entry_func_id,
                 args: vec![],
                 ret_type: LocalType::Type(Type::Val(ValType::FuncRef)), // TODO: Nilでも返したほうがよさそう
                 locals,
@@ -396,10 +402,10 @@ impl JitFunc {
                                 expr: Expr::Box(ValType::Nil, nil_local),
                             },
                         ]);
-                        for jit_bb in self.jit_bbs.iter() {
+                        for jit_bb in self.jit_bbs.values() {
                             exprs.push(ExprAssign {
                                 local: Some(func_ref_local),
-                                expr: Expr::FuncRef(FuncId::from(2 + usize::from(jit_bb.bb_id))),
+                                expr: Expr::FuncRef(bb_stub_func_ids[jit_bb.bb_id]),
                             });
                             exprs.push(ExprAssign {
                                 local: Some(boxed_local),
@@ -432,7 +438,7 @@ impl JitFunc {
                 .collect(),
             }
         };
-        funcs.push(entry_func);
+        funcs[entry_func_id] = Some(entry_func);
 
         /*
         func f0(...) {
@@ -451,7 +457,7 @@ impl JitFunc {
             let index_local = locals.push_and_get_key(LocalType::Type(Type::Val(ValType::Int)));
 
             Func {
-                id: funcs.next_key(),
+                id: body_func_id,
                 args: func.args.clone(),
                 ret_type: func.ret_type,
                 locals,
@@ -503,23 +509,23 @@ impl JitFunc {
             }
         };
 
-        funcs.push(body_func);
+        funcs[body_func_id] = Some(body_func);
 
-        for jit_bb in self.jit_bbs.iter() {
+        for jit_bb in self.jit_bbs.values() {
             let func = Self::generate_bb_stub_func(
                 global_layout,
                 jit_module,
                 jit_bb,
                 func,
-                funcs.next_key(),
+                bb_stub_func_ids[jit_bb.bb_id],
                 GLOBAL_LAYOUT_DEFAULT_INDEX,
             );
-            funcs.push(func);
+            funcs[bb_stub_func_ids[jit_bb.bb_id]] = Some(func);
         }
 
         Module {
             globals: self.globals.clone(),
-            funcs,
+            funcs: funcs.into_iter().map(|f| f.unwrap()).collect(),
             entry: FuncId::from(0),
             meta: Meta {
                 // TODO:
@@ -1127,14 +1133,29 @@ struct JitBB {
     info: BBInfo,
 }
 
-#[derive(Debug, Clone, Default)]
+impl HasId for JitBB {
+    type Id = BasicBlockId;
+    fn id(&self) -> Self::Id {
+        self.bb_id
+    }
+}
+
+#[derive(Debug, Clone)]
 struct AnalyzeResult {
+    bb_id: BasicBlockId,
     defined_locals: FxHashSet<LocalId>,
     used_locals: FxHashSet<LocalId>,
 }
 
-fn analyze_locals(func: &Func) -> TiVec<BasicBlockId, AnalyzeResult> {
-    let mut results = TiVec::new();
+impl HasId for AnalyzeResult {
+    type Id = BasicBlockId;
+    fn id(&self) -> Self::Id {
+        self.bb_id
+    }
+}
+
+fn analyze_locals(func: &Func) -> VecMap<BasicBlockId, AnalyzeResult> {
+    let mut results = VecMap::new();
 
     for bb in func.bbs.values() {
         let mut defined = FxHashSet::default();
@@ -1151,7 +1172,8 @@ fn analyze_locals(func: &Func) -> TiVec<BasicBlockId, AnalyzeResult> {
             }
         }
 
-        results.push(AnalyzeResult {
+        results.insert_node(AnalyzeResult {
+            bb_id: bb.id,
             defined_locals: defined,
             used_locals: used,
         });
@@ -1160,12 +1182,11 @@ fn analyze_locals(func: &Func) -> TiVec<BasicBlockId, AnalyzeResult> {
     // BBは前方ジャンプがないことを仮定している
     // 複雑な制御フローを持つ場合はトポロジカルソートなどが必要
     let bb_ids = func.bbs.values().map(|bb| bb.id).collect::<Vec<_>>();
-
     // defineの集計は前から行う
     // 自分より前のブロックで定義済みの関数
-    let mut prev_defines = TiVec::new();
-    for _ in bb_ids.iter() {
-        prev_defines.push(FxHashSet::<LocalId>::default());
+    let mut prev_defines = VecMap::new();
+    for &bb_id in bb_ids.iter() {
+        prev_defines.insert(bb_id, FxHashSet::<LocalId>::default());
     }
     for &bb_id in bb_ids.iter() {
         let result = &mut results[bb_id];
@@ -1182,7 +1203,6 @@ fn analyze_locals(func: &Func) -> TiVec<BasicBlockId, AnalyzeResult> {
             prev_defines[succ].extend(&prev_define);
         }
     }
-
     for &bb_id in bb_ids.iter().rev() {
         let mut result = results[bb_id].clone();
 
@@ -1197,12 +1217,12 @@ fn analyze_locals(func: &Func) -> TiVec<BasicBlockId, AnalyzeResult> {
 
         results[bb_id] = result;
     }
-
     results
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 struct BBInfo {
+    bb_id: BasicBlockId,
     args: Vec<LocalId>,
     defines: Vec<LocalId>,
     type_params: FxBiHashMap<TypeParamId, LocalId>,
@@ -1242,13 +1262,20 @@ impl BBInfo {
     }
 }
 
+impl HasId for BBInfo {
+    type Id = BasicBlockId;
+    fn id(&self) -> Self::Id {
+        self.bb_id
+    }
+}
+
 fn calculate_bb_info(
     locals: &TiVec<LocalId, LocalType>,
-    analyze_results: TiVec<BasicBlockId, AnalyzeResult>,
-) -> TiVec<BasicBlockId, BBInfo> {
-    let mut bb_info = TiVec::new();
+    analyze_results: VecMap<BasicBlockId, AnalyzeResult>,
+) -> VecMap<BasicBlockId, BBInfo> {
+    let mut bb_info = VecMap::new();
 
-    for result in analyze_results.into_iter() {
+    for (_, result) in analyze_results.into_iter() {
         let mut to_original_locals_mapping = TiVec::new();
 
         let mut original_id_args = result.used_locals.into_iter().collect::<Vec<_>>();
@@ -1282,6 +1309,7 @@ fn calculate_bb_info(
             .collect::<FxHashMap<_, _>>();
 
         let info = BBInfo {
+            bb_id: result.bb_id,
             args,
             defines,
             type_params: type_params.into_iter_enumerated().collect(),
@@ -1289,9 +1317,8 @@ fn calculate_bb_info(
             from_original_locals_mapping,
         };
 
-        bb_info.push(info);
+        bb_info.insert_node(info);
     }
-
     bb_info
 }
 
