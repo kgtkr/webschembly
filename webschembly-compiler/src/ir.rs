@@ -801,11 +801,11 @@ macro_rules! impl_ExprAssign_local_usages {
                 from_coroutine(
                     #[coroutine]
                     move || {
-                        if let Some(local) = &$($mutability)? self.local {
-                            yield (local, LocalFlag::Defined);
-                        }
                         for id in self.expr.[<local_ids $($suffix)?>]() {
                             yield (id, LocalFlag::Used);
+                        }
+                        if let Some(local) = &$($mutability)? self.local {
+                            yield (local, LocalFlag::Defined);
                         }
                     },
                 )
