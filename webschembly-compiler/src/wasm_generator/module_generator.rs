@@ -225,7 +225,7 @@ impl<'a> ModuleGenerator<'a> {
     const CLOSURE_FUNC_FIELD: u32 = 1;
     const CLOSURE_ENVS_FIELD_OFFSET: u32 = 2;
 
-    const MUT_CELL_VALUE_FIELD: u32 = 0;
+    const REF_VALUE_FIELD: u32 = 0;
     // const STRING_BUF_BUF_FIELD: u32 = 0;
     // const STRING_BUF_SHARED_FIELD: u32 = 1;
 
@@ -708,7 +708,7 @@ impl<'a> ModuleGenerator<'a> {
 
     fn convert_local_type(&mut self, ty: ir::LocalType) -> ValType {
         match ty {
-            ir::LocalType::MutCell(inner_ty) => {
+            ir::LocalType::Ref(inner_ty) => {
                 let mut_cell_type = self.mut_cell_type(inner_ty);
                 ValType::Ref(RefType {
                     nullable: false,
@@ -1001,7 +1001,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 });
                 function.instruction(&Instruction::StructNew(self.module_generator.vector_type));
             }
-            ir::Expr::CreateMutCell(typ) => {
+            ir::Expr::CreateRef(typ) => {
                 function.instruction(&Instruction::RefNull(HeapType::Concrete(
                     self.module_generator.val_type,
                 )));
@@ -1009,19 +1009,19 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     self.module_generator.mut_cell_type(*typ),
                 ));
             }
-            ir::Expr::DerefMutCell(typ, cell) => {
+            ir::Expr::DerefRef(typ, cell) => {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*cell)));
                 function.instruction(&Instruction::StructGet {
                     struct_type_index: self.module_generator.mut_cell_type(*typ),
-                    field_index: ModuleGenerator::MUT_CELL_VALUE_FIELD,
+                    field_index: ModuleGenerator::REF_VALUE_FIELD,
                 });
             }
-            ir::Expr::SetMutCell(typ, cell, val) => {
+            ir::Expr::SetRef(typ, cell, val) => {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*cell)));
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
                 function.instruction(&Instruction::StructSet {
                     struct_type_index: self.module_generator.mut_cell_type(*typ),
-                    field_index: ModuleGenerator::MUT_CELL_VALUE_FIELD,
+                    field_index: ModuleGenerator::REF_VALUE_FIELD,
                 });
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
             }

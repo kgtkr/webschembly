@@ -194,14 +194,14 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     expr: Expr::ArgsRef(args, arg_idx),
                 });
 
-                let mut_cell = self.define_ast_local(*arg);
+                let ref_ = self.define_ast_local(*arg);
                 self.exprs.push(ExprAssign {
-                    local: Some(mut_cell),
-                    expr: Expr::CreateMutCell(Type::Boxed),
+                    local: Some(ref_),
+                    expr: Expr::CreateRef(Type::Boxed),
                 });
                 self.exprs.push(ExprAssign {
                     local: None,
-                    expr: Expr::SetMutCell(Type::Boxed, mut_cell, local),
+                    expr: Expr::SetRef(Type::Boxed, ref_, local),
                 });
             } else {
                 let arg_id = self.define_ast_local(*arg);
@@ -283,7 +283,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             {
                 self.exprs.push(ExprAssign {
                     local: Some(local),
-                    expr: Expr::CreateMutCell(Type::Boxed),
+                    expr: Expr::CreateRef(Type::Boxed),
                 });
             }
         }
@@ -306,7 +306,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 .box_vars
                 .contains(&id)
             {
-                LocalType::MutCell(Type::Boxed)
+                LocalType::Ref(Type::Boxed)
             } else {
                 LocalType::Type(Type::Boxed)
             },
@@ -588,7 +588,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     {
                         self.exprs.push(ExprAssign {
                             local: result,
-                            expr: Expr::DerefMutCell(Type::Boxed, *self.local_ids.get(id).unwrap()),
+                            expr: Expr::DerefRef(Type::Boxed, *self.local_ids.get(id).unwrap()),
                         });
                     } else {
                         self.exprs.push(ExprAssign {
@@ -624,7 +624,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                             let local = self.local_ids.get(id).unwrap();
                             self.exprs.push(ExprAssign {
                                 local: None,
-                                expr: Expr::SetMutCell(Type::Boxed, *local, boxed_local),
+                                expr: Expr::SetRef(Type::Boxed, *local, boxed_local),
                             });
                             self.exprs.push(ExprAssign {
                                 local: result,

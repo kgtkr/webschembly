@@ -48,13 +48,13 @@ pub struct MetaInFunc<'a> {
 
 /*
 TypeもしくはmutableなTypeを表す
-Type自体にMutCellを含めて再帰的にしてしまうと無限種類の型を作れるようになってしまうので、IRではそれを避けるためこのような構造になっている
+Type自体にRefを含めて再帰的にしてしまうと無限種類の型を作れるようになってしまうので、IRではそれを避けるためこのような構造になっている
 TODO: LocalTypeという名前は適切ではない
 */
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, derive_more::Display)]
 pub enum LocalType {
-    #[display("mut_cell({})", _0)]
-    MutCell(Type), // TODO: MutCell<Boxed>固定で良いかも？
+    #[display("ref({})", _0)]
+    Ref(Type), // TODO: Ref<Boxed>固定で良いかも？
     #[display("{}", _0)]
     Type(Type),
     #[display("args")]
@@ -333,9 +333,9 @@ pub enum Expr {
     Char(char),
     Vector(Vec<LocalId>),
     Cons(LocalId, LocalId),
-    CreateMutCell(Type),
-    DerefMutCell(Type, LocalId),
-    SetMutCell(Type, LocalId /* mutcell */, LocalId /* value */),
+    CreateRef(Type),
+    DerefRef(Type, LocalId),
+    SetRef(Type, LocalId /* ref */, LocalId /* value */),
     FuncRef(FuncId),
     Call(ExprCall),
     CallRef(ExprCallRef),
@@ -429,8 +429,8 @@ macro_rules! impl_Expr_local_ids {
                             yield a;
                             yield b;
                         }
-                        Expr::DerefMutCell(_, id) => yield id,
-                        Expr::SetMutCell(_, cell_id, value_id) => {
+                        Expr::DerefRef(_, id) => yield id,
+                        Expr::SetRef(_, cell_id, value_id) => {
                             yield cell_id;
                             yield value_id;
                         }
@@ -542,7 +542,7 @@ macro_rules! impl_Expr_local_ids {
                         | Expr::String(..)
                         | Expr::Nil
                         | Expr::Char(..)
-                        | Expr::CreateMutCell(..)
+                        | Expr::CreateRef(..)
                         | Expr::FuncRef(..)
                         | Expr::GlobalGet(..)
                         | Expr::InitModule => {}
@@ -602,8 +602,8 @@ impl Expr {
             | Expr::Ge(..)
             | Expr::Args(..)
             | Expr::ArgsRef(..)
-            | Expr::CreateMutCell(..)
-            | Expr::DerefMutCell(..)
+            | Expr::CreateRef(..)
+            | Expr::DerefRef(..)
             | Expr::Add(..)
             | Expr::Sub(..)
             | Expr::Mul(..)
@@ -611,7 +611,7 @@ impl Expr {
 
             Expr::InstantiateFunc(..)
             | Expr::InstantiateBB(..)
-            | Expr::SetMutCell(..)
+            | Expr::SetRef(..)
             | Expr::Call(..)
             | Expr::CallRef(..)
             | Expr::GlobalSet(..)
@@ -670,11 +670,11 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
             Expr::Cons(a, b) => {
                 write!(f, "({} . {})", a.display(self.meta), b.display(self.meta))
             }
-            Expr::CreateMutCell(typ) => write!(f, "create_mut_cell<{}>", typ),
-            Expr::DerefMutCell(typ, id) => {
+            Expr::CreateRef(typ) => write!(f, "create_mut_cell<{}>", typ),
+            Expr::DerefRef(typ, id) => {
                 write!(f, "deref_mut_cell<{}>({})", typ, id.display(self.meta))
             }
-            Expr::SetMutCell(typ, id, value) => {
+            Expr::SetRef(typ, id, value) => {
                 write!(
                     f,
                     "set_mut_cell<{}>({}, {})",
