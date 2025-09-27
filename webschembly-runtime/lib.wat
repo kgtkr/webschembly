@@ -21,7 +21,7 @@
   (type $FuncRef (sub final $ValType (struct (field $tag i8) (field $func funcref))))
   (type $Closure (sub $ValType (struct
     (field $tag i8)
-    ;; (Closure, Args) -> Boxed
+    ;; (Closure, Args) -> Obj
     (field $func (ref $FuncRef)))))
 
   (type $Args (array (mut (ref null $ValType))))

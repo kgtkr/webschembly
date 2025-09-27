@@ -1,10 +1,10 @@
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashMap;
 use std::borrow::Cow;
-use typed_index_collections::{TiSlice, ti_vec};
 
-use crate::ir::BasicBlockNext;
+use crate::ir::BasicBlockTerminator;
 
-use super::ir;
+use crate::wasm_generator::relooper::{Structured, reloop};
+use crate::{VecMap, ir};
 use wasm_encoder::{
     BlockType, CodeSection, CompositeInnerType, CompositeType, ConstExpr, DataCountSection,
     DataSection, ElementSection, Elements, EntityType, ExportKind, ExportSection, FieldType,
@@ -54,7 +54,7 @@ struct ModuleGenerator<'a> {
     exports: ExportSection,
     // types
     vector_inner_type: u32,
-    mut_cell_types: FxHashMap<ir::Type, u32>,
+    ref_types: FxHashMap<ir::Type, u32>,
     val_type: u32,
     nil_type: u32,
     bool_type: u32,
@@ -106,7 +106,7 @@ impl<'a> ModuleGenerator<'a> {
             func_indices: FxHashMap::default(),
             datas: DataSection::new(),
             exports: ExportSection::new(),
-            mut_cell_types: FxHashMap::default(),
+            ref_types: FxHashMap::default(),
             vector_inner_type: 0,
             val_type: 0,
             nil_type: 0,
@@ -161,9 +161,9 @@ impl<'a> ModuleGenerator<'a> {
         let params = ir_func_type
             .args
             .iter()
-            .map(|ty| self.convert_local_type(ty))
+            .map(|&ty| self.convert_local_type(ty))
             .collect();
-        let results = vec![self.convert_local_type(&ir_func_type.ret)];
+        let results = vec![self.convert_local_type(ir_func_type.ret)];
         self.func_type(WasmFuncType { params, results })
     }
 
@@ -201,7 +201,7 @@ impl<'a> ModuleGenerator<'a> {
     fn closure_type_from_ir(&mut self, env_types: &[ir::LocalType]) -> u32 {
         let types = env_types
             .iter()
-            .map(|ty| self.convert_local_type(ty))
+            .map(|&ty| self.convert_local_type(ty))
             .collect();
         self.closure_type(types)
     }
@@ -225,7 +225,7 @@ impl<'a> ModuleGenerator<'a> {
     const CLOSURE_FUNC_FIELD: u32 = 1;
     const CLOSURE_ENVS_FIELD_OFFSET: u32 = 2;
 
-    const MUT_CELL_VALUE_FIELD: u32 = 0;
+    const REF_VALUE_FIELD: u32 = 0;
     // const STRING_BUF_BUF_FIELD: u32 = 0;
     // const STRING_BUF_SHARED_FIELD: u32 = 1;
 
@@ -692,10 +692,10 @@ impl<'a> ModuleGenerator<'a> {
         usize::from(global) as i32
     }
 
-    fn mut_cell_type(&mut self, inner_ty: &ir::Type) -> u32 {
+    fn ref_type(&mut self, inner_ty: ir::Type) -> u32 {
         let ty = self.convert_type(inner_ty);
 
-        *self.mut_cell_types.entry(*inner_ty).or_insert_with(|| {
+        *self.ref_types.entry(inner_ty).or_insert_with(|| {
             let type_id = self.type_count;
             self.type_count += 1;
             self.types.ty().struct_(vec![FieldType {
@@ -706,13 +706,13 @@ impl<'a> ModuleGenerator<'a> {
         })
     }
 
-    fn convert_local_type(&mut self, ty: &ir::LocalType) -> ValType {
+    fn convert_local_type(&mut self, ty: ir::LocalType) -> ValType {
         match ty {
-            ir::LocalType::MutCell(inner_ty) => {
-                let mut_cell_type = self.mut_cell_type(inner_ty);
+            ir::LocalType::Ref(inner_ty) => {
+                let ref_type = self.ref_type(inner_ty);
                 ValType::Ref(RefType {
                     nullable: false,
-                    heap_type: HeapType::Concrete(mut_cell_type),
+                    heap_type: HeapType::Concrete(ref_type),
                 })
             }
             ir::LocalType::Type(ty) => self.convert_type(ty),
@@ -723,9 +723,9 @@ impl<'a> ModuleGenerator<'a> {
         }
     }
 
-    fn convert_type(&self, ty: &ir::Type) -> ValType {
+    fn convert_type(&self, ty: ir::Type) -> ValType {
         match ty {
-            ir::Type::Boxed => ValType::Ref(RefType {
+            ir::Type::Obj => ValType::Ref(RefType {
                 nullable: true,
                 heap_type: HeapType::Concrete(self.val_type),
             }),
@@ -764,149 +764,6 @@ impl<'a> ModuleGenerator<'a> {
 }
 
 #[derive(Debug)]
-enum StructuredBasicBlock {
-    Simple(ir::BasicBlockId),
-    If {
-        cond: ir::LocalId,
-        then: Vec<StructuredBasicBlock>,
-        else_: Vec<StructuredBasicBlock>,
-    },
-    Return(ir::LocalId),
-    TailCall(ir::ExprCall),
-    TailCallRef(ir::ExprCallRef),
-}
-
-// relooper algorithmのような動作をするもの
-// 閉路がないので単純
-fn reloop(
-    entry: ir::BasicBlockId,
-    bbs: &TiSlice<ir::BasicBlockId, ir::BasicBlock>,
-) -> Vec<StructuredBasicBlock> {
-    let mut preds = ti_vec![FxHashSet::default(); bbs.len()];
-    for bb in bbs.iter() {
-        for next in bb.next.successors() {
-            preds[next].insert(bb.id);
-        }
-    }
-
-    let all_ids = FxHashSet::from_iter(bbs.iter().map(|bb| bb.id));
-    let mut doms = ti_vec![all_ids.clone(); bbs.len()];
-    doms[entry] = FxHashSet::from_iter(vec![entry]);
-    let mut changed = true;
-    while changed {
-        changed = false;
-        for bb in bbs.iter() {
-            if bb.id == entry {
-                continue;
-            }
-            let mut new_dom = all_ids.clone();
-            for pred in preds[bb.id].iter() {
-                new_dom.retain(|id| doms[*pred].contains(id));
-            }
-            new_dom.insert(bb.id);
-            if new_dom.len() != doms[bb.id].len() {
-                doms[bb.id] = new_dom;
-                changed = true;
-            }
-        }
-    }
-
-    let mut reversed_doms = ti_vec![FxHashSet::default(); bbs.len()];
-    for bb in bbs.iter() {
-        for dom in doms[bb.id].iter() {
-            reversed_doms[*dom].insert(bb.id);
-        }
-    }
-
-    let mut results = Vec::new();
-    let rejoin_point = reloop_rec(
-        entry,
-        bbs,
-        &reversed_doms,
-        &FxHashSet::default(),
-        &mut results,
-    );
-    assert_eq!(rejoin_point, None);
-    results
-}
-
-// rejoin pointを返す
-fn reloop_rec(
-    cur: ir::BasicBlockId,
-    bbs: &TiSlice<ir::BasicBlockId, ir::BasicBlock>,
-    reversed_doms: &TiSlice<ir::BasicBlockId, FxHashSet<ir::BasicBlockId>>,
-    rejoin_points: &FxHashSet<ir::BasicBlockId>,
-    results: &mut Vec<StructuredBasicBlock>,
-) -> Option<ir::BasicBlockId> {
-    if rejoin_points.contains(&cur) {
-        return Some(cur);
-    }
-    results.push(StructuredBasicBlock::Simple(cur));
-    let bb = &bbs[cur];
-    // TODO: cloneを避ける
-    match bb.next.clone() {
-        BasicBlockNext::If(cond, then_target, else_target) => {
-            let mut if_rejoin_points = reversed_doms[cur].clone();
-            if_rejoin_points.retain(|bb_id| {
-                !reversed_doms[then_target].contains(bb_id)
-                    && !reversed_doms[else_target].contains(bb_id)
-            });
-
-            let mut then_bbs = Vec::new();
-            let mut else_bbs = Vec::new();
-            let rejoin_point1 = reloop_rec(
-                then_target,
-                bbs,
-                reversed_doms,
-                &if_rejoin_points,
-                &mut then_bbs,
-            );
-            let rejoin_point2 = reloop_rec(
-                else_target,
-                bbs,
-                reversed_doms,
-                &if_rejoin_points,
-                &mut else_bbs,
-            );
-            // 片方の分岐がtail cailの場合、片方だけNoneになる
-            let rejoin_point = match (rejoin_point1, rejoin_point2) {
-                (Some(p1), Some(p2)) => {
-                    assert_eq!(p1, p2);
-                    Some(p1)
-                }
-                (Some(p), None) | (None, Some(p)) => Some(p),
-                (None, None) => None,
-            };
-            results.push(StructuredBasicBlock::If {
-                cond,
-                then: then_bbs,
-                else_: else_bbs,
-            });
-            if let Some(rejoin_point) = rejoin_point {
-                reloop_rec(rejoin_point, bbs, reversed_doms, rejoin_points, results)
-            } else {
-                None
-            }
-        }
-        BasicBlockNext::Jump(target) => {
-            reloop_rec(target, bbs, reversed_doms, rejoin_points, results)
-        }
-        BasicBlockNext::Return(local) => {
-            results.push(StructuredBasicBlock::Return(local));
-            None
-        }
-        BasicBlockNext::TailCall(call) => {
-            results.push(StructuredBasicBlock::TailCall(call));
-            None
-        }
-        BasicBlockNext::TailCallRef(call_ref) => {
-            results.push(StructuredBasicBlock::TailCallRef(call_ref));
-            None
-        }
-    }
-}
-
-#[derive(Debug)]
 struct FuncGenerator<'a, 'b> {
     module_generator: &'a mut ModuleGenerator<'b>,
     func: &'a ir::Func,
@@ -929,9 +786,12 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
     }
 
     fn gen_func(mut self) {
-        let mut is_args = ti_vec![false; self.func.locals.len()];
+        let mut is_args = VecMap::new();
+        for local_id in self.func.locals.keys() {
+            is_args.insert(local_id, false);
+        }
         for arg in &self.func.args {
-            is_args[*arg] = true;
+            is_args.insert(*arg, true);
         }
 
         for local_id in
@@ -956,16 +816,16 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         let mut function = Function::new(
             self.func
                 .locals
-                .iter_enumerated()
-                .filter(|(local_id, _)| !is_args[*local_id])
-                .map(|(_, ty)| {
-                    let ty = self.module_generator.convert_local_type(ty);
+                .values()
+                .filter(|local| !is_args[local.id])
+                .map(|local| {
+                    let ty = self.module_generator.convert_local_type(local.typ);
                     (1, ty)
                 })
                 .collect::<Vec<_>>(),
         );
 
-        let structured_bbs = reloop(self.func.bb_entry, &self.func.bbs);
+        let structured_bbs = reloop(self.func);
         for structured_bb in &structured_bbs {
             self.gen_bb(&mut function, self.func, structured_bb);
         }
@@ -977,20 +837,15 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         self.module_generator.code.function(&function);
     }
 
-    fn gen_bb(
-        &mut self,
-        function: &mut Function,
-        func: &ir::Func,
-        structured_bb: &StructuredBasicBlock,
-    ) {
+    fn gen_bb(&mut self, function: &mut Function, func: &ir::Func, structured_bb: &Structured) {
         match structured_bb {
-            StructuredBasicBlock::Simple(bb_id) => {
+            Structured::Simple(bb_id) => {
                 let bb = &func.bbs[*bb_id];
                 for expr in &bb.exprs {
                     self.gen_assign(function, &func.locals, expr);
                 }
             }
-            StructuredBasicBlock::If { cond, then, else_ } => {
+            Structured::If { cond, then, else_ } => {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*cond)));
                 function.instruction(&Instruction::If(BlockType::Empty));
                 for structured_bb in then {
@@ -1002,23 +857,42 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 }
                 function.instruction(&Instruction::End);
             }
-            StructuredBasicBlock::Return(local) => {
-                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*local)));
-                function.instruction(&Instruction::Return);
+            Structured::Block { body } => {
+                function.instruction(&Instruction::Block(BlockType::Empty));
+                for structured_bb in body {
+                    self.gen_bb(function, func, structured_bb);
+                }
+                function.instruction(&Instruction::End);
             }
-            StructuredBasicBlock::TailCall(call) => {
-                self.gen_call(function, true, call);
+            Structured::Loop { body } => {
+                function.instruction(&Instruction::Loop(BlockType::Empty));
+                for structured_bb in body {
+                    self.gen_bb(function, func, structured_bb);
+                }
+                function.instruction(&Instruction::End);
             }
-            StructuredBasicBlock::TailCallRef(call_ref) => {
-                self.gen_call_ref(function, true, call_ref);
+            Structured::Break(index) => {
+                function.instruction(&Instruction::Br(*index as u32));
             }
+            Structured::Terminator(terminator) => match terminator {
+                BasicBlockTerminator::Return(local) => {
+                    function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*local)));
+                    function.instruction(&Instruction::Return);
+                }
+                BasicBlockTerminator::TailCall(call) => {
+                    self.gen_call(function, true, call);
+                }
+                BasicBlockTerminator::TailCallRef(call_ref) => {
+                    self.gen_call_ref(function, true, call_ref);
+                }
+            },
         }
     }
 
     fn gen_assign(
         &mut self,
         function: &mut Function,
-        locals: &TiSlice<ir::LocalId, ir::LocalType>,
+        locals: &VecMap<ir::LocalId, ir::Local>,
         expr: &ir::ExprAssign,
     ) {
         if let ir::Expr::Nop = expr.expr {
@@ -1035,7 +909,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
     fn gen_expr(
         &mut self,
         function: &mut Function,
-        locals: &TiSlice<ir::LocalId, ir::LocalType>,
+        locals: &VecMap<ir::LocalId, ir::Local>,
         expr: &ir::Expr,
     ) {
         match expr {
@@ -1127,27 +1001,27 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 });
                 function.instruction(&Instruction::StructNew(self.module_generator.vector_type));
             }
-            ir::Expr::CreateMutCell(typ) => {
+            ir::Expr::CreateRef(typ) => {
                 function.instruction(&Instruction::RefNull(HeapType::Concrete(
                     self.module_generator.val_type,
                 )));
                 function.instruction(&Instruction::StructNew(
-                    self.module_generator.mut_cell_type(typ),
+                    self.module_generator.ref_type(*typ),
                 ));
             }
-            ir::Expr::DerefMutCell(typ, cell) => {
-                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*cell)));
+            ir::Expr::DerefRef(typ, ref_) => {
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*ref_)));
                 function.instruction(&Instruction::StructGet {
-                    struct_type_index: self.module_generator.mut_cell_type(typ),
-                    field_index: ModuleGenerator::MUT_CELL_VALUE_FIELD,
+                    struct_type_index: self.module_generator.ref_type(*typ),
+                    field_index: ModuleGenerator::REF_VALUE_FIELD,
                 });
             }
-            ir::Expr::SetMutCell(typ, cell, val) => {
-                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*cell)));
+            ir::Expr::SetRef(typ, ref_, val) => {
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*ref_)));
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
                 function.instruction(&Instruction::StructSet {
-                    struct_type_index: self.module_generator.mut_cell_type(typ),
-                    field_index: ModuleGenerator::MUT_CELL_VALUE_FIELD,
+                    struct_type_index: self.module_generator.ref_type(*typ),
+                    field_index: ModuleGenerator::REF_VALUE_FIELD,
                 });
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
             }
@@ -1167,7 +1041,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
 
                 function.instruction(&Instruction::StructNew(
                     self.module_generator.closure_type_from_ir(
-                        &envs.iter().map(|env| locals[*env]).collect::<Vec<_>>(),
+                        &envs.iter().map(|env| locals[*env].typ).collect::<Vec<_>>(),
                     ),
                 ));
             }
@@ -1187,7 +1061,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             ir::Expr::Move(val) => {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
             }
-            ir::Expr::Unbox(typ, val) => match typ {
+            ir::Expr::FromObj(typ, val) => match typ {
                 ir::ValType::Bool => {
                     function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
                     function.instruction(&Instruction::RefCastNonNull(HeapType::Concrete(
@@ -1259,7 +1133,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     )));
                 }
             },
-            ir::Expr::Box(typ, val) => match typ {
+            ir::Expr::ToObj(typ, val) => match typ {
                 ir::ValType::Bool => {
                     function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
                     function.instruction(&Instruction::If(BlockType::Result(ValType::Ref(

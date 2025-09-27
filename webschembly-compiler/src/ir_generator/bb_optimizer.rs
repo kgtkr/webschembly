@@ -1,131 +1,160 @@
-use typed_index_collections::{TiVec, ti_vec};
+use typed_index_collections::TiVec;
 
-use crate::{fxbihashmap::FxBiHashMap, ir::*};
+use crate::{VecMap, fxbihashmap::FxBiHashMap, ir::*};
 
 /*
+BBに型代入を行う
+
 ```
-local l1: boxed
+local l1: obj
 local l2: int
 local l3: int
 
 args: l1
 
 _ = cons(l1, l1)
-l2 = unbox<int>(l1)
-l3 = unbox<int>(l1)
+l2 = from_obj<int>(l1)
+l3 = from_obj<int>(l1)
 _ = add(l2, l3)
 ```
 
 `l1 = int` を代入した場合:
 
 ```
-local l1: int
+local l1: int // intに更新
 local l2: int
 local l3: int
-local l1_boxed: boxed // boxedバージョンを追加
+local l1_obj: obj // objバージョンを追加
 
 args: l1
 
-l1_boxed = boxed<int>(l1) // BBの先頭に追加。不要なら後々の最適化で削除する
-_ = cons(l1_boxed, l1_boxed) // l1を参照している式はl1_boxedに置き換える
-l2 = unbox<int>(l1_boxed)
-l3 = unbox<int>(l1_boxed)
-_ = add(l1, l1)
+l1_obj = to_obj<int>(l1) // BBの先頭に追加。不要なら後々の最適化で削除する
+_ = cons(l1_obj, l1_obj) // l1を参照している式はl1_objに置き換える
+l2 = from_obj<int>(l1_obj)
+l3 = from_obj<int>(l1_obj)
+_ = add(l2, l3)
 ```
-
-次のBBに引き継ぐ情報:
-- boxedな値→unboxedな値の対応とその型(どちらも再代入されない場合のみ)
 */
 
-pub fn remove_box(
-    locals: &mut TiVec<LocalId, LocalType>,
+pub fn assign_type_args(
+    locals: &mut VecMap<LocalId, Local>,
     bb: &mut BasicBlock,
     type_params: &FxBiHashMap<TypeParamId, LocalId>,
     type_args: &TiVec<TypeParamId, Option<ValType>>,
-    locals_immutability: &mut TiVec<LocalId, bool>,
-) -> TiVec<LocalId, Option<NextTypeArg>> {
+    locals_immutability: &mut VecMap<LocalId, bool>,
+) -> VecMap<LocalId, LocalId> {
     let mut additional_expr_assigns = Vec::new();
 
-    // 型代入されている変数のboxed版を用意(l1_boxedに対応)
-    let mut boxed_locals = ti_vec![None; locals.len()];
+    // 型代入されている変数のobj版を用意(l1_objに対応)
+    let mut assigned_local_to_obj = VecMap::new();
+
     for (type_param_id, typ) in type_args.iter_enumerated() {
         if let Some(typ) = typ {
-            let boxed_local = locals.push_and_get_key(LocalType::Type(Type::Boxed));
-            boxed_locals[*type_params.get_by_left(&type_param_id).unwrap()] = Some(boxed_local);
+            let local = *type_params.get_by_left(&type_param_id).unwrap();
 
+            // ローカル変数の型に代入
+            debug_assert_eq!(locals[local].typ, LocalType::Type(Type::Obj));
+            locals[local].typ = LocalType::Type(Type::Val(*typ));
+
+            // obj版のローカル変数を用意
+            let obj_local = locals.push_with(|id| Local {
+                id,
+                typ: LocalType::Type(Type::Obj),
+            });
+            assigned_local_to_obj.insert(local, obj_local);
             additional_expr_assigns.push(ExprAssign {
-                local: Some(boxed_local),
-                expr: Expr::Box(*typ, *type_params.get_by_left(&type_param_id).unwrap()),
+                local: Some(obj_local),
+                expr: Expr::ToObj(*typ, *type_params.get_by_left(&type_param_id).unwrap()),
             });
-            locals_immutability.push(true); // boxed_localは再代入されない
+            locals_immutability.push(true); // obj_localは再代入されない
         }
     }
 
-    let boxed_locals = boxed_locals;
-
-    // ローカル変数の置き換え情報
-    let mut local_replacements = TiVec::new();
-    for (from, to) in boxed_locals.iter_enumerated() {
-        local_replacements.push(to.unwrap_or(from));
-    }
-
-    // 次のBBに引き継ぐ型情報
-    let mut next_type_args = ti_vec![None; locals.len()];
-
-    for expr_assign in bb.exprs.iter_mut() {
-        if let ExprAssign {
-            local,
-            expr: Expr::Unbox(typ, value),
-        } = *expr_assign
-            && locals_immutability[value]
-            && let Some(local) = local
-            && locals_immutability[local]
-        {
-            next_type_args[value] = Some(NextTypeArg {
-                unboxed: local,
-                typ,
-            });
-        }
-
-        for (local, _) in expr_assign.local_usages_mut() {
-            *local = local_replacements[*local];
-        }
-    }
-
-    for local in bb.next.local_ids_mut() {
-        *local = local_replacements[*local]
-    }
-
-    for (unboxed, &boxed) in boxed_locals.iter_enumerated() {
-        if let Some(boxed) = boxed
-            && locals_immutability[unboxed]
-            && locals_immutability[boxed]
-        {
-            let LocalType::Type(Type::Val(typ)) = locals[unboxed] else {
-                unreachable!("expect val type, actual: {:?}", locals[unboxed]);
-            };
-            next_type_args[boxed] = Some(NextTypeArg { unboxed, typ });
+    for (local, _) in bb.local_usages_mut() {
+        if let Some(&obj_local) = assigned_local_to_obj.get(*local) {
+            *local = obj_local;
         }
     }
 
     bb.exprs.splice(0..0, additional_expr_assigns);
 
-    next_type_args
+    assigned_local_to_obj
+}
+
+/*
+静的に型が分かっているobj型の変数を収集する
+
+```
+local l1: int
+local l2: int
+local l3: int
+local l1_obj: obj
+local l4: cons
+local l5: obj
+
+args: l1
+
+l1_obj = obj<int>(l1) // l1_objは中身がintであり、val_type版はl1にある
+_ = cons(l1_obj, l1_obj)
+l2 = from_obj<int>(l1_obj) // 1行目と同じ情報が得られる
+l3 = from_obj<int>(l1_obj) // 同様
+_ = add(l2, l3)
+```
+
+次のBBに引き継ぐ情報:
+- objな値→val_typeな値の対応とその型(どちらも再代入されない場合のみ)
+*/
+
+pub fn analyze_typed_obj(
+    bb: &BasicBlock,
+    locals_immutability: &VecMap<LocalId, bool>,
+) -> VecMap<LocalId, TypedObj> {
+    // 次のBBに引き継ぐ型情報
+    let mut typed_objs = VecMap::new();
+
+    for expr_assign in bb.exprs.iter() {
+        match *expr_assign {
+            ExprAssign {
+                local: Some(local),
+                expr: Expr::FromObj(typ, value),
+            } if locals_immutability[value] && locals_immutability[local] => {
+                typed_objs.insert(value, TypedObj {
+                    val_type: local,
+                    typ,
+                });
+            }
+            ExprAssign {
+                local: Some(local),
+                expr: Expr::ToObj(typ, value),
+            } if locals_immutability[value] && locals_immutability[local] => {
+                typed_objs.insert(local, TypedObj {
+                    val_type: value,
+                    typ,
+                });
+            }
+            _ => {}
+        }
+    }
+
+    typed_objs
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct NextTypeArg {
-    pub unboxed: LocalId,
+pub struct TypedObj {
+    pub val_type: LocalId,
     pub typ: ValType,
 }
 
 // 変数の不変判定
 pub fn analyze_locals_immutability(
-    locals: &TiVec<LocalId, LocalType>,
+    locals: &VecMap<LocalId, Local>,
     bb: &BasicBlock,
     args: &Vec<LocalId>,
-) -> TiVec<LocalId, bool> {
-    let mut assign_counts = ti_vec![0; locals.len()];
+) -> VecMap<LocalId, bool> {
+    let mut assign_counts = VecMap::new();
+    for local in locals.keys() {
+        assign_counts.insert(local, 0);
+    }
     for &arg in args {
         assign_counts[arg] += 1;
     }
@@ -137,13 +166,13 @@ pub fn analyze_locals_immutability(
 
     assign_counts
         .into_iter()
-        .map(|count| count <= 1)
-        .collect::<TiVec<LocalId, bool>>()
+        .map(|(id, count)| (id, count <= 1))
+        .collect::<VecMap<LocalId, bool>>()
 }
 
 /*
 コピー伝播を行う
-対象はmove, box-unbox, unbox-box
+対象はmove, to_obj-from_obj, from_obj-to_obj
 
 例:
 
@@ -153,37 +182,39 @@ c = f b
 b = move a
 c = f a
 
-b = box<int> a
-c = unbox<int> b
+b = to_obj<int> a
+c = from_obj<int> b
 d = g c
 -->
-b = box<int> a
-c = unbox<int> a
+b = to_obj<int> a
+c = from_obj<int> a
 d = g a
 
-b = unbox<int> a
-c = box<int> b
+b = from_obj<int> a
+c = to_obj<int> b
 d = g c
 -->
-b = unbox<int> a
-c = box<int> a
+b = from_obj<int> a
+c = to_obj<int> a
 d = g a
 
 ここでは、デッドコードの削除は行わない
 */
 pub fn copy_propagate(
-    locals: &TiVec<LocalId, LocalType>,
+    locals: &VecMap<LocalId, Local>,
     bb: &mut BasicBlock,
-    locals_immutability: &TiVec<LocalId, bool>,
+    locals_immutability: &VecMap<LocalId, bool>,
 ) {
     // ローカル変数の置き換え情報
-    let mut local_replacements = TiVec::new();
+    let mut local_replacements = VecMap::new();
+    // to_obj-from_objの置き換え情報
+    let mut to_obj_replacements = VecMap::new();
+    let mut from_obj_replacements = VecMap::new();
     for local in locals.keys() {
-        local_replacements.push(local);
+        local_replacements.insert(local, local);
+        to_obj_replacements.insert(local, None);
+        from_obj_replacements.insert(local, None);
     }
-
-    let mut box_replacements = ti_vec![None; locals.len()];
-    let mut unbox_replacements = ti_vec![None; locals.len()];
 
     for expr_assign in bb.exprs.iter_mut() {
         use Expr::*;
@@ -203,27 +234,27 @@ pub fn copy_propagate(
             }
             ExprAssign {
                 local: Some(local),
-                expr: Box(typ, value),
+                expr: ToObj(typ, value),
             } if locals_immutability[value] && locals_immutability[local] => {
-                box_replacements[local] = Some((value, typ));
+                to_obj_replacements[local] = Some((value, typ));
 
-                if let Some((unboxed, unboxed_typ)) = unbox_replacements[value]
-                    && unboxed_typ == typ
-                // TODO: unboxed_typ == typは必要？
+                if let Some((val_type, val_type_typ)) = from_obj_replacements[value]
+                    && val_type_typ == typ
+                // TODO: val_type_typ == typは必要？
                 {
-                    local_replacements[local] = unboxed;
+                    local_replacements[local] = val_type;
                 }
             }
             ExprAssign {
                 local: Some(local),
-                expr: Unbox(typ, value),
+                expr: FromObj(typ, value),
             } if locals_immutability[value] && locals_immutability[local] => {
-                unbox_replacements[local] = Some((value, typ));
+                from_obj_replacements[local] = Some((value, typ));
 
-                if let Some((boxed, boxed_typ)) = box_replacements[value]
-                    && boxed_typ == typ
+                if let Some((obj, obj_typ)) = to_obj_replacements[value]
+                    && obj_typ == typ
                 {
-                    local_replacements[local] = boxed;
+                    local_replacements[local] = obj;
                 }
             }
             _ => {}
@@ -239,13 +270,16 @@ pub fn copy_propagate(
 デッドコード削除
 */
 pub fn dead_code_elimination(
-    locals: &TiVec<LocalId, LocalType>,
+    locals: &VecMap<LocalId, Local>,
     bb: &mut BasicBlock,
-    _locals_immutability: &TiVec<LocalId, bool>,
+    _locals_immutability: &VecMap<LocalId, bool>,
     // 別のBBなどで使われているローカル変数
     out_used_locals: &Vec<LocalId>,
 ) {
-    let mut used = ti_vec![false; locals.len()];
+    let mut used = VecMap::new();
+    for local in locals.keys() {
+        used.insert(local, false);
+    }
     for &local in out_used_locals {
         used[local] = true;
     }
@@ -271,19 +305,32 @@ pub fn dead_code_elimination(
 
 #[cfg(test)]
 mod tests {
-    // TODO: test_analyze_locals_immutability / test_remove_box以外のテストが微妙なので書き直す
     use super::*;
     use crate::fxbihashmap::FxBiHashMap;
-    use typed_index_collections::{TiVec, ti_vec};
+    use typed_index_collections::ti_vec;
 
     #[test]
     fn test_analyze_locals_immutability() {
-        let locals = ti_vec![
-            LocalType::Type(Type::Val(ValType::Int)),
-            LocalType::Type(Type::Val(ValType::Int)),
-            LocalType::Type(Type::Val(ValType::Int)),
-            LocalType::Type(Type::Val(ValType::Int)),
-        ];
+        let locals = [
+            Local {
+                id: LocalId::from(0),
+                typ: LocalType::Type(Type::Val(ValType::Int)),
+            },
+            Local {
+                id: LocalId::from(1),
+                typ: LocalType::Type(Type::Val(ValType::Int)),
+            },
+            Local {
+                id: LocalId::from(2),
+                typ: LocalType::Type(Type::Val(ValType::Int)),
+            },
+            Local {
+                id: LocalId::from(3),
+                typ: LocalType::Type(Type::Val(ValType::Int)),
+            },
+        ]
+        .into_iter()
+        .collect::<VecMap<LocalId, _>>();
 
         let bb = BasicBlock {
             id: BasicBlockId::from(0),
@@ -305,60 +352,45 @@ mod tests {
                     expr: Expr::Int(0),
                 },
             ],
-            next: BasicBlockNext::Return(LocalId::from(1)),
+            next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(1))),
         };
 
         let args = vec![LocalId::from(0), LocalId::from(1)];
 
         let immutability = analyze_locals_immutability(&locals, &bb, &args);
 
-        assert_eq!(immutability, ti_vec![false, true, false, true]);
-    }
-
-    fn create_test_basic_block() -> BasicBlock {
-        BasicBlock {
-            id: BasicBlockId::from(0),
-            exprs: vec![],
-            next: BasicBlockNext::Return(LocalId::from(0)),
-        }
-    }
-
-    fn create_test_locals() -> TiVec<LocalId, LocalType> {
-        ti_vec![
-            LocalType::Type(Type::Val(ValType::Int)),  // l0
-            LocalType::Type(Type::Boxed),              // l1
-            LocalType::Type(Type::Val(ValType::Bool)), // l2
-        ]
-    }
-
-    #[test]
-    fn test_remove_box_with_empty_type_args() {
-        let mut locals = create_test_locals();
-        let mut bb = create_test_basic_block();
-        let type_params = FxBiHashMap::default();
-        let type_args = ti_vec![];
-        let mut locals_immutability = ti_vec![true; locals.len()];
-
-        let next_type_args = remove_box(
-            &mut locals,
-            &mut bb,
-            &type_params,
-            &type_args,
-            &mut locals_immutability,
+        assert_eq!(
+            immutability,
+            [
+                (LocalId::from(0), false),
+                (LocalId::from(1), true),
+                (LocalId::from(2), false),
+                (LocalId::from(3), true),
+            ]
+            .into_iter()
+            .collect::<VecMap<_, _>>()
         );
-
-        assert_eq!(next_type_args.len(), 3);
-        assert!(next_type_args.iter().all(|x| x.is_none()));
-        assert_eq!(bb.exprs.len(), 0);
     }
 
+    // TODO: assign_type_argsとanalyze_typed_objのテストは分割したほうがいいかも？
     #[test]
-    fn test_remove_box() {
-        let mut locals = ti_vec![
-            LocalType::Type(Type::Boxed),
-            LocalType::Type(Type::Val(ValType::Int)),
-            LocalType::Type(Type::Val(ValType::Int)),
-        ];
+    fn test_assign_type_args_and_analyze_typed_obj() {
+        let mut locals = [
+            Local {
+                id: LocalId::from(0),
+                typ: LocalType::Type(Type::Obj),
+            },
+            Local {
+                id: LocalId::from(1),
+                typ: LocalType::Type(Type::Val(ValType::Int)),
+            },
+            Local {
+                id: LocalId::from(2),
+                typ: LocalType::Type(Type::Val(ValType::Int)),
+            },
+        ]
+        .into_iter()
+        .collect::<VecMap<LocalId, _>>();
 
         let mut bb = BasicBlock {
             id: BasicBlockId::from(0),
@@ -369,28 +401,31 @@ mod tests {
                 },
                 ExprAssign {
                     local: Some(LocalId::from(1)),
-                    expr: Expr::Unbox(ValType::Int, LocalId::from(0)),
+                    expr: Expr::FromObj(ValType::Int, LocalId::from(0)),
                 },
                 ExprAssign {
                     local: Some(LocalId::from(2)),
-                    expr: Expr::Unbox(ValType::Int, LocalId::from(0)),
+                    expr: Expr::FromObj(ValType::Int, LocalId::from(0)),
                 },
                 ExprAssign {
                     local: None,
                     expr: Expr::Add(LocalId::from(1), LocalId::from(2)),
                 },
             ],
-            next: BasicBlockNext::Return(LocalId::from(1)),
+            next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(1))),
         };
 
         let type_params = FxBiHashMap::from_iter(vec![(TypeParamId::from(0), LocalId::from(0))]);
         let type_args = ti_vec![Some(ValType::Int)];
-        let mut locals_immutability = ti_vec![true, true, true];
+        let mut locals_immutability = [
+            (LocalId::from(0), true),
+            (LocalId::from(1), true),
+            (LocalId::from(2), true),
+        ]
+        .into_iter()
+        .collect::<VecMap<LocalId, _>>();
 
-        // type argsに対応するlocalsは事前に置き換えて渡すことが想定されている
-        locals[LocalId::from(0)] = LocalType::Type(Type::Val(ValType::Int));
-
-        let next_type_args = remove_box(
+        let assigned_local_to_obj = assign_type_args(
             &mut locals,
             &mut bb,
             &type_params,
@@ -398,17 +433,34 @@ mod tests {
             &mut locals_immutability,
         );
 
-        assert_eq!(locals, ti_vec![
-            LocalType::Type(Type::Val(ValType::Int)),
-            LocalType::Type(Type::Val(ValType::Int)),
-            LocalType::Type(Type::Val(ValType::Int)),
-            LocalType::Type(Type::Boxed),
-        ]);
+        assert_eq!(
+            locals,
+            [
+                Local {
+                    id: LocalId::from(0),
+                    typ: LocalType::Type(Type::Val(ValType::Int)),
+                },
+                Local {
+                    id: LocalId::from(1),
+                    typ: LocalType::Type(Type::Val(ValType::Int)),
+                },
+                Local {
+                    id: LocalId::from(2),
+                    typ: LocalType::Type(Type::Val(ValType::Int)),
+                },
+                Local {
+                    id: LocalId::from(3),
+                    typ: LocalType::Type(Type::Obj),
+                },
+            ]
+            .into_iter()
+            .collect::<VecMap<LocalId, _>>()
+        );
 
         assert_eq!(bb.exprs, vec![
             ExprAssign {
                 local: Some(LocalId::from(3)),
-                expr: Expr::Box(ValType::Int, LocalId::from(0)),
+                expr: Expr::ToObj(ValType::Int, LocalId::from(0)),
             },
             ExprAssign {
                 local: None,
@@ -416,11 +468,11 @@ mod tests {
             },
             ExprAssign {
                 local: Some(LocalId::from(1)),
-                expr: Expr::Unbox(ValType::Int, LocalId::from(3)),
+                expr: Expr::FromObj(ValType::Int, LocalId::from(3)),
             },
             ExprAssign {
                 local: Some(LocalId::from(2)),
-                expr: Expr::Unbox(ValType::Int, LocalId::from(3)),
+                expr: Expr::FromObj(ValType::Int, LocalId::from(3)),
             },
             ExprAssign {
                 local: None,
@@ -428,200 +480,229 @@ mod tests {
             },
         ]);
 
-        assert_eq!(locals_immutability, ti_vec![true, true, true, true]);
-        assert_eq!(next_type_args, ti_vec![
-            // TODO: ここがNoneにならないのAPI設計として汚い
-            Some(NextTypeArg {
-                unboxed: LocalId::from(2),
-                typ: ValType::Int
-            }),
-            None,
-            None,
-            Some(NextTypeArg {
-                unboxed: LocalId::from(0),
-                typ: ValType::Int
-            })
-        ]);
-    }
-
-    #[test]
-    fn test_remove_box_with_unbox_expr() {
-        let mut locals = ti_vec![
-            LocalType::Type(Type::Boxed),             // l0 - boxed値
-            LocalType::Type(Type::Val(ValType::Int)), // l1 - unbox先
-        ];
-
-        let mut bb = BasicBlock {
-            id: BasicBlockId::from(0),
-            exprs: vec![ExprAssign {
-                local: Some(LocalId::from(1)),
-                expr: Expr::Unbox(ValType::Int, LocalId::from(0)),
-            }],
-            next: BasicBlockNext::Return(LocalId::from(1)),
-        };
-
-        let type_params = FxBiHashMap::default();
-        let type_args = ti_vec![];
-        let mut locals_immutability = ti_vec![true, true];
-
-        let next_type_args = remove_box(
-            &mut locals,
-            &mut bb,
-            &type_params,
-            &type_args,
-            &mut locals_immutability,
+        assert_eq!(
+            locals_immutability,
+            [
+                (LocalId::from(0), true),
+                (LocalId::from(1), true),
+                (LocalId::from(2), true),
+                (LocalId::from(3), true),
+            ]
+            .into_iter()
+            .collect::<VecMap<LocalId, _>>()
         );
 
-        // unbox式により、next_type_argsにunboxed情報が設定される
         assert_eq!(
-            next_type_args[LocalId::from(0)],
-            Some(NextTypeArg {
-                unboxed: LocalId::from(1),
-                typ: ValType::Int,
-            })
+            assigned_local_to_obj,
+            vec![(LocalId::from(0), LocalId::from(3)),]
+                .into_iter()
+                .collect::<VecMap<LocalId, _>>()
+        );
+
+        let typed_objs = analyze_typed_obj(&bb, &locals_immutability);
+
+        assert_eq!(
+            typed_objs,
+            [(LocalId::from(3), TypedObj {
+                val_type: LocalId::from(2),
+                typ: ValType::Int
+            })]
+            .into_iter()
+            .collect::<VecMap<LocalId, _>>()
         );
     }
 
     #[test]
     fn test_copy_propagate_move() {
-        let locals = ti_vec![
-            LocalType::Type(Type::Val(ValType::Int)), // l0
-            LocalType::Type(Type::Val(ValType::Int)), // l1
-            LocalType::Type(Type::Val(ValType::Int)), // l2
-        ];
+        let locals = [
+            Local {
+                id: LocalId::from(0),
+                typ: LocalType::Type(Type::Val(ValType::Int)),
+            },
+            Local {
+                id: LocalId::from(1),
+                typ: LocalType::Type(Type::Val(ValType::Int)),
+            },
+            Local {
+                id: LocalId::from(2),
+                typ: LocalType::Type(Type::Val(ValType::Int)),
+            },
+        ]
+        .into_iter()
+        .collect::<VecMap<LocalId, _>>();
 
         let mut bb = BasicBlock {
             id: BasicBlockId::from(0),
             exprs: vec![
-                // l1 = move l0
                 ExprAssign {
                     local: Some(LocalId::from(1)),
                     expr: Expr::Move(LocalId::from(0)),
                 },
-                // l2 = add(l1, l1)
                 ExprAssign {
                     local: Some(LocalId::from(2)),
                     expr: Expr::Add(LocalId::from(1), LocalId::from(1)),
                 },
             ],
-            next: BasicBlockNext::Return(LocalId::from(2)),
+            next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(2))),
         };
 
-        let locals_immutability = ti_vec![true, true, true];
+        let locals_immutability = [
+            (LocalId::from(0), true),
+            (LocalId::from(1), true),
+            (LocalId::from(2), true),
+        ]
+        .into_iter()
+        .collect::<VecMap<LocalId, _>>();
 
         copy_propagate(&locals, &mut bb, &locals_immutability);
 
-        // l1の参照がl0に置き換わる
-        if let ExprAssign {
-            expr: Expr::Add(left, right),
-            ..
-        } = &bb.exprs[1]
-        {
-            assert_eq!(*left, LocalId::from(0));
-            assert_eq!(*right, LocalId::from(0));
-        } else {
-            panic!("Expected Add expr with propagated locals");
-        }
+        assert_eq!(bb, BasicBlock {
+            id: BasicBlockId::from(0),
+            exprs: vec![
+                ExprAssign {
+                    local: Some(LocalId::from(1)),
+                    expr: Expr::Move(LocalId::from(0)),
+                },
+                ExprAssign {
+                    local: Some(LocalId::from(2)),
+                    expr: Expr::Add(LocalId::from(0), LocalId::from(0)),
+                },
+            ],
+            next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(2))),
+        });
     }
 
     #[test]
-    fn test_copy_propagate_box_unbox() {
-        let locals = ti_vec![
-            LocalType::Type(Type::Val(ValType::Int)), // l0
-            LocalType::Type(Type::Boxed),             // l1 - box先
-            LocalType::Type(Type::Val(ValType::Int)), // l2 - unbox先
-            LocalType::Type(Type::Val(ValType::Int)), // l3
-        ];
+    fn test_copy_propagate_to_obj_from_obj() {
+        let locals = [
+            Local {
+                id: LocalId::from(0),
+                typ: LocalType::Type(Type::Val(ValType::Int)),
+            },
+            Local {
+                id: LocalId::from(1),
+                typ: LocalType::Type(Type::Obj),
+            },
+            Local {
+                id: LocalId::from(2),
+                typ: LocalType::Type(Type::Val(ValType::Int)),
+            },
+            Local {
+                id: LocalId::from(3),
+                typ: LocalType::Type(Type::Val(ValType::Int)),
+            },
+        ]
+        .into_iter()
+        .collect::<VecMap<LocalId, _>>();
 
         let mut bb = BasicBlock {
             id: BasicBlockId::from(0),
             exprs: vec![
-                // l1 = box<int> l0
                 ExprAssign {
                     local: Some(LocalId::from(1)),
-                    expr: Expr::Box(ValType::Int, LocalId::from(0)),
+                    expr: Expr::ToObj(ValType::Int, LocalId::from(0)),
                 },
-                // l2 = unbox<int> l1
                 ExprAssign {
                     local: Some(LocalId::from(2)),
-                    expr: Expr::Unbox(ValType::Int, LocalId::from(1)),
+                    expr: Expr::FromObj(ValType::Int, LocalId::from(1)),
                 },
-                // l3 = add(l2, l2)
                 ExprAssign {
                     local: Some(LocalId::from(3)),
                     expr: Expr::Add(LocalId::from(2), LocalId::from(2)),
                 },
             ],
-            next: BasicBlockNext::Return(LocalId::from(3)),
+            next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(3))),
         };
 
-        let locals_immutability = ti_vec![true, true, true, true];
+        let locals_immutability = [
+            (LocalId::from(0), true),
+            (LocalId::from(1), true),
+            (LocalId::from(2), true),
+            (LocalId::from(3), true),
+        ]
+        .into_iter()
+        .collect::<VecMap<LocalId, _>>();
 
         copy_propagate(&locals, &mut bb, &locals_immutability);
 
-        // box-unboxが最適化され、l2の参照がl0に置き換わる
-        if let ExprAssign {
-            expr: Expr::Add(left, right),
-            ..
-        } = &bb.exprs[2]
-        {
-            assert_eq!(*left, LocalId::from(0));
-            assert_eq!(*right, LocalId::from(0));
-        } else {
-            panic!("Expected Add expr with propagated locals");
-        }
+        assert_eq!(bb, BasicBlock {
+            id: BasicBlockId::from(0),
+            exprs: vec![
+                ExprAssign {
+                    local: Some(LocalId::from(1)),
+                    expr: Expr::ToObj(ValType::Int, LocalId::from(0)),
+                },
+                ExprAssign {
+                    local: Some(LocalId::from(2)),
+                    expr: Expr::FromObj(ValType::Int, LocalId::from(1)),
+                },
+                ExprAssign {
+                    local: Some(LocalId::from(3)),
+                    expr: Expr::Add(LocalId::from(0), LocalId::from(0)),
+                },
+            ],
+            next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(3))),
+        });
     }
 
     #[test]
     fn test_dead_code_elimination() {
-        let locals = ti_vec![
-            LocalType::Type(Type::Val(ValType::Int)), // l0
-            LocalType::Type(Type::Val(ValType::Int)), // l1
-            LocalType::Type(Type::Val(ValType::Int)), // l2
-        ];
+        let locals = [
+            Local {
+                id: LocalId::from(0),
+                typ: LocalType::Type(Type::Val(ValType::Int)),
+            },
+            Local {
+                id: LocalId::from(1),
+                typ: LocalType::Type(Type::Val(ValType::Int)),
+            },
+            Local {
+                id: LocalId::from(2),
+                typ: LocalType::Type(Type::Val(ValType::Int)),
+            },
+        ]
+        .into_iter()
+        .collect::<VecMap<LocalId, _>>();
 
         let mut bb = BasicBlock {
             id: BasicBlockId::from(0),
             exprs: vec![
-                // l1 = add(l0, l0) - 使われない
                 ExprAssign {
                     local: Some(LocalId::from(1)),
                     expr: Expr::Add(LocalId::from(0), LocalId::from(0)),
                 },
-                // l2 = add(l0, l0) - 使われる
                 ExprAssign {
                     local: Some(LocalId::from(2)),
                     expr: Expr::Add(LocalId::from(0), LocalId::from(0)),
                 },
             ],
-            next: BasicBlockNext::Return(LocalId::from(2)),
+            next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(2))),
         };
 
-        let locals_immutability = ti_vec![true, true, true];
+        let locals_immutability = [
+            (LocalId::from(0), true),
+            (LocalId::from(1), true),
+            (LocalId::from(2), true),
+        ]
+        .into_iter()
+        .collect::<VecMap<LocalId, _>>();
         let out_used_locals = vec![];
 
         dead_code_elimination(&locals, &mut bb, &locals_immutability, &out_used_locals);
 
-        // l1への代入は削除される
-        if let ExprAssign {
-            local: None,
-            expr: Expr::Nop,
-        } = &bb.exprs[0]
-        {
-            // OK
-        } else {
-            panic!("Expected first expr to be eliminated");
-        }
-
-        // l2への代入は残る
-        if let ExprAssign {
-            local: Some(local),
-            expr: Expr::Add(..),
-        } = &bb.exprs[1]
-        {
-            assert_eq!(*local, LocalId::from(2));
-        } else {
-            panic!("Expected second expr to remain");
-        }
+        assert_eq!(bb, BasicBlock {
+            id: BasicBlockId::from(0),
+            exprs: vec![
+                ExprAssign {
+                    local: None,
+                    expr: Expr::Nop,
+                },
+                ExprAssign {
+                    local: Some(LocalId::from(2)),
+                    expr: Expr::Add(LocalId::from(0), LocalId::from(0)),
+                },
+            ],
+            next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(2))),
+        });
     }
 }

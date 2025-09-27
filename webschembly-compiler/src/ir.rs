@@ -5,13 +5,15 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use strum_macros::EnumIter;
 use typed_index_collections::TiVec;
 
+use crate::{HasId, vec_map::VecMap};
+
 const DISPLAY_INDENT: &str = "  ";
 
 #[derive(Debug, Clone)]
 pub struct VarMeta {
     pub name: String,
 }
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Meta {
     pub local_metas: FxHashMap<(FuncId, LocalId), VarMeta>,
     pub global_metas: FxHashMap<GlobalId, VarMeta>,
@@ -46,13 +48,13 @@ pub struct MetaInFunc<'a> {
 
 /*
 TypeもしくはmutableなTypeを表す
-Type自体にMutCellを含めて再帰的にしてしまうと無限種類の型を作れるようになってしまうので、IRではそれを避けるためこのような構造になっている
+Type自体にRefを含めて再帰的にしてしまうと無限種類の型を作れるようになってしまうので、IRではそれを避けるためこのような構造になっている
 TODO: LocalTypeという名前は適切ではない
 */
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, derive_more::Display)]
 pub enum LocalType {
-    #[display("mut_cell({})", _0)]
-    MutCell(Type), // TODO: MutCell<Boxed>固定で良いかも？
+    #[display("ref({})", _0)]
+    Ref(Type), // TODO: Ref<Obj>固定で良いかも？
     #[display("{}", _0)]
     Type(Type),
     #[display("args")]
@@ -82,8 +84,8 @@ impl LocalType {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, derive_more::Display)]
 pub enum Type {
-    #[display("boxed")]
-    Boxed,
+    #[display("obj")]
+    Obj,
     #[display("{}", _0)]
     Val(ValType),
 }
@@ -94,7 +96,7 @@ impl From<ValType> for Type {
     }
 }
 
-// Box化可能な型
+// Objにアップキャスト可能な型
 // 基本的にSchemeの型に対応するがFuncRefなど例外もある
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, derive_more::Display, EnumIter)]
 #[repr(i32)]
@@ -298,8 +300,12 @@ impl ExprCallRef {
 
 impl fmt::Display for DisplayInFunc<'_, &'_ ExprCallRef> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // TODO: func_typeを表示する
-        write!(f, "call_ref({})", self.value.func.display(self.meta))?;
+        write!(
+            f,
+            "call_ref({}:{})",
+            self.value.func.display(self.meta),
+            self.value.func_type
+        )?;
         if !self.value.args.is_empty() {
             write!(f, "(")?;
             for (i, arg) in self.value.args.iter().enumerate() {
@@ -327,9 +333,9 @@ pub enum Expr {
     Char(char),
     Vector(Vec<LocalId>),
     Cons(LocalId, LocalId),
-    CreateMutCell(Type),
-    DerefMutCell(Type, LocalId),
-    SetMutCell(Type, LocalId /* mutcell */, LocalId /* value */),
+    CreateRef(Type),
+    DerefRef(Type, LocalId),
+    SetRef(Type, LocalId /* ref */, LocalId /* value */),
     FuncRef(FuncId),
     Call(ExprCall),
     CallRef(ExprCallRef),
@@ -338,8 +344,8 @@ pub enum Expr {
         func: LocalId,
     },
     Move(LocalId),
-    Box(ValType, LocalId),
-    Unbox(ValType, LocalId),
+    ToObj(ValType, LocalId),
+    FromObj(ValType, LocalId),
     ClosureEnv(
         Vec<LocalType>, /* env types */
         LocalId,        /* closure */
@@ -423,9 +429,9 @@ macro_rules! impl_Expr_local_ids {
                             yield a;
                             yield b;
                         }
-                        Expr::DerefMutCell(_, id) => yield id,
-                        Expr::SetMutCell(_, cell_id, value_id) => {
-                            yield cell_id;
+                        Expr::DerefRef(_, id) => yield id,
+                        Expr::SetRef(_, ref_id, value_id) => {
+                            yield ref_id;
                             yield value_id;
                         }
                         Expr::Call(call) => {
@@ -448,8 +454,8 @@ macro_rules! impl_Expr_local_ids {
                             }
                         }
                         Expr::Move(id) => yield id,
-                        Expr::Box(_, id) => yield id,
-                        Expr::Unbox(_, id) => yield id,
+                        Expr::ToObj(_, id) => yield id,
+                        Expr::FromObj(_, id) => yield id,
                         Expr::ClosureEnv(_, closure, _) => yield closure,
                         Expr::ClosureFuncRef(id) => yield id,
                         Expr::GlobalSet(_, value) => yield value,
@@ -536,7 +542,7 @@ macro_rules! impl_Expr_local_ids {
                         | Expr::String(..)
                         | Expr::Nil
                         | Expr::Char(..)
-                        | Expr::CreateMutCell(..)
+                        | Expr::CreateRef(..)
                         | Expr::FuncRef(..)
                         | Expr::GlobalGet(..)
                         | Expr::InitModule => {}
@@ -566,9 +572,9 @@ impl Expr {
             | Expr::Cons(..)
             | Expr::FuncRef(..)
             | Expr::Move(..)
-            | Expr::Box(..)
+            | Expr::ToObj(..)
             // 型エラーが起きる可能性があるので厳密には副作用ありだが一旦
-            | Expr::Unbox(..)
+            | Expr::FromObj(..)
             | Expr::Closure { .. }
             | Expr::ClosureEnv(..)
             | Expr::ClosureFuncRef(..)
@@ -596,8 +602,8 @@ impl Expr {
             | Expr::Ge(..)
             | Expr::Args(..)
             | Expr::ArgsRef(..)
-            | Expr::CreateMutCell(..)
-            | Expr::DerefMutCell(..)
+            | Expr::CreateRef(..)
+            | Expr::DerefRef(..)
             | Expr::Add(..)
             | Expr::Sub(..)
             | Expr::Mul(..)
@@ -605,7 +611,7 @@ impl Expr {
 
             Expr::InstantiateFunc(..)
             | Expr::InstantiateBB(..)
-            | Expr::SetMutCell(..)
+            | Expr::SetRef(..)
             | Expr::Call(..)
             | Expr::CallRef(..)
             | Expr::GlobalSet(..)
@@ -664,14 +670,14 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
             Expr::Cons(a, b) => {
                 write!(f, "({} . {})", a.display(self.meta), b.display(self.meta))
             }
-            Expr::CreateMutCell(typ) => write!(f, "create_mut_cell<{}>", typ),
-            Expr::DerefMutCell(typ, id) => {
-                write!(f, "deref_mut_cell<{}>({})", typ, id.display(self.meta))
+            Expr::CreateRef(typ) => write!(f, "create_ref<{}>", typ),
+            Expr::DerefRef(typ, id) => {
+                write!(f, "deref_ref<{}>({})", typ, id.display(self.meta))
             }
-            Expr::SetMutCell(typ, id, value) => {
+            Expr::SetRef(typ, id, value) => {
                 write!(
                     f,
-                    "set_mut_cell<{}>({}, {})",
+                    "set_ref<{}>({}, {})",
                     typ,
                     id.display(self.meta),
                     value.display(self.meta)
@@ -692,8 +698,8 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                 write!(f, "{}", call_ref.display(self.meta))
             }
             Expr::Move(id) => write!(f, "move({})", id.display(self.meta)),
-            Expr::Box(typ, id) => write!(f, "box<{}>({})", typ, id.display(self.meta)),
-            Expr::Unbox(typ, id) => write!(f, "unbox<{}>({})", typ, id.display(self.meta)),
+            Expr::ToObj(typ, id) => write!(f, "to_obj<{}>({})", typ, id.display(self.meta)),
+            Expr::FromObj(typ, id) => write!(f, "from_obj<{}>({})", typ, id.display(self.meta)),
             Expr::ClosureEnv(env_types, closure, index) => {
                 write!(f, "closure_env<")?;
                 for (i, typ) in env_types.iter().enumerate() {
@@ -795,11 +801,11 @@ macro_rules! impl_ExprAssign_local_usages {
                 from_coroutine(
                     #[coroutine]
                     move || {
-                        if let Some(local) = &$($mutability)? self.local {
-                            yield (local, LocalFlag::Defined);
-                        }
                         for id in self.expr.[<local_ids $($suffix)?>]() {
                             yield (id, LocalFlag::Used);
+                        }
+                        if let Some(local) = &$($mutability)? self.local {
+                            yield (local, LocalFlag::Defined);
                         }
                     },
                 )
@@ -828,7 +834,7 @@ impl fmt::Display for DisplayInFunc<'_, &'_ ExprAssign> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BasicBlock {
     pub id: BasicBlockId,
     pub exprs: Vec<ExprAssign>,
@@ -890,6 +896,15 @@ impl BasicBlock {
     impl_BasicBlock_func_ids!(_mut, mut);
     impl_BasicBlock_func_ids!(,);
 }
+
+impl HasId for BasicBlock {
+    type Id = BasicBlockId;
+
+    fn id(&self) -> Self::Id {
+        self.id
+    }
+}
+
 impl fmt::Display for DisplayInFunc<'_, &'_ BasicBlock> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // きれいな実装ではないがインデントは決め打ちする
@@ -936,14 +951,90 @@ impl fmt::Display for Display<'_, BasicBlockId> {
     }
 }
 
-// 閉路を作ってはいけない
-#[derive(Debug, Clone)]
-pub enum BasicBlockNext {
-    If(LocalId, BasicBlockId, BasicBlockId),
-    Jump(BasicBlockId),
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BasicBlockTerminator {
     Return(LocalId),
     TailCall(ExprCall),
     TailCallRef(ExprCallRef),
+}
+macro_rules! impl_BasicBlockTerminator_local_ids {
+    ($($suffix: ident)?,$($mutability: tt)?) => {
+        paste::paste! {
+            pub fn [<local_ids $($suffix)?>](&$($mutability)? self) -> impl Iterator<Item = &$($mutability)? LocalId> {
+                from_coroutine(
+                    #[coroutine]
+                    move || match self {
+                        BasicBlockTerminator::Return(local) => yield local,
+                        BasicBlockTerminator::TailCall(call) => {
+                            for id in call.[<local_ids $($suffix)?>]() {
+                                yield id;
+                            }
+                        }
+                        BasicBlockTerminator::TailCallRef(call_ref) => {
+                            for id in call_ref.[<local_ids $($suffix)?>]() {
+                                yield id;
+                            }
+                        }
+                    },
+                )
+            }
+        }
+    };
+}
+
+macro_rules! impl_BasicBlockTerminator_func_ids {
+    ($($suffix: ident)?,$($mutability: tt)?) => {
+        paste::paste! {
+            pub fn [<func_ids $($suffix)?>](&$($mutability)? self) -> impl Iterator<Item = &$($mutability)? FuncId> {
+                from_coroutine(
+                    #[coroutine]
+                    move || match self {
+                        BasicBlockTerminator::Return(_)
+                        | BasicBlockTerminator::TailCallRef(_) => {}
+                        BasicBlockTerminator::TailCall(call) => {
+                            for id in call.[<func_ids $($suffix)?>]() {
+                                yield id;
+                            }
+                        }
+                    },
+                )
+            }
+        }
+    };
+}
+
+impl BasicBlockTerminator {
+    pub fn display<'a>(&self, meta: MetaInFunc<'a>) -> DisplayInFunc<'a, &BasicBlockTerminator> {
+        DisplayInFunc { value: self, meta }
+    }
+
+    impl_BasicBlockTerminator_local_ids!(_mut, mut);
+    impl_BasicBlockTerminator_local_ids!(,);
+
+    impl_BasicBlockTerminator_func_ids!(_mut, mut);
+    impl_BasicBlockTerminator_func_ids!(,);
+}
+
+impl fmt::Display for DisplayInFunc<'_, &BasicBlockTerminator> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.value {
+            BasicBlockTerminator::Return(local) => write!(f, "return {}", local.display(self.meta)),
+            BasicBlockTerminator::TailCall(call) => {
+                write!(f, "tail_call {}", call.display(self.meta))
+            }
+            BasicBlockTerminator::TailCallRef(call_ref) => {
+                write!(f, "tail_call_ref {}", call_ref.display(self.meta))
+            }
+        }
+    }
+}
+
+// 閉路を作ってはいけない
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BasicBlockNext {
+    If(LocalId, BasicBlockId, BasicBlockId),
+    Jump(BasicBlockId),
+    Terminator(BasicBlockTerminator),
 }
 
 macro_rules! impl_BasicBlockNext_local_ids {
@@ -955,14 +1046,8 @@ macro_rules! impl_BasicBlockNext_local_ids {
                     move || match self {
                         BasicBlockNext::If(cond, _, _) => yield cond,
                         BasicBlockNext::Jump(_) => {}
-                        BasicBlockNext::Return(local) => yield local,
-                        BasicBlockNext::TailCall(call) => {
-                            for id in call.[<local_ids $($suffix)?>]() {
-                                yield id;
-                            }
-                        }
-                        BasicBlockNext::TailCallRef(call_ref) => {
-                            for id in call_ref.[<local_ids $($suffix)?>]() {
+                        BasicBlockNext::Terminator(terminator) => {
+                            for id in terminator.[<local_ids $($suffix)?>]() {
                                 yield id;
                             }
                         }
@@ -981,11 +1066,9 @@ macro_rules! impl_BasicBlockNext_func_ids {
                     #[coroutine]
                     move || match self {
                         BasicBlockNext::If(_, _, _)
-                        | BasicBlockNext::Jump(_)
-                        | BasicBlockNext::Return(_)
-                        | BasicBlockNext::TailCallRef(_) => {}
-                        BasicBlockNext::TailCall(call) => {
-                            for id in call.[<func_ids $($suffix)?>]() {
+                        | BasicBlockNext::Jump(_) => {}
+                        BasicBlockNext::Terminator(terminator) => {
+                            for id in terminator.[<func_ids $($suffix)?>]() {
                                 yield id;
                             }
                         }
@@ -1021,12 +1104,8 @@ impl fmt::Display for DisplayInFunc<'_, &BasicBlockNext> {
                 )
             }
             BasicBlockNext::Jump(bb) => write!(f, "jump {}", bb.display(self.meta.meta)),
-            BasicBlockNext::Return(local) => write!(f, "return {}", local.display(self.meta)),
-            BasicBlockNext::TailCall(call) => {
-                write!(f, "tail_call {}", call.display(self.meta))
-            }
-            BasicBlockNext::TailCallRef(call_ref) => {
-                write!(f, "tail_call_ref {}", call_ref.display(self.meta))
+            BasicBlockNext::Terminator(terminator) => {
+                write!(f, "{}", terminator.display(self.meta))
             }
         }
     }
@@ -1044,30 +1123,52 @@ impl BasicBlockNext {
                 BasicBlockNext::Jump(bb) => {
                     yield *bb;
                 }
-                BasicBlockNext::Return(_)
-                | BasicBlockNext::TailCall(_)
-                | BasicBlockNext::TailCallRef(_) => {}
+                BasicBlockNext::Terminator(_) => {}
             },
         )
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FuncJitStrategy {
-    Never,
-    Lambda { args: LocalId },
-    BasicBlock,
+pub struct Local {
+    pub id: LocalId,
+    pub typ: LocalType,
+}
+
+impl HasId for Local {
+    type Id = LocalId;
+
+    fn id(&self) -> Self::Id {
+        self.id
+    }
+}
+
+impl Local {
+    pub fn display<'a>(&self, meta: MetaInFunc<'a>) -> DisplayInFunc<'a, &'_ Local> {
+        DisplayInFunc { value: self, meta }
+    }
+}
+
+impl fmt::Display for DisplayInFunc<'_, &'_ Local> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "local {}: {}",
+            self.value.id.display(self.meta),
+            self.value.typ
+        )?;
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct Func {
     pub id: FuncId,
-    pub locals: TiVec<LocalId, LocalType>,
+    pub locals: VecMap<LocalId, Local>,
     pub args: Vec<LocalId>,
     pub ret_type: LocalType,
     pub bb_entry: BasicBlockId,
-    pub bbs: TiVec<BasicBlockId, BasicBlock>,
-    pub jit_strategy: FuncJitStrategy,
+    pub bbs: VecMap<BasicBlockId, BasicBlock>,
 }
 
 impl Func {
@@ -1076,7 +1177,7 @@ impl Func {
     }
 
     pub fn arg_types(&self) -> Vec<LocalType> {
-        self.args.iter().map(|&arg| self.locals[arg]).collect()
+        self.args.iter().map(|&arg| self.locals[arg].typ).collect()
     }
 
     pub fn ret_type(&self) -> LocalType {
@@ -1094,13 +1195,12 @@ impl Func {
 impl fmt::Display for Display<'_, &'_ Func> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "{}:", self.value.id.display(self.meta))?;
-        for (local_id, local_type) in self.value.locals.iter_enumerated() {
+        for local in self.value.locals.values() {
             writeln!(
                 f,
-                "{}local {}: {}",
+                "{}{}",
                 DISPLAY_INDENT,
-                local_id.display(self.meta.in_func(self.value.id)),
-                local_type
+                local.display(self.meta.in_func(self.value.id))
             )?;
         }
         write!(f, "{}args: ", DISPLAY_INDENT)?;
@@ -1118,7 +1218,7 @@ impl fmt::Display for Display<'_, &'_ Func> {
             DISPLAY_INDENT,
             self.value.bb_entry.display(self.meta)
         )?;
-        for bb in self.value.bbs.iter() {
+        for bb in self.value.bbs.values() {
             write!(f, "{}", bb.display(self.meta.in_func(self.value.id)))?;
         }
         Ok(())
@@ -1129,6 +1229,19 @@ impl fmt::Display for Display<'_, &'_ Func> {
 pub struct FuncType {
     pub args: Vec<LocalType>,
     pub ret: LocalType,
+}
+
+impl std::fmt::Display for FuncType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "(")?;
+        for (i, arg) in self.args.iter().enumerate() {
+            if i > 0 {
+                write!(f, ",")?;
+            }
+            write!(f, "{}", arg)?;
+        }
+        write!(f, ") -> {}", self.ret)
+    }
 }
 
 #[derive(Debug, Clone, Copy, From, Into, Hash, PartialEq, Eq)]
