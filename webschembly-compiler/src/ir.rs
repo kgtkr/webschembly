@@ -430,8 +430,8 @@ macro_rules! impl_Expr_local_ids {
                             yield b;
                         }
                         Expr::DerefRef(_, id) => yield id,
-                        Expr::SetRef(_, cell_id, value_id) => {
-                            yield cell_id;
+                        Expr::SetRef(_, ref_id, value_id) => {
+                            yield ref_id;
                             yield value_id;
                         }
                         Expr::Call(call) => {
@@ -670,14 +670,14 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
             Expr::Cons(a, b) => {
                 write!(f, "({} . {})", a.display(self.meta), b.display(self.meta))
             }
-            Expr::CreateRef(typ) => write!(f, "create_mut_cell<{}>", typ),
+            Expr::CreateRef(typ) => write!(f, "create_ref<{}>", typ),
             Expr::DerefRef(typ, id) => {
-                write!(f, "deref_mut_cell<{}>({})", typ, id.display(self.meta))
+                write!(f, "deref_ref<{}>({})", typ, id.display(self.meta))
             }
             Expr::SetRef(typ, id, value) => {
                 write!(
                     f,
-                    "set_mut_cell<{}>({}, {})",
+                    "set_ref<{}>({}, {})",
                     typ,
                     id.display(self.meta),
                     value.display(self.meta)

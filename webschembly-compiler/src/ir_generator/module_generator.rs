@@ -140,7 +140,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             expr: Expr::InitModule,
         });
 
-        self.define_all_ast_local_and_create_mut_cell(
+        self.define_all_ast_local_and_create_ref(
             &self
                 .module_generator
                 .ast
@@ -238,7 +238,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             });
         }
 
-        self.define_all_ast_local_and_create_mut_cell(&x.get_ref(type_map::key::<Used>()).defines);
+        self.define_all_ast_local_and_create_ref(&x.get_ref(type_map::key::<Used>()).defines);
 
         let ret = self.local(Type::Boxed);
         self.gen_exprs(Some(ret), &lambda.body);
@@ -270,7 +270,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         })
     }
 
-    fn define_all_ast_local_and_create_mut_cell(&mut self, locals: &[ast::LocalVarId]) {
+    fn define_all_ast_local_and_create_ref(&mut self, locals: &[ast::LocalVarId]) {
         for id in locals {
             let local = self.define_ast_local(*id);
             if self

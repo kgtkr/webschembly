@@ -54,7 +54,7 @@ struct ModuleGenerator<'a> {
     exports: ExportSection,
     // types
     vector_inner_type: u32,
-    mut_cell_types: FxHashMap<ir::Type, u32>,
+    ref_types: FxHashMap<ir::Type, u32>,
     val_type: u32,
     nil_type: u32,
     bool_type: u32,
@@ -106,7 +106,7 @@ impl<'a> ModuleGenerator<'a> {
             func_indices: FxHashMap::default(),
             datas: DataSection::new(),
             exports: ExportSection::new(),
-            mut_cell_types: FxHashMap::default(),
+            ref_types: FxHashMap::default(),
             vector_inner_type: 0,
             val_type: 0,
             nil_type: 0,
@@ -692,10 +692,10 @@ impl<'a> ModuleGenerator<'a> {
         usize::from(global) as i32
     }
 
-    fn mut_cell_type(&mut self, inner_ty: ir::Type) -> u32 {
+    fn ref_type(&mut self, inner_ty: ir::Type) -> u32 {
         let ty = self.convert_type(inner_ty);
 
-        *self.mut_cell_types.entry(inner_ty).or_insert_with(|| {
+        *self.ref_types.entry(inner_ty).or_insert_with(|| {
             let type_id = self.type_count;
             self.type_count += 1;
             self.types.ty().struct_(vec![FieldType {
@@ -709,10 +709,10 @@ impl<'a> ModuleGenerator<'a> {
     fn convert_local_type(&mut self, ty: ir::LocalType) -> ValType {
         match ty {
             ir::LocalType::Ref(inner_ty) => {
-                let mut_cell_type = self.mut_cell_type(inner_ty);
+                let ref_type = self.ref_type(inner_ty);
                 ValType::Ref(RefType {
                     nullable: false,
-                    heap_type: HeapType::Concrete(mut_cell_type),
+                    heap_type: HeapType::Concrete(ref_type),
                 })
             }
             ir::LocalType::Type(ty) => self.convert_type(ty),
@@ -1006,21 +1006,21 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     self.module_generator.val_type,
                 )));
                 function.instruction(&Instruction::StructNew(
-                    self.module_generator.mut_cell_type(*typ),
+                    self.module_generator.ref_type(*typ),
                 ));
             }
-            ir::Expr::DerefRef(typ, cell) => {
-                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*cell)));
+            ir::Expr::DerefRef(typ, ref_) => {
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*ref_)));
                 function.instruction(&Instruction::StructGet {
-                    struct_type_index: self.module_generator.mut_cell_type(*typ),
+                    struct_type_index: self.module_generator.ref_type(*typ),
                     field_index: ModuleGenerator::REF_VALUE_FIELD,
                 });
             }
-            ir::Expr::SetRef(typ, cell, val) => {
-                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*cell)));
+            ir::Expr::SetRef(typ, ref_, val) => {
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*ref_)));
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
                 function.instruction(&Instruction::StructSet {
-                    struct_type_index: self.module_generator.mut_cell_type(*typ),
+                    struct_type_index: self.module_generator.ref_type(*typ),
                     field_index: ModuleGenerator::REF_VALUE_FIELD,
                 });
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
