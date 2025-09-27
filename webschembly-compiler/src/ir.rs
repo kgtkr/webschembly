@@ -834,7 +834,7 @@ impl fmt::Display for DisplayInFunc<'_, &'_ ExprAssign> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BasicBlock {
     pub id: BasicBlockId,
     pub exprs: Vec<ExprAssign>,
@@ -1030,7 +1030,7 @@ impl fmt::Display for DisplayInFunc<'_, &BasicBlockTerminator> {
 }
 
 // 閉路を作ってはいけない
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BasicBlockNext {
     If(LocalId, BasicBlockId, BasicBlockId),
     Jump(BasicBlockId),
