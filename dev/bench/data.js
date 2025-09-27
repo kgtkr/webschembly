@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1758576311716,
+  "lastUpdate": 1758980266467,
   "repoUrl": "https://github.com/kgtkr/webschembly",
   "entries": {
     "Benchmark": [
@@ -296,6 +296,114 @@ window.BENCHMARK_DATA = {
             "name": "tak-30.b.scm,with warmup,enableJit=false",
             "value": 22.35,
             "range": "±0.30%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "me@kgtkr.net",
+            "name": "kgtkr",
+            "username": "kgtkr"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "6c46944a9995654691280546ae17600ae07ed365",
+          "message": "Merge pull request #15 from kgtkr/work-20250923\n\nWork 20250923",
+          "timestamp": "2025-09-27T22:30:27+09:00",
+          "tree_id": "b14f31abf107891edf6dbeb32731d3856017b78a",
+          "url": "https://github.com/kgtkr/webschembly/commit/6c46944a9995654691280546ae17600ae07ed365"
+        },
+        "date": 1758980266152,
+        "tool": "benchmarkjs",
+        "benches": [
+          {
+            "name": "div2-300000.b.scm,",
+            "value": 3.04,
+            "range": "±0.73%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "div2-300000.b.scm,enableJitOptimization=false",
+            "value": 3.01,
+            "range": "±0.71%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "div2-300000.b.scm,enableJit=false",
+            "value": 10.67,
+            "range": "±1.13%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "div2-300000.b.scm,with warmup,",
+            "value": 3.04,
+            "range": "±1.15%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "div2-300000.b.scm,with warmup,enableJitOptimization=false",
+            "value": 3.02,
+            "range": "±1.06%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "div2-300000.b.scm,with warmup,enableJit=false",
+            "value": 10.78,
+            "range": "±0.51%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "tak-30.b.scm,",
+            "value": 5.6,
+            "range": "±0.55%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "tak-30.b.scm,enableJitOptimization=false",
+            "value": 5.68,
+            "range": "±0.51%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "tak-30.b.scm,enableJit=false",
+            "value": 21.29,
+            "range": "±0.88%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "tak-30.b.scm,with warmup,",
+            "value": 5.88,
+            "range": "±1.03%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "tak-30.b.scm,with warmup,enableJit=false",
+            "value": 22.24,
+            "range": "±0.77%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "tak-30.b.scm,with warmup,enableJitOptimization=false",
+            "value": 5.96,
+            "range": "±0.55%",
             "unit": "ops/sec",
             "extra": "64 samples"
           }
