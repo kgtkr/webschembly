@@ -725,7 +725,7 @@ impl<'a> ModuleGenerator<'a> {
 
     fn convert_type(&self, ty: ir::Type) -> ValType {
         match ty {
-            ir::Type::Boxed => ValType::Ref(RefType {
+            ir::Type::Obj => ValType::Ref(RefType {
                 nullable: true,
                 heap_type: HeapType::Concrete(self.val_type),
             }),
@@ -1061,7 +1061,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             ir::Expr::Move(val) => {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
             }
-            ir::Expr::Unbox(typ, val) => match typ {
+            ir::Expr::FromObj(typ, val) => match typ {
                 ir::ValType::Bool => {
                     function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
                     function.instruction(&Instruction::RefCastNonNull(HeapType::Concrete(
@@ -1133,7 +1133,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     )));
                 }
             },
-            ir::Expr::Box(typ, val) => match typ {
+            ir::Expr::ToObj(typ, val) => match typ {
                 ir::ValType::Bool => {
                     function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
                     function.instruction(&Instruction::If(BlockType::Result(ValType::Ref(

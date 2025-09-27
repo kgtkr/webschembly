@@ -54,7 +54,7 @@ TODO: LocalTypeという名前は適切ではない
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, derive_more::Display)]
 pub enum LocalType {
     #[display("ref({})", _0)]
-    Ref(Type), // TODO: Ref<Boxed>固定で良いかも？
+    Ref(Type), // TODO: Ref<Obj>固定で良いかも？
     #[display("{}", _0)]
     Type(Type),
     #[display("args")]
@@ -84,8 +84,8 @@ impl LocalType {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, derive_more::Display)]
 pub enum Type {
-    #[display("boxed")]
-    Boxed,
+    #[display("obj")]
+    Obj,
     #[display("{}", _0)]
     Val(ValType),
 }
@@ -96,7 +96,7 @@ impl From<ValType> for Type {
     }
 }
 
-// Box化可能な型
+// Objにアップキャスト可能な型
 // 基本的にSchemeの型に対応するがFuncRefなど例外もある
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, derive_more::Display, EnumIter)]
 #[repr(i32)]
@@ -344,8 +344,8 @@ pub enum Expr {
         func: LocalId,
     },
     Move(LocalId),
-    Box(ValType, LocalId),
-    Unbox(ValType, LocalId),
+    ToObj(ValType, LocalId),
+    FromObj(ValType, LocalId),
     ClosureEnv(
         Vec<LocalType>, /* env types */
         LocalId,        /* closure */
@@ -454,8 +454,8 @@ macro_rules! impl_Expr_local_ids {
                             }
                         }
                         Expr::Move(id) => yield id,
-                        Expr::Box(_, id) => yield id,
-                        Expr::Unbox(_, id) => yield id,
+                        Expr::ToObj(_, id) => yield id,
+                        Expr::FromObj(_, id) => yield id,
                         Expr::ClosureEnv(_, closure, _) => yield closure,
                         Expr::ClosureFuncRef(id) => yield id,
                         Expr::GlobalSet(_, value) => yield value,
@@ -572,9 +572,9 @@ impl Expr {
             | Expr::Cons(..)
             | Expr::FuncRef(..)
             | Expr::Move(..)
-            | Expr::Box(..)
+            | Expr::ToObj(..)
             // 型エラーが起きる可能性があるので厳密には副作用ありだが一旦
-            | Expr::Unbox(..)
+            | Expr::FromObj(..)
             | Expr::Closure { .. }
             | Expr::ClosureEnv(..)
             | Expr::ClosureFuncRef(..)
@@ -698,8 +698,8 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                 write!(f, "{}", call_ref.display(self.meta))
             }
             Expr::Move(id) => write!(f, "move({})", id.display(self.meta)),
-            Expr::Box(typ, id) => write!(f, "box<{}>({})", typ, id.display(self.meta)),
-            Expr::Unbox(typ, id) => write!(f, "unbox<{}>({})", typ, id.display(self.meta)),
+            Expr::ToObj(typ, id) => write!(f, "to_obj<{}>({})", typ, id.display(self.meta)),
+            Expr::FromObj(typ, id) => write!(f, "from_obj<{}>({})", typ, id.display(self.meta)),
             Expr::ClosureEnv(env_types, closure, index) => {
                 write!(f, "closure_env<")?;
                 for (i, typ) in env_types.iter().enumerate() {
