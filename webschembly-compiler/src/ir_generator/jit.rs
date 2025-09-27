@@ -731,6 +731,12 @@ impl JitFunc {
         let module = &jit_module.module;
         let func = &module.funcs[self.func_id];
         let mut bb = func.bbs[bb_id].clone();
+        // bbをマージ
+        while let BasicBlockNext::Jump(next_id) = bb.next {
+            let next_bb = func.bbs[next_id].clone();
+            bb.exprs.extend(next_bb.exprs);
+            bb.next = next_bb.next;
+        }
 
         let mut funcs = TiVec::new();
 
