@@ -71,9 +71,15 @@ impl Compiler {
                 allow_set_builtin: is_stdlib,
             });
         preprocess_module(&mut module);
+        postprocess_phi(&mut module);
 
         if let Some(jit) = &mut self.jit {
-            Ok(jit.register_module(&mut self.global_manager, module))
+            // postprocess_phiを行うことで、関数全体で見るとSSAではなくなるが、BB単位ではSSAのままになる
+            // レジスタ割り付けは行ってはいけない
+            let mut stub_module = jit.register_module(&mut self.global_manager, module);
+            preprocess_module(&mut stub_module);
+            postprocess_phi(&mut stub_module);
+            Ok(stub_module)
         } else {
             Ok(module)
         }
@@ -86,6 +92,7 @@ impl Compiler {
             .expect("JIT is not enabled")
             .instantiate_func(&mut self.global_manager, module_id, func_id);
         preprocess_module(&mut module);
+        postprocess_phi(&mut module);
         module
     }
 
@@ -102,6 +109,7 @@ impl Compiler {
             .expect("JIT is not enabled")
             .instantiate_bb(module_id, func_id, bb_id, index);
         preprocess_module(&mut module);
+        postprocess_phi(&mut module);
         module
     }
 }
@@ -112,13 +120,18 @@ fn preprocess_module(module: &mut ir::Module) {
             assert_ssa(func);
         }
         preprocess_cfg(&mut func.bbs, func.bb_entry);
+    }
+}
+
+fn postprocess_phi(module: &mut ir::Module) {
+    for func in module.funcs.iter_mut() {
         if cfg!(debug_assertions) {
             assert_ssa(func);
         }
 
         // TODO: クリティカルエッジの分割
         remove_phi(func);
-        // TODO: レジスタ割り当て
+        // TODO: レジスタ割り付け
 
         // 未使用のローカルを削除
         let mut local_used = VecMap::new();
