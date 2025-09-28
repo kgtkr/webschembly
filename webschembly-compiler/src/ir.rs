@@ -321,9 +321,15 @@ impl fmt::Display for DisplayInFunc<'_, &'_ ExprCallRef> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PhiIncomingValue {
+    pub bb: BasicBlockId,
+    pub local: LocalId,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Expr {
-    Nop,                   // 左辺はNoneでなければならない
-    Phi(LocalId, LocalId), // BBの先頭にのみ出現可能
+    Nop,                        // 左辺はNoneでなければならない
+    Phi(Vec<PhiIncomingValue>), // BBの先頭にのみ連続して出現可能(Nopが間に入るのは可)
     InstantiateFunc(ModuleId, FuncId),
     InstantiateBB(ModuleId, FuncId, BasicBlockId, LocalId /* index */),
     Bool(bool),
@@ -420,9 +426,10 @@ macro_rules! impl_Expr_local_ids {
                 from_coroutine(
                     #[coroutine]
                     move || match self {
-                        Expr::Phi(a, b) => {
-                            yield a;
-                            yield b;
+                        Expr::Phi(values) => {
+                            for value in values.[<iter $($suffix)?>]() {
+                                yield &$($mutability)? value.local;
+                            }
                         }
                         Expr::StringToSymbol(id) => yield id,
                         Expr::Vector(ids) => {
@@ -639,7 +646,21 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.value {
             Expr::Nop => write!(f, "nop"),
-            Expr::Phi(a, b) => write!(f, "phi({}, {})", a.display(self.meta), b.display(self.meta)),
+            Expr::Phi(values) => {
+                write!(f, "phi(")?;
+                for (i, value) in values.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(
+                        f,
+                        "{}: {}",
+                        value.bb.display(self.meta.meta),
+                        value.local.display(self.meta)
+                    )?;
+                }
+                write!(f, ")")
+            }
             Expr::InstantiateFunc(module_id, func_id) => {
                 write!(
                     f,
@@ -895,6 +916,13 @@ macro_rules! impl_BasicBlock_func_ids {
 impl BasicBlock {
     pub fn display<'a>(&self, meta: MetaInFunc<'a>) -> DisplayInFunc<'a, &'_ BasicBlock> {
         DisplayInFunc { value: self, meta }
+    }
+
+    pub fn phi_exprs(&self) -> impl Iterator<Item = &ExprAssign> {
+        self.exprs
+            .iter()
+            .take_while(|expr| matches!(expr.expr, Expr::Phi(..) | Expr::Nop))
+            .filter(|expr| matches!(expr.expr, Expr::Phi(..)))
     }
 
     impl_BasicBlock_local_usages!(_mut, mut);
