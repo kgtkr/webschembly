@@ -31,14 +31,20 @@ for (const filename of filenames) {
   for (const warmup of [false, true]) {
     for (const compilerConfig of compilerConfigs) {
       const srcBuf = await fs.readFile(path.join(sourceDir, filename));
-      const runMainSrcBuf = new TextEncoder().encode("(main)");
+
       let runtime: Runtime;
 
       if (warmup) {
         bench.add(
           `${filename},with warmup,${compilerConfigToString(compilerConfig)}`,
           () => {
-            runtime.loadSrc(runMainSrcBuf);
+            const mainString = runtime.mallocString("main");
+            const mainClosure = runtime.instance.exports.get_global(
+              mainString[0],
+              mainString[1]
+            );
+            const mainArgs = runtime.instance.exports.new_args(0);
+            runtime.instance.exports.call_closure(mainClosure, mainArgs);
           },
           {
             beforeEach: async () => {

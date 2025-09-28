@@ -33,6 +33,8 @@ export type Runtime = {
   loadSrc: (srcBuf: Uint8Array) => void;
   flushAll: () => void;
   cleanup: () => void;
+  mallocString: (s: string) => [ptr: number, len: number];
+  instance: TypedWebAssemblyInstance<RuntimeExports>;
 };
 
 export type RuntimeImportsEnv = {
@@ -217,5 +219,7 @@ export async function createRuntime(
     cleanup: () => {
       runtimeInstance.exports.cleanup();
     },
+    mallocString,
+    instance: runtimeInstance,
   };
 }
