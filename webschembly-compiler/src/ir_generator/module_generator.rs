@@ -299,6 +299,36 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 LocalType::Type(Type::Obj)
             },
         );
+        let prev = self.local_ids.insert(id, local);
+        debug_assert!(prev.is_none());
+        if let Some(ast_meta) = ast_meta {
+            self.module_generator
+                .local_metas
+                .insert((self.id, local), VarMeta {
+                    name: ast_meta.name.clone(),
+                });
+        }
+        local
+    }
+
+    fn new_version_ast_local(&mut self, id: ast::LocalVarId) -> LocalId {
+        let ast_meta = self
+            .module_generator
+            .ast
+            .x
+            .get_ref(type_map::key::<Used>())
+            .local_metas
+            .get(&id);
+        debug_assert!(
+            !self
+                .module_generator
+                .ast
+                .x
+                .get_ref(type_map::key::<Used>())
+                .box_vars
+                .contains(&id)
+        );
+        let local = self.local(LocalType::Type(Type::Obj));
         self.local_ids.insert(id, local);
         if let Some(ast_meta) = ast_meta {
             self.module_generator
@@ -428,14 +458,18 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 let merge_bb_id = self.bbs.allocate_key();
                 self.close_bb(BasicBlockNext::If(cond_local, then_bb_id, else_bb_id));
 
+                let before_locals = self.local_ids.clone();
+
                 self.current_bb_id = Some(then_bb_id);
                 let then_result = self.local(Type::Obj);
                 self.gen_expr(Some(then_result), then);
+                let then_locals = self.local_ids.clone();
                 self.close_bb(BasicBlockNext::Jump(merge_bb_id));
 
                 self.current_bb_id = Some(else_bb_id);
                 let els_result = self.local(Type::Obj);
                 self.gen_expr(Some(els_result), els);
+                let els_locals = self.local_ids.clone();
                 self.close_bb(BasicBlockNext::Jump(merge_bb_id));
 
                 self.current_bb_id = Some(merge_bb_id);
@@ -452,6 +486,34 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                         },
                     ]),
                 });
+
+                // thenとelseでset!された変数をphiノードで結合
+                for (var_id, before_local) in before_locals {
+                    let then_local = *then_locals.get(&var_id).unwrap();
+                    let els_local = *els_locals.get(&var_id).unwrap();
+
+                    if then_local != els_local || then_local != before_local {
+                        debug_assert_eq!(self.locals[then_local].typ, self.locals[els_local].typ,);
+                        debug_assert_eq!(
+                            self.locals[then_local].typ,
+                            self.locals[before_local].typ,
+                        );
+                        let phi_local = self.new_version_ast_local(var_id);
+                        self.exprs.push(ExprAssign {
+                            local: Some(phi_local),
+                            expr: Expr::Phi(vec![
+                                PhiIncomingValue {
+                                    bb: then_bb_id,
+                                    local: then_local,
+                                },
+                                PhiIncomingValue {
+                                    bb: else_bb_id,
+                                    local: els_local,
+                                },
+                            ]),
+                        });
+                    }
+                }
             }
             ast::Expr::Call(x, ast::Call { func, args }) => {
                 if let ast::Expr::Var(x, name) = func.as_ref()
@@ -631,7 +693,8 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                                 expr: Expr::Move(obj_local),
                             });
                         } else {
-                            let local = *self.local_ids.get(id).unwrap();
+                            // SSA形式のため、新しいローカルを定義して代入する
+                            let local = self.new_version_ast_local(*id);
                             self.gen_expr(Some(local), expr);
                             self.exprs.push(ExprAssign {
                                 local: result,
