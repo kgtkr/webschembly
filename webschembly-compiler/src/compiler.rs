@@ -52,7 +52,9 @@ impl Compiler {
     }
 
     pub fn get_global_id(&self, name: &str) -> Option<i32> {
-        self.ast_generator.get_global_id(name).map(|id| id.0 as i32)
+        let global_var_id = self.ast_generator.get_global_id(name)?;
+        let global_id = self.global_manager.get_global_id(global_var_id)?;
+        Some(usize::from(global_id) as i32)
     }
 
     pub fn compile_module(

@@ -30,6 +30,10 @@ impl GlobalManager {
         id
     }
 
+    pub fn get_global_id(&self, id: ast::GlobalVarId) -> Option<GlobalId> {
+        self.global_ids.get(&id).copied()
+    }
+
     pub fn global_id(&mut self, id: ast::GlobalVarId) -> GlobalId {
         if let Some(&global_id) = self.global_ids.get(&id) {
             global_id
