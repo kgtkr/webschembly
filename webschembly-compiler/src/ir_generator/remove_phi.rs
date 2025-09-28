@@ -28,7 +28,7 @@ fn remove_phi_in_bb(func: &mut Func, bb_id: BasicBlockId) {
             for incoming in incomings {
                 pending_copies
                     .entry(incoming.bb)
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(Copy {
                         dest: result,
                         src: incoming.local,
