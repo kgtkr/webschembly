@@ -113,10 +113,10 @@ struct FuncGenerator<'a, 'b> {
     id: FuncId,
     locals: VecMap<LocalId, Local>,
     local_ids: FxHashMap<ast::LocalVarId, LocalId>,
-    bbs: VecMap<BasicBlockId, BasicBlockOptionalNext>,
-    next_undecided_bb_ids: FxHashSet<BasicBlockId>,
+    bbs: VecMap<BasicBlockId, BasicBlock>,
     module_generator: &'a mut ModuleGenerator<'b>,
     exprs: Vec<ExprAssign>,
+    current_bb_id: Option<BasicBlockId>,
 }
 
 impl<'a, 'b> FuncGenerator<'a, 'b> {
@@ -126,9 +126,9 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             locals: VecMap::new(),
             local_ids: FxHashMap::default(),
             bbs: VecMap::new(),
-            next_undecided_bb_ids: FxHashSet::default(),
             module_generator,
             exprs: Vec::new(),
+            current_bb_id: None,
         }
     }
 
@@ -149,25 +149,19 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 .defines,
         );
 
+        let bb_entry = self.bbs.allocate_key();
+        self.current_bb_id = Some(bb_entry);
         self.gen_exprs(Some(obj_local), &self.module_generator.ast.exprs);
-        self.close_bb(Some(BasicBlockNext::Terminator(
-            BasicBlockTerminator::Return(obj_local),
+        self.close_bb(BasicBlockNext::Terminator(BasicBlockTerminator::Return(
+            obj_local,
         )));
         Func {
             id: self.id,
             args: vec![],
             ret_type: LocalType::Type(Type::Obj),
             locals: self.locals,
-            bb_entry: BasicBlockId::from(0), // TODO: もっと綺麗な書き方があるはず
-            bbs: self
-                .bbs
-                .into_iter()
-                .map(|(id, bb)| BasicBlock {
-                    id,
-                    exprs: bb.exprs,
-                    next: bb.next.unwrap(),
-                })
-                .collect(),
+            bb_entry,
+            bbs: self.bbs,
         }
     }
 
@@ -240,26 +234,20 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
 
         self.define_all_ast_local_and_create_ref(&x.get_ref(type_map::key::<Used>()).defines);
 
+        let bb_entry = self.bbs.allocate_key();
+        self.current_bb_id = Some(bb_entry);
         let ret = self.local(Type::Obj);
         self.gen_exprs(Some(ret), &lambda.body);
-        self.close_bb(Some(BasicBlockNext::Terminator(
-            BasicBlockTerminator::Return(ret),
+        self.close_bb(BasicBlockNext::Terminator(BasicBlockTerminator::Return(
+            ret,
         )));
         Func {
             id: self.id,
             args: vec![self_closure, args],
             ret_type: LocalType::Type(Type::Obj),
             locals: self.locals,
-            bb_entry: BasicBlockId::from(0), // TODO: もっと綺麗な書き方があるはず
-            bbs: self
-                .bbs
-                .into_iter()
-                .map(|(id, bb)| BasicBlock {
-                    id,
-                    exprs: bb.exprs,
-                    next: bb.next.unwrap(),
-                })
-                .collect(),
+            bb_entry,
+            bbs: self.bbs,
         }
     }
 
@@ -435,24 +423,20 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     expr: Expr::FromObj(ValType::Bool, obj_cond_local),
                 });
 
-                let bb_id = self.close_bb(None);
+                let then_bb_id = self.bbs.allocate_key();
+                let else_bb_id = self.bbs.allocate_key();
+                let merge_bb_id = self.bbs.allocate_key();
+                self.close_bb(BasicBlockNext::If(cond_local, then_bb_id, else_bb_id));
 
-                let then_first_bb_id = self.bbs.next_key();
+                self.current_bb_id = Some(then_bb_id);
                 self.gen_expr(result, then);
-                let then_last_bb_id = self.close_bb(None);
+                self.close_bb(BasicBlockNext::Jump(merge_bb_id));
 
-                let else_first_bb_id = self.bbs.next_key();
+                self.current_bb_id = Some(else_bb_id);
                 self.gen_expr(result, els);
-                let else_last_bb_id = self.close_bb(None);
+                self.close_bb(BasicBlockNext::Jump(merge_bb_id));
 
-                self.bbs[bb_id].next = Some(BasicBlockNext::If(
-                    cond_local,
-                    then_first_bb_id,
-                    else_first_bb_id,
-                ));
-
-                self.next_undecided_bb_ids.insert(then_last_bb_id);
-                self.next_undecided_bb_ids.insert(else_last_bb_id);
+                self.current_bb_id = Some(merge_bb_id);
             }
             ast::Expr::Call(x, ast::Call { func, args }) => {
                 if let ast::Expr::Var(x, name) = func.as_ref()
@@ -565,9 +549,10 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                         },
                     };
                     if is_tail {
-                        self.close_bb(Some(BasicBlockNext::Terminator(
+                        self.close_bb(BasicBlockNext::Terminator(
                             BasicBlockTerminator::TailCallRef(call_ref),
-                        )));
+                        ));
+                        self.current_bb_id = Some(self.bbs.allocate_key());
                     } else {
                         self.exprs.push(ExprAssign {
                             local: result,
@@ -725,18 +710,14 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         }
     }
 
-    fn close_bb(&mut self, next: Option<BasicBlockNext>) -> BasicBlockId {
+    fn close_bb(&mut self, next: BasicBlockNext) {
         let bb_exprs = std::mem::take(&mut self.exprs);
-        let bb_id = self.bbs.push(BasicBlockOptionalNext {
+        self.bbs.insert(self.current_bb_id.unwrap(), BasicBlock {
+            id: self.current_bb_id.unwrap(),
             exprs: bb_exprs,
             next,
         });
-
-        let undecided_bb_ids = std::mem::take(&mut self.next_undecided_bb_ids);
-        for undecided_bb_id in undecided_bb_ids {
-            self.bbs[undecided_bb_id].next = Some(BasicBlockNext::Jump(bb_id));
-        }
-        bb_id
+        self.current_bb_id = None;
     }
 }
 
@@ -934,10 +915,4 @@ impl BuiltinConversionRule {
             },
         }
     }
-}
-
-#[derive(Debug, Clone)]
-struct BasicBlockOptionalNext {
-    pub exprs: Vec<ExprAssign>,
-    pub next: Option<BasicBlockNext>,
 }
