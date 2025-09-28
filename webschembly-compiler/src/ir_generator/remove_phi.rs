@@ -3,8 +3,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 // 前提条件: クリティカルエッジが存在しない
 pub fn remove_phi(func: &mut Func) {
-    // 各ベーシックブロックのPHI命令を処理
-    let bb_ids: Vec<_> = func.bbs.keys().collect();
+    let bb_ids = func.bbs.keys().collect::<Vec<_>>();
 
     for bb_id in bb_ids {
         remove_phi_in_bb(func, bb_id);
