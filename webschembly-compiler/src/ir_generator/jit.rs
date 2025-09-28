@@ -146,60 +146,57 @@ impl JitModule {
         }
         */
 
-        let func = Func {
-            id: funcs.next_key(),
-            args: vec![],
-            ret_type: LocalType::Type(Type::Obj),
-            locals: [
-                Local {
-                    id: LocalId::from(0),
-                    typ: LocalType::Type(Type::Obj),
-                },
-                Local {
-                    id: LocalId::from(1),
+        {
+            // entry
+            let mut locals = VecMap::new();
+            let mut exprs = Vec::new();
+            exprs.push(ExprAssign {
+                local: None,
+                expr: Expr::InitModule,
+            });
+            for func in self.module.funcs.iter() {
+                let func_ref_local = locals.push_with(|id| Local {
+                    id,
                     typ: LocalType::Type(Type::Val(ValType::FuncRef)),
-                },
-                Local {
-                    id: LocalId::from(2),
+                });
+                let obj_local = locals.push_with(|id| Local {
+                    id,
                     typ: LocalType::Type(Type::Obj),
-                },
-            ]
-            .into_iter()
-            .collect(),
-            bb_entry: BasicBlockId::from(0),
-            bbs: [BasicBlock {
-                id: BasicBlockId::from(0),
-                exprs: {
-                    let mut exprs = Vec::new();
-                    exprs.push(ExprAssign {
-                        local: None,
-                        expr: Expr::InitModule,
-                    });
-                    for func in self.module.funcs.iter() {
-                        exprs.push(ExprAssign {
-                            local: Some(LocalId::from(1)),
-                            expr: Expr::FuncRef(stub_func_ids[func.id]),
-                        });
-                        exprs.push(ExprAssign {
-                            local: Some(LocalId::from(2)),
-                            expr: Expr::ToObj(ValType::FuncRef, LocalId::from(1)),
-                        });
-                        exprs.push(ExprAssign {
-                            local: None,
-                            expr: Expr::GlobalSet(self.func_to_globals[func.id], LocalId::from(2)),
-                        });
-                    }
-                    exprs
-                },
-                next: BasicBlockNext::Terminator(BasicBlockTerminator::TailCall(ExprCall {
-                    func_id: stub_func_ids[self.module.entry],
-                    args: vec![],
-                })),
-            }]
-            .into_iter()
-            .collect(),
-        };
-        funcs.push(func);
+                });
+
+                exprs.push(ExprAssign {
+                    local: Some(func_ref_local),
+                    expr: Expr::FuncRef(stub_func_ids[func.id]),
+                });
+                exprs.push(ExprAssign {
+                    local: Some(obj_local),
+                    expr: Expr::ToObj(ValType::FuncRef, func_ref_local),
+                });
+                exprs.push(ExprAssign {
+                    local: None,
+                    expr: Expr::GlobalSet(self.func_to_globals[func.id], obj_local),
+                });
+            }
+
+            let func = Func {
+                id: funcs.next_key(),
+                args: vec![],
+                ret_type: LocalType::Type(Type::Obj),
+                locals,
+                bb_entry: BasicBlockId::from(0),
+                bbs: [BasicBlock {
+                    id: BasicBlockId::from(0),
+                    exprs,
+                    next: BasicBlockNext::Terminator(BasicBlockTerminator::TailCall(ExprCall {
+                        func_id: stub_func_ids[self.module.entry],
+                        args: vec![],
+                    })),
+                }]
+                .into_iter()
+                .collect(),
+            };
+            funcs.push(func);
+        }
         for func in self.module.funcs.iter() {
             /*
             以下のようなスタブを生成
@@ -215,6 +212,10 @@ impl JitModule {
                 id,
                 typ: LocalType::Type(Type::Obj),
             });
+            let obj_f0_ref_local2 = new_locals.push_with(|id| Local {
+                id,
+                typ: LocalType::Type(Type::Obj),
+            });
             let f0_ref_local = new_locals.push_with(|id| Local {
                 id,
                 typ: LocalType::Type(Type::Val(ValType::FuncRef)),
@@ -225,7 +226,7 @@ impl JitModule {
             });
             let f0_stub_local = new_locals.push_with(|id| Local {
                 id,
-                typ: LocalType::Type(Type::Obj),
+                typ: LocalType::Type(Type::Val(ValType::FuncRef)),
             });
             let eq_local = new_locals.push_with(|id| Local {
                 id,
@@ -277,12 +278,12 @@ impl JitModule {
                         id: BasicBlockId::from(2),
                         exprs: vec![
                             ExprAssign {
-                                local: Some(obj_f0_ref_local),
+                                local: Some(obj_f0_ref_local2),
                                 expr: Expr::GlobalGet(self.func_to_globals[func.id]),
                             },
                             ExprAssign {
                                 local: Some(f0_ref_local),
-                                expr: Expr::FromObj(ValType::FuncRef, obj_f0_ref_local),
+                                expr: Expr::FromObj(ValType::FuncRef, obj_f0_ref_local2),
                             },
                         ],
                         next: BasicBlockNext::Terminator(BasicBlockTerminator::TailCallRef(
@@ -381,10 +382,6 @@ impl JitFunc {
                 id,
                 typ: LocalType::Type(Type::Val(ValType::FuncRef)),
             });
-            let vector_local = locals.push_with(|id| Local {
-                id,
-                typ: LocalType::Type(Type::Val(ValType::Vector)),
-            });
             let obj_local = locals.push_with(|id| Local {
                 id,
                 typ: LocalType::Type(Type::Obj),
@@ -398,6 +395,79 @@ impl JitFunc {
                 typ: LocalType::Type(Type::Obj),
             });
 
+            let mut exprs = Vec::new();
+            exprs.extend([
+                ExprAssign {
+                    local: None,
+                    expr: Expr::InitModule,
+                },
+                ExprAssign {
+                    local: Some(func_ref_local),
+                    expr: Expr::FuncRef(FuncId::from(1)),
+                },
+                ExprAssign {
+                    local: Some(obj_local),
+                    expr: Expr::ToObj(ValType::FuncRef, func_ref_local),
+                },
+                ExprAssign {
+                    local: None,
+                    expr: Expr::GlobalSet(jit_module.func_to_globals[func.id], obj_local),
+                },
+                ExprAssign {
+                    local: Some(nil_local),
+                    expr: Expr::Nil,
+                },
+                ExprAssign {
+                    local: Some(obj_nil_local),
+                    expr: Expr::ToObj(ValType::Nil, nil_local),
+                },
+            ]);
+            for jit_bb in self.jit_bbs.values() {
+                let func_ref_local = locals.push_with(|id| Local {
+                    id,
+                    typ: LocalType::Type(Type::Val(ValType::FuncRef)),
+                });
+                let vector_local = locals.push_with(|id| Local {
+                    id,
+                    typ: LocalType::Type(Type::Val(ValType::Vector)),
+                });
+                let func_obj_local = locals.push_with(|id| Local {
+                    id,
+                    typ: LocalType::Type(Type::Obj),
+                });
+                let vector_obj_local = locals.push_with(|id| Local {
+                    id,
+                    typ: LocalType::Type(Type::Obj),
+                });
+
+                exprs.push(ExprAssign {
+                    local: Some(func_ref_local),
+                    expr: Expr::FuncRef(bb_stub_func_ids[jit_bb.bb_id]),
+                });
+                exprs.push(ExprAssign {
+                    local: Some(func_obj_local),
+                    expr: Expr::ToObj(ValType::FuncRef, func_ref_local),
+                });
+                // TODO: ToObjの列であるVectorに入れるのは非効率なのでFuncTableのようなものが欲しい
+                exprs.push(ExprAssign {
+                    local: Some(vector_local),
+                    expr: Expr::Vector({
+                        let mut v = Vec::new();
+                        v.push(func_obj_local);
+                        v.resize(GLOBAL_LAYOUT_MAX_SIZE, obj_nil_local);
+                        v
+                    }),
+                });
+                exprs.push(ExprAssign {
+                    local: Some(vector_obj_local),
+                    expr: Expr::ToObj(ValType::Vector, vector_local),
+                });
+                exprs.push(ExprAssign {
+                    local: None,
+                    expr: Expr::GlobalSet(jit_bb.global, vector_obj_local),
+                });
+            }
+
             Func {
                 id: entry_func_id,
                 args: vec![],
@@ -406,67 +476,7 @@ impl JitFunc {
                 bb_entry: BasicBlockId::from(0),
                 bbs: [BasicBlock {
                     id: BasicBlockId::from(0),
-                    exprs: {
-                        let mut exprs = Vec::new();
-                        exprs.extend([
-                            ExprAssign {
-                                local: None,
-                                expr: Expr::InitModule,
-                            },
-                            ExprAssign {
-                                local: Some(func_ref_local),
-                                expr: Expr::FuncRef(FuncId::from(1)),
-                            },
-                            ExprAssign {
-                                local: Some(obj_local),
-                                expr: Expr::ToObj(ValType::FuncRef, func_ref_local),
-                            },
-                            ExprAssign {
-                                local: None,
-                                expr: Expr::GlobalSet(
-                                    jit_module.func_to_globals[func.id],
-                                    obj_local,
-                                ),
-                            },
-                            ExprAssign {
-                                local: Some(nil_local),
-                                expr: Expr::Nil,
-                            },
-                            ExprAssign {
-                                local: Some(obj_nil_local),
-                                expr: Expr::ToObj(ValType::Nil, nil_local),
-                            },
-                        ]);
-                        for jit_bb in self.jit_bbs.values() {
-                            exprs.push(ExprAssign {
-                                local: Some(func_ref_local),
-                                expr: Expr::FuncRef(bb_stub_func_ids[jit_bb.bb_id]),
-                            });
-                            exprs.push(ExprAssign {
-                                local: Some(obj_local),
-                                expr: Expr::ToObj(ValType::FuncRef, func_ref_local),
-                            });
-                            // TODO: ToObjの列であるVectorに入れるのは非効率なのでFuncTableのようなものが欲しい
-                            exprs.push(ExprAssign {
-                                local: Some(vector_local),
-                                expr: Expr::Vector({
-                                    let mut v = Vec::new();
-                                    v.push(obj_local);
-                                    v.resize(GLOBAL_LAYOUT_MAX_SIZE, obj_nil_local);
-                                    v
-                                }),
-                            });
-                            exprs.push(ExprAssign {
-                                local: Some(obj_local),
-                                expr: Expr::ToObj(ValType::Vector, vector_local),
-                            });
-                            exprs.push(ExprAssign {
-                                local: None,
-                                expr: Expr::GlobalSet(jit_bb.global, obj_local),
-                            });
-                        }
-                        exprs
-                    },
+                    exprs,
                     next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(func_ref_local)),
                 }]
                 .into_iter()
@@ -484,7 +494,7 @@ impl JitFunc {
         let entry_bb_info = &self.jit_bbs[func.bb_entry].info;
         let body_func = {
             let mut locals = func.locals.clone();
-            let obj_local = locals.push_with(|id| Local {
+            let func_ref_obj_local = locals.push_with(|id| Local {
                 id,
                 typ: LocalType::Type(Type::Obj),
             });
@@ -500,6 +510,10 @@ impl JitFunc {
                 id,
                 typ: LocalType::Type(Type::Val(ValType::Int)),
             });
+            let vector_obj_local = locals.push_with(|id| Local {
+                id,
+                typ: LocalType::Type(Type::Obj),
+            });
 
             Func {
                 id: body_func_id,
@@ -511,24 +525,24 @@ impl JitFunc {
                     id: BasicBlockId::from(0),
                     exprs: vec![
                         ExprAssign {
-                            local: Some(obj_local),
+                            local: Some(vector_obj_local),
                             expr: Expr::GlobalGet(self.jit_bbs[func.bb_entry].global),
                         },
                         ExprAssign {
                             local: Some(vector_local),
-                            expr: Expr::FromObj(ValType::Vector, obj_local),
+                            expr: Expr::FromObj(ValType::Vector, vector_obj_local),
                         },
                         ExprAssign {
                             local: Some(index_local),
                             expr: Expr::Int(GLOBAL_LAYOUT_DEFAULT_INDEX as i64),
                         },
                         ExprAssign {
-                            local: Some(obj_local),
+                            local: Some(func_ref_obj_local),
                             expr: Expr::VectorRef(vector_local, index_local),
                         },
                         ExprAssign {
                             local: Some(func_ref_local),
-                            expr: Expr::FromObj(ValType::FuncRef, obj_local),
+                            expr: Expr::FromObj(ValType::FuncRef, func_ref_obj_local),
                         },
                     ],
                     next: BasicBlockNext::Terminator(BasicBlockTerminator::TailCallRef(
@@ -604,19 +618,23 @@ impl JitFunc {
         let obj_local = locals.push_with(|id| Local {
             id,
             typ: LocalType::Type(Type::Obj),
-        }); // obj bb0_ref
+        });
         let func_ref_local = locals.push_with(|id| Local {
             id,
             typ: LocalType::Type(Type::Val(ValType::FuncRef)),
-        }); // bb0_ref
+        });
         let stub_local = locals.push_with(|id| Local {
             id,
+            typ: LocalType::Type(Type::Val(ValType::FuncRef)),
+        });
+        let stub_obj_local = locals.push_with(|id| Local {
+            id,
             typ: LocalType::Type(Type::Obj),
-        }); // bb0_stub
+        });
         let bool_local = locals.push_with(|id| Local {
             id,
             typ: LocalType::Type(Type::Val(ValType::Bool)),
-        }); // bb0_ref != bb0_stub
+        });
         let vector_local = locals.push_with(|id| Local {
             id,
             typ: LocalType::Type(Type::Val(ValType::Vector)),
@@ -624,6 +642,23 @@ impl JitFunc {
         let index_local = locals.push_with(|id| Local {
             id,
             typ: LocalType::Type(Type::Val(ValType::Int)),
+        });
+        let vector_obj_local = locals.push_with(|id| Local {
+            id,
+            typ: LocalType::Type(Type::Obj),
+        });
+
+        let obj_local2 = locals.push_with(|id| Local {
+            id,
+            typ: LocalType::Type(Type::Obj),
+        });
+        let vector_local2 = locals.push_with(|id| Local {
+            id,
+            typ: LocalType::Type(Type::Val(ValType::Vector)),
+        });
+        let vector_obj_local2 = locals.push_with(|id| Local {
+            id,
+            typ: LocalType::Type(Type::Obj),
         });
 
         Func {
@@ -649,7 +684,7 @@ impl JitFunc {
                             expr: Expr::Int(index as i64),
                         },
                         ExprAssign {
-                            local: Some(obj_local),
+                            local: Some(vector_obj_local),
                             expr: Expr::VectorRef(vector_local, index_local),
                         },
                         ExprAssign {
@@ -657,8 +692,12 @@ impl JitFunc {
                             expr: Expr::FuncRef(id),
                         },
                         ExprAssign {
+                            local: Some(stub_obj_local),
+                            expr: Expr::ToObj(ValType::FuncRef, stub_local),
+                        },
+                        ExprAssign {
                             local: Some(bool_local),
-                            expr: Expr::Eq(obj_local, stub_local),
+                            expr: Expr::Eq(vector_obj_local, stub_obj_local),
                         },
                     ],
                     next: BasicBlockNext::If(
@@ -684,20 +723,20 @@ impl JitFunc {
                     id: BasicBlockId::from(2),
                     exprs: vec![
                         ExprAssign {
-                            local: Some(obj_local),
+                            local: Some(obj_local2),
                             expr: Expr::GlobalGet(jit_bb.global),
                         },
                         ExprAssign {
-                            local: Some(vector_local),
-                            expr: Expr::FromObj(ValType::Vector, obj_local),
+                            local: Some(vector_local2),
+                            expr: Expr::FromObj(ValType::Vector, obj_local2),
                         },
                         ExprAssign {
-                            local: Some(obj_local),
-                            expr: Expr::VectorRef(vector_local, index_local),
+                            local: Some(vector_obj_local2),
+                            expr: Expr::VectorRef(vector_local2, index_local),
                         },
                         ExprAssign {
                             local: Some(func_ref_local),
-                            expr: Expr::FromObj(ValType::FuncRef, obj_local),
+                            expr: Expr::FromObj(ValType::FuncRef, vector_obj_local2),
                         },
                     ],
                     next: BasicBlockNext::Terminator(BasicBlockTerminator::TailCallRef(
@@ -762,30 +801,6 @@ impl JitFunc {
             bb_optimizer::copy_propagate(&new_locals, &mut bb, &locals_immutability);
         }
 
-        let obj_local = new_locals.push_with(|id| Local {
-            id,
-            typ: LocalType::Type(Type::Obj),
-        }); // obj bb1_ref
-        let func_ref_local = new_locals.push_with(|id| Local {
-            id,
-            typ: LocalType::Type(Type::Val(ValType::FuncRef)),
-        }); // bb1_ref
-        let index_local = new_locals.push_with(|id| Local {
-            id,
-            typ: LocalType::Type(Type::Val(ValType::Int)),
-        });
-        let vector_local = new_locals.push_with(|id| Local {
-            id,
-            typ: LocalType::Type(Type::Val(ValType::Vector)),
-        });
-        let new_locals = new_locals;
-        // locals_immutabilityを拡張
-        // 再代入される可能性がある
-        locals_immutability.insert(obj_local, false);
-        locals_immutability.insert(func_ref_local, false);
-        locals_immutability.insert(index_local, false);
-        locals_immutability.insert(vector_local, false);
-
         let mut extra_bbs = Vec::new();
 
         let bb = {
@@ -797,6 +812,10 @@ impl JitFunc {
                         local,
                         expr: Expr::FuncRef(id),
                     } => {
+                        let obj_local = new_locals.push_with(|id| Local {
+                            id,
+                            typ: LocalType::Type(Type::Obj),
+                        });
                         exprs.push(ExprAssign {
                             local: Some(obj_local),
                             expr: Expr::GlobalGet(jit_module.func_to_globals[id]),
@@ -810,6 +829,15 @@ impl JitFunc {
                         local,
                         expr: Expr::Call(ExprCall { func_id, ref args }),
                     } => {
+                        let obj_local = new_locals.push_with(|id| Local {
+                            id,
+                            typ: LocalType::Type(Type::Obj),
+                        });
+                        let func_ref_local = new_locals.push_with(|id| Local {
+                            id,
+                            typ: LocalType::Type(Type::Val(ValType::FuncRef)),
+                        });
+
                         exprs.push(ExprAssign {
                             local: Some(obj_local),
                             expr: Expr::GlobalGet(jit_module.func_to_globals[func_id]),
@@ -840,6 +868,14 @@ impl JitFunc {
                     func_id,
                     ref args,
                 })) => {
+                    let obj_local = new_locals.push_with(|id| Local {
+                        id,
+                        typ: LocalType::Type(Type::Obj),
+                    });
+                    let func_ref_local = new_locals.push_with(|id| Local {
+                        id,
+                        typ: LocalType::Type(Type::Val(ValType::FuncRef)),
+                    });
                     exprs.push(ExprAssign {
                         local: Some(obj_local),
                         expr: Expr::GlobalGet(jit_module.func_to_globals[func_id]),
@@ -870,80 +906,126 @@ impl JitFunc {
                     );
                     required_stubs.push((else_bb, else_index));
 
-                    let then_bb_new = BasicBlock {
-                        id: BasicBlockId::from(1),
-                        exprs: vec![
-                            ExprAssign {
-                                local: Some(obj_local),
-                                expr: Expr::GlobalGet(self.jit_bbs[then_bb].global),
-                            },
-                            ExprAssign {
-                                local: Some(vector_local),
-                                expr: Expr::FromObj(ValType::Vector, obj_local),
-                            },
-                            ExprAssign {
-                                local: Some(index_local),
-                                expr: Expr::Int(then_index as i64),
-                            },
-                            ExprAssign {
-                                local: Some(obj_local),
-                                expr: Expr::VectorRef(vector_local, index_local),
-                            },
-                            ExprAssign {
-                                local: Some(func_ref_local),
-                                expr: Expr::FromObj(ValType::FuncRef, obj_local),
-                            },
-                        ],
-                        next: BasicBlockNext::Terminator(BasicBlockTerminator::TailCallRef(
-                            ExprCallRef {
-                                func: func_ref_local,
-                                args: then_locals_to_pass,
-                                func_type: FuncType {
-                                    args: self.jit_bbs[then_bb]
-                                        .info
-                                        .arg_types(func, &then_type_args),
-                                    ret: func.ret_type,
+                    let then_bb_new = {
+                        let vector_obj_local = new_locals.push_with(|id| Local {
+                            id,
+                            typ: LocalType::Type(Type::Obj),
+                        });
+                        let obj_local = new_locals.push_with(|id| Local {
+                            id,
+                            typ: LocalType::Type(Type::Obj),
+                        });
+                        let func_ref_local = new_locals.push_with(|id| Local {
+                            id,
+                            typ: LocalType::Type(Type::Val(ValType::FuncRef)),
+                        });
+                        let index_local = new_locals.push_with(|id| Local {
+                            id,
+                            typ: LocalType::Type(Type::Val(ValType::Int)),
+                        });
+                        let vector_local = new_locals.push_with(|id| Local {
+                            id,
+                            typ: LocalType::Type(Type::Val(ValType::Vector)),
+                        });
+
+                        BasicBlock {
+                            id: BasicBlockId::from(1),
+                            exprs: vec![
+                                ExprAssign {
+                                    local: Some(vector_obj_local),
+                                    expr: Expr::GlobalGet(self.jit_bbs[then_bb].global),
                                 },
-                            },
-                        )),
+                                ExprAssign {
+                                    local: Some(vector_local),
+                                    expr: Expr::FromObj(ValType::Vector, vector_obj_local),
+                                },
+                                ExprAssign {
+                                    local: Some(index_local),
+                                    expr: Expr::Int(then_index as i64),
+                                },
+                                ExprAssign {
+                                    local: Some(obj_local),
+                                    expr: Expr::VectorRef(vector_local, index_local),
+                                },
+                                ExprAssign {
+                                    local: Some(func_ref_local),
+                                    expr: Expr::FromObj(ValType::FuncRef, obj_local),
+                                },
+                            ],
+                            next: BasicBlockNext::Terminator(BasicBlockTerminator::TailCallRef(
+                                ExprCallRef {
+                                    func: func_ref_local,
+                                    args: then_locals_to_pass,
+                                    func_type: FuncType {
+                                        args: self.jit_bbs[then_bb]
+                                            .info
+                                            .arg_types(func, &then_type_args),
+                                        ret: func.ret_type,
+                                    },
+                                },
+                            )),
+                        }
                     };
 
-                    let else_bb_new = BasicBlock {
-                        id: BasicBlockId::from(2),
-                        exprs: vec![
-                            ExprAssign {
-                                local: Some(obj_local),
-                                expr: Expr::GlobalGet(self.jit_bbs[else_bb].global),
-                            },
-                            ExprAssign {
-                                local: Some(vector_local),
-                                expr: Expr::FromObj(ValType::Vector, obj_local),
-                            },
-                            ExprAssign {
-                                local: Some(index_local),
-                                expr: Expr::Int(else_index as i64),
-                            },
-                            ExprAssign {
-                                local: Some(obj_local),
-                                expr: Expr::VectorRef(vector_local, index_local),
-                            },
-                            ExprAssign {
-                                local: Some(func_ref_local),
-                                expr: Expr::FromObj(ValType::FuncRef, obj_local),
-                            },
-                        ],
-                        next: BasicBlockNext::Terminator(BasicBlockTerminator::TailCallRef(
-                            ExprCallRef {
-                                func: func_ref_local,
-                                args: else_locals_to_pass,
-                                func_type: FuncType {
-                                    args: self.jit_bbs[else_bb]
-                                        .info
-                                        .arg_types(func, &else_type_args),
-                                    ret: func.ret_type,
+                    let else_bb_new = {
+                        let vector_obj_local = new_locals.push_with(|id| Local {
+                            id,
+                            typ: LocalType::Type(Type::Obj),
+                        });
+                        let obj_local = new_locals.push_with(|id| Local {
+                            id,
+                            typ: LocalType::Type(Type::Obj),
+                        });
+                        let func_ref_local = new_locals.push_with(|id| Local {
+                            id,
+                            typ: LocalType::Type(Type::Val(ValType::FuncRef)),
+                        });
+                        let index_local = new_locals.push_with(|id| Local {
+                            id,
+                            typ: LocalType::Type(Type::Val(ValType::Int)),
+                        });
+                        let vector_local = new_locals.push_with(|id| Local {
+                            id,
+                            typ: LocalType::Type(Type::Val(ValType::Vector)),
+                        });
+
+                        BasicBlock {
+                            id: BasicBlockId::from(2),
+                            exprs: vec![
+                                ExprAssign {
+                                    local: Some(vector_obj_local),
+                                    expr: Expr::GlobalGet(self.jit_bbs[else_bb].global),
                                 },
-                            },
-                        )),
+                                ExprAssign {
+                                    local: Some(vector_local),
+                                    expr: Expr::FromObj(ValType::Vector, vector_obj_local),
+                                },
+                                ExprAssign {
+                                    local: Some(index_local),
+                                    expr: Expr::Int(else_index as i64),
+                                },
+                                ExprAssign {
+                                    local: Some(obj_local),
+                                    expr: Expr::VectorRef(vector_local, index_local),
+                                },
+                                ExprAssign {
+                                    local: Some(func_ref_local),
+                                    expr: Expr::FromObj(ValType::FuncRef, obj_local),
+                                },
+                            ],
+                            next: BasicBlockNext::Terminator(BasicBlockTerminator::TailCallRef(
+                                ExprCallRef {
+                                    func: func_ref_local,
+                                    args: else_locals_to_pass,
+                                    func_type: FuncType {
+                                        args: self.jit_bbs[else_bb]
+                                            .info
+                                            .arg_types(func, &else_type_args),
+                                        ret: func.ret_type,
+                                    },
+                                },
+                            )),
+                        }
                     };
 
                     extra_bbs.push((then_bb_new.id, then_bb_new));
@@ -960,13 +1042,34 @@ impl JitFunc {
                     );
                     required_stubs.push((target_bb, target_index));
 
+                    let vector_obj_local = new_locals.push_with(|id| Local {
+                        id,
+                        typ: LocalType::Type(Type::Obj),
+                    });
+                    let obj_local = new_locals.push_with(|id| Local {
+                        id,
+                        typ: LocalType::Type(Type::Obj),
+                    });
+                    let func_ref_local = new_locals.push_with(|id| Local {
+                        id,
+                        typ: LocalType::Type(Type::Val(ValType::FuncRef)),
+                    });
+                    let index_local = new_locals.push_with(|id| Local {
+                        id,
+                        typ: LocalType::Type(Type::Val(ValType::Int)),
+                    });
+                    let vector_local = new_locals.push_with(|id| Local {
+                        id,
+                        typ: LocalType::Type(Type::Val(ValType::Vector)),
+                    });
+
                     exprs.push(ExprAssign {
-                        local: Some(obj_local),
+                        local: Some(vector_obj_local),
                         expr: Expr::GlobalGet(self.jit_bbs[target_bb].global),
                     });
                     exprs.push(ExprAssign {
                         local: Some(vector_local),
-                        expr: Expr::FromObj(ValType::Vector, obj_local),
+                        expr: Expr::FromObj(ValType::Vector, vector_obj_local),
                     });
                     exprs.push(ExprAssign {
                         local: Some(index_local),
@@ -1056,13 +1159,12 @@ impl JitFunc {
 
         let entry_func = {
             let mut locals = VecMap::new();
+
+            let mut bbs = VecMap::new();
+
             let func_ref_local = locals.push_with(|id| Local {
                 id,
                 typ: LocalType::Type(Type::Val(ValType::FuncRef)),
-            });
-            let obj_local = locals.push_with(|id| Local {
-                id,
-                typ: LocalType::Type(Type::Obj),
             });
             let vector_local = locals.push_with(|id| Local {
                 id,
@@ -1071,10 +1173,6 @@ impl JitFunc {
             let index_local = locals.push_with(|id| Local {
                 id,
                 typ: LocalType::Type(Type::Val(ValType::Int)),
-            });
-            let bool_local = locals.push_with(|id| Local {
-                id,
-                typ: LocalType::Type(Type::Val(ValType::Bool)),
             });
             let nil_local = locals.push_with(|id| Local {
                 id,
@@ -1085,41 +1183,58 @@ impl JitFunc {
                 typ: LocalType::Type(Type::Obj),
             });
 
-            let mut bbs = VecMap::new();
+            bbs.insert_node({
+                let obj_local = locals.push_with(|id| Local {
+                    id,
+                    typ: LocalType::Type(Type::Obj),
+                });
+                let vector_obj_local = locals.push_with(|id| Local {
+                    id,
+                    typ: LocalType::Type(Type::Obj),
+                });
 
-            bbs.insert_node(BasicBlock {
-                id: BasicBlockId::from(0),
-                exprs: vec![
-                    ExprAssign {
-                        local: None,
-                        expr: Expr::InitModule,
-                    },
-                    ExprAssign {
-                        local: Some(index_local),
-                        expr: Expr::Int(index as i64),
-                    },
-                    ExprAssign {
-                        local: Some(obj_local),
-                        expr: Expr::GlobalGet(self.jit_bbs[bb_id].global),
-                    },
-                    ExprAssign {
-                        local: Some(vector_local),
-                        expr: Expr::FromObj(ValType::Vector, obj_local),
-                    },
-                    ExprAssign {
-                        local: Some(func_ref_local),
-                        expr: Expr::FuncRef(body_func_id),
-                    },
-                    ExprAssign {
-                        local: Some(obj_local),
-                        expr: Expr::ToObj(ValType::FuncRef, func_ref_local),
-                    },
-                    ExprAssign {
-                        local: None,
-                        expr: Expr::VectorSet(vector_local, index_local, obj_local),
-                    },
-                ],
-                next: BasicBlockNext::Jump(BasicBlockId::from(1)),
+                BasicBlock {
+                    id: BasicBlockId::from(0),
+                    exprs: vec![
+                        ExprAssign {
+                            local: None,
+                            expr: Expr::InitModule,
+                        },
+                        ExprAssign {
+                            local: Some(index_local),
+                            expr: Expr::Int(index as i64),
+                        },
+                        ExprAssign {
+                            local: Some(vector_obj_local),
+                            expr: Expr::GlobalGet(self.jit_bbs[bb_id].global),
+                        },
+                        ExprAssign {
+                            local: Some(vector_local),
+                            expr: Expr::FromObj(ValType::Vector, vector_obj_local),
+                        },
+                        ExprAssign {
+                            local: Some(func_ref_local),
+                            expr: Expr::FuncRef(body_func_id),
+                        },
+                        ExprAssign {
+                            local: Some(obj_local),
+                            expr: Expr::ToObj(ValType::FuncRef, func_ref_local),
+                        },
+                        ExprAssign {
+                            local: None,
+                            expr: Expr::VectorSet(vector_local, index_local, obj_local),
+                        },
+                        ExprAssign {
+                            local: Some(nil_local),
+                            expr: Expr::Nil,
+                        },
+                        ExprAssign {
+                            local: Some(obj_nil_local),
+                            expr: Expr::ToObj(ValType::Nil, nil_local),
+                        },
+                    ],
+                    next: BasicBlockNext::Jump(BasicBlockId::from(1)),
+                }
             });
 
             /*
@@ -1133,60 +1248,89 @@ impl JitFunc {
                 let then_bb_id = bbs.allocate_key();
                 let next_bb_id = bbs.next_key();
 
-                bbs.insert_node(BasicBlock {
-                    id: cond_bb_id,
-                    exprs: vec![
-                        ExprAssign {
-                            local: Some(nil_local),
-                            expr: Expr::Nil,
-                        },
-                        ExprAssign {
-                            local: Some(obj_nil_local),
-                            expr: Expr::ToObj(ValType::Nil, nil_local),
-                        },
-                        ExprAssign {
-                            local: Some(obj_local),
-                            expr: Expr::GlobalGet(self.jit_bbs[bb_id].global),
-                        },
-                        ExprAssign {
-                            local: Some(vector_local),
-                            expr: Expr::FromObj(ValType::Vector, obj_local),
-                        },
-                        ExprAssign {
-                            local: Some(index_local),
-                            expr: Expr::Int(index as i64),
-                        },
-                        ExprAssign {
-                            local: Some(obj_local),
-                            expr: Expr::VectorRef(vector_local, index_local),
-                        },
-                        ExprAssign {
-                            local: Some(bool_local),
-                            expr: Expr::Eq(obj_nil_local, obj_local),
-                        },
-                    ],
-                    next: BasicBlockNext::If(bool_local, then_bb_id, next_bb_id),
+                let vector_local = locals.push_with(|id| Local {
+                    id,
+                    typ: LocalType::Type(Type::Val(ValType::Vector)),
                 });
-                bbs.insert_node(BasicBlock {
-                    id: then_bb_id,
-                    exprs: vec![
-                        ExprAssign {
-                            local: Some(func_ref_local),
-                            expr: Expr::FuncRef(stub_func_id),
-                        },
-                        ExprAssign {
-                            local: Some(obj_local),
-                            expr: Expr::ToObj(ValType::FuncRef, func_ref_local),
-                        },
-                        ExprAssign {
-                            local: None,
-                            expr: Expr::VectorSet(vector_local, index_local, obj_local),
-                        },
-                    ],
-                    next: BasicBlockNext::Jump(next_bb_id),
+
+                let index_local = locals.push_with(|id| Local {
+                    id,
+                    typ: LocalType::Type(Type::Val(ValType::Int)),
+                });
+
+                bbs.insert_node({
+                    let obj_local = locals.push_with(|id| Local {
+                        id,
+                        typ: LocalType::Type(Type::Obj),
+                    });
+                    let vector_obj_local = locals.push_with(|id| Local {
+                        id,
+                        typ: LocalType::Type(Type::Obj),
+                    });
+
+                    let bool_local = locals.push_with(|id| Local {
+                        id,
+                        typ: LocalType::Type(Type::Val(ValType::Bool)),
+                    });
+
+                    BasicBlock {
+                        id: cond_bb_id,
+                        exprs: vec![
+                            ExprAssign {
+                                local: Some(vector_obj_local),
+                                expr: Expr::GlobalGet(self.jit_bbs[bb_id].global),
+                            },
+                            ExprAssign {
+                                local: Some(vector_local),
+                                expr: Expr::FromObj(ValType::Vector, vector_obj_local),
+                            },
+                            ExprAssign {
+                                local: Some(index_local),
+                                expr: Expr::Int(index as i64),
+                            },
+                            ExprAssign {
+                                local: Some(obj_local),
+                                expr: Expr::VectorRef(vector_local, index_local),
+                            },
+                            ExprAssign {
+                                local: Some(bool_local),
+                                expr: Expr::Eq(obj_nil_local, obj_local),
+                            },
+                        ],
+                        next: BasicBlockNext::If(bool_local, then_bb_id, next_bb_id),
+                    }
+                });
+
+                bbs.insert_node({
+                    let obj_local = locals.push_with(|id| Local {
+                        id,
+                        typ: LocalType::Type(Type::Obj),
+                    });
+                    let func_ref_local = locals.push_with(|id| Local {
+                        id,
+                        typ: LocalType::Type(Type::Val(ValType::FuncRef)),
+                    });
+
+                    BasicBlock {
+                        id: then_bb_id,
+                        exprs: vec![
+                            ExprAssign {
+                                local: Some(func_ref_local),
+                                expr: Expr::FuncRef(stub_func_id),
+                            },
+                            ExprAssign {
+                                local: Some(obj_local),
+                                expr: Expr::ToObj(ValType::FuncRef, func_ref_local),
+                            },
+                            ExprAssign {
+                                local: None,
+                                expr: Expr::VectorSet(vector_local, index_local, obj_local),
+                            },
+                        ],
+                        next: BasicBlockNext::Jump(next_bb_id),
+                    }
                 });
             }
-
             bbs.push_with(|id| BasicBlock {
                 id,
                 exprs: vec![],

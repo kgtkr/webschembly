@@ -106,7 +106,13 @@ impl Compiler {
 
 fn preprocess_module(module: &mut ir::Module) {
     for func in module.funcs.iter_mut() {
+        if cfg!(debug_assertions) {
+            assert_ssa(func);
+        }
         preprocess_cfg(&mut func.bbs, func.bb_entry);
+        if cfg!(debug_assertions) {
+            assert_ssa(func);
+        }
 
         // TODO: クリティカルエッジの分割
         remove_phi(func);
@@ -126,5 +132,25 @@ fn preprocess_module(module: &mut ir::Module) {
             }
         }
         func.locals.retain(|local_id, _| local_used[local_id]);
+    }
+}
+
+fn assert_ssa(func: &ir::Func) {
+    let mut assigned = VecMap::new();
+    for local_id in func.locals.keys() {
+        assigned.insert(local_id, false);
+    }
+    for &local_id in func.args.iter() {
+        assigned[local_id] = true;
+    }
+    for bb in func.bbs.values() {
+        for expr in bb.exprs.iter() {
+            if let Some(local_id) = expr.local {
+                if assigned[local_id] {
+                    panic!("local {:?} is assigned more than once", local_id);
+                }
+                assigned[local_id] = true;
+            }
+        }
     }
 }
