@@ -1255,53 +1255,21 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 function.instruction(&Instruction::Call(self.module_generator.write_char_func));
                 function.instruction(&Instruction::I32Const(0));
             }
-            ir::Expr::IsPair(val) => {
+            ir::Expr::Is(typ, val) => {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
                 function.instruction(&Instruction::RefTestNonNull(HeapType::Concrete(
-                    self.module_generator.cons_type,
-                )));
-            }
-            ir::Expr::IsSymbol(val) => {
-                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
-                function.instruction(&Instruction::RefTestNonNull(HeapType::Concrete(
-                    self.module_generator.symbol_type,
-                )));
-            }
-            ir::Expr::IsString(val) => {
-                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
-                function.instruction(&Instruction::RefTestNonNull(HeapType::Concrete(
-                    self.module_generator.string_type,
-                )));
-            }
-            ir::Expr::IsChar(val) => {
-                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
-                function.instruction(&Instruction::RefTestNonNull(HeapType::Concrete(
-                    self.module_generator.char_type,
-                )));
-            }
-            ir::Expr::IsNumber(val) => {
-                // TODO: 一般のnumberかを判定
-                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
-                function.instruction(&Instruction::RefTestNonNull(HeapType::Concrete(
-                    self.module_generator.int_type,
-                )));
-            }
-            ir::Expr::IsBoolean(val) => {
-                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
-                function.instruction(&Instruction::RefTestNonNull(HeapType::Concrete(
-                    self.module_generator.bool_type,
-                )));
-            }
-            ir::Expr::IsProcedure(val) => {
-                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
-                function.instruction(&Instruction::RefTestNonNull(HeapType::Concrete(
-                    self.module_generator.closure_type,
-                )));
-            }
-            ir::Expr::IsVector(val) => {
-                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
-                function.instruction(&Instruction::RefTestNonNull(HeapType::Concrete(
-                    self.module_generator.vector_type,
+                    match typ {
+                        ir::ValType::Bool => self.module_generator.bool_type,
+                        ir::ValType::Int => self.module_generator.int_type,
+                        ir::ValType::Char => self.module_generator.char_type,
+                        ir::ValType::String => self.module_generator.string_type,
+                        ir::ValType::Symbol => self.module_generator.symbol_type,
+                        ir::ValType::Nil => self.module_generator.nil_type,
+                        ir::ValType::Cons => self.module_generator.cons_type,
+                        ir::ValType::Closure => self.module_generator.closure_type,
+                        ir::ValType::Vector => self.module_generator.vector_type,
+                        ir::ValType::FuncRef => self.module_generator.func_ref_type,
+                    },
                 )));
             }
             ir::Expr::VectorLength(val) => {

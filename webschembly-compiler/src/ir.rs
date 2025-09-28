@@ -370,14 +370,7 @@ pub enum Expr {
     Mul(LocalId, LocalId),
     Div(LocalId, LocalId),
     WriteChar(LocalId),
-    IsPair(LocalId),
-    IsSymbol(LocalId),
-    IsString(LocalId),
-    IsNumber(LocalId),
-    IsBoolean(LocalId),
-    IsProcedure(LocalId),
-    IsChar(LocalId),
-    IsVector(LocalId),
+    Is(ValType, LocalId),
     VectorLength(LocalId),
     VectorRef(LocalId, LocalId),
     VectorSet(LocalId, LocalId, LocalId),
@@ -490,14 +483,7 @@ macro_rules! impl_Expr_local_ids {
                             yield b;
                         }
                         Expr::WriteChar(id) => yield id,
-                        Expr::IsPair(id) => yield id,
-                        Expr::IsSymbol(id) => yield id,
-                        Expr::IsString(id) => yield id,
-                        Expr::IsNumber(id) => yield id,
-                        Expr::IsBoolean(id) => yield id,
-                        Expr::IsProcedure(id) => yield id,
-                        Expr::IsChar(id) => yield id,
-                        Expr::IsVector(id) => yield id,
+                        Expr::Is(_,id) => yield id,
                         Expr::VectorLength(id) => yield id,
                         Expr::VectorRef(vec_id, index_id) => {
                             yield vec_id;
@@ -592,14 +578,7 @@ impl Expr {
             | Expr::ClosureEnv(..)
             | Expr::ClosureFuncRef(..)
             | Expr::GlobalGet(..)
-            | Expr::IsPair(..)
-            | Expr::IsSymbol(..)
-            | Expr::IsString(..)
-            | Expr::IsNumber(..)
-            | Expr::IsBoolean(..)
-            | Expr::IsProcedure(..)
-            | Expr::IsChar(..)
-            | Expr::IsVector(..)
+            | Expr::Is(..)
             | Expr::VectorLength(..)
             | Expr::VectorRef(..)
             | Expr::Eq(..)
@@ -759,14 +738,7 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
             Expr::Mul(a, b) => write!(f, "mul({}, {})", a.display(self.meta), b.display(self.meta)),
             Expr::Div(a, b) => write!(f, "div({}, {})", a.display(self.meta), b.display(self.meta)),
             Expr::WriteChar(id) => write!(f, "write_char({})", id.display(self.meta)),
-            Expr::IsPair(id) => write!(f, "is_pair({})", id.display(self.meta)),
-            Expr::IsSymbol(id) => write!(f, "is_symbol({})", id.display(self.meta)),
-            Expr::IsString(id) => write!(f, "is_string({})", id.display(self.meta)),
-            Expr::IsNumber(id) => write!(f, "is_number({})", id.display(self.meta)),
-            Expr::IsBoolean(id) => write!(f, "is_boolean({})", id.display(self.meta)),
-            Expr::IsProcedure(id) => write!(f, "is_procedure({})", id.display(self.meta)),
-            Expr::IsChar(id) => write!(f, "is_char({})", id.display(self.meta)),
-            Expr::IsVector(id) => write!(f, "is_vector({})", id.display(self.meta)),
+            Expr::Is(typ, id) => write!(f, "is<{}>({})", typ, id.display(self.meta)),
             Expr::VectorLength(id) => write!(f, "vector_length({})", id.display(self.meta)),
             Expr::VectorRef(id, index) => {
                 write!(

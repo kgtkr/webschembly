@@ -879,42 +879,42 @@ impl BuiltinConversionRule {
             Builtin::IsPair => BuiltinConversionRule::Unary {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
-                to_ir: Expr::IsPair,
+                to_ir: |local| Expr::Is(ValType::Cons, local),
             },
             Builtin::IsSymbol => BuiltinConversionRule::Unary {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
-                to_ir: Expr::IsSymbol,
+                to_ir: |local| Expr::Is(ValType::Symbol, local),
             },
             Builtin::IsString => BuiltinConversionRule::Unary {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
-                to_ir: Expr::IsString,
+                to_ir: |local| Expr::Is(ValType::String, local),
             },
             Builtin::IsNumber => BuiltinConversionRule::Unary {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
-                to_ir: Expr::IsNumber,
+                to_ir: |local| Expr::Is(ValType::Int, local), // TODO: 一般のnumberかを判定
             },
             Builtin::IsBoolean => BuiltinConversionRule::Unary {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
-                to_ir: Expr::IsBoolean,
+                to_ir: |local| Expr::Is(ValType::Bool, local),
             },
             Builtin::IsProcedure => BuiltinConversionRule::Unary {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
-                to_ir: Expr::IsProcedure,
+                to_ir: |local| Expr::Is(ValType::Closure, local),
             },
             Builtin::IsChar => BuiltinConversionRule::Unary {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
-                to_ir: Expr::IsChar,
+                to_ir: |local| Expr::Is(ValType::Char, local),
             },
             Builtin::IsVector => BuiltinConversionRule::Unary {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
-                to_ir: Expr::IsVector,
+                to_ir: |local| Expr::Is(ValType::Vector, local),
             },
             Builtin::VectorLength => BuiltinConversionRule::Unary {
                 args: [Type::Val(ValType::Vector)],
