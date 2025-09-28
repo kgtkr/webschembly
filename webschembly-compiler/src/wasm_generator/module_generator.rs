@@ -914,8 +914,10 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
     ) {
         match expr {
             ir::Expr::Nop => {
-                // unreachableなはず
-                function.instruction(&Instruction::I32Const(0));
+                unreachable!("unexpected Nop");
+            }
+            ir::Expr::Phi(..) => {
+                unreachable!("unexpected Phi");
             }
             ir::Expr::InstantiateFunc(module_id, func_id) => {
                 function.instruction(&Instruction::I32Const(usize::from(*module_id) as i32));

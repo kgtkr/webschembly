@@ -322,7 +322,8 @@ impl fmt::Display for DisplayInFunc<'_, &'_ ExprCallRef> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Expr {
-    Nop,
+    Nop,                   // 左辺はNoneでなければならない
+    Phi(LocalId, LocalId), // BBの先頭にのみ出現可能
     InstantiateFunc(ModuleId, FuncId),
     InstantiateBB(ModuleId, FuncId, BasicBlockId, LocalId /* index */),
     Bool(bool),
@@ -419,6 +420,10 @@ macro_rules! impl_Expr_local_ids {
                 from_coroutine(
                     #[coroutine]
                     move || match self {
+                        Expr::Phi(a, b) => {
+                            yield a;
+                            yield b;
+                        }
                         Expr::StringToSymbol(id) => yield id,
                         Expr::Vector(ids) => {
                             for id in ids {
@@ -562,6 +567,7 @@ impl Expr {
     pub fn is_effectful(&self) -> bool {
         match self {
             Expr::Nop
+            | Expr::Phi(..)
             | Expr::Bool(..)
             | Expr::Int(..)
             | Expr::String(..)
@@ -633,6 +639,7 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.value {
             Expr::Nop => write!(f, "nop"),
+            Expr::Phi(a, b) => write!(f, "phi({}, {})", a.display(self.meta), b.display(self.meta)),
             Expr::InstantiateFunc(module_id, func_id) => {
                 write!(
                     f,
