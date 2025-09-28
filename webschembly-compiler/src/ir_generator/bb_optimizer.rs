@@ -41,7 +41,6 @@ pub fn assign_type_args(
     bb: &mut BasicBlock,
     type_params: &FxBiHashMap<TypeParamId, LocalId>,
     type_args: &TiVec<TypeParamId, Option<ValType>>,
-    locals_immutability: &mut VecMap<LocalId, bool>,
 ) -> VecMap<LocalId, LocalId> {
     let mut additional_expr_assigns = Vec::new();
 
@@ -66,7 +65,6 @@ pub fn assign_type_args(
                 local: Some(obj_local),
                 expr: Expr::ToObj(*typ, *type_params.get_by_left(&type_param_id).unwrap()),
             });
-            locals_immutability.push(true); // obj_localは再代入されない
         }
     }
 
@@ -105,10 +103,7 @@ _ = add(l2, l3)
 - objな値→val_typeな値の対応とその型(どちらも再代入されない場合のみ)
 */
 
-pub fn analyze_typed_obj(
-    bb: &BasicBlock,
-    locals_immutability: &VecMap<LocalId, bool>,
-) -> VecMap<LocalId, TypedObj> {
+pub fn analyze_typed_obj(bb: &BasicBlock) -> VecMap<LocalId, TypedObj> {
     // 次のBBに引き継ぐ型情報
     let mut typed_objs = VecMap::new();
 
@@ -117,7 +112,7 @@ pub fn analyze_typed_obj(
             ExprAssign {
                 local: Some(local),
                 expr: Expr::FromObj(typ, value),
-            } if locals_immutability[value] && locals_immutability[local] => {
+            } => {
                 typed_objs.insert(value, TypedObj {
                     val_type: local,
                     typ,
@@ -126,7 +121,7 @@ pub fn analyze_typed_obj(
             ExprAssign {
                 local: Some(local),
                 expr: Expr::ToObj(typ, value),
-            } if locals_immutability[value] && locals_immutability[local] => {
+            } => {
                 typed_objs.insert(local, TypedObj {
                     val_type: value,
                     typ,
@@ -143,31 +138,6 @@ pub fn analyze_typed_obj(
 pub struct TypedObj {
     pub val_type: LocalId,
     pub typ: ValType,
-}
-
-// 変数の不変判定
-pub fn analyze_locals_immutability(
-    locals: &VecMap<LocalId, Local>,
-    bb: &BasicBlock,
-    args: &Vec<LocalId>,
-) -> VecMap<LocalId, bool> {
-    let mut assign_counts = VecMap::new();
-    for local in locals.keys() {
-        assign_counts.insert(local, 0);
-    }
-    for &arg in args {
-        assign_counts[arg] += 1;
-    }
-    for expr_assign in &bb.exprs {
-        if let Some(local) = expr_assign.local {
-            assign_counts[local] += 1;
-        }
-    }
-
-    assign_counts
-        .into_iter()
-        .map(|(id, count)| (id, count <= 1))
-        .collect::<VecMap<LocalId, bool>>()
 }
 
 /*
@@ -200,11 +170,7 @@ d = g a
 
 ここでは、デッドコードの削除は行わない
 */
-pub fn copy_propagate(
-    locals: &VecMap<LocalId, Local>,
-    bb: &mut BasicBlock,
-    locals_immutability: &VecMap<LocalId, bool>,
-) {
+pub fn copy_propagate(locals: &VecMap<LocalId, Local>, bb: &mut BasicBlock) {
     // ローカル変数の置き換え情報
     let mut local_replacements = VecMap::new();
     // to_obj-from_objの置き換え情報
@@ -229,13 +195,13 @@ pub fn copy_propagate(
             ExprAssign {
                 local: Some(local),
                 expr: Move(value),
-            } if locals_immutability[value] && locals_immutability[local] => {
+            } => {
                 local_replacements[local] = value;
             }
             ExprAssign {
                 local: Some(local),
                 expr: ToObj(typ, value),
-            } if locals_immutability[value] && locals_immutability[local] => {
+            } => {
                 to_obj_replacements[local] = Some((value, typ));
 
                 if let Some((val_type, val_type_typ)) = from_obj_replacements[value]
@@ -248,7 +214,7 @@ pub fn copy_propagate(
             ExprAssign {
                 local: Some(local),
                 expr: FromObj(typ, value),
-            } if locals_immutability[value] && locals_immutability[local] => {
+            } => {
                 from_obj_replacements[local] = Some((value, typ));
 
                 if let Some((obj, obj_typ)) = to_obj_replacements[value]
@@ -272,7 +238,6 @@ pub fn copy_propagate(
 pub fn dead_code_elimination(
     locals: &VecMap<LocalId, Local>,
     bb: &mut BasicBlock,
-    _locals_immutability: &VecMap<LocalId, bool>,
     // 別のBBなどで使われているローカル変数
     out_used_locals: &Vec<LocalId>,
 ) {
@@ -308,69 +273,6 @@ mod tests {
     use super::*;
     use crate::fxbihashmap::FxBiHashMap;
     use typed_index_collections::ti_vec;
-
-    #[test]
-    fn test_analyze_locals_immutability() {
-        let locals = [
-            Local {
-                id: LocalId::from(0),
-                typ: LocalType::Type(Type::Val(ValType::Int)),
-            },
-            Local {
-                id: LocalId::from(1),
-                typ: LocalType::Type(Type::Val(ValType::Int)),
-            },
-            Local {
-                id: LocalId::from(2),
-                typ: LocalType::Type(Type::Val(ValType::Int)),
-            },
-            Local {
-                id: LocalId::from(3),
-                typ: LocalType::Type(Type::Val(ValType::Int)),
-            },
-        ]
-        .into_iter()
-        .collect::<VecMap<LocalId, _>>();
-
-        let bb = BasicBlock {
-            id: BasicBlockId::from(0),
-            exprs: vec![
-                ExprAssign {
-                    local: Some(LocalId::from(0)),
-                    expr: Expr::Move(LocalId::from(1)),
-                },
-                ExprAssign {
-                    local: Some(LocalId::from(2)),
-                    expr: Expr::Move(LocalId::from(0)),
-                },
-                ExprAssign {
-                    local: Some(LocalId::from(2)),
-                    expr: Expr::Int(0),
-                },
-                ExprAssign {
-                    local: Some(LocalId::from(3)),
-                    expr: Expr::Int(0),
-                },
-            ],
-            next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(1))),
-        };
-
-        let args = vec![LocalId::from(0), LocalId::from(1)];
-
-        let immutability = analyze_locals_immutability(&locals, &bb, &args);
-
-        assert_eq!(
-            immutability,
-            [
-                (LocalId::from(0), false),
-                (LocalId::from(1), true),
-                (LocalId::from(2), false),
-                (LocalId::from(3), true),
-            ]
-            .into_iter()
-            .collect::<VecMap<_, _>>()
-        );
-    }
 
     // TODO: assign_type_argsとanalyze_typed_objのテストは分割したほうがいいかも？
     #[test]
@@ -417,21 +319,9 @@ mod tests {
 
         let type_params = FxBiHashMap::from_iter(vec![(TypeParamId::from(0), LocalId::from(0))]);
         let type_args = ti_vec![Some(ValType::Int)];
-        let mut locals_immutability = [
-            (LocalId::from(0), true),
-            (LocalId::from(1), true),
-            (LocalId::from(2), true),
-        ]
-        .into_iter()
-        .collect::<VecMap<LocalId, _>>();
 
-        let assigned_local_to_obj = assign_type_args(
-            &mut locals,
-            &mut bb,
-            &type_params,
-            &type_args,
-            &mut locals_immutability,
-        );
+        let assigned_local_to_obj =
+            assign_type_args(&mut locals, &mut bb, &type_params, &type_args);
 
         assert_eq!(
             locals,
@@ -481,25 +371,13 @@ mod tests {
         ]);
 
         assert_eq!(
-            locals_immutability,
-            [
-                (LocalId::from(0), true),
-                (LocalId::from(1), true),
-                (LocalId::from(2), true),
-                (LocalId::from(3), true),
-            ]
-            .into_iter()
-            .collect::<VecMap<LocalId, _>>()
-        );
-
-        assert_eq!(
             assigned_local_to_obj,
             vec![(LocalId::from(0), LocalId::from(3)),]
                 .into_iter()
                 .collect::<VecMap<LocalId, _>>()
         );
 
-        let typed_objs = analyze_typed_obj(&bb, &locals_immutability);
+        let typed_objs = analyze_typed_obj(&bb);
 
         assert_eq!(
             typed_objs,
@@ -546,15 +424,7 @@ mod tests {
             next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(2))),
         };
 
-        let locals_immutability = [
-            (LocalId::from(0), true),
-            (LocalId::from(1), true),
-            (LocalId::from(2), true),
-        ]
-        .into_iter()
-        .collect::<VecMap<LocalId, _>>();
-
-        copy_propagate(&locals, &mut bb, &locals_immutability);
+        copy_propagate(&locals, &mut bb);
 
         assert_eq!(bb, BasicBlock {
             id: BasicBlockId::from(0),
@@ -614,16 +484,7 @@ mod tests {
             next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(3))),
         };
 
-        let locals_immutability = [
-            (LocalId::from(0), true),
-            (LocalId::from(1), true),
-            (LocalId::from(2), true),
-            (LocalId::from(3), true),
-        ]
-        .into_iter()
-        .collect::<VecMap<LocalId, _>>();
-
-        copy_propagate(&locals, &mut bb, &locals_immutability);
+        copy_propagate(&locals, &mut bb);
 
         assert_eq!(bb, BasicBlock {
             id: BasicBlockId::from(0),
@@ -679,16 +540,9 @@ mod tests {
             next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(2))),
         };
 
-        let locals_immutability = [
-            (LocalId::from(0), true),
-            (LocalId::from(1), true),
-            (LocalId::from(2), true),
-        ]
-        .into_iter()
-        .collect::<VecMap<LocalId, _>>();
         let out_used_locals = vec![];
 
-        dead_code_elimination(&locals, &mut bb, &locals_immutability, &out_used_locals);
+        dead_code_elimination(&locals, &mut bb, &out_used_locals);
 
         assert_eq!(bb, BasicBlock {
             id: BasicBlockId::from(0),

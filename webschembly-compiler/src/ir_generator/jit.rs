@@ -782,23 +782,20 @@ impl JitFunc {
         let mut new_locals = func.locals.clone();
         let bb_info = &self.jit_bbs[bb_id].info;
 
-        let mut locals_immutability =
-            bb_optimizer::analyze_locals_immutability(&new_locals, &bb, &bb_info.args);
         let assigned_local_to_obj = bb_optimizer::assign_type_args(
             &mut new_locals,
             &mut bb,
             &bb_info.type_params,
             type_args,
-            &mut locals_immutability,
         );
         if config.enable_optimization {
             // bb_optimizer::analyze_typed_obj を効果的に行うために、事前に行う
-            bb_optimizer::copy_propagate(&new_locals, &mut bb, &locals_immutability);
+            bb_optimizer::copy_propagate(&new_locals, &mut bb);
         }
-        let next_type_args = bb_optimizer::analyze_typed_obj(&bb, &locals_immutability);
+        let next_type_args = bb_optimizer::analyze_typed_obj(&bb);
         if config.enable_optimization {
             // bb_optimizer::assign_type_argsの結果出来たto_obj/from_objの除去が主な目的
-            bb_optimizer::copy_propagate(&new_locals, &mut bb, &locals_immutability);
+            bb_optimizer::copy_propagate(&new_locals, &mut bb);
         }
 
         let mut extra_bbs = Vec::new();
@@ -1131,7 +1128,6 @@ impl JitFunc {
             bb_optimizer::dead_code_elimination(
                 &body_func.locals,
                 &mut body_func.bbs[body_func.bb_entry],
-                &locals_immutability,
                 &out_used_locals,
             );
         }
