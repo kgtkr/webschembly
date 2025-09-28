@@ -186,7 +186,7 @@
     (local.set $global_id (call $get_global_id (local.get $buf_ptr) (local.get $buf_len)))
     (if (i32.eq (local.get $global_id) (i32.const -1))
       (then
-        (return (ref.null eq))
+        (unreachable)
       )
       (else
         (return (table.get $globals (local.get $global_id)))

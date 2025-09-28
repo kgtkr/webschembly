@@ -53,13 +53,15 @@ export type RuntimeImports = {
   env: RuntimeImportsEnv;
 };
 
+export type SchemeValue = { __tagSchemeValueBrand: any };
+
 export type RuntimeExports = {
   memory: WebAssembly.Memory;
   WEBSCHEMBLY_EXCEPTION: WebAssembly.ExceptionTag;
-  get_global: (namePtr: number, nameLen: number) => number;
-  new_args: (elemSize: number) => number;
-  set_args: (vecPtr: number, index: number, value: number) => void;
-  call_closure: (closurePtr: number, paramsPtr: number) => number;
+  get_global: (namePtr: number, nameLen: number) => SchemeValue;
+  new_args: (elemSize: number) => SchemeValue;
+  set_args: (args: SchemeValue, index: number, value: number) => void;
+  call_closure: (closure: SchemeValue, args: SchemeValue) => SchemeValue;
   malloc: (size: number) => number;
   free: (ptr: number) => void;
   load_stdlib: () => void;
