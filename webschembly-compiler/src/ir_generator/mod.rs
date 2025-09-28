@@ -5,3 +5,5 @@ pub use global_manager::*;
 mod jit;
 pub use jit::*;
 mod bb_optimizer;
+mod remove_phi;
+pub use remove_phi::remove_phi;

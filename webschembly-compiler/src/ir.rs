@@ -918,13 +918,6 @@ impl BasicBlock {
         DisplayInFunc { value: self, meta }
     }
 
-    pub fn phi_exprs(&self) -> impl Iterator<Item = &ExprAssign> {
-        self.exprs
-            .iter()
-            .take_while(|expr| matches!(expr.expr, Expr::Phi(..) | Expr::Nop))
-            .filter(|expr| matches!(expr.expr, Expr::Phi(..)))
-    }
-
     impl_BasicBlock_local_usages!(_mut, mut);
     impl_BasicBlock_local_usages!(,);
 

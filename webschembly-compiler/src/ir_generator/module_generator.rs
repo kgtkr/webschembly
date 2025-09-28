@@ -429,14 +429,29 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 self.close_bb(BasicBlockNext::If(cond_local, then_bb_id, else_bb_id));
 
                 self.current_bb_id = Some(then_bb_id);
-                self.gen_expr(result, then);
+                let then_result = self.local(Type::Obj);
+                self.gen_expr(Some(then_result), then);
                 self.close_bb(BasicBlockNext::Jump(merge_bb_id));
 
                 self.current_bb_id = Some(else_bb_id);
-                self.gen_expr(result, els);
+                let els_result = self.local(Type::Obj);
+                self.gen_expr(Some(els_result), els);
                 self.close_bb(BasicBlockNext::Jump(merge_bb_id));
 
                 self.current_bb_id = Some(merge_bb_id);
+                self.exprs.push(ExprAssign {
+                    local: result,
+                    expr: Expr::Phi(vec![
+                        PhiIncomingValue {
+                            bb: then_bb_id,
+                            local: then_result,
+                        },
+                        PhiIncomingValue {
+                            bb: else_bb_id,
+                            local: els_result,
+                        },
+                    ]),
+                });
             }
             ast::Expr::Call(x, ast::Call { func, args }) => {
                 if let ast::Expr::Var(x, name) = func.as_ref()

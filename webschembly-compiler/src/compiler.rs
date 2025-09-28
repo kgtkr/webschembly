@@ -6,6 +6,7 @@ use crate::ir;
 use crate::ir_generator;
 use crate::ir_generator::Jit;
 use crate::ir_generator::JitConfig;
+use crate::ir_generator::remove_phi;
 use crate::lexer;
 use crate::sexpr_parser;
 
@@ -106,6 +107,10 @@ impl Compiler {
 fn preprocess_module(module: &mut ir::Module) {
     for func in module.funcs.iter_mut() {
         preprocess_cfg(&mut func.bbs, func.bb_entry);
+
+        // TODO: クリティカルエッジの分割
+        remove_phi(func);
+        // TODO: レジスタ割り当て
 
         // 未使用のローカルを削除
         let mut local_used = VecMap::new();
