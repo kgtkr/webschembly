@@ -7,6 +7,7 @@ import {
   createRuntime,
   type CompilerConfig,
   type Runtime,
+  type SchemeValue,
 } from "./runtime";
 import { createNodeRuntimeEnv } from "./node-runtime-env";
 
@@ -35,15 +36,11 @@ for (const filename of filenames) {
       let runtime: Runtime;
 
       if (warmup) {
+        let mainClosure: SchemeValue;
+        let mainArgs: SchemeValue;
         bench.add(
           `${filename},with warmup,${compilerConfigToString(compilerConfig)}`,
           () => {
-            const mainString = runtime.mallocString("main");
-            const mainClosure = runtime.instance.exports.get_global(
-              mainString[0],
-              mainString[1]
-            );
-            const mainArgs = runtime.instance.exports.new_args(0);
             runtime.instance.exports.call_closure(mainClosure, mainArgs);
           },
           {
@@ -61,6 +58,13 @@ for (const filename of filenames) {
               );
               runtime.loadStdlib();
               runtime.loadSrc(srcBuf);
+              const mainString = runtime.mallocString("main");
+              mainClosure = runtime.instance.exports.get_global(
+                mainString[0],
+                mainString[1]
+              );
+              mainArgs = runtime.instance.exports.new_args(0);
+              runtime.instance.exports.call_closure(mainClosure, mainArgs);
             },
             afterEach: () => {
               runtime.cleanup();
