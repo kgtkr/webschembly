@@ -464,27 +464,35 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 let then_result = self.local(Type::Obj);
                 self.gen_expr(Some(then_result), then);
                 let then_locals = self.local_ids.clone();
+                let then_ended_bb_id = self.current_bb_id;
                 self.close_bb(BasicBlockNext::Jump(merge_bb_id));
 
                 self.current_bb_id = Some(else_bb_id);
                 let els_result = self.local(Type::Obj);
                 self.gen_expr(Some(els_result), els);
                 let els_locals = self.local_ids.clone();
+                let els_ended_bb_id = self.current_bb_id;
                 self.close_bb(BasicBlockNext::Jump(merge_bb_id));
 
                 self.current_bb_id = Some(merge_bb_id);
                 self.exprs.push(ExprAssign {
                     local: result,
-                    expr: Expr::Phi(vec![
-                        PhiIncomingValue {
-                            bb: then_bb_id,
-                            local: then_result,
-                        },
-                        PhiIncomingValue {
-                            bb: else_bb_id,
-                            local: els_result,
-                        },
-                    ]),
+                    expr: Expr::Phi({
+                        let mut incomings = Vec::new();
+                        if let Some(bb) = then_ended_bb_id {
+                            incomings.push(PhiIncomingValue {
+                                bb,
+                                local: then_result,
+                            });
+                        }
+                        if let Some(bb) = els_ended_bb_id {
+                            incomings.push(PhiIncomingValue {
+                                bb,
+                                local: els_result,
+                            });
+                        }
+                        incomings
+                    }),
                 });
 
                 // thenとelseでset!された変数をphiノードで結合
@@ -501,16 +509,22 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                         let phi_local = self.new_version_ast_local(var_id);
                         self.exprs.push(ExprAssign {
                             local: Some(phi_local),
-                            expr: Expr::Phi(vec![
-                                PhiIncomingValue {
-                                    bb: then_bb_id,
-                                    local: then_local,
-                                },
-                                PhiIncomingValue {
-                                    bb: else_bb_id,
-                                    local: els_local,
-                                },
-                            ]),
+                            expr: Expr::Phi({
+                                let mut incomings = Vec::new();
+                                if let Some(bb) = then_ended_bb_id {
+                                    incomings.push(PhiIncomingValue {
+                                        bb,
+                                        local: then_local,
+                                    });
+                                }
+                                if let Some(bb) = els_ended_bb_id {
+                                    incomings.push(PhiIncomingValue {
+                                        bb,
+                                        local: els_local,
+                                    });
+                                }
+                                incomings
+                            }),
                         });
                     }
                 }
@@ -529,10 +543,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                             local: Some(msg),
                             expr: Expr::String("builtin args count mismatch\n".to_string()),
                         });
-                        self.exprs.push(ExprAssign {
-                            local: result,
-                            expr: Expr::Error(msg),
-                        });
+                        self.close_bb(BasicBlockNext::Terminator(BasicBlockTerminator::Error(msg)));
                     } else {
                         let mut arg_locals = Vec::new();
                         for (typ, arg) in rule.arg_types().iter().zip(args) {
@@ -541,12 +552,44 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                             let arg_local = match typ {
                                 Type::Obj => obj_arg_local,
                                 Type::Val(val_type) => {
+                                    let is_result_local = self.local(Type::Val(ValType::Bool));
+                                    self.exprs.push(ExprAssign {
+                                        local: Some(is_result_local),
+                                        expr: Expr::Is(*val_type, obj_arg_local),
+                                    });
                                     let val_type_arg_local = self.local(Type::Val(*val_type));
-                                    // TODO: 動的型チェック
+                                    let then_bb_id = self.bbs.allocate_key();
+                                    let else_bb_id = self.bbs.allocate_key();
+                                    let merge_bb_id = self.bbs.allocate_key();
+
+                                    self.close_bb(BasicBlockNext::If(
+                                        is_result_local,
+                                        then_bb_id,
+                                        else_bb_id,
+                                    ));
+
+                                    self.current_bb_id = Some(then_bb_id);
                                     self.exprs.push(ExprAssign {
                                         local: Some(val_type_arg_local),
                                         expr: Expr::FromObj(*val_type, obj_arg_local),
                                     });
+                                    self.close_bb(BasicBlockNext::Jump(merge_bb_id));
+
+                                    self.current_bb_id = Some(else_bb_id);
+                                    let msg = self.local(Type::Val(ValType::String));
+                                    self.exprs.push(ExprAssign {
+                                        local: Some(msg),
+                                        expr: Expr::String(format!(
+                                            "{:?}: arg type mismatch\n",
+                                            builtin
+                                        )),
+                                    });
+                                    self.close_bb(BasicBlockNext::Terminator(
+                                        BasicBlockTerminator::Error(msg),
+                                    ));
+
+                                    self.current_bb_id = Some(merge_bb_id);
+
                                     val_type_arg_local
                                 }
                             };
@@ -629,7 +672,6 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                         self.close_bb(BasicBlockNext::Terminator(
                             BasicBlockTerminator::TailCallRef(call_ref),
                         ));
-                        self.current_bb_id = Some(self.bbs.allocate_key());
                     } else {
                         self.exprs.push(ExprAssign {
                             local: result,
@@ -711,10 +753,9 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                                 local: Some(msg),
                                 expr: Expr::String("set! builtin is not allowed\n".to_string()),
                             });
-                            self.exprs.push(ExprAssign {
-                                local: result,
-                                expr: Expr::Error(msg),
-                            });
+                            self.close_bb(BasicBlockNext::Terminator(BasicBlockTerminator::Error(
+                                msg,
+                            )));
                         } else {
                             let local = self.local(Type::Obj);
                             self.gen_expr(Some(local), expr);
@@ -790,12 +831,16 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
 
     fn close_bb(&mut self, next: BasicBlockNext) {
         let bb_exprs = std::mem::take(&mut self.exprs);
-        self.bbs.insert(self.current_bb_id.unwrap(), BasicBlock {
-            id: self.current_bb_id.unwrap(),
-            exprs: bb_exprs,
-            next,
-        });
-        self.current_bb_id = None;
+        if let Some(id) = self.current_bb_id {
+            self.bbs.insert(self.current_bb_id.unwrap(), BasicBlock {
+                id,
+                exprs: bb_exprs,
+                next,
+            });
+            self.current_bb_id = None;
+        } else {
+            // self.current_bb_idがNoneのとき到達不能ブロックである
+        }
     }
 }
 

@@ -885,6 +885,14 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 BasicBlockTerminator::TailCallRef(call_ref) => {
                     self.gen_call_ref(function, true, call_ref);
                 }
+                BasicBlockTerminator::Error(msg) => {
+                    function.instruction(&Instruction::I32Const(2));
+                    function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*msg)));
+                    function.instruction(&Instruction::Call(self.module_generator.display_fd_func));
+                    function.instruction(&Instruction::Call(
+                        self.module_generator.throw_webassembly_exception,
+                    ));
+                }
             },
         }
     }
@@ -1212,18 +1220,6 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
                 function.instruction(&Instruction::TableSet(self.module_generator.global_table));
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
-            }
-            ir::Expr::Error(msg) => {
-                function.instruction(&Instruction::I32Const(2));
-                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*msg)));
-                function.instruction(&Instruction::Call(self.module_generator.display_fd_func));
-                function.instruction(&Instruction::Call(
-                    self.module_generator.throw_webassembly_exception,
-                ));
-                // これがないとこの後のdropでコンパイルエラーになる
-                function.instruction(&Instruction::RefNull(HeapType::Concrete(
-                    self.module_generator.val_type,
-                )));
             }
             ir::Expr::Display(val) => {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));

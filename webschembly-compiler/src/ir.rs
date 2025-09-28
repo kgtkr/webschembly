@@ -361,7 +361,6 @@ pub enum Expr {
     ClosureFuncRef(LocalId),
     GlobalSet(GlobalId, LocalId),
     GlobalGet(GlobalId),
-    Error(LocalId),
     InitModule,
     // builtins
     Display(LocalId),
@@ -464,7 +463,6 @@ macro_rules! impl_Expr_local_ids {
                         Expr::ClosureEnv(_, closure, _) => yield closure,
                         Expr::ClosureFuncRef(id) => yield id,
                         Expr::GlobalSet(_, value) => yield value,
-                        Expr::Error(id) => yield id,
                         Expr::Display(id) => yield id,
                         Expr::Add(a, b) => {
                             yield a;
@@ -607,7 +605,6 @@ impl Expr {
             | Expr::Call(..)
             | Expr::CallRef(..)
             | Expr::GlobalSet(..)
-            | Expr::Error(..)
             | Expr::InitModule
             | Expr::Display(..)
             | Expr::WriteChar(..)
@@ -715,7 +712,7 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                     }
                     write!(f, "{}", typ)?;
                 }
-                write!(f, ">({}, {}]", closure.display(self.meta), index)?;
+                write!(f, ">({}, {})", closure.display(self.meta), index)?;
                 Ok(())
             }
             Expr::ClosureFuncRef(id) => write!(f, "closure_func_ref({})", id.display(self.meta)),
@@ -728,7 +725,6 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                 )
             }
             Expr::GlobalGet(id) => write!(f, "global_get({})", id.display(self.meta.meta)),
-            Expr::Error(id) => write!(f, "error({})", id.display(self.meta)),
             Expr::InitModule => {
                 write!(f, "init_module")
             }
@@ -956,6 +952,7 @@ pub enum BasicBlockTerminator {
     Return(LocalId),
     TailCall(ExprCall),
     TailCallRef(ExprCallRef),
+    Error(LocalId),
 }
 macro_rules! impl_BasicBlockTerminator_local_ids {
     ($($suffix: ident)?,$($mutability: tt)?) => {
@@ -975,6 +972,7 @@ macro_rules! impl_BasicBlockTerminator_local_ids {
                                 yield id;
                             }
                         }
+                        BasicBlockTerminator::Error(local) => yield local,
                     },
                 )
             }
@@ -990,7 +988,8 @@ macro_rules! impl_BasicBlockTerminator_func_ids {
                     #[coroutine]
                     move || match self {
                         BasicBlockTerminator::Return(_)
-                        | BasicBlockTerminator::TailCallRef(_) => {}
+                        | BasicBlockTerminator::TailCallRef(_)
+                        | BasicBlockTerminator::Error(_) => {}
                         BasicBlockTerminator::TailCall(call) => {
                             for id in call.[<func_ids $($suffix)?>]() {
                                 yield id;
@@ -1025,6 +1024,7 @@ impl fmt::Display for DisplayInFunc<'_, &BasicBlockTerminator> {
             BasicBlockTerminator::TailCallRef(call_ref) => {
                 write!(f, "tail_call_ref {}", call_ref.display(self.meta))
             }
+            BasicBlockTerminator::Error(local) => write!(f, "error {}", local.display(self.meta)),
         }
     }
 }
