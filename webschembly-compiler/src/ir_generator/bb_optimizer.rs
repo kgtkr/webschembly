@@ -105,7 +105,7 @@ _ = add(l2, l3)
 // TODO: 前方/後方のmoveによる伝播に関するテスト追加
 pub fn analyze_typed_obj(
     bb: &BasicBlock,
-    defs: &VecMap<LocalId, Option<usize>>,
+    defs: &VecMap<LocalId, usize>,
 ) -> VecMap<LocalId, TypedObj> {
     // 次のBBに引き継ぐ型情報
     let mut typed_objs = VecMap::new();
@@ -147,7 +147,7 @@ pub fn analyze_typed_obj(
 
     // 前方のmoveをたどって型情報を伝播
     while let Some(local) = worklist.pop() {
-        if let Some(Some(def_idx)) = defs.get(local) {
+        if let Some(def_idx) = defs.get(local) {
             if let Some(&ExprAssign {
                 local: Some(_),
                 expr: Expr::Move(value),
@@ -317,13 +317,13 @@ pub fn dead_code_elimination(
 }
 
 // TODO: test
-pub fn collect_defs(bb: &BasicBlock) -> VecMap<LocalId, Option<usize>> {
+pub fn collect_defs(bb: &BasicBlock) -> VecMap<LocalId, usize> {
     let mut map = VecMap::new();
 
     for (i, expr_assign) in bb.exprs.iter().enumerate() {
         if let Some(local) = expr_assign.local {
             debug_assert!(map.get(local).is_none());
-            map.insert(local, Some(i));
+            map.insert(local, i);
         }
     }
 
