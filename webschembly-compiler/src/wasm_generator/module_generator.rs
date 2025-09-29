@@ -934,12 +934,11 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     self.module_generator.instantiate_func_func,
                 ));
             }
-            ir::Expr::InstantiateBB(module_id, func_id, bb_id, index_local) => {
+            ir::Expr::InstantiateBB(module_id, func_id, bb_id, index) => {
                 function.instruction(&Instruction::I32Const(usize::from(*module_id) as i32));
                 function.instruction(&Instruction::I32Const(usize::from(*func_id) as i32));
                 function.instruction(&Instruction::I32Const(usize::from(*bb_id) as i32));
-                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*index_local)));
-                function.instruction(&Instruction::I32WrapI64);
+                function.instruction(&Instruction::I32Const(*index as i32));
                 function.instruction(&Instruction::Call(
                     self.module_generator.instantiate_bb_func,
                 ));

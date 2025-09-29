@@ -331,7 +331,7 @@ pub enum Expr {
     Nop,                        // 左辺はNoneでなければならない
     Phi(Vec<PhiIncomingValue>), // BBの先頭にのみ連続して出現可能(Nopが間に入るのは可)
     InstantiateFunc(ModuleId, FuncId),
-    InstantiateBB(ModuleId, FuncId, BasicBlockId, LocalId /* index */),
+    InstantiateBB(ModuleId, FuncId, BasicBlockId, usize),
     Bool(bool),
     Int(i64),
     String(String),
@@ -652,7 +652,7 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                     module_id.display(self.meta.meta),
                     func_id.display(self.meta.meta),
                     bb_id.display(self.meta.meta),
-                    index.display(self.meta),
+                    index,
                 )
             }
             Expr::Bool(b) => write!(f, "{}", b),

@@ -658,7 +658,7 @@ impl JitFunc {
                             jit_module.module_id,
                             func.id,
                             jit_bb.bb_id,
-                            index_local,
+                            index,
                         ),
                     },
                     ExprAssign {
