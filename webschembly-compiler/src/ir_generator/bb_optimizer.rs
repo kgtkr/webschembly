@@ -170,6 +170,24 @@ pub struct TypedObj {
     pub typ: ValType,
 }
 
+// TODO: テスト追加
+pub fn remove_type_check(bb: &mut BasicBlock, typed_objs: &VecMap<LocalId, TypedObj>) {
+    for expr_assign in bb.exprs.iter_mut() {
+        match expr_assign.expr {
+            Expr::Is(val_type, local) => {
+                if let Some(typed_obj) = typed_objs.get(local) {
+                    if typed_obj.typ == val_type {
+                        expr_assign.expr = Expr::Bool(true);
+                    } else {
+                        expr_assign.expr = Expr::Bool(false);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
 /*
 コピー伝播を行う
 対象はmove, to_obj-from_obj, from_obj-to_obj

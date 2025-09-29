@@ -725,8 +725,10 @@ impl JitFunc {
             type_args,
         );
         let defs = bb_optimizer::collect_defs(&bb);
-        let next_type_args = bb_optimizer::analyze_typed_obj(&bb, &defs);
+        // TODO: 次のBBにも伝播させたい
+        let typed_objs = bb_optimizer::analyze_typed_obj(&bb, &defs);
         if config.enable_optimization {
+            bb_optimizer::remove_type_check(&mut bb, &typed_objs);
             // bb_optimizer::assign_type_argsの結果出来たto_obj/from_objの除去が主な目的
             bb_optimizer::copy_propagate(&new_locals, &mut bb);
         }
@@ -823,14 +825,14 @@ impl JitFunc {
                 BasicBlockNext::If(cond, then_bb, else_bb) => {
                     let (then_locals_to_pass, then_type_args, then_index) = calculate_args_to_pass(
                         &self.jit_bbs[then_bb].info,
-                        &next_type_args,
+                        &typed_objs,
                         &assigned_local_to_obj,
                         global_layout,
                     );
                     required_stubs.push((then_bb, then_index));
                     let (else_locals_to_pass, else_type_args, else_index) = calculate_args_to_pass(
                         &self.jit_bbs[else_bb].info,
-                        &next_type_args,
+                        &typed_objs,
                         &assigned_local_to_obj,
                         global_layout,
                     );
@@ -966,7 +968,7 @@ impl JitFunc {
                 BasicBlockNext::Jump(target_bb) => {
                     let (args_to_pass, type_args, target_index) = calculate_args_to_pass(
                         &self.jit_bbs[target_bb].info,
-                        &next_type_args,
+                        &typed_objs,
                         &assigned_local_to_obj,
                         global_layout,
                     );
