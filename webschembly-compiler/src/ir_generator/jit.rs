@@ -347,10 +347,16 @@ impl JitFunc {
             jit_bbs: func
                 .bbs
                 .values()
-                .map(|bb| JitBB {
-                    bb_id: bb.id,
-                    global: bb_to_globals[bb.id],
-                    info: bb_infos[bb.id].clone(),
+                .map(|bb| {
+                    let defs = bb_optimizer::collect_defs(bb);
+                    let typed_objs = bb_optimizer::analyze_typed_obj(bb, &defs);
+                    JitBB {
+                        bb_id: bb.id,
+                        global: bb_to_globals[bb.id],
+                        info: bb_infos[bb.id].clone(),
+                        defs,
+                        typed_objs,
+                    }
                 })
                 .collect::<VecMap<BasicBlockId, _>>(),
             globals,
@@ -705,12 +711,48 @@ impl JitFunc {
         let type_args = &*global_layout.from_idx(index, self.jit_bbs[bb_id].info.type_params.len());
         let module = &jit_module.module;
         let func = &module.funcs[self.func_id];
-        let mut bb = func.bbs[bb_id].clone();
+        let mut bb = BasicBlock {
+            id: BasicBlockId::from(0), // dummy
+            exprs: vec![],
+            next: BasicBlockNext::Jump(bb_id),
+        };
+        let mut last_merged_bb_id = bb.id;
         // bbをマージ
-        while let BasicBlockNext::Jump(next_id) = bb.next {
-            let next_bb = func.bbs[next_id].clone();
-            bb.exprs.extend(next_bb.exprs);
-            bb.next = next_bb.next;
+        loop {
+            match bb.next {
+                BasicBlockNext::Jump(next_id) => {
+                    let next_bb = func.bbs[next_id].clone();
+                    bb.exprs.extend(next_bb.exprs);
+                    bb.next = next_bb.next;
+                    last_merged_bb_id = next_id;
+                }
+                BasicBlockNext::If(cond, then_bb_id, else_bb_id) => {
+                    // もし cond が Is<T> かつ typed_obj に型情報があればマージ
+                    // TODO: 事前にBB単位の最適化を行い、cond が true 定数ならというシンプルな条件にする
+                    let jit_bb = &self.jit_bbs[last_merged_bb_id];
+                    let cond_expr = jit_bb
+                        .defs
+                        .get(cond)
+                        .and_then(|&idx| bb.exprs.get(idx))
+                        .map(|e| &e.expr);
+                    if let Some(Expr::Is(typ, obj_local)) = cond_expr
+                        && let Some(typed_obj) = jit_bb.typed_objs.get(*obj_local)
+                    {
+                        let next_bb_id = if typed_obj.typ == *typ {
+                            then_bb_id
+                        } else {
+                            else_bb_id
+                        };
+                        let next_bb = func.bbs[next_bb_id].clone();
+                        bb.exprs.extend(next_bb.exprs);
+                        bb.next = next_bb.next;
+                        last_merged_bb_id = next_bb_id;
+                    } else {
+                        break;
+                    }
+                }
+                _ => break,
+            }
         }
 
         let mut funcs = TiVec::new();
@@ -1299,6 +1341,8 @@ struct JitBB {
     bb_id: BasicBlockId,
     global: GlobalId,
     info: BBInfo,
+    defs: VecMap<LocalId, usize>,
+    typed_objs: VecMap<LocalId, TypedObj>,
 }
 
 impl HasId for JitBB {
