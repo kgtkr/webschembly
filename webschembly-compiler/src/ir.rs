@@ -302,9 +302,9 @@ impl fmt::Display for DisplayInFunc<'_, &'_ ExprCallRef> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "call_ref({}:{})",
+            "call_ref<{}>({})",
+            self.value.func_type,
             self.value.func.display(self.meta),
-            self.value.func_type
         )?;
         if !self.value.args.is_empty() {
             write!(f, "(")?;
@@ -631,8 +631,8 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                     write!(
                         f,
                         "{}: {}",
+                        value.local.display(self.meta),
                         value.bb.display(self.meta.meta),
-                        value.local.display(self.meta)
                     )?;
                 }
                 write!(f, ")")
