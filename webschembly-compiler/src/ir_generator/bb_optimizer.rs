@@ -102,10 +102,14 @@ _ = add(l2, l3)
 次のBBに引き継ぐ情報:
 - objな値→val_typeな値の対応とその型(どちらも再代入されない場合のみ)
 */
-
-pub fn analyze_typed_obj(bb: &BasicBlock) -> VecMap<LocalId, TypedObj> {
+// TODO: 前方/後方のmoveによる伝播に関するテスト追加
+pub fn analyze_typed_obj(
+    bb: &BasicBlock,
+    defs: &VecMap<LocalId, Option<usize>>,
+) -> VecMap<LocalId, TypedObj> {
     // 次のBBに引き継ぐ型情報
     let mut typed_objs = VecMap::new();
+    let mut worklist = Vec::new();
 
     for expr_assign in bb.exprs.iter() {
         match *expr_assign {
@@ -117,6 +121,7 @@ pub fn analyze_typed_obj(bb: &BasicBlock) -> VecMap<LocalId, TypedObj> {
                     val_type: local,
                     typ,
                 });
+                worklist.push(value);
             }
             ExprAssign {
                 local: Some(local),
@@ -127,7 +132,32 @@ pub fn analyze_typed_obj(bb: &BasicBlock) -> VecMap<LocalId, TypedObj> {
                     typ,
                 });
             }
+            // 後方に型情報を伝播
+            ExprAssign {
+                local: Some(local),
+                expr: Expr::Move(value),
+            } => {
+                if let Some(&typed_obj) = typed_objs.get(value) {
+                    typed_objs.insert(local, typed_obj);
+                }
+            }
             _ => {}
+        }
+    }
+
+    // 前方のmoveをたどって型情報を伝播
+    while let Some(local) = worklist.pop() {
+        if let Some(Some(def_idx)) = defs.get(local) {
+            if let Some(&ExprAssign {
+                local: Some(_),
+                expr: Expr::Move(value),
+            }) = bb.exprs.get(*def_idx)
+            {
+                if !typed_objs.contains_key(value) {
+                    typed_objs.insert(value, typed_objs[local]);
+                    worklist.push(value);
+                }
+            }
         }
     }
 
@@ -268,6 +298,20 @@ pub fn dead_code_elimination(
     }
 }
 
+// TODO: test
+pub fn collect_defs(bb: &BasicBlock) -> VecMap<LocalId, Option<usize>> {
+    let mut map = VecMap::new();
+
+    for (i, expr_assign) in bb.exprs.iter().enumerate() {
+        if let Some(local) = expr_assign.local {
+            debug_assert!(map.get(local).is_none());
+            map.insert(local, Some(i));
+        }
+    }
+
+    map
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -377,7 +421,8 @@ mod tests {
                 .collect::<VecMap<LocalId, _>>()
         );
 
-        let typed_objs = analyze_typed_obj(&bb);
+        let defs = collect_defs(&bb);
+        let typed_objs = analyze_typed_obj(&bb, &defs);
 
         assert_eq!(
             typed_objs,

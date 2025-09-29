@@ -61,6 +61,10 @@ where
         self.vec.get(i).and_then(|opt| opt.as_ref())
     }
 
+    pub fn contains_key(&self, key: K) -> bool {
+        self.get(key).is_some()
+    }
+
     pub fn get_mut(&mut self, key: K) -> Option<&mut V> {
         let i = usize::from(key);
         self.vec.get_mut(i).and_then(|opt| opt.as_mut())

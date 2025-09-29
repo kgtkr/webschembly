@@ -724,11 +724,8 @@ impl JitFunc {
             &bb_info.type_params,
             type_args,
         );
-        if config.enable_optimization {
-            // bb_optimizer::analyze_typed_obj を効果的に行うために、事前に行う
-            bb_optimizer::copy_propagate(&new_locals, &mut bb);
-        }
-        let next_type_args = bb_optimizer::analyze_typed_obj(&bb);
+        let defs = bb_optimizer::collect_defs(&bb);
+        let next_type_args = bb_optimizer::analyze_typed_obj(&bb, &defs);
         if config.enable_optimization {
             // bb_optimizer::assign_type_argsの結果出来たto_obj/from_objの除去が主な目的
             bb_optimizer::copy_propagate(&new_locals, &mut bb);
