@@ -38,6 +38,7 @@ for (const filename of filenames) {
       if (warmup) {
         let mainClosure: SchemeValue;
         let mainArgs: SchemeValue;
+        let afterWarmup = false;
         bench.add(
           `${filename},with warmup,${compilerConfigToString(compilerConfig)}`,
           () => {
@@ -45,12 +46,23 @@ for (const filename of filenames) {
           },
           {
             beforeEach: async () => {
+              afterWarmup = false;
               runtime = await createRuntime(
                 await createNodeRuntimeEnv({
                   runtimeName: filename,
                   exit: () => {},
                   writeBuf: () => {},
                   loadRuntimeModule: async () => runtimeModule,
+                  logger: {
+                    log: () => {},
+                    instantiate: () => {
+                      if (afterWarmup) {
+                        throw new Error(
+                          "instantiate should not be called after warmup"
+                        );
+                      }
+                    },
+                  },
                 }),
                 {
                   compilerConfig,
@@ -65,6 +77,7 @@ for (const filename of filenames) {
               );
               mainArgs = runtime.instance.exports.new_args(0);
               runtime.instance.exports.call_closure(mainClosure, mainArgs);
+              afterWarmup = true;
             },
             afterEach: () => {
               runtime.cleanup();
