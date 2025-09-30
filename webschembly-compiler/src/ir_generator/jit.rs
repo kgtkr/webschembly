@@ -750,6 +750,7 @@ impl JitFunc {
         };
         let mut last_merged_bb_id = bb.id;
         // bbをマージ
+        // TODO: 1つのBBにまとめるのではなく、複数のBBにまとめる。現状だと前方ジャンプがあると無限ループになる
         loop {
             match bb.next {
                 BasicBlockNext::Jump(next_id) => {
