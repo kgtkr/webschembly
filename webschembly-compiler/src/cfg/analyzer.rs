@@ -17,23 +17,15 @@ pub fn calc_predecessors(
     predecessors
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DomTreeNode {
-    pub id: BasicBlockId,
-    pub children: Vec<DomTreeNode>,
-}
-
-pub fn build_dom_tree(
+pub fn calc_doms(
     cfg: &VecMap<BasicBlockId, BasicBlock>,
     rpo: &FxHashMap<BasicBlockId, usize>,
     entry_id: BasicBlockId,
     predecessors: &FxHashMap<BasicBlockId, Vec<BasicBlockId>>,
-) -> DomTreeNode {
-    // --- Step B: データフロー解析で各ノードの支配ノード集合を計算 ---
+) -> FxHashMap<BasicBlockId, FxHashSet<BasicBlockId>> {
     let all_nodes: FxHashSet<BasicBlockId> = cfg.keys().collect();
     let mut doms: FxHashMap<BasicBlockId, FxHashSet<BasicBlockId>> = FxHashMap::default();
 
-    // 初期化
     doms.insert(entry_id, [entry_id].iter().cloned().collect());
     for &id in &all_nodes {
         if id != entry_id {
@@ -44,7 +36,6 @@ pub fn build_dom_tree(
     let mut rpo_nodes: Vec<_> = cfg.keys().collect();
     rpo_nodes.sort_by_key(|id| rpo.get(id).expect("RPO must contain all nodes"));
 
-    // 集合が変化しなくなるまで反復計算
     let mut changed = true;
     while changed {
         changed = false;
@@ -75,9 +66,23 @@ pub fn build_dom_tree(
         }
     }
 
-    // --- Step C: 即時支配ノード (idom) を見つける ---
+    doms
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DomTreeNode {
+    pub id: BasicBlockId,
+    pub children: Vec<DomTreeNode>,
+}
+
+pub fn build_dom_tree(
+    cfg: &VecMap<BasicBlockId, BasicBlock>,
+    rpo: &FxHashMap<BasicBlockId, usize>,
+    entry_id: BasicBlockId,
+    doms: &FxHashMap<BasicBlockId, FxHashSet<BasicBlockId>>,
+) -> DomTreeNode {
     let mut idoms: FxHashMap<BasicBlockId, BasicBlockId> = FxHashMap::default();
-    for &id in &all_nodes {
+    for id in cfg.keys() {
         if id == entry_id {
             continue;
         }

@@ -5,8 +5,8 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
     cfg::{
-        DomTreeNode, build_dom_tree, calc_predecessors, calculate_rpo, find_loop_headers,
-        find_merge_nodes,
+        DomTreeNode, build_dom_tree, calc_doms, calc_predecessors, calculate_rpo,
+        find_loop_headers, find_merge_nodes,
     },
     ir::{BasicBlock, BasicBlockId, BasicBlockNext, BasicBlockTerminator, Func, LocalId},
     vec_map::VecMap,
@@ -181,7 +181,8 @@ pub fn reloop(func: &Func) -> Vec<Structured> {
 fn reloop_cfg(cfg: &VecMap<BasicBlockId, BasicBlock>, entry_id: BasicBlockId) -> Vec<Structured> {
     let predecessors = calc_predecessors(cfg);
     let rpo = calculate_rpo(cfg, entry_id);
-    let dom_tree = build_dom_tree(cfg, &rpo, entry_id, &predecessors);
+    let doms = calc_doms(cfg, &rpo, entry_id, &predecessors);
+    let dom_tree = build_dom_tree(cfg, &rpo, entry_id, &doms);
     let loop_headers = find_loop_headers(cfg, &rpo);
     let merge_nodes = find_merge_nodes(&rpo, &predecessors);
 
