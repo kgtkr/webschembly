@@ -26,13 +26,10 @@ fn remove_phi_in_bb(func: &mut Func, bb_id: BasicBlockId) {
             && let Some(result) = expr_assign.local
         {
             for incoming in incomings {
-                pending_copies
-                    .entry(incoming.bb)
-                    .or_default()
-                    .push(Copy {
-                        dest: result,
-                        src: incoming.local,
-                    });
+                pending_copies.entry(incoming.bb).or_default().push(Copy {
+                    dest: result,
+                    src: incoming.local,
+                });
             }
         }
     }
