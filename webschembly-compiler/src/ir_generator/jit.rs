@@ -729,14 +729,15 @@ impl JitFunc {
                 BasicBlockNext::If(cond, then_bb_id, else_bb_id) => {
                     // もし cond が Is<T> かつ typed_obj に型情報があればマージ
                     // TODO: 事前にBB単位の最適化を行い、cond が true 定数ならというシンプルな条件にする
-                    let jit_bb = &self.jit_bbs[last_merged_bb_id];
-                    let cond_expr = jit_bb
+                    let cur_jit_bb = &self.jit_bbs[last_merged_bb_id];
+                    let cur_bb = &func.bbs[last_merged_bb_id];
+                    let cond_expr = cur_jit_bb
                         .defs
                         .get(cond)
-                        .and_then(|&idx| bb.exprs.get(idx))
+                        .and_then(|&idx| cur_bb.exprs.get(idx))
                         .map(|e| &e.expr);
                     if let Some(Expr::Is(typ, obj_local)) = cond_expr
-                        && let Some(typed_obj) = jit_bb.typed_objs.get(*obj_local)
+                        && let Some(typed_obj) = cur_jit_bb.typed_objs.get(*obj_local)
                     {
                         let next_bb_id = if typed_obj.typ == *typ {
                             then_bb_id
