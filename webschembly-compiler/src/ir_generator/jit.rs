@@ -359,6 +359,21 @@ impl JitFunc {
                 all_typed_objs[dom_bb_id].extend(typed_objs.clone());
             }
         }
+        /*
+        all_typed_objs TODO:
+        JITに関係なく行える最適化なのでここに置くべきではない
+        // bb0
+        if is<int>(x):
+            // bb1
+            // ここでxはintであると推論するべき
+
+        -----
+        // bb0
+        unbox<int>(x)
+        jmp bb1
+        // bb1
+        y = move x // yもintであると推論するべき
+        */
 
         Self {
             func_id,
