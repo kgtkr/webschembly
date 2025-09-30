@@ -4,7 +4,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use typed_index_collections::{TiVec, ti_vec};
 
 use super::bb_optimizer;
-use crate::cfg::{analyze_liveness, calc_def_use, calculate_rpo};
+use crate::cfg::{analyze_liveness, calc_def_use, calc_doms, calc_predecessors, calculate_rpo};
 use crate::fxbihashmap::FxBiHashMap;
 use crate::ir_generator::GlobalManager;
 use crate::ir_generator::bb_optimizer::TypedObj;
@@ -342,6 +342,24 @@ impl JitFunc {
             globals
         };
 
+        // all_typed_objs: BBごとの型推論結果
+        // あるBBの型推論結果はその支配集合にまで伝播させる
+        let mut all_typed_objs = VecMap::new();
+        let predecessors = calc_predecessors(&func.bbs);
+        let rpo = calculate_rpo(&func.bbs, func.bb_entry);
+        let doms = calc_doms(&func.bbs, &rpo, func.bb_entry, &predecessors);
+        for bb_id in func.bbs.keys() {
+            all_typed_objs.insert(bb_id, VecMap::new());
+        }
+        for bb in func.bbs.values() {
+            let defs = bb_optimizer::collect_defs(bb);
+            let typed_objs = bb_optimizer::analyze_typed_obj(bb, &defs);
+            let dom_set = doms.get(&bb.id).unwrap();
+            for &dom_bb_id in dom_set {
+                all_typed_objs[dom_bb_id].extend(typed_objs.clone());
+            }
+        }
+
         Self {
             func_id,
             jit_bbs: func
@@ -349,13 +367,12 @@ impl JitFunc {
                 .values()
                 .map(|bb| {
                     let defs = bb_optimizer::collect_defs(bb);
-                    let typed_objs = bb_optimizer::analyze_typed_obj(bb, &defs);
                     JitBB {
                         bb_id: bb.id,
                         global: bb_to_globals[bb.id],
                         info: bb_infos[bb.id].clone(),
                         defs,
-                        typed_objs,
+                        typed_objs: all_typed_objs[bb.id].clone(), // TODO: cloneしないようにする
                     }
                 })
                 .collect::<VecMap<BasicBlockId, _>>(),

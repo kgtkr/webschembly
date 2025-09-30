@@ -107,8 +107,17 @@ pub fn analyze_typed_obj(
     bb: &BasicBlock,
     defs: &VecMap<LocalId, usize>,
 ) -> VecMap<LocalId, TypedObj> {
-    // 次のBBに引き継ぐ型情報
     let mut typed_objs = VecMap::new();
+    extend_typed_obj(bb, defs, &mut typed_objs);
+
+    typed_objs
+}
+
+pub fn extend_typed_obj(
+    bb: &BasicBlock,
+    defs: &VecMap<LocalId, usize>,
+    typed_objs: &mut VecMap<LocalId, TypedObj>,
+) {
     let mut worklist = Vec::new();
 
     for expr_assign in bb.exprs.iter() {
@@ -160,8 +169,6 @@ pub fn analyze_typed_obj(
             }
         }
     }
-
-    typed_objs
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
