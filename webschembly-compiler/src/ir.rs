@@ -195,7 +195,13 @@ impl fmt::Display for Display<'_, FuncId> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LocalFlag {
     Defined,
-    Used,
+    Used(LocalUsedFlag),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum LocalUsedFlag {
+    Phi(BasicBlockId),
+    NonPhi,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -411,36 +417,36 @@ macro_rules! impl_Expr_func_ids {
     };
 }
 
-macro_rules! impl_Expr_local_ids {
+macro_rules! impl_Expr_local_usages {
     ($($suffix: ident)?,$($mutability: tt)?) => {
         paste::paste! {
-            pub fn [<local_ids $($suffix)?>](&$($mutability)? self) -> impl Iterator<Item = &$($mutability)? LocalId> {
+            pub fn [<local_usages $($suffix)?>](&$($mutability)? self) -> impl Iterator<Item = (&$($mutability)? LocalId, LocalUsedFlag)> {
                 from_coroutine(
                     #[coroutine]
                     move || match self {
                         Expr::Phi(values) => {
                             for value in values.[<iter $($suffix)?>]() {
-                                yield &$($mutability)? value.local;
+                                yield (&$($mutability)? value.local, LocalUsedFlag::Phi(value.bb));
                             }
                         }
-                        Expr::StringToSymbol(id) => yield id,
+                        Expr::StringToSymbol(id) => yield (id, LocalUsedFlag::NonPhi),
                         Expr::Vector(ids) => {
                             for id in ids {
-                                yield id;
+                                yield (id, LocalUsedFlag::NonPhi);
                             }
                         }
                         Expr::Cons(a, b) => {
-                            yield a;
-                            yield b;
+                            yield (a, LocalUsedFlag::NonPhi);
+                            yield (b, LocalUsedFlag::NonPhi);
                         }
-                        Expr::DerefRef(_, id) => yield id,
+                        Expr::DerefRef(_, id) => yield (id, LocalUsedFlag::NonPhi),
                         Expr::SetRef(_, ref_id, value_id) => {
-                            yield ref_id;
-                            yield value_id;
+                            yield (ref_id, LocalUsedFlag::NonPhi);
+                            yield (value_id, LocalUsedFlag::NonPhi);
                         }
                         Expr::Call(call) => {
                             for id in call.[<local_ids $($suffix)?>]() {
-                                yield id;
+                                yield (id, LocalUsedFlag::NonPhi);
                             }
                         }
                         Expr::Closure {
@@ -448,86 +454,86 @@ macro_rules! impl_Expr_local_ids {
                             func,
                         } => {
                             for env in envs {
-                                yield env;
+                                yield (env, LocalUsedFlag::NonPhi);
                             }
-                            yield func;
+                            yield (func, LocalUsedFlag::NonPhi);
                         }
                         Expr::CallRef(call_ref) => {
                             for id in call_ref.[<local_ids $($suffix)?>]() {
-                                yield id;
+                                yield (id, LocalUsedFlag::NonPhi);
                             }
                         }
-                        Expr::Move(id) => yield id,
-                        Expr::ToObj(_, id) => yield id,
-                        Expr::FromObj(_, id) => yield id,
-                        Expr::ClosureEnv(_, closure, _) => yield closure,
-                        Expr::ClosureFuncRef(id) => yield id,
-                        Expr::GlobalSet(_, value) => yield value,
-                        Expr::Display(id) => yield id,
+                        Expr::Move(id) => yield (id, LocalUsedFlag::NonPhi),
+                        Expr::ToObj(_, id) => yield (id, LocalUsedFlag::NonPhi),
+                        Expr::FromObj(_, id) => yield (id, LocalUsedFlag::NonPhi),
+                        Expr::ClosureEnv(_, closure, _) => yield (closure, LocalUsedFlag::NonPhi),
+                        Expr::ClosureFuncRef(id) => yield (id, LocalUsedFlag::NonPhi),
+                        Expr::GlobalSet(_, value) => yield (value, LocalUsedFlag::NonPhi),
+                        Expr::Display(id) => yield (id, LocalUsedFlag::NonPhi),
                         Expr::Add(a, b) => {
-                            yield a;
-                            yield b;
+                            yield (a, LocalUsedFlag::NonPhi);
+                            yield (b, LocalUsedFlag::NonPhi);
                         }
                         Expr::Sub(a, b) => {
-                            yield a;
-                            yield b;
+                            yield (a, LocalUsedFlag::NonPhi);
+                            yield (b, LocalUsedFlag::NonPhi);
                         }
                         Expr::Mul(a, b) => {
-                            yield a;
-                            yield b;
+                            yield (a, LocalUsedFlag::NonPhi);
+                            yield (b, LocalUsedFlag::NonPhi);
                         }
                         Expr::Div(a, b) => {
-                            yield a;
-                            yield b;
+                            yield (a, LocalUsedFlag::NonPhi);
+                            yield (b, LocalUsedFlag::NonPhi);
                         }
-                        Expr::WriteChar(id) => yield id,
-                        Expr::Is(_,id) => yield id,
-                        Expr::VectorLength(id) => yield id,
+                        Expr::WriteChar(id) => yield (id, LocalUsedFlag::NonPhi),
+                        Expr::Is(_,id) => yield (id, LocalUsedFlag::NonPhi),
+                        Expr::VectorLength(id) => yield (id, LocalUsedFlag::NonPhi),
                         Expr::VectorRef(vec_id, index_id) => {
-                            yield vec_id;
-                            yield index_id;
+                            yield (vec_id, LocalUsedFlag::NonPhi);
+                            yield (index_id, LocalUsedFlag::NonPhi);
                         }
                         Expr::VectorSet(vec_id, index_id, value_id) => {
-                            yield vec_id;
-                            yield index_id;
-                            yield value_id;
+                            yield (vec_id, LocalUsedFlag::NonPhi);
+                            yield (index_id, LocalUsedFlag::NonPhi);
+                            yield (value_id, LocalUsedFlag::NonPhi);
                         }
                         Expr::Eq(a, b) => {
-                            yield a;
-                            yield b;
+                            yield (a, LocalUsedFlag::NonPhi);
+                            yield (b, LocalUsedFlag::NonPhi);
                         }
-                        Expr::Not(id) => yield id,
-                        Expr::Car(id) => yield id,
-                        Expr::Cdr(id) => yield id,
-                        Expr::SymbolToString(id) => yield id,
-                        Expr::NumberToString(id) => yield id,
+                        Expr::Not(id) => yield (id, LocalUsedFlag::NonPhi),
+                        Expr::Car(id) => yield (id, LocalUsedFlag::NonPhi),
+                        Expr::Cdr(id) => yield (id, LocalUsedFlag::NonPhi),
+                        Expr::SymbolToString(id) => yield (id, LocalUsedFlag::NonPhi),
+                        Expr::NumberToString(id) => yield (id, LocalUsedFlag::NonPhi),
                         Expr::EqNum(a, b) => {
-                            yield a;
-                            yield b;
+                            yield (a, LocalUsedFlag::NonPhi);
+                            yield (b, LocalUsedFlag::NonPhi);
                         }
                         Expr::Lt(a, b) => {
-                            yield a;
-                            yield b;
+                            yield (a, LocalUsedFlag::NonPhi);
+                            yield (b, LocalUsedFlag::NonPhi);
                         }
                         Expr::Gt(a, b) => {
-                            yield a;
-                            yield b;
+                            yield (a, LocalUsedFlag::NonPhi);
+                            yield (b, LocalUsedFlag::NonPhi);
                         }
                         Expr::Le(a, b) => {
-                            yield a;
-                            yield b;
+                            yield (a, LocalUsedFlag::NonPhi);
+                            yield (b, LocalUsedFlag::NonPhi);
                         }
                         Expr::Ge(a, b) => {
-                            yield a;
-                            yield b;
+                            yield (a, LocalUsedFlag::NonPhi);
+                            yield (b, LocalUsedFlag::NonPhi);
                         }
                         Expr::Args(ids) => {
                             for id in ids {
-                                yield id;
+                                yield (id, LocalUsedFlag::NonPhi);
                             }
                         }
                         Expr::ArgsRef(id, _) => {
-                            yield id;
+                            yield (id, LocalUsedFlag::NonPhi);
                         }
 
                         Expr::Nop
@@ -614,8 +620,8 @@ impl Expr {
 
     impl_Expr_func_ids!(_mut, mut);
     impl_Expr_func_ids!(,);
-    impl_Expr_local_ids!(_mut, mut);
-    impl_Expr_local_ids!(,);
+    impl_Expr_local_usages!(_mut, mut);
+    impl_Expr_local_usages!(,);
 }
 
 impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
@@ -797,8 +803,8 @@ macro_rules! impl_ExprAssign_local_usages {
                 from_coroutine(
                     #[coroutine]
                     move || {
-                        for id in self.expr.[<local_ids $($suffix)?>]() {
-                            yield (id, LocalFlag::Used);
+                        for (id, used_flag) in self.expr.[<local_usages $($suffix)?>]() {
+                            yield (id, LocalFlag::Used(used_flag));
                         }
                         if let Some(local) = &$($mutability)? self.local {
                             yield (local, LocalFlag::Defined);
@@ -850,7 +856,7 @@ macro_rules! impl_BasicBlock_local_usages {
                             }
                         }
                         for id in self.next.[<local_ids $($suffix)?>]() {
-                            yield (id, LocalFlag::Used);
+                            yield (id, LocalFlag::Used(LocalUsedFlag::NonPhi));
                         }
                     },
                 )

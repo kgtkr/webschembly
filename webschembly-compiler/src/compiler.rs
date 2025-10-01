@@ -72,16 +72,14 @@ impl Compiler {
                 allow_set_builtin: is_stdlib,
             });
         preprocess_module(&mut module);
-        postprocess_phi(&mut module);
-
         if let Some(jit) = &mut self.jit {
-            // postprocess_phiを行うことで、関数全体で見るとSSAではなくなるが、BB単位ではSSAのままになる
-            // レジスタ割り付けは行ってはいけない
+            // postprocess_phiが行わない
             let mut stub_module = jit.register_module(&mut self.global_manager, module);
             preprocess_module(&mut stub_module);
             postprocess_phi(&mut stub_module);
             Ok(stub_module)
         } else {
+            postprocess_phi(&mut module);
             Ok(module)
         }
     }

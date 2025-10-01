@@ -2,7 +2,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
     VecMap,
-    ir::{BasicBlock, BasicBlockId, LocalFlag, LocalId},
+    ir::{BasicBlock, BasicBlockId, LocalFlag, LocalId, LocalUsedFlag},
 };
 
 pub fn calc_predecessors(
@@ -238,9 +238,15 @@ pub fn calc_def_use(cfg: &VecMap<BasicBlockId, BasicBlock>) -> FxHashMap<BasicBl
                 LocalFlag::Defined => {
                     defs.insert(*local_id);
                 }
-                LocalFlag::Used => {
-                    if !defs.contains(local_id) {
-                        uses.insert(*local_id);
+                LocalFlag::Used(used_flag) => {
+                    match used_flag {
+                        // Phiノードで使われている変数は、ブロック内で定義されていなくてもuseに含めない
+                        LocalUsedFlag::Phi(_) => {}
+                        LocalUsedFlag::NonPhi => {
+                            if !defs.contains(local_id) {
+                                uses.insert(*local_id);
+                            }
+                        }
                     }
                 }
             }
@@ -296,6 +302,14 @@ pub fn analyze_liveness(
             let mut new_live_out = FxHashSet::default();
             for successor in block.next.successors() {
                 new_live_out.extend(&live_in[&successor]);
+                let successor_block = &cfg[successor];
+                for (id, flag) in successor_block.local_usages() {
+                    if let LocalFlag::Used(LocalUsedFlag::Phi(phi_bb_id)) = flag
+                        && phi_bb_id == block_id
+                    {
+                        new_live_out.insert(*id);
+                    }
+                }
             }
 
             if new_live_in != live_in[&block_id] || new_live_out != live_out[&block_id] {

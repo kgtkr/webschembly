@@ -798,6 +798,32 @@ impl JitFunc {
                 match *expr {
                     ExprAssign {
                         local,
+                        expr: Expr::Phi(ref incomings),
+                    } => {
+                        if orig_bb_id == orig_entry_bb_id {
+                            // 削除
+                        } else {
+                            let incomings = incomings
+                                .iter()
+                                .filter_map(|incoming| {
+                                    // TODO: orig_bb_to_new_bbに存在しないものは消していい気がするが自信がない
+                                    // 例えば if (true) { bb1 } else { bb2 } phi(local1 from bb1, local2 from bb2) みたいな場合、存在しなくなるはず
+                                    orig_bb_to_new_bb.get(incoming.bb).copied().map(|bb| {
+                                        PhiIncomingValue {
+                                            bb,
+                                            local: incoming.local,
+                                        }
+                                    })
+                                })
+                                .collect();
+                            exprs.push(ExprAssign {
+                                local,
+                                expr: Expr::Phi(incomings),
+                            });
+                        }
+                    }
+                    ExprAssign {
+                        local,
                         expr: Expr::FuncRef(id),
                     } => {
                         let obj_local = new_locals.push_with(|id| Local {
@@ -980,7 +1006,6 @@ impl JitFunc {
             });
 
             let mut exprs = Vec::new();
-            /*
             // ジャンプ先のBBのPhiはここに移動
             // TODO: 型代入を考慮
             for expr_assign in &func.bbs[orig_bb_id].exprs {
@@ -1002,7 +1027,6 @@ impl JitFunc {
                     });
                 }
             }
-            */
             exprs.extend([
                 ExprAssign {
                     local: Some(vector_obj_local),
@@ -1054,7 +1078,7 @@ impl JitFunc {
             if bb.id != body_func.bb_entry {
                 out_used_locals.extend(
                     bb.local_usages()
-                        .filter(|(_, flag)| *flag == LocalFlag::Used)
+                        .filter(|(_, flag)| matches!(flag, LocalFlag::Used(_)))
                         .map(|(local, _)| *local),
                 );
             }

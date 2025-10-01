@@ -241,7 +241,7 @@ pub fn copy_propagate(locals: &VecMap<LocalId, Local>, bb: &mut BasicBlock) {
         use Expr::*;
 
         for (local, flag) in expr_assign.local_usages_mut() {
-            if flag == LocalFlag::Used {
+            if let LocalFlag::Used(_) = flag {
                 *local = local_replacements[*local];
             }
         }
@@ -312,7 +312,7 @@ pub fn dead_code_elimination(
         let expr_used = is_effectful || expr_assign.local.map(|l| used[l]).unwrap_or(false);
         if expr_used {
             for (&local, flag) in expr_assign.local_usages() {
-                if flag == LocalFlag::Used {
+                if let LocalFlag::Used(_) = flag {
                     used[local] = true;
                 }
             }
