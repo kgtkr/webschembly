@@ -745,7 +745,7 @@ impl JitFunc {
         let module = &jit_module.module;
         let func = &module.funcs[self.func_id];
 
-        // If/Jump命令で必要なBBの一覧。(新しいモジュールのBB ID, 元のモジュールのBB ID)のペアのリスト
+        // If/Jump命令で必要なBBの一覧。(新しいモジュールのBB ID, 元のモジュールのBB ID, isで分岐されたときの型情報)のペアのリスト
         let mut required_bbs = Vec::new();
 
         let mut bbs = VecMap::new();
@@ -914,10 +914,16 @@ impl JitFunc {
                             };
                         BasicBlockNext::Jump(next_bb_id)
                     } else {
+                        let mut then_types = Vec::new();
+                        // Is命令で分岐している場合、then側のBBで型情報を使える
+                        if let Some(Expr::Is(typ, obj_local)) = cond_expr {
+                            then_types.push((*obj_local, *typ));
+                        }
+
                         let then_bb_id = bbs.allocate_key();
                         let else_bb_id = bbs.allocate_key();
-                        required_bbs.push((then_bb_id, orig_then_bb_id));
-                        required_bbs.push((else_bb_id, orig_else_bb_id));
+                        required_bbs.push((then_bb_id, orig_then_bb_id, then_types));
+                        required_bbs.push((else_bb_id, orig_else_bb_id, Vec::new()));
 
                         BasicBlockNext::If(cond, then_bb_id, else_bb_id)
                     }
@@ -975,7 +981,47 @@ impl JitFunc {
             })
         }
 
-        for (bb_id, orig_bb_id) in required_bbs {
+        for (bb_id, orig_bb_id, types) in required_bbs {
+            let mut exprs = Vec::new();
+            // ジャンプ先のBBのPhiはここに移動
+            // TODO: 型代入を考慮
+            for expr_assign in &func.bbs[orig_bb_id].exprs {
+                if let ExprAssign {
+                    local,
+                    expr: Expr::Phi(incomings),
+                } = expr_assign
+                {
+                    let incomings = incomings
+                        .iter()
+                        .map(|incoming| PhiIncomingValue {
+                            bb: orig_bb_to_new_bb[incoming.bb],
+                            local: incoming.local,
+                        })
+                        .collect();
+                    exprs.push(ExprAssign {
+                        local: *local,
+                        expr: Expr::Phi(incomings),
+                    });
+                }
+            }
+
+            // 分岐先なので、他の分岐先とtyped_objsを共有しない
+            let mut typed_objs = typed_objs.clone();
+            for (obj_local, typ) in types {
+                let val_local = new_locals.push_with(|id| Local {
+                    id,
+                    typ: LocalType::Type(Type::Val(typ)),
+                });
+                exprs.push(ExprAssign {
+                    local: Some(val_local),
+                    expr: Expr::FromObj(typ, obj_local),
+                });
+                typed_objs.insert(obj_local, TypedObj {
+                    val_type: val_local,
+                    typ,
+                });
+            }
+
             let (locals_to_pass, type_args, index) = calculate_args_to_pass(
                 &self.jit_bbs[orig_bb_id].info,
                 &typed_objs,
@@ -1005,28 +1051,6 @@ impl JitFunc {
                 typ: LocalType::Type(Type::Val(ValType::Vector)),
             });
 
-            let mut exprs = Vec::new();
-            // ジャンプ先のBBのPhiはここに移動
-            // TODO: 型代入を考慮
-            for expr_assign in &func.bbs[orig_bb_id].exprs {
-                if let ExprAssign {
-                    local,
-                    expr: Expr::Phi(incomings),
-                } = expr_assign
-                {
-                    let incomings = incomings
-                        .iter()
-                        .map(|incoming| PhiIncomingValue {
-                            bb: orig_bb_to_new_bb[incoming.bb],
-                            local: incoming.local,
-                        })
-                        .collect();
-                    exprs.push(ExprAssign {
-                        local: *local,
-                        expr: Expr::Phi(incomings),
-                    });
-                }
-            }
             exprs.extend([
                 ExprAssign {
                     local: Some(vector_obj_local),
