@@ -859,12 +859,21 @@ impl JitFunc {
                         .get(cond)
                         .and_then(|&idx| bb.exprs.get(idx))
                         .map(|e| &e.expr);
-                    // もし cond が Is<T> かつ typed_obj に型情報があればマージ
+                    // もし cond が Is<T> かつ typed_obj に型情報があれば分岐をなくす
                     // TODO: 事前にBB単位の最適化を行い、cond が true 定数ならというシンプルな条件にする
-                    if let Some(Expr::Is(typ, obj_local)) = cond_expr
+                    let const_cond = if let Some(Expr::Is(typ, obj_local)) = cond_expr
                         && let Some(typed_obj) = jit_bb.typed_objs.get(*obj_local)
                     {
-                        let orig_next_bb_id = if typed_obj.typ == *typ {
+                        Some(typed_obj.typ == *typ)
+                    } else if let Some(Expr::Bool(b)) = cond_expr {
+                        Some(*b)
+                    } else {
+                        None
+                    };
+                    log::debug!("cond_expr: {:?} {:?}", cond_expr, const_cond);
+
+                    if let Some(const_cond) = const_cond {
+                        let orig_next_bb_id = if const_cond {
                             orig_then_bb_id
                         } else {
                             orig_else_bb_id
