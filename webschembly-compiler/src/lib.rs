@@ -32,5 +32,4 @@ pub mod token;
 mod tokens;
 mod vec_map;
 pub use vec_map::VecMap;
-pub mod cfg;
 pub mod x;

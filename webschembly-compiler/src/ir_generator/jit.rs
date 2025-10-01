@@ -3,8 +3,10 @@ use std::borrow::Cow;
 use rustc_hash::{FxHashMap, FxHashSet};
 use typed_index_collections::{TiVec, ti_vec};
 
+use super::analyzer::{
+    analyze_liveness, calc_def_use, calc_doms, calc_predecessors, calculate_rpo,
+};
 use super::bb_optimizer;
-use crate::cfg::{analyze_liveness, calc_def_use, calc_doms, calc_predecessors, calculate_rpo};
 use crate::fxbihashmap::FxBiHashMap;
 use crate::ir_generator::GlobalManager;
 use crate::ir_generator::bb_optimizer::TypedObj;

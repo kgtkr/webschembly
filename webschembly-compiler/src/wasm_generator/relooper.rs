@@ -3,11 +3,11 @@
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
+use crate::ir_generator::analyzer::{
+    DomTreeNode, build_dom_tree, calc_doms, calc_predecessors, calculate_rpo, find_loop_headers,
+    find_merge_nodes,
+};
 use crate::{
-    cfg::{
-        DomTreeNode, build_dom_tree, calc_doms, calc_predecessors, calculate_rpo,
-        find_loop_headers, find_merge_nodes,
-    },
     ir::{BasicBlock, BasicBlockId, BasicBlockNext, BasicBlockTerminator, Func, LocalId},
     vec_map::VecMap,
 };

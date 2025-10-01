@@ -1,11 +1,11 @@
 use crate::VecMap;
 use crate::ast;
-use crate::cfg::preprocess_cfg;
 use crate::compiler_error;
 use crate::ir;
 use crate::ir_generator;
 use crate::ir_generator::Jit;
 use crate::ir_generator::JitConfig;
+use crate::ir_generator::optimizer::remove_unreachable_bb;
 use crate::ir_generator::remove_phi;
 use crate::ir_generator::remove_unused_local;
 use crate::lexer;
@@ -118,7 +118,7 @@ fn preprocess_module(module: &mut ir::Module) {
         if cfg!(debug_assertions) {
             assert_ssa(func);
         }
-        preprocess_cfg(&mut func.bbs, func.bb_entry);
+        remove_unreachable_bb(&mut func.bbs, func.bb_entry);
     }
 }
 
