@@ -383,12 +383,10 @@ impl JitFunc {
                 .bbs
                 .values()
                 .map(|bb| {
-                    let defs = bb_optimizer::collect_defs(bb);
                     JitBB {
                         bb_id: bb.id,
                         global: bb_to_globals[bb.id],
                         info: bb_infos[bb.id].clone(),
-                        defs,
                         typed_objs: all_typed_objs[bb.id].clone(), // TODO: cloneしないようにする
                     }
                 })
@@ -1348,7 +1346,6 @@ struct JitBB {
     bb_id: BasicBlockId,
     global: GlobalId,
     info: BBInfo,
-    defs: VecMap<LocalId, usize>,
     typed_objs: VecMap<LocalId, TypedObj>,
 }
 
