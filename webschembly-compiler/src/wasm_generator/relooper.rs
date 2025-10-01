@@ -3,7 +3,7 @@
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::ir_generator::analyzer::{
+use crate::ir_processor::analyzer::{
     DomTreeNode, build_dom_tree, calc_doms, calc_predecessors, calculate_rpo, find_loop_headers,
     find_merge_nodes,
 };

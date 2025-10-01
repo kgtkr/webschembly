@@ -7,9 +7,9 @@ use super::analyzer::{
     analyze_liveness, calc_def_use, calc_doms, calc_predecessors, calculate_rpo,
 };
 use super::bb_optimizer;
+use super::bb_optimizer::TypedObj;
 use crate::fxbihashmap::FxBiHashMap;
 use crate::ir_generator::GlobalManager;
-use crate::ir_generator::bb_optimizer::TypedObj;
 use crate::vec_map::VecMap;
 use crate::{HasId, ir::*};
 

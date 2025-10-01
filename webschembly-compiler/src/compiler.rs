@@ -3,11 +3,10 @@ use crate::ast;
 use crate::compiler_error;
 use crate::ir;
 use crate::ir_generator;
-use crate::ir_generator::Jit;
-use crate::ir_generator::JitConfig;
-use crate::ir_generator::optimizer::remove_unreachable_bb;
-use crate::ir_generator::remove_phi;
-use crate::ir_generator::remove_unused_local;
+use crate::ir_processor::jit::{Jit, JitConfig};
+use crate::ir_processor::optimizer::remove_unreachable_bb;
+use crate::ir_processor::remove_phi;
+use crate::ir_processor::remove_unused_local;
 use crate::lexer;
 use crate::sexpr_parser;
 
