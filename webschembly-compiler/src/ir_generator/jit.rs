@@ -880,8 +880,7 @@ impl JitFunc {
             let next = match bb.next {
                 BasicBlockNext::If(cond, orig_then_bb_id, orig_else_bb_id) => {
                     let jit_bb = &self.jit_bbs[orig_bb_id];
-                    let cond_expr = jit_bb
-                        .defs
+                    let cond_expr = defs
                         .get(cond)
                         .and_then(|&idx| bb.exprs.get(idx))
                         .map(|e| &e.expr);
