@@ -126,7 +126,7 @@ pub fn extend_typed_obj(
                 local: Some(local),
                 expr: Expr::FromObj(typ, value),
             } => {
-                typed_objs.insert(value, TypedObj {
+                typed_objs.entry(value).or_insert(TypedObj {
                     val_type: local,
                     typ,
                 });
@@ -136,7 +136,7 @@ pub fn extend_typed_obj(
                 local: Some(local),
                 expr: Expr::ToObj(typ, value),
             } => {
-                typed_objs.insert(local, TypedObj {
+                typed_objs.entry(local).or_insert(TypedObj {
                     val_type: value,
                     typ,
                 });
@@ -147,7 +147,7 @@ pub fn extend_typed_obj(
                 expr: Expr::Move(value),
             } => {
                 if let Some(&typed_obj) = typed_objs.get(value) {
-                    typed_objs.insert(local, typed_obj);
+                    typed_objs.entry(local).or_insert(typed_obj);
                 }
             }
             _ => {}
@@ -163,7 +163,8 @@ pub fn extend_typed_obj(
             }) = bb.exprs.get(*def_idx)
             {
                 if !typed_objs.contains_key(value) {
-                    typed_objs.insert(value, typed_objs[local]);
+                    let typed_obj = typed_objs[local];
+                    typed_objs.entry(value).or_insert(typed_obj);
                     worklist.push(value);
                 }
             }
@@ -178,8 +179,12 @@ pub struct TypedObj {
 }
 
 // TODO: テスト追加
-pub fn remove_type_check(bb: &mut BasicBlock, typed_objs: &VecMap<LocalId, TypedObj>) {
-    for expr_assign in bb.exprs.iter_mut() {
+pub fn remove_type_check(
+    bb: &mut BasicBlock,
+    typed_objs: &VecMap<LocalId, TypedObj>,
+    defs: &VecMap<LocalId, usize>,
+) {
+    for (i, expr_assign) in bb.exprs.iter_mut().enumerate() {
         match expr_assign.expr {
             Expr::Is(val_type, local) => {
                 if let Some(typed_obj) = typed_objs.get(local) {
@@ -188,6 +193,18 @@ pub fn remove_type_check(bb: &mut BasicBlock, typed_objs: &VecMap<LocalId, Typed
                     } else {
                         expr_assign.expr = Expr::Bool(false);
                     }
+                }
+            }
+            Expr::FromObj(ty, obj_local) => {
+                if let Some(typed_obj) = typed_objs.get(obj_local)
+                    && defs
+                        .get(typed_obj.val_type)
+                        .map(|&def_idx| def_idx < i)
+                        .unwrap_or(true)
+                // defsに存在しない = 先行ブロックで定義されている
+                {
+                    debug_assert_eq!(typed_obj.typ, ty);
+                    expr_assign.expr = Expr::Move(typed_obj.val_type);
                 }
             }
             _ => {}
@@ -325,16 +342,18 @@ pub fn dead_code_elimination(
 
 // TODO: test
 pub fn collect_defs(bb: &BasicBlock) -> VecMap<LocalId, usize> {
-    let mut map = VecMap::new();
+    let mut defs = VecMap::new();
+    extend_defs(bb, &mut defs);
+    defs
+}
 
+pub fn extend_defs(bb: &BasicBlock, defs: &mut VecMap<LocalId, usize>) {
     for (i, expr_assign) in bb.exprs.iter().enumerate() {
         if let Some(local) = expr_assign.local {
-            debug_assert!(map.get(local).is_none());
-            map.insert(local, i);
+            debug_assert!(defs.get(local).is_none());
+            defs.insert(local, i);
         }
     }
-
-    map
 }
 
 #[cfg(test)]

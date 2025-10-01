@@ -787,7 +787,7 @@ impl JitFunc {
             bb_optimizer::extend_typed_obj(&bb, &defs, &mut typed_objs);
 
             if config.enable_optimization {
-                bb_optimizer::remove_type_check(&mut bb, &typed_objs);
+                bb_optimizer::remove_type_check(&mut bb, &typed_objs, &defs);
                 // bb_optimizer::assign_type_argsの結果出来たto_obj/from_objの除去が主な目的
                 bb_optimizer::copy_propagate(&new_locals, &mut bb);
             }
