@@ -806,7 +806,7 @@ impl JitFunc {
                             let incomings = incomings
                                 .iter()
                                 .filter_map(|incoming| {
-                                    // TODO: orig_bb_to_new_bbに存在しないものは消していい気がするが自信がない
+                                    // orig_bb_to_new_bbに存在しないものは消していい気がするので消しているが自信がない
                                     // 例えば if (true) { bb1 } else { bb2 } phi(local1 from bb1, local2 from bb2) みたいな場合、存在しなくなるはず
                                     orig_bb_to_new_bb.get(incoming.bb).copied().map(|bb| {
                                         PhiIncomingValue {
