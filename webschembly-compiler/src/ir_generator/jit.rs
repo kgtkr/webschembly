@@ -757,7 +757,8 @@ impl JitFunc {
         let bb_entry = bbs.allocate_key();
         orig_bb_to_new_bb.insert(orig_entry_bb_id, bb_entry);
 
-        let mut all_typed_objs = VecMap::new();
+        // TODO: 現在はIfをマージしていないので、どこかのBBで成り立つTypedObjの結果は必ず他のBBにも伝播するという仮定が成り立つがそのうち修正
+        let mut typed_objs = VecMap::new();
 
         let mut assigned_local_to_obj = VecMap::new();
 
@@ -783,8 +784,7 @@ impl JitFunc {
 
             let defs = bb_optimizer::collect_defs(&bb);
             // TODO: 次のBBにも伝播させたい
-            let typed_objs = bb_optimizer::analyze_typed_obj(&bb, &defs);
-            all_typed_objs.extend(typed_objs.clone()); // TODO: 現在は分岐をマージしていないのでこれでいいが変更が必要
+            bb_optimizer::extend_typed_obj(&bb, &defs, &mut typed_objs);
 
             if config.enable_optimization {
                 bb_optimizer::remove_type_check(&mut bb, &typed_objs);
@@ -870,7 +870,6 @@ impl JitFunc {
                     } else {
                         None
                     };
-                    log::debug!("cond_expr: {:?} {:?}", cond_expr, const_cond);
 
                     if let Some(const_cond) = const_cond {
                         let orig_next_bb_id = if const_cond {
@@ -953,7 +952,7 @@ impl JitFunc {
         for (bb_id, orig_bb_id) in required_bbs {
             let (locals_to_pass, type_args, index) = calculate_args_to_pass(
                 &self.jit_bbs[orig_bb_id].info,
-                &all_typed_objs,
+                &typed_objs,
                 &assigned_local_to_obj,
                 global_layout,
             );
