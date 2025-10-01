@@ -1,4 +1,4 @@
-mod bb_optimizer;
+pub mod bb_optimizer;
 pub mod jit;
 mod remove_phi;
 pub use remove_phi::remove_phi;

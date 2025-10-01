@@ -10,6 +10,7 @@ use super::bb_optimizer;
 use super::bb_optimizer::TypedObj;
 use crate::fxbihashmap::FxBiHashMap;
 use crate::ir_generator::GlobalManager;
+use crate::ir_processor::bb_optimizer::DefUseChain;
 use crate::vec_map::VecMap;
 use crate::{HasId, ir::*};
 
@@ -762,10 +763,14 @@ impl JitFunc {
 
         let mut assigned_local_to_obj = VecMap::new();
 
+        // 型代入後のDefUseChain
+        let mut def_use_chain = DefUseChain::new();
         while let Some(orig_bb_id) = todo_merge_bb_ids.pop() {
             let new_bb_id = orig_bb_to_new_bb[orig_bb_id];
 
+            let orig_next = &func.bbs[orig_bb_id].next;
             let mut bb = func.bbs[orig_bb_id].clone();
+            bb.id = new_bb_id;
 
             if orig_bb_id == orig_entry_bb_id {
                 assigned_local_to_obj = bb_optimizer::assign_type_args(
@@ -786,11 +791,13 @@ impl JitFunc {
             // TODO: 次のBBにも伝播させたい
             bb_optimizer::extend_typed_obj(&bb, &defs, &mut typed_objs);
 
+            /*
+            TODO: bbsが完成した後に行う
             if config.enable_optimization {
                 bb_optimizer::remove_type_check(&mut bb, &typed_objs, &defs);
                 // bb_optimizer::assign_type_argsの結果出来たto_obj/from_objの除去が主な目的
                 bb_optimizer::copy_propagate(&new_locals, &mut bb);
-            }
+            }*/
 
             let mut exprs = Vec::new();
             for expr in bb.exprs.iter() {
@@ -874,24 +881,26 @@ impl JitFunc {
                     }
                 }
             }
+            bb.exprs = exprs;
+
+            // nextの決定にdef_use_chainとbbsが必要なので、一旦計算し、bbsに追加する
+            // bb.nextはdef_use_chainの計算には影響を与えないのでここで計算して問題ない
+            def_use_chain.add_bb(&bb);
+            bbs.insert_node(bb);
 
             // nextがtail callならexpr::callと同じようにget globalに置き換える
             // nextがif/jumpなら、BBに対応する関数へのジャンプに置き換える
-            let next = match bb.next {
+            let next = match *orig_next {
                 BasicBlockNext::If(cond, orig_then_bb_id, orig_else_bb_id) => {
-                    let jit_bb = &self.jit_bbs[orig_bb_id];
-                    let cond_expr = defs
-                        .get(cond)
-                        .and_then(|&idx| bb.exprs.get(idx))
-                        .map(|e| &e.expr);
-                    // もし cond が Is<T> かつ typed_obj に型情報があれば分岐をなくす
-                    // TODO: 事前にBB単位の最適化を行い、cond が true 定数ならというシンプルな条件にする
-                    let const_cond = if let Some(Expr::Is(typ, obj_local)) = cond_expr
-                        && let Some(typed_obj) = jit_bb.typed_objs.get(*obj_local)
+                    let cond_expr = def_use_chain.get_non_move_def(&bbs, cond);
+                    // もし cond が Is<T>(obj) かつ、obj が to_obj<P> ならば分岐をなくす
+                    // この形の定数畳み込みのみ assign_type_args で新たに生まれるためここで処理する
+                    // それ以外の形の定数畳み込みはJITとは無関係に外部で行う
+                    let const_cond = if let Some(&Expr::Is(ty1, obj)) = cond_expr
+                        && let Some(&Expr::ToObj(ty2, _)) =
+                            def_use_chain.get_non_move_def(&bbs, obj)
                     {
-                        Some(typed_obj.typ == *typ)
-                    } else if let Some(Expr::Bool(b)) = cond_expr {
-                        Some(*b)
+                        Some(ty1 == ty2)
                     } else {
                         None
                     };
@@ -915,8 +924,8 @@ impl JitFunc {
                     } else {
                         let mut then_types = Vec::new();
                         // Is命令で分岐している場合、then側のBBで型情報を使える
-                        if let Some(Expr::Is(typ, obj_local)) = cond_expr {
-                            then_types.push((*obj_local, *typ));
+                        if let Some(&Expr::Is(typ, obj_local)) = cond_expr {
+                            then_types.push((obj_local, typ));
                         }
 
                         let then_bb_id = bbs.allocate_key();
@@ -952,6 +961,7 @@ impl JitFunc {
                         id,
                         typ: LocalType::Type(Type::Val(ValType::FuncRef)),
                     });
+                    let exprs = &mut bbs[new_bb_id].exprs;
                     exprs.push(ExprAssign {
                         local: Some(obj_local),
                         expr: Expr::GlobalGet(jit_module.func_to_globals[func_id]),
@@ -966,18 +976,15 @@ impl JitFunc {
                         func_type: module.funcs[func_id].func_type(),
                     }))
                 }
-                next @ BasicBlockNext::Terminator(
+                ref next @ BasicBlockNext::Terminator(
                     BasicBlockTerminator::TailCallRef(_)
                     | BasicBlockTerminator::Return(_)
                     | BasicBlockTerminator::Error(_),
                 ) => next.clone(),
             };
 
-            bbs.insert_node(BasicBlock {
-                id: new_bb_id,
-                exprs,
-                next,
-            })
+            bbs[new_bb_id].next = next;
+            def_use_chain.add_bb(&bbs[new_bb_id]); // nextでexprsが変わった可能性があるので更新
         }
 
         for (bb_id, orig_bb_id, types) in required_bbs {

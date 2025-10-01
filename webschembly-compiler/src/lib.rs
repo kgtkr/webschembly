@@ -29,7 +29,7 @@ pub mod sexpr_parser;
 pub mod span;
 pub mod stdlib;
 pub mod token;
-mod tokens;
+pub mod tokens;
 mod vec_map;
 pub use vec_map::VecMap;
 pub mod ir_processor;
