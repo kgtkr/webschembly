@@ -117,7 +117,7 @@ fn preprocess_module(module: &mut ir::Module) {
         if cfg!(debug_assertions) {
             assert_ssa(func);
         }
-        remove_unreachable_bb(&mut func.bbs, func.bb_entry);
+        remove_unreachable_bb(func);
     }
 }
 
