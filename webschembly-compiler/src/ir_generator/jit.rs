@@ -734,86 +734,64 @@ impl JitFunc {
         &self,
         config: &JitConfig,
         jit_module: &JitModule,
-        bb_id: BasicBlockId,
+        orig_entry_bb_id: BasicBlockId,
         index: usize,
         global_layout: &mut GlobalLayout,
     ) -> Module {
         let mut required_stubs = Vec::new();
 
-        let type_args = &*global_layout.from_idx(index, self.jit_bbs[bb_id].info.type_params.len());
+        let type_args =
+            &*global_layout.from_idx(index, self.jit_bbs[orig_entry_bb_id].info.type_params.len());
         let module = &jit_module.module;
         let func = &module.funcs[self.func_id];
-        let mut bb = BasicBlock {
-            id: BasicBlockId::from(0), // dummy
-            exprs: vec![],
-            next: BasicBlockNext::Jump(bb_id),
-        };
-        let mut last_merged_bb_id = bb.id;
-        // bbをマージ
-        // TODO: 1つのBBにまとめるのではなく、複数のBBにまとめる。現状だと前方ジャンプがあると無限ループになる
-        loop {
-            match bb.next {
-                BasicBlockNext::Jump(next_id) => {
-                    let next_bb = func.bbs[next_id].clone();
-                    bb.exprs.extend(next_bb.exprs);
-                    bb.next = next_bb.next;
-                    last_merged_bb_id = next_id;
-                }
-                BasicBlockNext::If(cond, then_bb_id, else_bb_id) => {
-                    // もし cond が Is<T> かつ typed_obj に型情報があればマージ
-                    // TODO: 事前にBB単位の最適化を行い、cond が true 定数ならというシンプルな条件にする
-                    let cur_jit_bb = &self.jit_bbs[last_merged_bb_id];
-                    let cur_bb = &func.bbs[last_merged_bb_id];
-                    let cond_expr = cur_jit_bb
-                        .defs
-                        .get(cond)
-                        .and_then(|&idx| cur_bb.exprs.get(idx))
-                        .map(|e| &e.expr);
-                    if let Some(Expr::Is(typ, obj_local)) = cond_expr
-                        && let Some(typed_obj) = cur_jit_bb.typed_objs.get(*obj_local)
-                    {
-                        let next_bb_id = if typed_obj.typ == *typ {
-                            then_bb_id
-                        } else {
-                            else_bb_id
-                        };
-                        let next_bb = func.bbs[next_bb_id].clone();
-                        bb.exprs.extend(next_bb.exprs);
-                        bb.next = next_bb.next;
-                        last_merged_bb_id = next_bb_id;
-                    } else {
-                        break;
-                    }
-                }
-                _ => break,
-            }
-        }
 
-        let mut funcs = TiVec::new();
-
-        let mut new_locals = func.locals.clone();
-        let bb_info = &self.jit_bbs[bb_id].info;
-
-        let assigned_local_to_obj = bb_optimizer::assign_type_args(
-            &mut new_locals,
-            &mut bb,
-            &bb_info.type_params,
-            type_args,
-        );
-        let defs = bb_optimizer::collect_defs(&bb);
-        // TODO: 次のBBにも伝播させたい
-        let typed_objs = bb_optimizer::analyze_typed_obj(&bb, &defs);
-        if config.enable_optimization {
-            bb_optimizer::remove_type_check(&mut bb, &typed_objs);
-            // bb_optimizer::assign_type_argsの結果出来たto_obj/from_objの除去が主な目的
-            bb_optimizer::copy_propagate(&new_locals, &mut bb);
-        }
-
-        let mut bbs = VecMap::new();
         // If/Jump命令で必要なBBの一覧。(新しいモジュールのBB ID, 元のモジュールのBB ID)のペアのリスト
         let mut required_bbs = Vec::new();
 
-        let bb_entry = {
+        let mut bbs = VecMap::new();
+        let mut funcs = TiVec::new();
+        let mut new_locals = func.locals.clone();
+
+        let mut orig_bb_to_new_bb = VecMap::new();
+        let mut todo_merge_bb_ids = vec![orig_entry_bb_id];
+        let bb_entry = bbs.allocate_key();
+        orig_bb_to_new_bb.insert(orig_entry_bb_id, bb_entry);
+
+        let mut all_typed_objs = VecMap::new();
+
+        let mut assigned_local_to_obj = VecMap::new();
+
+        while let Some(orig_bb_id) = todo_merge_bb_ids.pop() {
+            let new_bb_id = orig_bb_to_new_bb[orig_bb_id];
+
+            let mut bb = func.bbs[orig_bb_id].clone();
+
+            if orig_bb_id == orig_entry_bb_id {
+                assigned_local_to_obj = bb_optimizer::assign_type_args(
+                    &mut new_locals,
+                    &mut bb,
+                    &self.jit_bbs[orig_entry_bb_id].info.type_params,
+                    type_args,
+                );
+            } else {
+                for (local, _) in bb.local_usages_mut() {
+                    if let Some(&obj_local) = assigned_local_to_obj.get(*local) {
+                        *local = obj_local;
+                    }
+                }
+            }
+
+            let defs = bb_optimizer::collect_defs(&bb);
+            // TODO: 次のBBにも伝播させたい
+            let typed_objs = bb_optimizer::analyze_typed_obj(&bb, &defs);
+            all_typed_objs.extend(typed_objs.clone()); // TODO: 現在は分岐をマージしていないのでこれでいいが変更が必要
+
+            if config.enable_optimization {
+                bb_optimizer::remove_type_check(&mut bb, &typed_objs);
+                // bb_optimizer::assign_type_argsの結果出来たto_obj/from_objの除去が主な目的
+                bb_optimizer::copy_propagate(&new_locals, &mut bb);
+            }
+
             let mut exprs = Vec::new();
             for expr in bb.exprs.iter() {
                 // FuncRefとCall命令はget global命令に置き換えられる
@@ -875,16 +853,52 @@ impl JitFunc {
             // nextがif/jumpなら、BBに対応する関数へのジャンプに置き換える
             let next = match bb.next {
                 BasicBlockNext::If(cond, orig_then_bb_id, orig_else_bb_id) => {
-                    let then_bb_id = bbs.allocate_key();
-                    let else_bb_id = bbs.allocate_key();
-                    required_bbs.push((then_bb_id, orig_then_bb_id));
-                    required_bbs.push((else_bb_id, orig_else_bb_id));
+                    let jit_bb = &self.jit_bbs[orig_bb_id];
+                    let cond_expr = jit_bb
+                        .defs
+                        .get(cond)
+                        .and_then(|&idx| bb.exprs.get(idx))
+                        .map(|e| &e.expr);
+                    // もし cond が Is<T> かつ typed_obj に型情報があればマージ
+                    // TODO: 事前にBB単位の最適化を行い、cond が true 定数ならというシンプルな条件にする
+                    if let Some(Expr::Is(typ, obj_local)) = cond_expr
+                        && let Some(typed_obj) = jit_bb.typed_objs.get(*obj_local)
+                    {
+                        let orig_next_bb_id = if typed_obj.typ == *typ {
+                            orig_then_bb_id
+                        } else {
+                            orig_else_bb_id
+                        };
+                        let next_bb_id =
+                            if let Some(&next_bb_id) = orig_bb_to_new_bb.get(orig_next_bb_id) {
+                                next_bb_id
+                            } else {
+                                let next_bb_id = bbs.allocate_key();
+                                orig_bb_to_new_bb.insert(orig_next_bb_id, next_bb_id);
+                                todo_merge_bb_ids.push(orig_next_bb_id);
+                                next_bb_id
+                            };
+                        BasicBlockNext::Jump(next_bb_id)
+                    } else {
+                        let then_bb_id = bbs.allocate_key();
+                        let else_bb_id = bbs.allocate_key();
+                        required_bbs.push((then_bb_id, orig_then_bb_id));
+                        required_bbs.push((else_bb_id, orig_else_bb_id));
 
-                    BasicBlockNext::If(cond, then_bb_id, else_bb_id)
+                        BasicBlockNext::If(cond, then_bb_id, else_bb_id)
+                    }
                 }
                 BasicBlockNext::Jump(orig_next_bb_id) => {
-                    let next_bb_id = bbs.allocate_key();
-                    required_bbs.push((next_bb_id, orig_next_bb_id));
+                    let next_bb_id =
+                        if let Some(&next_bb_id) = orig_bb_to_new_bb.get(orig_next_bb_id) {
+                            next_bb_id
+                        } else {
+                            let next_bb_id = bbs.allocate_key();
+                            orig_bb_to_new_bb.insert(orig_next_bb_id, next_bb_id);
+                            todo_merge_bb_ids.push(orig_next_bb_id);
+                            next_bb_id
+                        };
+
                     BasicBlockNext::Jump(next_bb_id)
                 }
                 BasicBlockNext::Terminator(BasicBlockTerminator::TailCall(ExprCall {
@@ -919,17 +933,18 @@ impl JitFunc {
                     | BasicBlockTerminator::Error(_),
                 ) => next.clone(),
             };
-            bbs.push_with(|bb_id| BasicBlock {
-                id: bb_id,
+
+            bbs.insert_node(BasicBlock {
+                id: new_bb_id,
                 exprs,
                 next,
             })
-        };
+        }
 
         for (bb_id, orig_bb_id) in required_bbs {
             let (then_locals_to_pass, then_type_args, index) = calculate_args_to_pass(
                 &self.jit_bbs[orig_bb_id].info,
-                &typed_objs,
+                &all_typed_objs,
                 &assigned_local_to_obj,
                 global_layout,
             );
@@ -995,7 +1010,7 @@ impl JitFunc {
 
         let mut body_func = Func {
             id: funcs.next_key(),
-            args: bb_info.args.clone(),
+            args: self.jit_bbs[orig_entry_bb_id].info.args.clone(),
             ret_type: func.ret_type,
             locals: new_locals,
             bb_entry,
@@ -1091,7 +1106,7 @@ impl JitFunc {
                         },
                         ExprAssign {
                             local: Some(vector_obj_local),
-                            expr: Expr::GlobalGet(self.jit_bbs[bb_id].global),
+                            expr: Expr::GlobalGet(self.jit_bbs[orig_entry_bb_id].global),
                         },
                         ExprAssign {
                             local: Some(vector_local),
