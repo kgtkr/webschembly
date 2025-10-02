@@ -362,6 +362,11 @@ impl JitFunc {
             let typed_objs = bb_optimizer::analyze_typed_obj(bb, &defs);
             let dom_set = doms.get(&bb.id).unwrap();
             for &dom_bb_id in dom_set {
+                if dom_bb_id == bb.id {
+                    // 自分自身のBBで定義されているものは未初期化の可能性があるので伝播しない
+                    // TODO: 条件を緩くする
+                    continue;
+                }
                 for (obj, typed_obj) in typed_objs.iter() {
                     all_typed_objs[dom_bb_id].entry(obj).or_insert(*typed_obj);
                 }
@@ -1033,19 +1038,6 @@ impl JitFunc {
                         .typed_objs
                         .get(obj_local)
                         .copied()
-                        .filter(|typed_obj| {
-                            let Some(obj_local_def) = def_use_chain.get_def(obj_local) else {
-                                return false;
-                            };
-                            let Some(val_local_def) = def_use_chain.get_def(typed_obj.val_type)
-                            else {
-                                return false;
-                            };
-                            // TODO: 事前計算を上手く使えてなさそう
-                            // ここの分岐に到達するテストケースが存在しない
-                            obj_local_def.bb_id != val_local_def.bb_id
-                                || obj_local_def.expr_idx > val_local_def.expr_idx
-                        })
                         .or_else(|| branch_typed_objs.get(obj_local).copied())
                         .or_else(|| {
                             def_use_chain
