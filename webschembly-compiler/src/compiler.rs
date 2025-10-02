@@ -6,6 +6,7 @@ use crate::ir_processor::jit::{Jit, JitConfig};
 use crate::ir_processor::optimizer::remove_unreachable_bb;
 use crate::ir_processor::optimizer::remove_unused_local;
 use crate::ir_processor::ssa::{debug_assert_ssa, remove_phi};
+use crate::ir_processor::ssa_optimizer::ssa_optimize;
 use crate::lexer;
 use crate::sexpr_parser;
 
@@ -70,10 +71,13 @@ impl Compiler {
                 allow_set_builtin: is_stdlib,
             });
         preprocess_module(&mut module);
+        optimize_module(&mut module);
         if let Some(jit) = &mut self.jit {
-            // postprocess_phiが行わない
             let mut stub_module = jit.register_module(&mut self.global_manager, module);
             preprocess_module(&mut stub_module);
+            if jit.config().enable_optimization {
+                optimize_module(&mut stub_module);
+            }
             postprocess_phi(&mut stub_module);
             Ok(stub_module)
         } else {
@@ -83,12 +87,12 @@ impl Compiler {
     }
 
     pub fn instantiate_func(&mut self, module_id: ir::ModuleId, func_id: ir::FuncId) -> ir::Module {
-        let mut module = self
-            .jit
-            .as_mut()
-            .expect("JIT is not enabled")
-            .instantiate_func(&mut self.global_manager, module_id, func_id);
+        let jit = self.jit.as_mut().expect("JIT is not enabled");
+        let mut module = jit.instantiate_func(&mut self.global_manager, module_id, func_id);
         preprocess_module(&mut module);
+        if jit.config().enable_optimization {
+            optimize_module(&mut module);
+        }
         postprocess_phi(&mut module);
         module
     }
@@ -100,12 +104,12 @@ impl Compiler {
         bb_id: ir::BasicBlockId,
         index: usize,
     ) -> ir::Module {
-        let mut module = self
-            .jit
-            .as_mut()
-            .expect("JIT is not enabled")
-            .instantiate_bb(module_id, func_id, bb_id, index);
+        let jit = self.jit.as_mut().expect("JIT is not enabled");
+        let mut module = jit.instantiate_bb(module_id, func_id, bb_id, index);
         preprocess_module(&mut module);
+        if jit.config().enable_optimization {
+            optimize_module(&mut module);
+        }
         postprocess_phi(&mut module);
         module
     }
@@ -115,6 +119,12 @@ fn preprocess_module(module: &mut ir::Module) {
     for func in module.funcs.iter_mut() {
         debug_assert_ssa(func);
         remove_unreachable_bb(func);
+    }
+}
+
+fn optimize_module(module: &mut ir::Module) {
+    for func in module.funcs.iter_mut() {
+        ssa_optimize(func);
     }
 }
 

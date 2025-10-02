@@ -3,7 +3,10 @@ use rustc_hash::FxHashMap;
 use crate::{
     VecMap,
     ir::*,
-    ir_processor::{cfg_analyzer::DomTreeNode, ssa::DefUseChain},
+    ir_processor::{
+        cfg_analyzer::{DomTreeNode, build_dom_tree, calc_doms, calc_predecessors, calculate_rpo},
+        ssa::{DefUseChain, debug_assert_ssa},
+    },
 };
 
 // 制限事項: ループなどで循環参照がある純粋な命令同士は削除できない
@@ -87,8 +90,7 @@ fn common_subexpression_elimination_rec(
         if expr_assign.local.is_none() {
             continue;
         }
-        if !expr_assign.expr.purelity().can_cse() || matches!(expr_assign.expr, Expr::Phi(_)) {
-            // phiをmoveに置き換えると「先頭にPhiが連続する」という性質が壊れるため除外
+        if !expr_assign.expr.purelity().can_cse() {
             continue;
         }
         if let Some(&existing) = expr_map.get(&expr_assign.expr) {
@@ -104,4 +106,49 @@ fn common_subexpression_elimination_rec(
         let mut expr_map = expr_map.clone();
         common_subexpression_elimination_rec(func, child, &mut expr_map);
     }
+}
+
+pub fn eliminate_redundant_obj(func: &mut Func, def_use: &DefUseChain) {
+    // rpo順に処理したほうがいいかも
+    for local in func.locals.keys() {
+        let Some(def) = def_use.get_def(local) else {
+            continue;
+        };
+        match &func.bbs[def.bb_id].exprs[def.expr_idx].expr {
+            &Expr::ToObj(typ1, src) => {
+                if let Some(src_expr) = def_use.get_def_non_move_expr(&func.bbs, src) {
+                    if let Expr::FromObj(typ2, obj_src) = *src_expr {
+                        debug_assert_eq!(typ1, typ2);
+                        func.bbs[def.bb_id].exprs[def.expr_idx].expr = Expr::Move(obj_src);
+                    }
+                }
+            }
+            &Expr::FromObj(typ1, src) => {
+                if let Some(src_expr) = def_use.get_def_non_move_expr(&func.bbs, src) {
+                    if let Expr::ToObj(typ2, obj_src) = *src_expr {
+                        debug_assert_eq!(typ1, typ2);
+                        func.bbs[def.bb_id].exprs[def.expr_idx].expr = Expr::Move(obj_src);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+pub fn ssa_optimize(func: &mut Func) {
+    let mut def_use = DefUseChain::from_bbs(&func.bbs);
+    let rpo = calculate_rpo(&func.bbs, func.bb_entry);
+    let predecessors = calc_predecessors(&func.bbs);
+    let doms = calc_doms(&func.bbs, &rpo, func.bb_entry, &predecessors);
+    let dom_tree = build_dom_tree(&func.bbs, &rpo, func.bb_entry, &doms);
+
+    for _ in 0..5 {
+        debug_assert_ssa(func);
+        copy_propagation(func, &def_use);
+        eliminate_redundant_obj(func, &def_use);
+        common_subexpression_elimination(func, &dom_tree);
+    }
+
+    dead_code_elimination(func, &mut def_use);
 }
