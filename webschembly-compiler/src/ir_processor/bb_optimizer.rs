@@ -340,98 +340,10 @@ pub fn dead_code_elimination(
     }
 }
 
-// TODO: test
-pub fn collect_defs(bb: &BasicBlock) -> VecMap<LocalId, usize> {
-    let mut defs = VecMap::new();
-    for (i, expr_assign) in bb.exprs.iter().enumerate() {
-        if let Some(local) = expr_assign.local {
-            debug_assert!(defs.get(local).is_none());
-            defs.insert(local, i);
-        }
-    }
-    defs
-}
-
-#[derive(Debug, Clone)]
-pub struct DefUseChain {
-    defs: VecMap<LocalId, Def>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Def {
-    pub bb_id: BasicBlockId,
-    pub expr_idx: usize,
-}
-
-impl Default for DefUseChain {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl DefUseChain {
-    pub fn new() -> Self {
-        Self {
-            defs: VecMap::new(),
-        }
-    }
-
-    pub fn from_bbs(bbs: &VecMap<BasicBlockId, BasicBlock>) -> Self {
-        let mut chain = Self::new();
-        for bb in bbs.values() {
-            chain.add_bb(bb);
-        }
-        chain
-    }
-
-    pub fn add_bb(&mut self, bb: &BasicBlock) {
-        let defs = collect_defs(bb);
-        for (local, idx) in defs {
-            let def = Def {
-                bb_id: bb.id,
-                expr_idx: idx,
-            };
-            // 既に存在する場合は同じ定義である
-            debug_assert!(self.defs.get(local).map(|&x| x == def).unwrap_or(true));
-            self.defs.insert(local, def);
-        }
-    }
-
-    pub fn get_def<'a>(
-        &self,
-        bbs: &'a VecMap<BasicBlockId, BasicBlock>,
-        local: LocalId,
-    ) -> Option<&'a Expr> {
-        if let Some(def) = self.defs.get(local) {
-            Some(&bbs[def.bb_id].exprs[def.expr_idx].expr)
-        } else {
-            None
-        }
-    }
-
-    pub fn get_non_move_def<'a>(
-        &self,
-        bbs: &'a VecMap<BasicBlockId, BasicBlock>,
-        mut local: LocalId,
-    ) -> Option<&'a Expr> {
-        while let Some(expr) = self.get_def(bbs, local) {
-            match expr {
-                Expr::Move(value) => {
-                    local = *value;
-                }
-                _ => {
-                    return Some(expr);
-                }
-            }
-        }
-        None
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fxbihashmap::FxBiHashMap;
+    use crate::{fxbihashmap::FxBiHashMap, ir_processor::ssa::collect_defs};
     use typed_index_collections::ti_vec;
 
     // TODO: assign_type_argsとanalyze_typed_objのテストは分割したほうがいいかも？

@@ -9,7 +9,7 @@ use super::cfg_analyzer::{calc_doms, calc_predecessors, calculate_rpo};
 use super::dataflow::{analyze_liveness, calc_def_use};
 use crate::fxbihashmap::FxBiHashMap;
 use crate::ir_generator::GlobalManager;
-use crate::ir_processor::bb_optimizer::DefUseChain;
+use crate::ir_processor::ssa::{DefUseChain, collect_defs};
 use crate::vec_map::VecMap;
 use crate::{HasId, ir::*};
 
@@ -354,7 +354,7 @@ impl JitFunc {
             all_typed_objs.insert(bb_id, VecMap::new());
         }
         for bb in func.bbs.values() {
-            let defs = bb_optimizer::collect_defs(bb);
+            let defs = collect_defs(bb);
             let typed_objs = bb_optimizer::analyze_typed_obj(bb, &defs);
             let dom_set = doms.get(&bb.id).unwrap();
             for &dom_bb_id in dom_set {
