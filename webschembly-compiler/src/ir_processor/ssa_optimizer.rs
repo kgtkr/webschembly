@@ -94,7 +94,7 @@ fn common_subexpression_elimination_rec(
         if let Some(&existing) = expr_map.get(&expr_assign.expr) {
             expr_assign.expr = Expr::Move(existing);
         } else {
-            if let Some(local) = expr_assign.local {
+            if let Some(_) = expr_assign.local {
                 expr_map.insert(expr_assign.expr.clone(), expr_assign.local.unwrap());
             }
         }
