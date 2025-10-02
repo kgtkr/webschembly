@@ -354,7 +354,13 @@ pub fn collect_defs(bb: &BasicBlock) -> VecMap<LocalId, usize> {
 
 #[derive(Debug, Clone)]
 pub struct DefUseChain {
-    defs: VecMap<LocalId, (BasicBlockId, usize)>,
+    defs: VecMap<LocalId, Def>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Def {
+    pub bb_id: BasicBlockId,
+    pub expr_idx: usize,
 }
 
 impl Default for DefUseChain {
@@ -381,14 +387,13 @@ impl DefUseChain {
     pub fn add_bb(&mut self, bb: &BasicBlock) {
         let defs = collect_defs(bb);
         for (local, idx) in defs {
+            let def = Def {
+                bb_id: bb.id,
+                expr_idx: idx,
+            };
             // 既に存在する場合は同じ定義である
-            debug_assert!(
-                self.defs
-                    .get(local)
-                    .map(|&x| x == (bb.id, idx))
-                    .unwrap_or(true)
-            );
-            self.defs.insert(local, (bb.id, idx));
+            debug_assert!(self.defs.get(local).map(|&x| x == def).unwrap_or(true));
+            self.defs.insert(local, def);
         }
     }
 
@@ -397,8 +402,8 @@ impl DefUseChain {
         bbs: &'a VecMap<BasicBlockId, BasicBlock>,
         local: LocalId,
     ) -> Option<&'a Expr> {
-        if let Some((bb_id, expr_idx)) = self.defs.get(local) {
-            Some(&bbs[*bb_id].exprs[*expr_idx].expr)
+        if let Some(def) = self.defs.get(local) {
+            Some(&bbs[def.bb_id].exprs[def.expr_idx].expr)
         } else {
             None
         }
