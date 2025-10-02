@@ -359,7 +359,11 @@ impl JitFunc {
             let typed_objs = bb_optimizer::analyze_typed_obj(bb, &defs);
             let dom_set = doms.get(&bb.id).unwrap();
             for &dom_bb_id in dom_set {
-                all_typed_objs[dom_bb_id].extend(typed_objs.clone());
+                if dom_bb_id != bb.id {
+                    // 自分自身はval_localsが使えるとは限らないので除外
+                    // TODO: 条件緩和
+                    all_typed_objs[dom_bb_id].extend(typed_objs.clone());
+                }
             }
         }
         /*
@@ -758,9 +762,6 @@ impl JitFunc {
         let bb_entry = bbs.allocate_key();
         orig_bb_to_new_bb.insert(orig_entry_bb_id, bb_entry);
 
-        // TODO: 現在はIfをマージしていないので、どこかのBBで成り立つTypedObjの結果は必ず他のBBにも伝播するという仮定が成り立つがそのうち修正
-        let mut typed_objs = VecMap::new();
-
         let mut assigned_local_to_obj = VecMap::new();
 
         // 型代入後のDefUseChain
@@ -786,10 +787,6 @@ impl JitFunc {
                     }
                 }
             }
-
-            let defs = bb_optimizer::collect_defs(&bb);
-            // TODO: 次のBBにも伝播させたい
-            bb_optimizer::extend_typed_obj(&bb, &defs, &mut typed_objs);
 
             /*
             TODO: bbsが完成した後に行う
@@ -1011,8 +1008,8 @@ impl JitFunc {
                 }
             }
 
-            // 分岐先なので、他の分岐先とtyped_objsを共有しない
-            let mut typed_objs = typed_objs.clone();
+            // この分岐でのみ成り立つtyped obj
+            let mut branch_typed_objs = VecMap::new();
             for (obj_local, typ) in types {
                 let val_local = new_locals.push_with(|id| Local {
                     id,
@@ -1022,15 +1019,35 @@ impl JitFunc {
                     local: Some(val_local),
                     expr: Expr::FromObj(typ, obj_local),
                 });
-                typed_objs.insert(obj_local, TypedObj {
+                branch_typed_objs.insert(obj_local, TypedObj {
                     val_type: val_local,
                     typ,
                 });
             }
-
+            // ここでのtyped_objsは事前計算で分かるもの or この分岐でのみ成り立つもの or assigned_local_to_obj によって追加されたto_objのいずれかである
             let (locals_to_pass, type_args, index) = calculate_args_to_pass(
                 &self.jit_bbs[orig_bb_id].info,
-                &typed_objs,
+                |obj_local| {
+                    self.jit_bbs[orig_bb_id]
+                        .typed_objs
+                        .get(obj_local)
+                        .copied()
+                        .or_else(|| branch_typed_objs.get(obj_local).copied())
+                        .or_else(|| {
+                            def_use_chain
+                                .get_non_move_def(&bbs, obj_local)
+                                .and_then(|expr| {
+                                    if let Expr::ToObj(typ, val_local) = *expr {
+                                        Some(TypedObj {
+                                            val_type: val_local,
+                                            typ,
+                                        })
+                                    } else {
+                                        None
+                                    }
+                                })
+                        })
+                },
                 &assigned_local_to_obj,
                 global_layout,
             );
@@ -1435,7 +1452,7 @@ fn calculate_bb_info(func: &Func) -> VecMap<BasicBlockId, BBInfo> {
 
 fn calculate_args_to_pass(
     callee: &BBInfo,
-    caller_typed_objs: &VecMap<LocalId, TypedObj>,
+    caller_typed_objs: impl Fn(LocalId) -> Option<TypedObj>,
     caller_assigned_local_to_obj: &VecMap<LocalId, LocalId>,
     global_layout: &mut GlobalLayout,
 ) -> (Vec<LocalId>, TiVec<TypeParamId, Option<ValType>>, usize) {
@@ -1444,7 +1461,7 @@ fn calculate_args_to_pass(
 
     for &arg in &callee.args {
         let caller_args = if let Some(&type_param_id) = callee.type_params.get_by_right(&arg)
-            && let Some(caller_typed_obj) = caller_typed_objs.get(arg).copied()
+            && let Some(caller_typed_obj) = caller_typed_objs(arg)
         {
             type_args[type_param_id] = Some(caller_typed_obj.typ);
             caller_typed_obj.val_type
@@ -1460,11 +1477,16 @@ fn calculate_args_to_pass(
     if let Some(idx) = global_layout.to_idx(&type_args) {
         (args_to_pass, type_args, idx)
     } else {
+        // `|_| None` を渡すと "reached the recursion limit while instantiating" が発生するため
+        fn empty_typed_objs(_: LocalId) -> Option<TypedObj> {
+            None
+        }
+
         // global layoutが満杯なら型パラメータなしで再計算
         // 型パラメータなしで呼び出すとto_idxの結果は必ずSomeになるので無限ループすることはない
         calculate_args_to_pass(
             callee,
-            &VecMap::new(),
+            empty_typed_objs,
             caller_assigned_local_to_obj,
             global_layout,
         )
