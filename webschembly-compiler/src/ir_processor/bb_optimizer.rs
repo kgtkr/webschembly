@@ -41,11 +41,11 @@ pub fn assign_type_args(
     bb: &mut BasicBlock,
     type_params: &FxBiHashMap<TypeParamId, LocalId>,
     type_args: &TiVec<TypeParamId, Option<ValType>>,
-) -> VecMap<LocalId, LocalId> {
+) -> FxBiHashMap<LocalId, LocalId> {
     let mut additional_expr_assigns = Vec::new();
 
     // 型代入されている変数のobj版を用意(l1_objに対応)
-    let mut assigned_local_to_obj = VecMap::new();
+    let mut assigned_local_to_obj = FxBiHashMap::default();
 
     for (type_param_id, typ) in type_args.iter_enumerated() {
         if let Some(typ) = typ {
@@ -69,7 +69,7 @@ pub fn assign_type_args(
     }
 
     for (local, _) in bb.local_usages_mut() {
-        if let Some(&obj_local) = assigned_local_to_obj.get(*local) {
+        if let Some(&obj_local) = assigned_local_to_obj.get_by_left(local) {
             *local = obj_local;
         }
     }
@@ -446,7 +446,7 @@ mod tests {
             assigned_local_to_obj,
             vec![(LocalId::from(0), LocalId::from(3)),]
                 .into_iter()
-                .collect::<VecMap<LocalId, _>>()
+                .collect()
         );
 
         let defs = collect_defs(&bb);

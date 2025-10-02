@@ -20,7 +20,7 @@ pub struct Meta {
 }
 
 impl Meta {
-    fn in_func(&self, func_id: FuncId) -> MetaInFunc {
+    pub fn in_func(&self, func_id: FuncId) -> MetaInFunc {
         MetaInFunc {
             func_id,
             meta: self,

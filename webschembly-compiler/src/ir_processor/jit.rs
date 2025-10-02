@@ -362,10 +362,8 @@ impl JitFunc {
             let typed_objs = bb_optimizer::analyze_typed_obj(bb, &defs);
             let dom_set = doms.get(&bb.id).unwrap();
             for &dom_bb_id in dom_set {
-                if dom_bb_id != bb.id {
-                    // 自分自身はval_localsが使えるとは限らないので除外
-                    // TODO: 条件緩和
-                    all_typed_objs[dom_bb_id].extend(typed_objs.clone());
+                for (obj, typed_obj) in typed_objs.iter() {
+                    all_typed_objs[dom_bb_id].entry(obj).or_insert(*typed_obj);
                 }
             }
         }
@@ -765,7 +763,7 @@ impl JitFunc {
         let bb_entry = bbs.allocate_key();
         orig_bb_to_new_bb.insert(orig_entry_bb_id, bb_entry);
 
-        let mut assigned_local_to_obj = VecMap::new();
+        let mut assigned_local_to_obj = FxBiHashMap::default();
 
         // 型代入後のDefUseChain
         let mut def_use_chain = DefUseChain::new();
@@ -785,7 +783,7 @@ impl JitFunc {
                 );
             } else {
                 for (local, _) in bb.local_usages_mut() {
-                    if let Some(&obj_local) = assigned_local_to_obj.get(*local) {
+                    if let Some(&obj_local) = assigned_local_to_obj.get_by_left(local) {
                         *local = obj_local;
                     }
                 }
@@ -1035,6 +1033,19 @@ impl JitFunc {
                         .typed_objs
                         .get(obj_local)
                         .copied()
+                        .filter(|typed_obj| {
+                            let Some(obj_local_def) = def_use_chain.get_def(obj_local) else {
+                                return false;
+                            };
+                            let Some(val_local_def) = def_use_chain.get_def(typed_obj.val_type)
+                            else {
+                                return false;
+                            };
+                            // TODO: 事前計算を上手く使えてなさそう
+                            // ここの分岐に到達するテストケースが存在しない
+                            obj_local_def.bb_id != val_local_def.bb_id
+                                || obj_local_def.expr_idx > val_local_def.expr_idx
+                        })
                         .or_else(|| branch_typed_objs.get(obj_local).copied())
                         .or_else(|| {
                             def_use_chain
@@ -1437,22 +1448,25 @@ fn calculate_bb_info(func: &Func) -> VecMap<BasicBlockId, BBInfo> {
 fn calculate_args_to_pass(
     callee: &BBInfo,
     caller_typed_objs: impl Fn(LocalId) -> Option<TypedObj>,
-    caller_assigned_local_to_obj: &VecMap<LocalId, LocalId>,
+    caller_assigned_local_to_obj: &FxBiHashMap<LocalId, LocalId>,
     global_layout: &mut GlobalLayout,
 ) -> (Vec<LocalId>, TiVec<TypeParamId, Option<ValType>>, usize) {
     let mut type_args = ti_vec![None; callee.type_params.len()];
     let mut args_to_pass = Vec::new();
 
     for &arg in &callee.args {
+        let obj_arg = caller_assigned_local_to_obj
+            .get_by_left(&arg)
+            .copied()
+            .unwrap_or(arg);
+
         let caller_args = if let Some(&type_param_id) = callee.type_params.get_by_right(&arg)
-            && let Some(caller_typed_obj) = caller_typed_objs(arg)
+            && let Some(caller_typed_obj) = caller_typed_objs(obj_arg)
         {
             type_args[type_param_id] = Some(caller_typed_obj.typ);
             caller_typed_obj.val_type
-        } else if let Some(&obj_local) = caller_assigned_local_to_obj.get(arg) {
-            obj_local
         } else {
-            arg
+            obj_arg
         };
 
         args_to_pass.push(caller_args);
