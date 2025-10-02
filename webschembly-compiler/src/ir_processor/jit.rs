@@ -10,7 +10,7 @@ use super::dataflow::{analyze_liveness, calc_def_use};
 use crate::fxbihashmap::FxBiHashMap;
 use crate::ir_generator::GlobalManager;
 use crate::ir_processor::ssa::{DefUseChain, collect_defs};
-use crate::ir_processor::ssa_optimizer::dead_code_elimination;
+use crate::ir_processor::ssa_optimizer::{copy_propagation, dead_code_elimination};
 use crate::vec_map::VecMap;
 use crate::{HasId, ir::*};
 
@@ -1122,6 +1122,7 @@ impl JitFunc {
 
         if config.enable_optimization {
             let mut def_use = DefUseChain::from_bbs(&body_func.bbs);
+            copy_propagation(&mut body_func, &def_use);
             dead_code_elimination(&mut body_func, &mut def_use);
         }
 

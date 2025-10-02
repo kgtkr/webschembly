@@ -42,3 +42,26 @@ pub fn dead_code_elimination(func: &mut Func, def_use: &mut DefUseChain) {
         }
     }
 }
+
+pub fn copy_propagation(func: &mut Func, def_use: &DefUseChain) {
+    for local in func.locals.keys() {
+        let Some(def) = def_use.get_def(local) else {
+            continue;
+        };
+        let mut current = def;
+        while let ExprAssign {
+            local: _,
+            expr: Expr::Move(src),
+        } = func.bbs[current.bb_id].exprs[current.expr_idx]
+        {
+            if let Some(next) = def_use.get_def(src) {
+                current = next;
+            } else {
+                break;
+            }
+        }
+        if current != def {
+            func.bbs[def.bb_id].exprs[def.expr_idx].expr = Expr::Move(current.local);
+        }
+    }
+}
