@@ -1,4 +1,7 @@
-use crate::ir::{BasicBlockId, Expr, ExprAssign, Func, Local, LocalId};
+use crate::{
+    VecMap,
+    ir::{BasicBlockId, Expr, ExprAssign, Func, Local, LocalId},
+};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 // 前提条件: クリティカルエッジが存在しない
@@ -94,4 +97,30 @@ fn sequentialize_parallel_copies(func: &mut Func, parallel_copies: Vec<Copy>) ->
         }
     }
     result
+}
+
+fn assert_ssa(func: &Func) {
+    let mut assigned = VecMap::new();
+    for local_id in func.locals.keys() {
+        assigned.insert(local_id, false);
+    }
+    for &local_id in func.args.iter() {
+        assigned[local_id] = true;
+    }
+    for bb in func.bbs.values() {
+        for expr in bb.exprs.iter() {
+            if let Some(local_id) = expr.local {
+                if assigned[local_id] {
+                    panic!("local {:?} is assigned more than once", local_id);
+                }
+                assigned[local_id] = true;
+            }
+        }
+    }
+}
+
+pub fn debug_assert_ssa(func: &Func) {
+    if cfg!(debug_assertions) {
+        assert_ssa(func);
+    }
 }

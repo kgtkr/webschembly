@@ -1,12 +1,11 @@
-use crate::VecMap;
 use crate::ast;
 use crate::compiler_error;
 use crate::ir;
 use crate::ir_generator;
 use crate::ir_processor::jit::{Jit, JitConfig};
 use crate::ir_processor::optimizer::remove_unreachable_bb;
-use crate::ir_processor::remove_phi;
 use crate::ir_processor::remove_unused_local;
+use crate::ir_processor::ssa::{debug_assert_ssa, remove_phi};
 use crate::lexer;
 use crate::sexpr_parser;
 
@@ -114,43 +113,19 @@ impl Compiler {
 
 fn preprocess_module(module: &mut ir::Module) {
     for func in module.funcs.iter_mut() {
-        if cfg!(debug_assertions) {
-            assert_ssa(func);
-        }
+        debug_assert_ssa(func);
         remove_unreachable_bb(func);
     }
 }
 
 fn postprocess_phi(module: &mut ir::Module) {
     for func in module.funcs.iter_mut() {
-        if cfg!(debug_assertions) {
-            assert_ssa(func);
-        }
+        debug_assert_ssa(func);
 
         // TODO: クリティカルエッジの分割
         remove_phi(func);
         // TODO: レジスタ割り付け
 
         remove_unused_local(func);
-    }
-}
-
-fn assert_ssa(func: &ir::Func) {
-    let mut assigned = VecMap::new();
-    for local_id in func.locals.keys() {
-        assigned.insert(local_id, false);
-    }
-    for &local_id in func.args.iter() {
-        assigned[local_id] = true;
-    }
-    for bb in func.bbs.values() {
-        for expr in bb.exprs.iter() {
-            if let Some(local_id) = expr.local {
-                if assigned[local_id] {
-                    panic!("local {:?} is assigned more than once", local_id);
-                }
-                assigned[local_id] = true;
-            }
-        }
     }
 }
