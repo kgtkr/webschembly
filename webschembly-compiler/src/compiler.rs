@@ -4,7 +4,7 @@ use crate::ir;
 use crate::ir_generator;
 use crate::ir_processor::jit::{Jit, JitConfig};
 use crate::ir_processor::optimizer::remove_unreachable_bb;
-use crate::ir_processor::remove_unused_local;
+use crate::ir_processor::optimizer::remove_unused_local;
 use crate::ir_processor::ssa::{debug_assert_ssa, remove_phi};
 use crate::lexer;
 use crate::sexpr_parser;
