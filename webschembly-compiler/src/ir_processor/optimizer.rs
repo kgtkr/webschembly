@@ -1,4 +1,4 @@
-use super::analyzer::find_reachable_nodes;
+use super::cfg_analyzer::find_reachable_nodes;
 use crate::ir::Func;
 
 pub fn remove_unreachable_bb(func: &mut Func) {
