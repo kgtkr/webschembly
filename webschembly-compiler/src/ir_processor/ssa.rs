@@ -1,5 +1,5 @@
 use crate::{
-    VecMap,
+    HasId, VecMap,
     ir::{BasicBlock, BasicBlockId, Expr, ExprAssign, Func, Local, LocalId},
 };
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -144,8 +144,16 @@ pub struct DefUseChain {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Def {
+    pub local: LocalId,
     pub bb_id: BasicBlockId,
     pub expr_idx: usize,
+}
+
+impl HasId for Def {
+    type Id = LocalId;
+    fn id(&self) -> Self::Id {
+        self.local
+    }
 }
 
 impl Default for DefUseChain {
@@ -161,6 +169,10 @@ impl DefUseChain {
         }
     }
 
+    pub fn remove(&mut self, local: LocalId) {
+        self.defs.remove(local);
+    }
+
     pub fn from_bbs(bbs: &VecMap<BasicBlockId, BasicBlock>) -> Self {
         let mut chain = Self::new();
         for bb in bbs.values() {
@@ -173,16 +185,21 @@ impl DefUseChain {
         let defs = collect_defs(bb);
         for (local, idx) in defs {
             let def = Def {
+                local,
                 bb_id: bb.id,
                 expr_idx: idx,
             };
             // 既に存在する場合は同じ定義である
             debug_assert!(self.defs.get(local).map(|&x| x == def).unwrap_or(true));
-            self.defs.insert(local, def);
+            self.defs.insert_node(def);
         }
     }
 
-    pub fn get_def<'a>(
+    pub fn get_def(&self, local: LocalId) -> Option<Def> {
+        self.defs.get(local).copied()
+    }
+
+    pub fn get_def_expr<'a>(
         &self,
         bbs: &'a VecMap<BasicBlockId, BasicBlock>,
         local: LocalId,
@@ -194,12 +211,12 @@ impl DefUseChain {
         }
     }
 
-    pub fn get_non_move_def<'a>(
+    pub fn get_def_non_move_expr<'a>(
         &self,
         bbs: &'a VecMap<BasicBlockId, BasicBlock>,
         mut local: LocalId,
     ) -> Option<&'a Expr> {
-        while let Some(expr) = self.get_def(bbs, local) {
+        while let Some(expr) = self.get_def_expr(bbs, local) {
             match expr {
                 Expr::Move(value) => {
                     local = *value;

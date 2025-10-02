@@ -888,13 +888,13 @@ impl JitFunc {
             // nextがif/jumpなら、BBに対応する関数へのジャンプに置き換える
             let next = match *orig_next {
                 BasicBlockNext::If(cond, orig_then_bb_id, orig_else_bb_id) => {
-                    let cond_expr = def_use_chain.get_non_move_def(&bbs, cond);
+                    let cond_expr = def_use_chain.get_def_non_move_expr(&bbs, cond);
                     // もし cond が Is<T>(obj) かつ、obj が to_obj<P> ならば分岐をなくす
                     // この形の定数畳み込みのみ assign_type_args で新たに生まれるためここで処理する
                     // それ以外の形の定数畳み込みはJITとは無関係に外部で行う
                     let const_cond = if let Some(&Expr::Is(ty1, obj)) = cond_expr
                         && let Some(&Expr::ToObj(ty2, _)) =
-                            def_use_chain.get_non_move_def(&bbs, obj)
+                            def_use_chain.get_def_non_move_expr(&bbs, obj)
                     {
                         Some(ty1 == ty2)
                     } else {
@@ -1034,7 +1034,7 @@ impl JitFunc {
                         .or_else(|| branch_typed_objs.get(obj_local).copied())
                         .or_else(|| {
                             def_use_chain
-                                .get_non_move_def(&bbs, obj_local)
+                                .get_def_non_move_expr(&bbs, obj_local)
                                 .and_then(|expr| {
                                     if let Expr::ToObj(typ, val_local) = *expr {
                                         Some(TypedObj {
