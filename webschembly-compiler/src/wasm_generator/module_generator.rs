@@ -389,7 +389,7 @@ impl<'a> ModuleGenerator<'a> {
                         let mut fields = Self::VAL_TYPE_FIELDS.to_vec();
                         fields.push(FieldType {
                             element_type: StorageType::Val(ValType::Ref(RefType {
-                                nullable: false,
+                                nullable: true,
                                 heap_type: HeapType::Concrete(self.string_type),
                             })),
                             mutable: false,
@@ -479,7 +479,7 @@ impl<'a> ModuleGenerator<'a> {
             let mut fields = Self::VAL_TYPE_FIELDS.to_vec();
             fields.push(FieldType {
                 element_type: StorageType::Val(ValType::Ref(RefType {
-                    nullable: false,
+                    nullable: true,
                     heap_type: HeapType::Concrete(self.func_ref_type),
                 })),
                 mutable: false,
@@ -525,7 +525,7 @@ impl<'a> ModuleGenerator<'a> {
             "nil",
             EntityType::Global(GlobalType {
                 val_type: ValType::Ref(RefType {
-                    nullable: false,
+                    nullable: true,
                     heap_type: HeapType::Concrete(self.nil_type),
                 }),
                 mutable: false,
@@ -540,7 +540,7 @@ impl<'a> ModuleGenerator<'a> {
             "true",
             EntityType::Global(GlobalType {
                 val_type: ValType::Ref(RefType {
-                    nullable: false,
+                    nullable: true,
                     heap_type: HeapType::Concrete(self.bool_type),
                 }),
                 mutable: false,
@@ -555,7 +555,7 @@ impl<'a> ModuleGenerator<'a> {
             "false",
             EntityType::Global(GlobalType {
                 val_type: ValType::Ref(RefType {
-                    nullable: false,
+                    nullable: true,
                     heap_type: HeapType::Concrete(self.bool_type),
                 }),
                 mutable: false,
@@ -592,7 +592,7 @@ impl<'a> ModuleGenerator<'a> {
 
         self.display_func = self.add_runtime_function("display", WasmFuncType {
             params: vec![ValType::Ref(RefType {
-                nullable: false,
+                nullable: true,
                 heap_type: HeapType::Concrete(self.string_type),
             })],
             results: vec![],
@@ -601,7 +601,7 @@ impl<'a> ModuleGenerator<'a> {
             params: vec![
                 ValType::I32,
                 ValType::Ref(RefType {
-                    nullable: false,
+                    nullable: true,
                     heap_type: HeapType::Concrete(self.string_type),
                 }),
             ],
@@ -609,11 +609,11 @@ impl<'a> ModuleGenerator<'a> {
         });
         self.string_to_symbol_func = self.add_runtime_function("string_to_symbol", WasmFuncType {
             params: vec![ValType::Ref(RefType {
-                nullable: false,
+                nullable: true,
                 heap_type: HeapType::Concrete(self.string_type),
             })],
             results: vec![ValType::Ref(RefType {
-                nullable: false,
+                nullable: true,
                 heap_type: HeapType::Concrete(self.symbol_type),
             })],
         });
@@ -625,7 +625,7 @@ impl<'a> ModuleGenerator<'a> {
         self.int_to_string_func = self.add_runtime_function("int_to_string", WasmFuncType {
             params: vec![ValType::I64],
             results: vec![ValType::Ref(RefType {
-                nullable: false,
+                nullable: true,
                 heap_type: HeapType::Concrete(self.string_type),
             })],
         });
@@ -711,13 +711,13 @@ impl<'a> ModuleGenerator<'a> {
             ir::LocalType::Ref(inner_ty) => {
                 let ref_type = self.ref_type(inner_ty);
                 ValType::Ref(RefType {
-                    nullable: false,
+                    nullable: true,
                     heap_type: HeapType::Concrete(ref_type),
                 })
             }
             ir::LocalType::Type(ty) => self.convert_type(ty),
             ir::LocalType::Args => ValType::Ref(RefType {
-                nullable: false,
+                nullable: true,
                 heap_type: HeapType::Concrete(self.args_type),
             }),
         }
@@ -734,28 +734,28 @@ impl<'a> ModuleGenerator<'a> {
                 ir::ValType::Int => ValType::I64,
                 ir::ValType::Char => ValType::I32,
                 ir::ValType::String => ValType::Ref(RefType {
-                    nullable: false,
+                    nullable: true,
                     heap_type: HeapType::Concrete(self.string_type),
                 }),
                 ir::ValType::Symbol => ValType::Ref(RefType {
-                    nullable: false,
+                    nullable: true,
                     heap_type: HeapType::Concrete(self.symbol_type),
                 }),
                 ir::ValType::Nil => ValType::I32,
                 ir::ValType::Cons => ValType::Ref(RefType {
-                    nullable: false,
+                    nullable: true,
                     heap_type: HeapType::Concrete(self.cons_type),
                 }),
                 ir::ValType::Closure => ValType::Ref(RefType {
-                    nullable: false,
+                    nullable: true,
                     heap_type: HeapType::Concrete(self.closure_type),
                 }),
                 ir::ValType::Vector => ValType::Ref(RefType {
-                    nullable: false,
+                    nullable: true,
                     heap_type: HeapType::Concrete(self.vector_type),
                 }),
                 ir::ValType::FuncRef => ValType::Ref(RefType {
-                    nullable: false,
+                    nullable: true,
                     heap_type: HeapType::Concrete(self.func_ref_type),
                 }),
             },
@@ -1147,7 +1147,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
                     function.instruction(&Instruction::If(BlockType::Result(ValType::Ref(
                         RefType {
-                            nullable: false,
+                            nullable: true,
                             heap_type: HeapType::Concrete(self.module_generator.bool_type),
                         },
                     ))));
