@@ -10,6 +10,7 @@ use super::dataflow::{analyze_liveness, calc_def_use};
 use crate::fxbihashmap::FxBiHashMap;
 use crate::ir_generator::GlobalManager;
 use crate::ir_processor::ssa::{DefUseChain, collect_defs};
+use crate::ir_processor::ssa_optimizer::dead_code_elimination;
 use crate::vec_map::VecMap;
 use crate::{HasId, ir::*};
 
@@ -1119,23 +1120,9 @@ impl JitFunc {
             bbs,
         };
 
-        let mut out_used_locals = Vec::new();
-        for bb in body_func.bbs.values() {
-            if bb.id != body_func.bb_entry {
-                out_used_locals.extend(
-                    bb.local_usages()
-                        .filter(|(_, flag)| matches!(flag, LocalFlag::Used(_)))
-                        .map(|(local, _)| *local),
-                );
-            }
-        }
-
         if config.enable_optimization {
-            bb_optimizer::dead_code_elimination(
-                &body_func.locals,
-                &mut body_func.bbs[body_func.bb_entry],
-                &out_used_locals,
-            );
+            let mut def_use = DefUseChain::from_bbs(&body_func.bbs);
+            dead_code_elimination(&mut body_func, &mut def_use);
         }
 
         let body_func_id = body_func.id;

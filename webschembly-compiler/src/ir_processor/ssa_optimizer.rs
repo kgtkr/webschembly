@@ -33,7 +33,9 @@ pub fn dead_code_elimination(func: &mut Func, def_use: &mut DefUseChain) {
                 let count = &mut use_counts[operand];
                 *count -= 1;
                 if *count == 0 {
-                    worklist.push(def_use.get_def(operand).unwrap());
+                    if let Some(def) = def_use.get_def(operand) {
+                        worklist.push(def);
+                    }
                 }
             }
             expr_assign.expr = Expr::Nop;
