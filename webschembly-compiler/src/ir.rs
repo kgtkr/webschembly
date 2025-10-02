@@ -204,7 +204,7 @@ pub enum LocalUsedFlag {
     NonPhi,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ExprCall {
     pub func_id: FuncId,
     pub args: Vec<LocalId>,
@@ -270,7 +270,7 @@ impl fmt::Display for DisplayInFunc<'_, &'_ ExprCall> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ExprCallRef {
     pub func: LocalId,
     pub args: Vec<LocalId>,
@@ -326,13 +326,13 @@ impl fmt::Display for DisplayInFunc<'_, &'_ ExprCallRef> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct PhiIncomingValue {
     pub bb: BasicBlockId,
     pub local: LocalId,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Expr {
     Nop,                        // 左辺はNoneでなければならない
     Phi(Vec<PhiIncomingValue>), // BBの先頭にのみ連続して出現可能(Nopが間に入るのは可)
@@ -555,42 +555,61 @@ macro_rules! impl_Expr_local_usages {
     };
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
+pub enum ExprPurelity {
+    Phi,
+    // 決定的かつ副作用無し
+    // 例: add
+    Pure,
+    // デッドコード削除可能だが、共通部分式除去はできない
+    // 例: create_ref
+    ImpureRead,
+    // 副作用あり
+    // 例: call
+    Effectful,
+}
+
+impl ExprPurelity {
+    // デッドコード削除可能か
+    pub fn can_dce(&self) -> bool {
+        match self {
+            ExprPurelity::Pure | ExprPurelity::ImpureRead => true,
+            ExprPurelity::Phi | ExprPurelity::Effectful => false,
+        }
+    }
+
+    // 共通部分式除去可能か
+    pub fn can_cse(&self) -> bool {
+        match self {
+            ExprPurelity::Pure => true,
+            ExprPurelity::Phi | ExprPurelity::ImpureRead | ExprPurelity::Effectful => false,
+        }
+    }
+}
+
 impl Expr {
     pub fn display<'a>(&self, meta: MetaInFunc<'a>) -> DisplayInFunc<'a, &'_ Expr> {
         DisplayInFunc { value: self, meta }
     }
 
-    // 結果が使われていなければ削除しても良い命令か？
-    pub fn is_effectful(&self) -> bool {
+    pub fn purelity(&self) -> ExprPurelity {
         match self {
+            Expr::Phi(..) => ExprPurelity::Phi,
             Expr::Nop
-            | Expr::Phi(..)
             | Expr::Bool(..)
             | Expr::Int(..)
-            | Expr::String(..)
-            | Expr::StringToSymbol(..)
             | Expr::Nil
             | Expr::Char(..)
-            | Expr::Vector(..)
-            | Expr::Cons(..)
             | Expr::FuncRef(..)
             | Expr::Move(..)
             | Expr::ToObj(..)
-            // 型エラーが起きる可能性があるので厳密には副作用ありだが一旦
             | Expr::FromObj(..)
             | Expr::Closure { .. }
             | Expr::ClosureEnv(..)
             | Expr::ClosureFuncRef(..)
-            | Expr::GlobalGet(..)
             | Expr::Is(..)
-            | Expr::VectorLength(..)
-            | Expr::VectorRef(..)
             | Expr::Eq(..)
             | Expr::Not(..)
-            | Expr::Car(..)
-            | Expr::Cdr(..)
-            | Expr::SymbolToString(..)
-            | Expr::NumberToString(..)
             | Expr::EqNum(..)
             | Expr::Lt(..)
             | Expr::Gt(..)
@@ -598,13 +617,24 @@ impl Expr {
             | Expr::Ge(..)
             | Expr::Args(..)
             | Expr::ArgsRef(..)
-            | Expr::CreateRef(..)
-            | Expr::DerefRef(..)
             | Expr::Add(..)
             | Expr::Sub(..)
             | Expr::Mul(..)
-            | Expr::Div(..) => false,
-
+            | Expr::Div(..) => ExprPurelity::Pure,
+            // String/Cons/Vectorなどは可変なオブジェクトを生成するので純粋ではない
+            Expr::String(..)
+            | Expr::StringToSymbol(..)
+            | Expr::Vector(..)
+            | Expr::Cons(..)
+            | Expr::CreateRef(..)
+            | Expr::DerefRef(..)
+            | Expr::VectorLength(..)
+            | Expr::VectorRef(..)
+            | Expr::Car(..)
+            | Expr::Cdr(..)
+            | Expr::GlobalGet(..)
+            | Expr::SymbolToString(..)
+            | Expr::NumberToString(..) => ExprPurelity::ImpureRead,
             Expr::InstantiateFunc(..)
             | Expr::InstantiateBB(..)
             | Expr::SetRef(..)
@@ -614,7 +644,7 @@ impl Expr {
             | Expr::InitModule
             | Expr::Display(..)
             | Expr::WriteChar(..)
-            | Expr::VectorSet(..) => true,
+            | Expr::VectorSet(..) => ExprPurelity::Effectful,
         }
     }
 

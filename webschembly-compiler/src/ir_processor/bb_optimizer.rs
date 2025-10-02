@@ -325,8 +325,8 @@ pub fn dead_code_elimination(
     }
 
     for expr_assign in bb.exprs.iter_mut().rev() {
-        let is_effectful = expr_assign.expr.is_effectful();
-        let expr_used = is_effectful || expr_assign.local.map(|l| used[l]).unwrap_or(false);
+        let can_dce = expr_assign.expr.purelity().can_dce();
+        let expr_used = !can_dce || expr_assign.local.map(|l| used[l]).unwrap_or(false);
         if expr_used {
             for (&local, flag) in expr_assign.local_usages() {
                 if let LocalFlag::Used(_) = flag {

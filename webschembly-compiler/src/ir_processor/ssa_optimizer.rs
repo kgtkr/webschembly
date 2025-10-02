@@ -1,4 +1,10 @@
-use crate::{VecMap, ir::*, ir_processor::ssa::DefUseChain};
+use rustc_hash::FxHashMap;
+
+use crate::{
+    VecMap,
+    ir::*,
+    ir_processor::{cfg_analyzer::DomTreeNode, ssa::DefUseChain},
+};
 
 // 制限事項: ループなどで循環参照がある純粋な命令同士は削除できない
 pub fn dead_code_elimination(func: &mut Func, def_use: &mut DefUseChain) {
@@ -28,7 +34,7 @@ pub fn dead_code_elimination(func: &mut Func, def_use: &mut DefUseChain) {
         expr_assign.local = None;
         def_use.remove(def.local);
 
-        if !expr_assign.expr.is_effectful() {
+        if expr_assign.expr.purelity().can_dce() {
             for (&operand, _) in expr_assign.expr.local_usages() {
                 let count = &mut use_counts[operand];
                 *count -= 1;
@@ -63,5 +69,39 @@ pub fn copy_propagation(func: &mut Func, def_use: &DefUseChain) {
         if current != def {
             func.bbs[def.bb_id].exprs[def.expr_idx].expr = Expr::Move(current.local);
         }
+    }
+}
+
+pub fn common_subexpression_elimination(func: &mut Func, dom_tree: &DomTreeNode) {
+    let mut expr_map = FxHashMap::default();
+    common_subexpression_elimination_rec(func, dom_tree, &mut expr_map);
+}
+
+fn common_subexpression_elimination_rec(
+    func: &mut Func,
+    dom_tree: &DomTreeNode,
+    expr_map: &mut FxHashMap<Expr, LocalId>,
+) {
+    let bb = &mut func.bbs[dom_tree.id];
+    for expr_assign in &mut bb.exprs {
+        if expr_assign.local.is_none() {
+            continue;
+        }
+        if !expr_assign.expr.purelity().can_cse() || matches!(expr_assign.expr, Expr::Phi(_)) {
+            // phiをmoveに置き換えると「先頭にPhiが連続する」という性質が壊れるため除外
+            continue;
+        }
+        if let Some(&existing) = expr_map.get(&expr_assign.expr) {
+            expr_assign.expr = Expr::Move(existing);
+        } else {
+            if let Some(local) = expr_assign.local {
+                expr_map.insert(expr_assign.expr.clone(), expr_assign.local.unwrap());
+            }
+        }
+    }
+
+    for child in &dom_tree.children {
+        let mut expr_map = expr_map.clone();
+        common_subexpression_elimination_rec(func, child, &mut expr_map);
     }
 }

@@ -9,8 +9,11 @@ use super::cfg_analyzer::{calc_doms, calc_predecessors, calculate_rpo};
 use super::dataflow::{analyze_liveness, calc_def_use};
 use crate::fxbihashmap::FxBiHashMap;
 use crate::ir_generator::GlobalManager;
+use crate::ir_processor::cfg_analyzer::build_dom_tree;
 use crate::ir_processor::ssa::{DefUseChain, collect_defs};
-use crate::ir_processor::ssa_optimizer::{copy_propagation, dead_code_elimination};
+use crate::ir_processor::ssa_optimizer::{
+    common_subexpression_elimination, copy_propagation, dead_code_elimination,
+};
 use crate::vec_map::VecMap;
 use crate::{HasId, ir::*};
 
@@ -1122,7 +1125,16 @@ impl JitFunc {
 
         if config.enable_optimization {
             let mut def_use = DefUseChain::from_bbs(&body_func.bbs);
-            copy_propagation(&mut body_func, &def_use);
+            let rpo = calculate_rpo(&body_func.bbs, body_func.bb_entry);
+            let predecessors = calc_predecessors(&body_func.bbs);
+            let doms = calc_doms(&body_func.bbs, &rpo, body_func.bb_entry, &predecessors);
+            let dom_tree = build_dom_tree(&body_func.bbs, &rpo, body_func.bb_entry, &doms);
+
+            for _ in 0..5 {
+                copy_propagation(&mut body_func, &def_use);
+                common_subexpression_elimination(&mut body_func, &dom_tree);
+            }
+
             dead_code_elimination(&mut body_func, &mut def_use);
         }
 
