@@ -95,10 +95,8 @@ fn common_subexpression_elimination_rec(
         }
         if let Some(&existing) = expr_map.get(&expr_assign.expr) {
             expr_assign.expr = Expr::Move(existing);
-        } else {
-            if let Some(_) = expr_assign.local {
-                expr_map.insert(expr_assign.expr.clone(), expr_assign.local.unwrap());
-            }
+        } else if expr_assign.local.is_some() {
+            expr_map.insert(expr_assign.expr.clone(), expr_assign.local.unwrap());
         }
     }
 
@@ -114,21 +112,21 @@ pub fn eliminate_redundant_obj(func: &mut Func, def_use: &DefUseChain) {
         let Some(def) = def_use.get_def(local) else {
             continue;
         };
-        match &func.bbs[def.bb_id].exprs[def.expr_idx].expr {
-            &Expr::ToObj(typ1, src) => {
-                if let Some(src_expr) = def_use.get_def_non_move_expr(&func.bbs, src) {
-                    if let Expr::FromObj(typ2, obj_src) = *src_expr {
-                        debug_assert_eq!(typ1, typ2);
-                        func.bbs[def.bb_id].exprs[def.expr_idx].expr = Expr::Move(obj_src);
-                    }
+        match func.bbs[def.bb_id].exprs[def.expr_idx].expr {
+            Expr::ToObj(typ1, src) => {
+                if let Some(src_expr) = def_use.get_def_non_move_expr(&func.bbs, src)
+                    && let Expr::FromObj(typ2, obj_src) = *src_expr
+                {
+                    debug_assert_eq!(typ1, typ2);
+                    func.bbs[def.bb_id].exprs[def.expr_idx].expr = Expr::Move(obj_src);
                 }
             }
-            &Expr::FromObj(typ1, src) => {
-                if let Some(src_expr) = def_use.get_def_non_move_expr(&func.bbs, src) {
-                    if let Expr::ToObj(typ2, obj_src) = *src_expr {
-                        debug_assert_eq!(typ1, typ2);
-                        func.bbs[def.bb_id].exprs[def.expr_idx].expr = Expr::Move(obj_src);
-                    }
+            Expr::FromObj(typ1, src) => {
+                if let Some(src_expr) = def_use.get_def_non_move_expr(&func.bbs, src)
+                    && let Expr::ToObj(typ2, obj_src) = *src_expr
+                {
+                    debug_assert_eq!(typ1, typ2);
+                    func.bbs[def.bb_id].exprs[def.expr_idx].expr = Expr::Move(obj_src);
                 }
             }
             _ => {}
