@@ -1,31 +1,27 @@
 (module
-  (type $ValType (sub (struct (field $tag i8))))
-
-  (type $VectorInner (array (mut (ref null $ValType))))
+  (type $VectorInner (array (mut eqref)))
   (type $Buf (array (mut i8)))
   (type $StringBuf (sub final (struct (field $buf (ref $Buf)) (field $shared (mut i8)))))
   
-  (type $Nil (sub final $ValType (struct (field $tag i8))))
-  (type $Bool (sub final $ValType (struct (field $tag i8) (field i8))))
-  (type $Char (sub final $ValType (struct (field $tag i8) (field i32))))
-  (type $Int (sub final $ValType (struct (field $tag i8) (field i64))))
+  (type $Nil (sub final (struct)))
+  (type $Bool (sub final (struct (field i8))))
+  (type $Char (sub final (struct (field i32))))
+  (type $Int (sub final (struct (field i64))))
   ;; (type $Float (sub final (struct (field f64))))
-  (type $String (sub final $ValType (struct
-    (field $tag i8)
+  (type $String (sub final (struct
     (field $buf (mut (ref $StringBuf)))
     (field $len i32)
     (field $offset i32))))
-  (type $Symbol (sub final $ValType (struct (field $tag i8) (field $name (ref null $String)))))
-  (type $Cons (sub final $ValType (struct (field $tag i8) (field $car (mut (ref null $ValType))) (field $cdr (mut (ref null $ValType))))))
-  (type $Vector (sub final $ValType (struct (field $tag i8) (field $inner (ref $VectorInner)))))
-  (type $FuncRef (sub final $ValType (struct (field $tag i8) (field $func funcref))))
-  (type $Closure (sub $ValType (struct
-    (field $tag i8)
+  (type $Symbol (sub final (struct (field $name (ref null $String)))))
+  (type $Cons (sub final (struct (field $car (mut eqref)) (field $cdr (mut eqref)))))
+  (type $Vector (sub final (struct (field $inner (ref $VectorInner)))))
+  (type $FuncRef (sub final (struct (field $func funcref))))
+  (type $Closure (sub (struct
     ;; (Closure, Args) -> Obj
     (field $func (ref null $FuncRef)))))
 
-  (type $Args (array (mut (ref null $ValType))))
-  (type $ClosureFunc (func (param (ref null $Closure)) (param (ref null $Args)) (result (ref null $ValType))))
+  (type $Args (array (mut eqref)))
+  (type $ClosureFunc (func (param (ref null $Closure)) (param (ref null $Args)) (result eqref)))
   
   (import "runtime" "malloc" (func $malloc (param i32) (result i32)))
   (import "runtime" "free" (func $free (param i32)))
@@ -35,10 +31,10 @@
   (import "runtime" "write_buf" (func $write_buf (param i32) (param i32) (param i32)))
   (import "runtime" "write_char" (func $write_char (param i32)))
   (import "runtime" "get_global_id" (func $get_global_id (param i32) (param i32) (result i32)))
-  (global $nil (export "nil") (ref null $Nil) (struct.new $Nil (i32.const 1)))
-  (global $true (export "true") (ref null $Bool) (struct.new $Bool (i32.const 2) (i32.const 1)))
-  (global $false (export "false") (ref null $Bool) (struct.new $Bool (i32.const 2) (i32.const 0)))
-  (table $globals (export "globals") 1 (ref null $ValType))
+  (global $nil (export "nil") (ref null $Nil) (struct.new $Nil))
+  (global $true (export "true") (ref null $Bool) (struct.new $Bool (i32.const 1)))
+  (global $false (export "false") (ref null $Bool) (struct.new $Bool (i32.const 0)))
+  (table $globals (export "globals") 1 eqref)
   (table $symbols 1 (ref null $Symbol))
   (tag $WEBSCHEMBLY_EXCEPTION (export "WEBSCHEMBLY_EXCEPTION"))
 
@@ -82,7 +78,7 @@
 
     (return (block $exist (result (ref null $Symbol))
       (br_on_non_null $exist (table.get $symbols (local.get $symbol_index)))
-      (local.set $new_symbol (struct.new $Symbol (i32.const 6) (local.get $s)))
+      (local.set $new_symbol (struct.new $Symbol (local.get $s)))
       (table.set $symbols (local.get $symbol_index) (local.get $new_symbol))
       (local.get $new_symbol)
     ))
@@ -125,7 +121,7 @@
     
     (local.set $buf (call $memory_to_buf (local.get $ptr) (local.get $len)))
     (local.set $s_buf (struct.new $StringBuf (local.get $buf) (i32.const 0)))
-    (struct.new $String (i32.const 5) (local.get $s_buf) (local.get $len) (i32.const 0))
+    (struct.new $String (local.get $s_buf) (local.get $len) (i32.const 0))
   )
 
   (func $buf_to_memory (param $buf (ref $Buf)) (param $len i32) (param $offset i32) (result i32)
@@ -174,7 +170,7 @@
     (local.set $s_buf (struct.get $String $buf (local.get $s)))
     (struct.set $StringBuf $shared (local.get $s_buf) (i32.const 1))
 
-    (return (struct.new $String (i32.const 5) (local.get $s_buf) (struct.get $String $len (local.get $s)) (struct.get $String $offset (local.get $s))))
+    (return (struct.new $String (local.get $s_buf) (struct.get $String $len (local.get $s)) (struct.get $String $offset (local.get $s))))
   )
 
   (func $throw_webassembly_exception (export "throw_webassembly_exception")
@@ -198,7 +194,7 @@
     (return (array.new $Args (ref.null eq) (local.get $size)))
   )
 
-  (func $set_args (export "set_args") (param $params (ref null $Args)) (param $index i32) (param $value (ref null $ValType))
+  (func $set_args (export "set_args") (param $params (ref null $Args)) (param $index i32) (param $value eqref)
     (array.set $Args (local.get $params) (local.get $index) (local.get $value))
   )
 

@@ -99,34 +99,27 @@ impl From<ValType> for Type {
 // Objにアップキャスト可能な型
 // 基本的にSchemeの型に対応するがFuncRefなど例外もある
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, derive_more::Display, EnumIter)]
-#[repr(i32)]
 pub enum ValType {
     #[display("nil")]
-    Nil = 1,
+    Nil,
     #[display("bool")]
-    Bool = 2,
+    Bool,
     #[display("char")]
-    Char = 3,
+    Char,
     #[display("int")]
-    Int = 4,
+    Int,
     #[display("string")]
-    String = 5,
+    String,
     #[display("symbol")]
-    Symbol = 6,
+    Symbol,
     #[display("cons")]
-    Cons = 7,
+    Cons,
     #[display("vector")]
-    Vector = 8,
+    Vector,
     #[display("func_ref")]
-    FuncRef = 9,
+    FuncRef,
     #[display("closure")]
-    Closure = 10,
-}
-
-impl ValType {
-    pub fn tag(&self) -> i32 {
-        *self as i32
-    }
+    Closure,
 }
 
 #[derive(Debug, Clone, Copy, From, Into, Hash, PartialEq, Eq, Ord, PartialOrd)]
