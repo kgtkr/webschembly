@@ -10,7 +10,7 @@ use wasm_encoder::{
     DataCountSection, DataSection, ElementSection, Elements, EntityType, ExportKind, ExportSection,
     FieldType, Function, FunctionSection, GlobalSection, GlobalType, HeapType, ImportSection,
     Instruction, MemoryType, Module, RefType, StorageType, StructType, SubType, TableSection,
-    TableType, TypeSection, ValType,
+    TypeSection, ValType,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -31,7 +31,6 @@ struct ModuleGenerator<'a> {
     type_count: u32,
     func_count: u32,
     global_count: u32,
-    table_count: u32,
     // runtime functions
     instantiate_func_func: u32,
     instantiate_bb_func: u32,
@@ -70,8 +69,7 @@ struct ModuleGenerator<'a> {
     closure_type_fields: Vec<FieldType>,
     func_ref_type: u32,
     args_type: u32,
-    // table
-    global_table: u32,
+    global_id_to_idx: FxHashMap<ir::GlobalId, u32>,
     // const
     nil_global: Option<u32>,
     true_global: Option<u32>,
@@ -121,11 +119,10 @@ impl<'a> ModuleGenerator<'a> {
             closure_type_fields: Vec::new(),
             func_ref_type: 0,
             args_type: 0,
-            global_table: 0,
+            global_id_to_idx: FxHashMap::default(),
             nil_global: None,
             true_global: None,
             false_global: None,
-            table_count: 0,
             func_ref_globals: FxHashMap::default(),
         }
     }
@@ -504,19 +501,53 @@ impl<'a> ModuleGenerator<'a> {
         );
         self.global_count += 1;
 
-        self.global_table = self.table_count;
-        self.table_count += 1;
-        self.imports.import(
-            "runtime",
-            "globals",
-            EntityType::Table(TableType {
-                element_type: RefType::EQREF,
-                table64: false,
-                minimum: 0,
-                maximum: None,
-                shared: false,
-            }),
-        );
+        for import_global in self
+            .module
+            .globals
+            .values()
+            .filter(|g| g.linkage == ir::GlobalLinkage::Import)
+        {
+            let global_idx = self.global_count as u32;
+            self.global_count += 1;
+            let val_type = self.convert_local_type(import_global.typ);
+            self.imports.import(
+                "dynamic",
+                &format!("global_{}", usize::from(import_global.id)),
+                EntityType::Global(GlobalType {
+                    val_type,
+                    mutable: true,
+                    shared: false,
+                }),
+            );
+            self.global_id_to_idx.insert(import_global.id, global_idx);
+        }
+
+        for export_global in self
+            .module
+            .globals
+            .values()
+            .filter(|g| g.linkage == ir::GlobalLinkage::Export)
+        {
+            let global_idx = self.global_count as u32;
+            self.global_count += 1;
+
+            let val_type = self.convert_local_type(export_global.typ);
+            let init_expr = self.local_type_init_expr(export_global.typ);
+            self.globals.global(
+                GlobalType {
+                    val_type: val_type,
+                    mutable: true,
+                    shared: false,
+                },
+                &init_expr,
+            );
+            self.global_id_to_idx.insert(export_global.id, global_idx);
+            self.exports.export(
+                &format!("global_{}", usize::from(export_global.id)),
+                ExportKind::Global,
+                global_idx as u32,
+            );
+        }
 
         self.instantiate_func_func = self.add_runtime_function("instantiate_func", WasmFuncType {
             params: vec![ValType::I32, ValType::I32],
@@ -623,10 +654,10 @@ impl<'a> ModuleGenerator<'a> {
         module
     }
 
-    fn global_id_to_idx(&mut self, global: ir::GlobalId) -> i32 {
-        debug_assert!(self.module.globals.contains(&global));
+    fn global_id_to_idx(&mut self, global: ir::GlobalId) -> u32 {
+        debug_assert!(self.module.globals.contains_key(&global));
 
-        usize::from(global) as i32
+        *self.global_id_to_idx.get(&global).unwrap()
     }
 
     fn ref_type(&mut self, inner_ty: ir::Type) -> u32 {
@@ -693,6 +724,39 @@ impl<'a> ModuleGenerator<'a> {
                     heap_type: HeapType::Concrete(self.func_ref_type),
                 }),
             },
+        }
+    }
+
+    fn local_type_init_expr(&mut self, ty: ir::LocalType) -> ConstExpr {
+        match ty {
+            ir::LocalType::Ref(typ) => ConstExpr::ref_null(HeapType::Concrete(self.ref_type(typ))),
+            ir::LocalType::Type(ir::Type::Obj) => ConstExpr::ref_null(HeapType::Abstract {
+                shared: false,
+                ty: AbstractHeapType::Eq,
+            }),
+            ir::LocalType::Type(ir::Type::Val(ir::ValType::Bool)) => ConstExpr::i32_const(0),
+            ir::LocalType::Type(ir::Type::Val(ir::ValType::Int)) => ConstExpr::i64_const(0),
+            ir::LocalType::Type(ir::Type::Val(ir::ValType::Char)) => ConstExpr::i32_const(0),
+            ir::LocalType::Type(ir::Type::Val(ir::ValType::String)) => {
+                ConstExpr::ref_null(HeapType::Concrete(self.string_type))
+            }
+            ir::LocalType::Type(ir::Type::Val(ir::ValType::Symbol)) => {
+                ConstExpr::ref_null(HeapType::Concrete(self.symbol_type))
+            }
+            ir::LocalType::Type(ir::Type::Val(ir::ValType::Nil)) => ConstExpr::i32_const(0),
+            ir::LocalType::Type(ir::Type::Val(ir::ValType::Cons)) => {
+                ConstExpr::ref_null(HeapType::Concrete(self.cons_type))
+            }
+            ir::LocalType::Type(ir::Type::Val(ir::ValType::Closure)) => {
+                ConstExpr::ref_null(HeapType::Concrete(self.closure_type))
+            }
+            ir::LocalType::Type(ir::Type::Val(ir::ValType::Vector)) => {
+                ConstExpr::ref_null(HeapType::Concrete(self.vector_type))
+            }
+            ir::LocalType::Type(ir::Type::Val(ir::ValType::FuncRef)) => {
+                ConstExpr::ref_null(HeapType::Concrete(self.func_ref_type))
+            }
+            ir::LocalType::Args => ConstExpr::ref_null(HeapType::Concrete(self.args_type)),
         }
     }
 }
@@ -1133,17 +1197,15 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 });
             }
             ir::Expr::GlobalGet(global) => {
-                function.instruction(&Instruction::I32Const(
+                function.instruction(&Instruction::GlobalGet(
                     self.module_generator.global_id_to_idx(*global),
                 ));
-                function.instruction(&Instruction::TableGet(self.module_generator.global_table));
             }
             ir::Expr::GlobalSet(global, val) => {
-                function.instruction(&Instruction::I32Const(
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
+                function.instruction(&Instruction::GlobalSet(
                     self.module_generator.global_id_to_idx(*global),
                 ));
-                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
-                function.instruction(&Instruction::TableSet(self.module_generator.global_table));
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
             }
             ir::Expr::Display(val) => {
@@ -1297,37 +1359,6 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                         .instruction(&Instruction::StructNew(self.module_generator.func_ref_type));
                     function.instruction(&Instruction::GlobalSet(global_idx));
                 }
-                // init globals
-                let global_count = self
-                    .module_generator
-                    .module
-                    .globals
-                    .iter()
-                    .map(|&id| usize::from(id) + 1)
-                    .max()
-                    .unwrap_or(0);
-
-                // 必要なサイズになるまで2倍に拡張
-                function.instruction(&Instruction::Block(BlockType::Empty));
-                function.instruction(&Instruction::Loop(BlockType::Empty));
-                function.instruction(&Instruction::TableSize(self.module_generator.global_table));
-                function.instruction(&Instruction::I32Const(global_count as i32));
-                function.instruction(&Instruction::I32GeU);
-                function.instruction(&Instruction::BrIf(1));
-                function.instruction(&Instruction::RefNull(HeapType::Abstract {
-                    shared: false,
-                    ty: AbstractHeapType::Eq,
-                }));
-                function.instruction(&Instruction::TableSize(self.module_generator.global_table));
-                function.instruction(&Instruction::TableGrow(self.module_generator.global_table));
-                function.instruction(&Instruction::I32Const(-1));
-                function.instruction(&Instruction::I32Eq);
-                function.instruction(&Instruction::If(BlockType::Empty));
-                function.instruction(&Instruction::Unreachable);
-                function.instruction(&Instruction::End);
-                function.instruction(&Instruction::Br(0));
-                function.instruction(&Instruction::End);
-                function.instruction(&Instruction::End);
 
                 function.instruction(&Instruction::GlobalGet(
                     self.module_generator.nil_global.unwrap(),

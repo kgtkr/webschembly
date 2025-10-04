@@ -1,7 +1,7 @@
 use std::{fmt, iter::from_coroutine};
 
 use derive_more::{From, Into};
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashMap;
 use strum_macros::EnumIter;
 use typed_index_collections::TiVec;
 
@@ -1273,6 +1273,59 @@ impl std::fmt::Display for FuncType {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct Global {
+    pub id: GlobalId,
+    pub typ: LocalType,
+    pub linkage: GlobalLinkage,
+}
+
+impl Global {
+    pub fn to_import(self) -> Self {
+        Self {
+            linkage: GlobalLinkage::Import,
+            ..self
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum GlobalLinkage {
+    Import,
+    Export,
+}
+
+impl HasId for Global {
+    type Id = GlobalId;
+
+    fn id(&self) -> Self::Id {
+        self.id
+    }
+}
+
+impl Global {
+    pub fn display<'a>(&self, meta: &'a Meta) -> Display<'a, &'_ Global> {
+        Display { value: self, meta }
+    }
+}
+
+impl fmt::Display for Display<'_, &'_ Global> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let linkage = match self.value.linkage {
+            GlobalLinkage::Import => "import",
+            GlobalLinkage::Export => "export",
+        };
+        write!(
+            f,
+            "{} global {}: {}",
+            linkage,
+            self.value.id.display(self.meta),
+            self.value.typ
+        )?;
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, Copy, From, Into, Hash, PartialEq, Eq)]
 pub struct ModuleId(usize);
 
@@ -1292,7 +1345,7 @@ impl fmt::Display for Display<'_, ModuleId> {
 
 #[derive(Debug, Clone)]
 pub struct Module {
-    pub globals: FxHashSet<GlobalId>,
+    pub globals: FxHashMap<GlobalId, Global>,
     pub funcs: TiVec<FuncId, Func>,
     pub entry: FuncId,
     pub meta: Meta,
@@ -1308,14 +1361,10 @@ impl Module {
 }
 impl fmt::Display for Display<'_, &'_ Module> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "globals:")?;
-        for (i, global) in self.value.globals.iter().enumerate() {
-            if i > 0 {
-                write!(f, ",")?;
-            }
-            write!(f, " {}", global.display(self.meta))?;
+        for global in self.value.globals.values() {
+            writeln!(f, "{}", global.display(self.meta))?;
         }
-        writeln!(f)?;
+
         writeln!(f, "entry: {}", self.value.entry.display(self.meta))?;
         for func in self.value.funcs.iter() {
             write!(f, "{}", func.display(self.meta))?;

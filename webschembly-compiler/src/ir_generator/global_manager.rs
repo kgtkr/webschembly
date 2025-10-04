@@ -24,24 +24,33 @@ impl GlobalManager {
         }
     }
 
-    pub fn gen_global_id(&mut self) -> GlobalId {
+    pub fn gen_global(&mut self, typ: LocalType) -> Global {
         let id = GlobalId::from(self.global_count);
         self.global_count += 1;
-        id
+        Global {
+            id,
+            typ,
+            linkage: GlobalLinkage::Export,
+        }
     }
 
     pub fn get_global_id(&self, id: ast::GlobalVarId) -> Option<GlobalId> {
         self.global_ids.get(&id).copied()
     }
 
-    pub fn global_id(&mut self, id: ast::GlobalVarId) -> GlobalId {
+    pub fn global(&mut self, id: ast::GlobalVarId) -> Global {
+        let typ = LocalType::Type(Type::Obj);
         if let Some(&global_id) = self.global_ids.get(&id) {
-            global_id
+            Global {
+                id: global_id,
+                typ,
+                linkage: GlobalLinkage::Import,
+            }
         } else {
-            let global_id = self.gen_global_id();
-            self.global_ids.insert(id, global_id);
+            let global = self.gen_global(typ);
+            self.global_ids.insert(id, global.id);
 
-            global_id
+            global
         }
     }
 }

@@ -1,4 +1,4 @@
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashMap;
 
 use crate::ir_generator::GlobalManager;
 use crate::{VecMap, ir::*};
@@ -51,10 +51,6 @@ impl<'a> ModuleGenerator<'a> {
     }
 
     fn generate(mut self) -> Module {
-        let func_id = self.funcs.push_and_get_key(None);
-        let func = FuncGenerator::new(&mut self, func_id).entry_gen();
-        self.funcs[func_id] = Some(func);
-
         let globals = self
             .ast
             .x
@@ -62,8 +58,16 @@ impl<'a> ModuleGenerator<'a> {
             .global_vars
             .clone()
             .into_iter()
-            .map(|id| self.global_id(id))
-            .collect::<FxHashSet<_>>();
+            .map(|id| {
+                let global = self.global(id);
+                (global.id, global)
+            })
+            .collect::<FxHashMap<_, _>>();
+
+        let func_id = self.funcs.push_and_get_key(None);
+        let func = FuncGenerator::new(&mut self, func_id).entry_gen();
+        self.funcs[func_id] = Some(func);
+
         let meta = Meta {
             local_metas: self.local_metas,
             global_metas: self.global_metas,
@@ -77,8 +81,8 @@ impl<'a> ModuleGenerator<'a> {
         }
     }
 
-    fn global_id(&mut self, id: ast::GlobalVarId) -> GlobalId {
-        let global_id = self.global_manager.global_id(id);
+    fn global(&mut self, id: ast::GlobalVarId) -> Global {
+        let global = self.global_manager.global(id);
         let ast_meta = self
             .ast
             .x
@@ -87,12 +91,12 @@ impl<'a> ModuleGenerator<'a> {
             .get(&id);
         if let Some(ast_meta) = ast_meta {
             self.global_metas
-                .entry(global_id)
+                .entry(global.id)
                 .or_insert_with(|| VarMeta {
                     name: ast_meta.name.clone(),
                 });
         }
-        global_id
+        global
     }
 
     fn gen_func(
@@ -702,10 +706,10 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     }
                 }
                 ast::VarId::Global(id) => {
-                    let global = self.module_generator.global_id(*id);
+                    let global = self.module_generator.global(*id);
                     self.exprs.push(ExprAssign {
                         local: result,
-                        expr: Expr::GlobalGet(global),
+                        expr: Expr::GlobalGet(global.id),
                     });
                 }
             },
@@ -759,10 +763,10 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                         } else {
                             let local = self.local(Type::Obj);
                             self.gen_expr(Some(local), expr);
-                            let global = self.module_generator.global_id(*id);
+                            let global = self.module_generator.global(*id);
                             self.exprs.push(ExprAssign {
                                 local: None,
-                                expr: Expr::GlobalSet(global, local),
+                                expr: Expr::GlobalSet(global.id, local),
                             });
                             self.exprs.push(ExprAssign {
                                 local: result,

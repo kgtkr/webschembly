@@ -75,6 +75,7 @@ export type RuntimeExports = {
 
 export type ModuleImports = {
   runtime: RuntimeExports;
+  dynamic: Record<string, WebAssembly.ExportValue>;
 };
 
 export type ModuleExports = {
@@ -93,6 +94,7 @@ export async function createRuntime(
     compilerConfig,
   }: RuntimeConfig
 ): Promise<Runtime> {
+  const dynamic: Record<string, WebAssembly.ExportValue> = {};
   const runtimeImportObjects: RuntimeImportsEnv = {
     js_instantiate: (bufPtr, bufSize, irBufPtr, irBufSize, fromSrc) => {
       const buf = new Uint8Array(
@@ -117,6 +119,7 @@ export async function createRuntime(
         new WebAssembly.Module(buf),
         importObject
       ) as TypedWebAssemblyInstance<ModuleExports>;
+      Object.assign(dynamic, instance.exports);
 
       const result = instance.exports.start();
       if (printEvalResult && fromSrc !== 0) {
@@ -171,6 +174,7 @@ export async function createRuntime(
 
   const importObject: ModuleImports = {
     runtime: runtimeInstance.exports,
+    dynamic,
   };
 
   const errorHandle =

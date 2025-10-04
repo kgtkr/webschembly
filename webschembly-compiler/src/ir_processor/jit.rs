@@ -74,7 +74,7 @@ impl Jit {
         self.jit_module[module_id].jit_funcs[func_id]
             .as_ref()
             .unwrap()
-            .generate_stub_module(&self.global_layout, &self.jit_module[module_id])
+            .generate_func_module(&self.global_layout, &self.jit_module[module_id])
     }
 
     pub fn instantiate_bb(
@@ -104,7 +104,7 @@ struct JitModule {
     module: Module,
     jit_funcs: TiVec<FuncId, Option<JitFunc>>,
     func_to_globals: TiVec<FuncId, GlobalId>,
-    globals: FxHashSet<GlobalId>,
+    globals: FxHashMap<GlobalId, Global>,
 }
 
 impl JitModule {
@@ -114,14 +114,20 @@ impl JitModule {
         let func_to_globals = module
             .funcs
             .iter()
-            .map(|_| global_manager.gen_global_id())
+            // TODO:
+            .map(|_| global_manager.gen_global(LocalType::Type(Type::Obj)))
             .collect::<TiVec<FuncId, _>>();
 
         let globals = {
             let mut globals = module.globals.clone();
-            globals.extend(func_to_globals.iter());
+            globals.extend(func_to_globals.iter().copied().map(|g| (g.id, g)));
             globals
         };
+
+        let func_to_globals = func_to_globals
+            .iter()
+            .map(|g| g.id)
+            .collect::<TiVec<FuncId, _>>();
 
         Self {
             module_id,
@@ -328,7 +334,7 @@ impl JitModule {
 struct JitFunc {
     func_id: FuncId,
     jit_bbs: VecMap<BasicBlockId, JitBB>,
-    globals: FxHashSet<GlobalId>,
+    globals: FxHashMap<GlobalId, Global>,
 }
 
 impl JitFunc {
@@ -338,15 +344,27 @@ impl JitFunc {
         let bb_to_globals = func
             .bbs
             .keys()
-            .map(|bb_id| (bb_id, global_manager.gen_global_id()))
+            // TODO:
+            .map(|bb_id| (bb_id, global_manager.gen_global(LocalType::Type(Type::Obj))))
             .collect::<VecMap<BasicBlockId, _>>();
         let bb_infos = calculate_bb_info(func);
 
         let globals = {
-            let mut globals = jit_module.globals.clone();
-            globals.extend(bb_to_globals.values());
+            let mut globals = FxHashMap::default();
+            globals.extend(
+                jit_module
+                    .globals
+                    .iter()
+                    .map(|(id, g)| (*id, g.to_import())),
+            );
+            globals.extend(bb_to_globals.values().copied().map(|g| (g.id, g)));
             globals
         };
+
+        let bb_to_globals = bb_to_globals
+            .iter()
+            .map(|(bb_id, g)| (bb_id, g.id))
+            .collect::<VecMap<BasicBlockId, _>>();
 
         // all_typed_objs: BBごとの型推論結果
         // あるBBの型推論結果はその支配集合にまで伝播させる
@@ -394,11 +412,15 @@ impl JitFunc {
                 .bbs
                 .values()
                 .map(|bb| {
+                    // TODO: JitBB::newに移動する
+                    let mut jit_bb_globals = FxHashMap::default();
+                    jit_bb_globals.extend(globals.iter().map(|(id, g)| (*id, g.to_import())));
                     JitBB {
                         bb_id: bb.id,
                         global: bb_to_globals[bb.id],
                         info: bb_infos[bb.id].clone(),
                         typed_objs: all_typed_objs[bb.id].clone(), // TODO: cloneしないようにする
+                        globals: jit_bb_globals,
                     }
                 })
                 .collect::<VecMap<BasicBlockId, _>>(),
@@ -406,7 +428,7 @@ impl JitFunc {
         }
     }
 
-    fn generate_stub_module(&self, global_layout: &GlobalLayout, jit_module: &JitModule) -> Module {
+    fn generate_func_module(&self, global_layout: &GlobalLayout, jit_module: &JitModule) -> Module {
         let module = &jit_module.module;
         let func = &module.funcs[self.func_id];
 
@@ -741,6 +763,7 @@ impl JitFunc {
         }
     }
 
+    // TODO: JitBBに移動する
     fn generate_bb_module(
         &self,
         _config: &JitConfig,
@@ -1340,7 +1363,7 @@ impl JitFunc {
         funcs.push(entry_func);
 
         Module {
-            globals: self.globals.clone(),
+            globals: self.jit_bbs[orig_entry_bb_id].globals.clone(),
             funcs,
             entry: entry_func_id,
             meta: Meta {
@@ -1358,6 +1381,7 @@ struct JitBB {
     global: GlobalId,
     info: BBInfo,
     typed_objs: VecMap<LocalId, TypedObj>,
+    globals: FxHashMap<GlobalId, Global>,
 }
 
 impl HasId for JitBB {
