@@ -33,7 +33,6 @@
   (global $nil (export "nil") (ref null $Nil) (struct.new $Nil))
   (global $true (export "true") (ref null $Bool) (struct.new $Bool (i32.const 1)))
   (global $false (export "false") (ref null $Bool) (struct.new $Bool (i32.const 0)))
-  (table $globals (export "globals") 1 eqref)
   (table $symbols 1 (ref null $Symbol))
   (tag $WEBSCHEMBLY_EXCEPTION (export "WEBSCHEMBLY_EXCEPTION"))
 
@@ -174,19 +173,6 @@
 
   (func $throw_webassembly_exception (export "throw_webassembly_exception")
     (throw $WEBSCHEMBLY_EXCEPTION)
-  )
-
-  (func $get_global (export "get_global") (param $buf_ptr i32) (param $buf_len i32) (result eqref)
-    (local $global_id i32)
-    (local.set $global_id (call $get_global_id (local.get $buf_ptr) (local.get $buf_len)))
-    (if (i32.eq (local.get $global_id) (i32.const -1))
-      (then
-        (unreachable)
-      )
-      (else
-        (return (table.get $globals (local.get $global_id)))
-      )
-    )
   )
 
   (func $new_args (export "new_args") (param $size i32) (result (ref null $Args))
