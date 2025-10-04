@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashMap;
 use typed_index_collections::{TiVec, ti_vec};
 
 use super::bb_optimizer;
