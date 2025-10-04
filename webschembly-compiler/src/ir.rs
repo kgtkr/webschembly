@@ -59,6 +59,10 @@ pub enum LocalType {
     Type(Type),
     #[display("args")]
     Args,
+    #[display("mut_func_ref")]
+    MutFuncRef,
+    #[display("entrypoint_table")]
+    EntrypointTable,
 }
 
 impl From<Type> for LocalType {

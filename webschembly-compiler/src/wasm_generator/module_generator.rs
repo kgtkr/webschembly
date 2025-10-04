@@ -69,6 +69,8 @@ struct ModuleGenerator<'a> {
     closure_type_fields: Vec<FieldType>,
     func_ref_type: u32,
     args_type: u32,
+    mut_func_ref_type: u32,
+    entrypoint_table_type: u32,
     global_id_to_idx: FxHashMap<ir::GlobalId, u32>,
     // const
     nil_global: Option<u32>,
@@ -119,6 +121,8 @@ impl<'a> ModuleGenerator<'a> {
             closure_type_fields: Vec::new(),
             func_ref_type: 0,
             args_type: 0,
+            mut_func_ref_type: 0,
+            entrypoint_table_type: 0,
             global_id_to_idx: FxHashMap::default(),
             nil_global: None,
             true_global: None,
@@ -215,6 +219,8 @@ impl<'a> ModuleGenerator<'a> {
     const REF_VALUE_FIELD: u32 = 0;
     // const STRING_BUF_BUF_FIELD: u32 = 0;
     // const STRING_BUF_SHARED_FIELD: u32 = 1;
+
+    // const MUT_FUNC_REF_FUNC_FIELD: u32 = 0;
 
     pub fn generate(mut self) -> Module {
         self.buf_type = self.type_count;
@@ -443,6 +449,33 @@ impl<'a> ModuleGenerator<'a> {
         self.types
             .ty()
             .array(&StorageType::Val(ValType::Ref(RefType::EQREF)), true);
+
+        self.mut_func_ref_type = self.type_count;
+        self.type_count += 1;
+        self.types.ty().subtype(&SubType {
+            is_final: true,
+            supertype_idx: None,
+            composite_type: CompositeType {
+                shared: false,
+                inner: CompositeInnerType::Struct(StructType {
+                    fields: vec![FieldType {
+                        element_type: StorageType::Val(ValType::FUNCREF),
+                        mutable: true,
+                    }]
+                    .into_boxed_slice(),
+                }),
+            },
+        });
+
+        self.entrypoint_table_type = self.type_count;
+        self.type_count += 1;
+        self.types.ty().array(
+            &StorageType::Val(ValType::Ref(RefType {
+                nullable: true,
+                heap_type: HeapType::Concrete(self.mut_func_ref_type),
+            })),
+            true,
+        );
 
         self.imports.import(
             "runtime",
@@ -688,6 +721,14 @@ impl<'a> ModuleGenerator<'a> {
                 nullable: true,
                 heap_type: HeapType::Concrete(self.args_type),
             }),
+            ir::LocalType::MutFuncRef => ValType::Ref(RefType {
+                nullable: true,
+                heap_type: HeapType::Concrete(self.mut_func_ref_type),
+            }),
+            ir::LocalType::EntrypointTable => ValType::Ref(RefType {
+                nullable: true,
+                heap_type: HeapType::Concrete(self.entrypoint_table_type),
+            }),
         }
     }
 
@@ -730,6 +771,13 @@ impl<'a> ModuleGenerator<'a> {
     fn local_type_init_expr(&mut self, ty: ir::LocalType) -> ConstExpr {
         match ty {
             ir::LocalType::Ref(typ) => ConstExpr::ref_null(HeapType::Concrete(self.ref_type(typ))),
+            ir::LocalType::Args => ConstExpr::ref_null(HeapType::Concrete(self.args_type)),
+            ir::LocalType::MutFuncRef => {
+                ConstExpr::ref_null(HeapType::Concrete(self.mut_func_ref_type))
+            }
+            ir::LocalType::EntrypointTable => {
+                ConstExpr::ref_null(HeapType::Concrete(self.entrypoint_table_type))
+            }
             ir::LocalType::Type(ir::Type::Obj) => ConstExpr::ref_null(HeapType::Abstract {
                 shared: false,
                 ty: AbstractHeapType::Eq,
@@ -756,7 +804,6 @@ impl<'a> ModuleGenerator<'a> {
             ir::LocalType::Type(ir::Type::Val(ir::ValType::FuncRef)) => {
                 ConstExpr::ref_null(HeapType::Concrete(self.func_ref_type))
             }
-            ir::LocalType::Args => ConstExpr::ref_null(HeapType::Concrete(self.args_type)),
         }
     }
 }
