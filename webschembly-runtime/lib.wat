@@ -21,7 +21,7 @@
 
   (type $Args (array (mut eqref)))
   (type $ClosureFunc (func (param (ref null $Closure)) (param (ref null $Args)) (result eqref)))
-  (type $MutFuncRef (sub final (struct (field $func (mut funcref)))))
+  (type $MutFuncRef (sub final (struct (field $func (mut (ref null $FuncRef))))))
   (type $EntrypointTable (array (mut (ref null $MutFuncRef))))
   
   (import "runtime" "malloc" (func $malloc (param i32) (result i32)))

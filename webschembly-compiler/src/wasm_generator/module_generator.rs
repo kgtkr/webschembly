@@ -459,7 +459,10 @@ impl<'a> ModuleGenerator<'a> {
                 shared: false,
                 inner: CompositeInnerType::Struct(StructType {
                     fields: vec![FieldType {
-                        element_type: StorageType::Val(ValType::FUNCREF),
+                        element_type: StorageType::Val(ValType::Ref(RefType {
+                            nullable: true,
+                            heap_type: HeapType::Concrete(self.func_ref_type),
+                        })),
                         mutable: true,
                     }]
                     .into_boxed_slice(),
