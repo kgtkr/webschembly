@@ -44,6 +44,7 @@
               pkgs.binaryen
               pkgs.wasm-tools
               pkgs.just
+              pkgs.nil
             ];
           };
         };

@@ -6,7 +6,8 @@
             "settings": {},
             "extensions": [
                 "rust-lang.rust-analyzer",
-                "esbenp.prettier-vscode"
+                "esbenp.prettier-vscode",
+                "jnoortheen.nix-ide"
             ]
         }
     },
