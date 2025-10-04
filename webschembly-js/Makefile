@@ -36,7 +36,7 @@ $(WEBSCHEMBLY_COMPILER_CLI):
 
 %.wasm: %.wasms $(WEBSCHEMBLY_RUNTIME)
 	# TODO: --rename-export-conflictsはできればつけたくない
-	wasm-merge -o $@ $(WEBSCHEMBLY_RUNTIME) runtime $(foreach f, $(wildcard $</*.wasm), $(f) dummy_input) $(BINARYEN_ARGS) --rename-export-conflicts
+	wasm-merge -o $@ $(WEBSCHEMBLY_RUNTIME) runtime $(foreach f, $(wildcard $</*.wasm), $(f) dynamic) $(BINARYEN_ARGS) --rename-export-conflicts
 
 
 %.wat: %.wasm

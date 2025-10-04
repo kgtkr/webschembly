@@ -2,7 +2,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
     VecMap,
-    ir::{BasicBlock, BasicBlockId, LocalFlag, LocalId},
+    ir::{BasicBlock, BasicBlockId},
 };
 
 pub fn calc_predecessors(
@@ -17,23 +17,15 @@ pub fn calc_predecessors(
     predecessors
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DomTreeNode {
-    pub id: BasicBlockId,
-    pub children: Vec<DomTreeNode>,
-}
-
-pub fn build_dom_tree(
+pub fn calc_doms(
     cfg: &VecMap<BasicBlockId, BasicBlock>,
     rpo: &FxHashMap<BasicBlockId, usize>,
     entry_id: BasicBlockId,
     predecessors: &FxHashMap<BasicBlockId, Vec<BasicBlockId>>,
-) -> DomTreeNode {
-    // --- Step B: データフロー解析で各ノードの支配ノード集合を計算 ---
+) -> FxHashMap<BasicBlockId, FxHashSet<BasicBlockId>> {
     let all_nodes: FxHashSet<BasicBlockId> = cfg.keys().collect();
     let mut doms: FxHashMap<BasicBlockId, FxHashSet<BasicBlockId>> = FxHashMap::default();
 
-    // 初期化
     doms.insert(entry_id, [entry_id].iter().cloned().collect());
     for &id in &all_nodes {
         if id != entry_id {
@@ -44,7 +36,6 @@ pub fn build_dom_tree(
     let mut rpo_nodes: Vec<_> = cfg.keys().collect();
     rpo_nodes.sort_by_key(|id| rpo.get(id).expect("RPO must contain all nodes"));
 
-    // 集合が変化しなくなるまで反復計算
     let mut changed = true;
     while changed {
         changed = false;
@@ -75,9 +66,23 @@ pub fn build_dom_tree(
         }
     }
 
-    // --- Step C: 即時支配ノード (idom) を見つける ---
+    doms
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DomTreeNode {
+    pub id: BasicBlockId,
+    pub children: Vec<DomTreeNode>,
+}
+
+pub fn build_dom_tree(
+    cfg: &VecMap<BasicBlockId, BasicBlock>,
+    rpo: &FxHashMap<BasicBlockId, usize>,
+    entry_id: BasicBlockId,
+    doms: &FxHashMap<BasicBlockId, FxHashSet<BasicBlockId>>,
+) -> DomTreeNode {
     let mut idoms: FxHashMap<BasicBlockId, BasicBlockId> = FxHashMap::default();
-    for &id in &all_nodes {
+    for id in cfg.keys() {
         if id == entry_id {
             continue;
         }
@@ -213,93 +218,4 @@ pub fn find_reachable_nodes(
         }
     }
     reachable
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DefUse {
-    pub defs: FxHashSet<LocalId>,
-    pub uses: FxHashSet<LocalId>,
-}
-
-pub fn calc_def_use(cfg: &VecMap<BasicBlockId, BasicBlock>) -> FxHashMap<BasicBlockId, DefUse> {
-    let mut def_use_map = FxHashMap::default();
-
-    for (block_id, block) in cfg.iter() {
-        let mut defs = FxHashSet::default();
-        let mut uses = FxHashSet::default();
-
-        for (local_id, flag) in block.local_usages() {
-            match flag {
-                LocalFlag::Defined => {
-                    defs.insert(*local_id);
-                }
-                LocalFlag::Used => {
-                    if !defs.contains(local_id) {
-                        uses.insert(*local_id);
-                    }
-                }
-            }
-        }
-
-        def_use_map.insert(block_id, DefUse { defs, uses });
-    }
-
-    def_use_map
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LivenessInfo {
-    pub live_in: FxHashMap<BasicBlockId, FxHashSet<LocalId>>,
-    pub live_out: FxHashMap<BasicBlockId, FxHashSet<LocalId>>,
-}
-
-pub fn analyze_liveness(
-    cfg: &VecMap<BasicBlockId, BasicBlock>,
-    def_use: &FxHashMap<BasicBlockId, DefUse>,
-    rpo: &FxHashMap<BasicBlockId, usize>,
-) -> LivenessInfo {
-    let mut live_in: FxHashMap<BasicBlockId, FxHashSet<LocalId>> = FxHashMap::default();
-    let mut live_out: FxHashMap<BasicBlockId, FxHashSet<LocalId>> = FxHashMap::default();
-
-    // 空集合で初期化
-    for (block_id, _) in cfg.iter() {
-        live_in.insert(block_id, FxHashSet::default());
-        live_out.insert(block_id, FxHashSet::default());
-    }
-
-    // 逆RPO順で計算すると収束が速い
-    let mut rpo_nodes = cfg.keys().collect::<Vec<_>>();
-    rpo_nodes.sort_by_key(|id| std::cmp::Reverse(rpo.get(id).unwrap()));
-
-    let mut changed = true;
-    while changed {
-        changed = false;
-
-        for &block_id in &rpo_nodes {
-            let block = cfg.get(block_id).unwrap();
-            let def_use_info = &def_use[&block_id];
-
-            // live_in[B] = uses[B] ∪ (live_out[B] - defs[B])
-            let mut new_live_in = def_use_info.uses.clone();
-            let live_out_minus_defs = live_out[&block_id]
-                .difference(&def_use_info.defs)
-                .cloned()
-                .collect::<FxHashSet<_>>();
-            new_live_in.extend(live_out_minus_defs);
-
-            // live_out[B] = ∪ live_in[S]
-            let mut new_live_out = FxHashSet::default();
-            for successor in block.next.successors() {
-                new_live_out.extend(&live_in[&successor]);
-            }
-
-            if new_live_in != live_in[&block_id] || new_live_out != live_out[&block_id] {
-                changed = true;
-                live_in.insert(block_id, new_live_in);
-                live_out.insert(block_id, new_live_out);
-            }
-        }
-    }
-
-    LivenessInfo { live_in, live_out }
 }

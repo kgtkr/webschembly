@@ -33,7 +33,12 @@ export type Runtime = {
   loadSrc: (srcBuf: Uint8Array) => void;
   flushAll: () => void;
   cleanup: () => void;
+  mallocString: (s: string) => [ptr: number, len: number];
+  instance: TypedWebAssemblyInstance<RuntimeExports>;
+  getGlobal(name: string): SchemeValue;
 };
+
+export type SchemeValue = { __tagSchemeValueBrand: any };
 
 export type RuntimeImportsEnv = {
   js_instantiate: (
@@ -54,10 +59,10 @@ export type RuntimeImports = {
 export type RuntimeExports = {
   memory: WebAssembly.Memory;
   WEBSCHEMBLY_EXCEPTION: WebAssembly.ExceptionTag;
-  get_global: (namePtr: number, nameLen: number) => number;
-  new_args: (elemSize: number) => number;
-  set_args: (vecPtr: number, index: number, value: number) => void;
-  call_closure: (closurePtr: number, paramsPtr: number) => number;
+  get_global_id: (namePtr: number, nameLen: number) => number;
+  new_args: (elemSize: number) => SchemeValue;
+  set_args: (args: SchemeValue, index: number, value: number) => void;
+  call_closure: (closure: SchemeValue, args: SchemeValue) => SchemeValue;
   malloc: (size: number) => number;
   free: (ptr: number) => void;
   load_stdlib: () => void;
@@ -71,6 +76,7 @@ export type RuntimeExports = {
 
 export type ModuleImports = {
   runtime: RuntimeExports;
+  dynamic: Record<string, WebAssembly.ExportValue>;
 };
 
 export type ModuleExports = {
@@ -89,6 +95,7 @@ export async function createRuntime(
     compilerConfig,
   }: RuntimeConfig
 ): Promise<Runtime> {
+  const dynamic: Record<string, WebAssembly.ExportValue> = {};
   const runtimeImportObjects: RuntimeImportsEnv = {
     js_instantiate: (bufPtr, bufSize, irBufPtr, irBufSize, fromSrc) => {
       const buf = new Uint8Array(
@@ -113,21 +120,16 @@ export async function createRuntime(
         new WebAssembly.Module(buf),
         importObject
       ) as TypedWebAssemblyInstance<ModuleExports>;
+      Object.assign(dynamic, instance.exports);
 
       const result = instance.exports.start();
       if (printEvalResult && fromSrc !== 0) {
-        const writeClosure = runtimeInstance.exports.get_global(
-          writePtr,
-          writeLen
-        );
+        const writeClosure = getGlobal("write");
         const writeParams = runtimeInstance.exports.new_args(1);
         runtimeInstance.exports.set_args(writeParams, 0, result);
         runtimeInstance.exports.call_closure(writeClosure, writeParams);
 
-        const newlineClosure = runtimeInstance.exports.get_global(
-          newlinePtr,
-          newlineLen
-        );
+        const newlineClosure = getGlobal("newline");
         const newlineParams = runtimeInstance.exports.new_args(0);
         runtimeInstance.exports.call_closure(newlineClosure, newlineParams);
       }
@@ -167,6 +169,7 @@ export async function createRuntime(
 
   const importObject: ModuleImports = {
     runtime: runtimeInstance.exports,
+    dynamic,
   };
 
   const errorHandle =
@@ -195,8 +198,16 @@ export async function createRuntime(
     return [bufPtr, buf.length];
   }
 
-  const [writePtr, writeLen] = mallocString("write");
-  const [newlinePtr, newlineLen] = mallocString("newline");
+  function getGlobal(name: string): SchemeValue {
+    const [namePtr, nameLen] = mallocString(name);
+    const id = runtimeInstance.exports.get_global_id(namePtr, nameLen);
+    runtimeInstance.exports.free(namePtr);
+    const global = dynamic[`global_${id}`];
+    if (global === undefined || !(global instanceof WebAssembly.Global)) {
+      throw new Error(`global not found: ${name}`);
+    }
+    return global.value;
+  }
 
   return {
     loadStdlib: errorHandle(() => {
@@ -217,5 +228,8 @@ export async function createRuntime(
     cleanup: () => {
       runtimeInstance.exports.cleanup();
     },
+    mallocString,
+    instance: runtimeInstance,
+    getGlobal,
   };
 }

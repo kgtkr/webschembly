@@ -7,7 +7,7 @@ use crate::HasId;
 // 削除可能なTiVec likeな構造
 // キーの値が大きすぎず、密であることが期待される場合に有効
 // 例: VecMap<LocalId, Local>, VecMap<BasicBlockId, BasicBlock>
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct VecMap<K, V> {
     vec: Vec<Option<V>>,
     _marker: PhantomData<fn(K) -> K>,
@@ -59,6 +59,10 @@ where
     pub fn get(&self, key: K) -> Option<&V> {
         let i = usize::from(key);
         self.vec.get(i).and_then(|opt| opt.as_ref())
+    }
+
+    pub fn contains_key(&self, key: K) -> bool {
+        self.get(key).is_some()
     }
 
     pub fn get_mut(&mut self, key: K) -> Option<&mut V> {
@@ -290,6 +294,21 @@ where
         match self {
             Entry::Occupied(entry) => entry.into_mut(),
             Entry::Vacant(entry) => entry.insert(default()),
+        }
+    }
+}
+
+impl<K: From<usize> + Copy + std::fmt::Debug, V: std::fmt::Debug> std::fmt::Debug for VecMap<K, V>
+where
+    usize: From<K>,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut debug_map = f.debug_map();
+        debug_map.entries(self.iter());
+        if let Some(None) = self.vec.last() {
+            debug_map.finish_non_exhaustive()
+        } else {
+            debug_map.finish()
         }
     }
 }

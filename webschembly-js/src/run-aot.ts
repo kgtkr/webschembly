@@ -45,6 +45,7 @@ const wasmBuf = new Uint8Array(fs.readFileSync(wasmName));
 const wasmModule = new WebAssembly.Module(wasmBuf);
 const wasmInstance = new WebAssembly.Instance(wasmModule, {
   env: runtimeImportObjects,
+  dynamic: {},
 }) as TypedWebAssemblyInstance<RuntimeExports>;
 
 // reverseしないと動かない(runtimeが後にexportされているため)
