@@ -213,14 +213,14 @@ impl<'a> ModuleGenerator<'a> {
     const CONS_CAR_FIELD: u32 = 0;
     const CONS_CDR_FIELD: u32 = 1;
     const FUNC_REF_FIELD_FUNC: u32 = 0;
-    const CLOSURE_FUNC_FIELD: u32 = 0;
+    const CLOSURE_ENTRYPOINT_TABLE_FIELD: u32 = 0;
     const CLOSURE_ENVS_FIELD_OFFSET: u32 = 1;
 
     const REF_VALUE_FIELD: u32 = 0;
     // const STRING_BUF_BUF_FIELD: u32 = 0;
     // const STRING_BUF_SHARED_FIELD: u32 = 1;
 
-    // const MUT_FUNC_REF_FUNC_FIELD: u32 = 0;
+    const MUT_FUNC_REF_FUNC_FIELD: u32 = 0;
 
     pub fn generate(mut self) -> Module {
         self.buf_type = self.type_count;
@@ -420,30 +420,6 @@ impl<'a> ModuleGenerator<'a> {
             },
         });
 
-        self.closure_type = self.type_count;
-        self.type_count += 1;
-        self.closure_type_fields = {
-            let mut fields = Vec::new();
-            fields.push(FieldType {
-                element_type: StorageType::Val(ValType::Ref(RefType {
-                    nullable: true,
-                    heap_type: HeapType::Concrete(self.func_ref_type),
-                })),
-                mutable: false,
-            });
-            fields
-        };
-        self.types.ty().subtype(&SubType {
-            is_final: false,
-            supertype_idx: None,
-            composite_type: CompositeType {
-                shared: false,
-                inner: CompositeInnerType::Struct(StructType {
-                    fields: self.closure_type_fields.clone().into_boxed_slice(),
-                }),
-            },
-        });
-
         self.args_type = self.type_count;
         self.type_count += 1;
         self.types
@@ -479,6 +455,30 @@ impl<'a> ModuleGenerator<'a> {
             })),
             true,
         );
+
+        self.closure_type = self.type_count;
+        self.type_count += 1;
+        self.closure_type_fields = {
+            let mut fields = Vec::new();
+            fields.push(FieldType {
+                element_type: StorageType::Val(ValType::Ref(RefType {
+                    nullable: true,
+                    heap_type: HeapType::Concrete(self.entrypoint_table_type),
+                })),
+                mutable: false,
+            });
+            fields
+        };
+        self.types.ty().subtype(&SubType {
+            is_final: false,
+            supertype_idx: None,
+            composite_type: CompositeType {
+                shared: false,
+                inner: CompositeInnerType::Struct(StructType {
+                    fields: self.closure_type_fields.clone().into_boxed_slice(),
+                }),
+            },
+        });
 
         self.imports.import(
             "runtime",
@@ -1084,8 +1084,13 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     self.module_generator.func_ref_type,
                 )));
             }
-            ir::Expr::Closure { envs, func } => {
-                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*func)));
+            ir::Expr::Closure {
+                envs,
+                entrypoint_table,
+            } => {
+                function.instruction(&Instruction::LocalGet(
+                    self.local_id_to_idx(*entrypoint_table),
+                ));
                 for env in envs.iter() {
                     function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*env)));
                 }
@@ -1099,11 +1104,11 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             ir::Expr::CallRef(call_ref) => {
                 self.gen_call_ref(function, false, call_ref);
             }
-            ir::Expr::ClosureFuncRef(closure) => {
+            ir::Expr::ClosureEntrypointTable(closure) => {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*closure)));
                 function.instruction(&Instruction::StructGet {
                     struct_type_index: self.module_generator.closure_type,
-                    field_index: ModuleGenerator::CLOSURE_FUNC_FIELD,
+                    field_index: ModuleGenerator::CLOSURE_ENTRYPOINT_TABLE_FIELD,
                 });
             }
             ir::Expr::Call(call) => {
@@ -1399,7 +1404,60 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 function.instruction(&Instruction::I32Const(*idx as i32));
                 function.instruction(&Instruction::ArrayGet(self.module_generator.args_type));
             }
-
+            ir::Expr::CreateMutFuncRef => {
+                function.instruction(&Instruction::RefNull(HeapType::Concrete(
+                    self.module_generator.func_ref_type,
+                )));
+                function.instruction(&Instruction::StructNew(
+                    self.module_generator.mut_func_ref_type,
+                ));
+            }
+            ir::Expr::DerefMutFuncRef(mut_func_ref) => {
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*mut_func_ref)));
+                function.instruction(&Instruction::StructGet {
+                    struct_type_index: self.module_generator.mut_func_ref_type,
+                    field_index: ModuleGenerator::MUT_FUNC_REF_FUNC_FIELD,
+                });
+            }
+            ir::Expr::SetMutFuncRef(mut_func_ref, func_ref) => {
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*mut_func_ref)));
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*func_ref)));
+                function.instruction(&Instruction::StructSet {
+                    struct_type_index: self.module_generator.mut_func_ref_type,
+                    field_index: ModuleGenerator::MUT_FUNC_REF_FUNC_FIELD,
+                });
+                function.instruction(&Instruction::I32Const(0));
+            }
+            ir::Expr::EntrypointTable(mut_func_refs) => {
+                for mut_func_ref in mut_func_refs.iter() {
+                    function
+                        .instruction(&Instruction::LocalGet(self.local_id_to_idx(*mut_func_ref)));
+                }
+                function.instruction(&Instruction::ArrayNewFixed {
+                    array_type_index: self.module_generator.entrypoint_table_type,
+                    array_size: mut_func_refs.len() as u32,
+                });
+            }
+            ir::Expr::EntrypointTableRef(index, entrypoint_table) => {
+                function.instruction(&Instruction::LocalGet(
+                    self.local_id_to_idx(*entrypoint_table),
+                ));
+                function.instruction(&Instruction::I32Const(*index as i32));
+                function.instruction(&Instruction::ArrayGet(
+                    self.module_generator.entrypoint_table_type,
+                ));
+            }
+            ir::Expr::SetEntrypointTable(index, entrypoint_table, mut_func_ref) => {
+                function.instruction(&Instruction::LocalGet(
+                    self.local_id_to_idx(*entrypoint_table),
+                ));
+                function.instruction(&Instruction::I32Const(*index as i32));
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*mut_func_ref)));
+                function.instruction(&Instruction::ArraySet(
+                    self.module_generator.entrypoint_table_type,
+                ));
+                function.instruction(&Instruction::I32Const(0));
+            }
             ir::Expr::InitModule => {
                 for func in self.module_generator.module.funcs.iter() {
                     let global_idx = self.module_generator.func_ref_globals[&func.id];

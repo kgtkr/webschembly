@@ -15,14 +15,13 @@
   (type $Cons (sub final (struct (field $car (mut eqref)) (field $cdr (mut eqref)))))
   (type $Vector (array (mut eqref)))
   (type $FuncRef (sub final (struct (field $func funcref))))
-  (type $Closure (sub (struct
-    ;; (Closure, Args) -> Obj
-    (field $func (ref null $FuncRef)))))
-
   (type $Args (array (mut eqref)))
-  (type $ClosureFunc (func (param (ref null $Closure)) (param (ref null $Args)) (result eqref)))
   (type $MutFuncRef (sub final (struct (field $func (mut (ref null $FuncRef))))))
   (type $EntrypointTable (array (mut (ref null $MutFuncRef))))
+  (type $Closure (sub (struct
+    ;; (Closure, Args) -> Obj
+    (field $entrypoint_table (ref null $EntrypointTable)))))
+  (type $ClosureFunc (func (param (ref null $Closure)) (param (ref null $Args)) (result eqref)))
   
   (import "runtime" "malloc" (func $malloc (param i32) (result i32)))
   (import "runtime" "free" (func $free (param i32)))
@@ -187,7 +186,14 @@
 
   (func $call_closure (export "call_closure") (param $closure (ref null $Closure)) (param $params (ref null $Args)) (result eqref)
     (local $func (ref $ClosureFunc))
-    (local.set $func (ref.cast (ref $ClosureFunc) (struct.get $FuncRef $func (struct.get $Closure $func (local.get $closure)))))
+
+    (local.get $closure)
+    (struct.get $Closure $entrypoint_table)
+    (array.get $EntrypointTable (i32.const 0))
+    (struct.get $MutFuncRef $func)
+    (struct.get $FuncRef $func)
+    (ref.cast (ref $ClosureFunc))
+    (local.set $func)
 
 
     (call_ref $ClosureFunc (local.get $closure) (local.get $params) (local.get $func))

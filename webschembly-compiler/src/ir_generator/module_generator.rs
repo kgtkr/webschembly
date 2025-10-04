@@ -29,6 +29,8 @@ struct ModuleGenerator<'a> {
     ast: &'a ast::Ast<ast::Final>,
     funcs: TiVec<FuncId, Option<Func>>,
     config: Config,
+    func_to_entrypoint_table: FxHashMap<FuncId, GlobalId>,
+    globals: FxHashMap<GlobalId, Global>,
     // メタ情報
     local_metas: FxHashMap<(FuncId, LocalId), VarMeta>,
     global_metas: FxHashMap<GlobalId, VarMeta>,
@@ -47,11 +49,13 @@ impl<'a> ModuleGenerator<'a> {
             config,
             local_metas: FxHashMap::default(),
             global_metas: FxHashMap::default(),
+            func_to_entrypoint_table: FxHashMap::default(),
+            globals: FxHashMap::default(),
         }
     }
 
     fn generate(mut self) -> Module {
-        let globals = self
+        let ast_globals = self
             .ast
             .x
             .get_ref(type_map::key::<Used>())
@@ -63,10 +67,61 @@ impl<'a> ModuleGenerator<'a> {
                 (global.id, global)
             })
             .collect::<FxHashMap<_, _>>();
+        self.globals.extend(ast_globals);
 
-        let func_id = self.funcs.push_and_get_key(None);
-        let func = FuncGenerator::new(&mut self, func_id).entry_gen();
-        self.funcs[func_id] = Some(func);
+        let entry_func_id = self.funcs.push_and_get_key(None);
+        let mut entry_func = FuncGenerator::new(&mut self, entry_func_id).entry_gen();
+
+        // エントリーポイントにモジュール初期化ロジックを追加
+        let prev_bb_entry = entry_func.bb_entry;
+        let mut entry_exprs = Vec::new();
+        entry_exprs.push(ExprAssign {
+            local: None,
+            expr: Expr::InitModule,
+        });
+
+        for (func_id, entrypoint_table_global_id) in self.func_to_entrypoint_table {
+            let func_ref_local = entry_func.locals.push_with(|id| Local {
+                id,
+                typ: ValType::FuncRef.into(),
+            });
+            let mut_func_ref_local = entry_func.locals.push_with(|id| Local {
+                id,
+                typ: LocalType::MutFuncRef,
+            });
+            let entrypoint_table_local = entry_func.locals.push_with(|id| Local {
+                id,
+                typ: LocalType::EntrypointTable,
+            });
+            entry_exprs.push(ExprAssign {
+                local: Some(func_ref_local),
+                expr: Expr::FuncRef(func_id),
+            });
+            entry_exprs.push(ExprAssign {
+                local: Some(mut_func_ref_local),
+                expr: Expr::CreateMutFuncRef,
+            });
+            entry_exprs.push(ExprAssign {
+                local: None,
+                expr: Expr::SetMutFuncRef(mut_func_ref_local, func_ref_local),
+            });
+            entry_exprs.push(ExprAssign {
+                local: Some(entrypoint_table_local),
+                expr: Expr::EntrypointTable(vec![mut_func_ref_local]),
+            });
+            entry_exprs.push(ExprAssign {
+                local: None,
+                expr: Expr::GlobalSet(entrypoint_table_global_id, entrypoint_table_local),
+            });
+        }
+        let new_bb_entry = entry_func.bbs.push_with(|bb_id| BasicBlock {
+            id: bb_id,
+            exprs: entry_exprs,
+            next: BasicBlockNext::Jump(prev_bb_entry),
+        });
+        entry_func.bb_entry = new_bb_entry;
+
+        self.funcs[entry_func_id] = Some(entry_func);
 
         let meta = Meta {
             local_metas: self.local_metas,
@@ -74,9 +129,9 @@ impl<'a> ModuleGenerator<'a> {
         };
 
         Module {
-            globals,
+            globals: self.globals,
             funcs: self.funcs.into_iter().map(|f| f.unwrap()).collect(),
-            entry: func_id,
+            entry: entry_func_id,
             meta,
         }
     }
@@ -139,11 +194,6 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
     fn entry_gen(mut self) -> Func {
         let obj_local = self.local(Type::Obj);
 
-        self.exprs.push(ExprAssign {
-            local: None,
-            expr: Expr::InitModule,
-        });
-
         self.define_all_ast_local_and_create_ref(
             &self
                 .module_generator
@@ -159,6 +209,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         self.close_bb(BasicBlockNext::Terminator(BasicBlockTerminator::Return(
             obj_local,
         )));
+
         Func {
             id: self.id,
             args: vec![],
@@ -434,11 +485,29 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     local: Some(func_local),
                     expr: Expr::FuncRef(func_id),
                 });
+
+                let entrypoint_table_global = self
+                    .module_generator
+                    .global_manager
+                    .gen_global(LocalType::EntrypointTable);
+                self.module_generator
+                    .globals
+                    .insert(entrypoint_table_global.id, entrypoint_table_global);
+                self.module_generator
+                    .func_to_entrypoint_table
+                    .insert(func_id, entrypoint_table_global.id);
+
+                let entrypoint_table_local = self.local(LocalType::EntrypointTable);
+                self.exprs.push(ExprAssign {
+                    local: Some(entrypoint_table_local),
+                    expr: Expr::GlobalGet(entrypoint_table_global.id),
+                });
+
                 self.exprs.push(ExprAssign {
                     local: Some(val_type_local),
                     expr: Expr::Closure {
                         envs: captures,
-                        func: func_local,
+                        entrypoint_table: entrypoint_table_local,
                     },
                 });
                 self.exprs.push(ExprAssign {
@@ -638,14 +707,24 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
 
                     // TODO: funcがクロージャかのチェック
                     let closure_local = self.local(ValType::Closure);
+                    let entrypoint_table_local = self.local(LocalType::EntrypointTable);
+                    let mut_func_ref_local = self.local(LocalType::MutFuncRef);
                     let func_local = self.local(ValType::FuncRef);
                     self.exprs.push(ExprAssign {
                         local: Some(closure_local),
                         expr: Expr::FromObj(ValType::Closure, obj_func_local),
                     });
                     self.exprs.push(ExprAssign {
+                        local: Some(entrypoint_table_local),
+                        expr: Expr::ClosureEntrypointTable(closure_local),
+                    });
+                    self.exprs.push(ExprAssign {
+                        local: Some(mut_func_ref_local),
+                        expr: Expr::EntrypointTableRef(0, entrypoint_table_local),
+                    });
+                    self.exprs.push(ExprAssign {
                         local: Some(func_local),
-                        expr: Expr::ClosureFuncRef(closure_local),
+                        expr: Expr::DerefMutFuncRef(mut_func_ref_local),
                     });
 
                     let args_local = self.local(LocalType::Args);

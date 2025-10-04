@@ -351,7 +351,7 @@ pub enum Expr {
     CallRef(ExprCallRef),
     Closure {
         envs: Vec<LocalId>,
-        func: LocalId,
+        entrypoint_table: LocalId,
     },
     Move(LocalId),
     ToObj(ValType, LocalId),
@@ -361,7 +361,7 @@ pub enum Expr {
         LocalId,        /* closure */
         usize,          /* env index */
     ),
-    ClosureFuncRef(LocalId),
+    ClosureEntrypointTable(LocalId), // (Closure) -> EntrypointTable
     GlobalSet(GlobalId, LocalId),
     GlobalGet(GlobalId),
     InitModule,
@@ -391,6 +391,12 @@ pub enum Expr {
     ArgsRef(LocalId, usize),
     // ArgsVariadic(Vec<LocalId>, LocalId<Vector>)
     // ArgsRest(LocalId, usize) -> Vector
+    CreateMutFuncRef,                            // () -> MutFuncRef
+    DerefMutFuncRef(LocalId),                    // (MutFuncRef) -> FuncRef
+    SetMutFuncRef(LocalId, LocalId),             // (MutFuncRef, FuncRef) -> Nil
+    EntrypointTable(Vec<LocalId>),               // (MutFuncRef...) -> EntrypointTable
+    EntrypointTableRef(usize, LocalId),          // (EntrypointTable, index) -> MutFuncRef
+    SetEntrypointTable(usize, LocalId, LocalId), // (EntrypointTable, index, MutFuncRef) -> Nil
 }
 
 macro_rules! impl_Expr_func_ids {
@@ -448,12 +454,12 @@ macro_rules! impl_Expr_local_usages {
                         }
                         Expr::Closure {
                             envs,
-                            func,
+                            entrypoint_table,
                         } => {
                             for env in envs {
                                 yield (env, LocalUsedFlag::NonPhi);
                             }
-                            yield (func, LocalUsedFlag::NonPhi);
+                            yield (entrypoint_table, LocalUsedFlag::NonPhi);
                         }
                         Expr::CallRef(call_ref) => {
                             for id in call_ref.[<local_ids $($suffix)?>]() {
@@ -464,7 +470,7 @@ macro_rules! impl_Expr_local_usages {
                         Expr::ToObj(_, id) => yield (id, LocalUsedFlag::NonPhi),
                         Expr::FromObj(_, id) => yield (id, LocalUsedFlag::NonPhi),
                         Expr::ClosureEnv(_, closure, _) => yield (closure, LocalUsedFlag::NonPhi),
-                        Expr::ClosureFuncRef(id) => yield (id, LocalUsedFlag::NonPhi),
+                        Expr::ClosureEntrypointTable(id) => yield (id, LocalUsedFlag::NonPhi),
                         Expr::GlobalSet(_, value) => yield (value, LocalUsedFlag::NonPhi),
                         Expr::Display(id) => yield (id, LocalUsedFlag::NonPhi),
                         Expr::Add(a, b) => {
@@ -532,6 +538,27 @@ macro_rules! impl_Expr_local_usages {
                         Expr::ArgsRef(id, _) => {
                             yield (id, LocalUsedFlag::NonPhi);
                         }
+                        Expr::CreateMutFuncRef => {}
+                        Expr::DerefMutFuncRef(id) => {
+                            yield (id, LocalUsedFlag::NonPhi);
+                        }
+                        Expr::SetMutFuncRef(mut_func_ref_id, func_ref_id) => {
+                            yield (mut_func_ref_id, LocalUsedFlag::NonPhi);
+                            yield (func_ref_id, LocalUsedFlag::NonPhi);
+                        }
+                        Expr::EntrypointTable(mut_func_ref_ids) => {
+                            for id in mut_func_ref_ids {
+                                yield (id, LocalUsedFlag::NonPhi);
+                            }
+                        }
+                        Expr::EntrypointTableRef(_, entrypoint_table_id) => {
+                            yield (entrypoint_table_id, LocalUsedFlag::NonPhi);
+                        }
+                        Expr::SetEntrypointTable(_, entrypoint_table_id, mut_func_ref_id) => {
+                            yield (entrypoint_table_id, LocalUsedFlag::NonPhi);
+                            yield (mut_func_ref_id, LocalUsedFlag::NonPhi);
+                        }
+
 
                         Expr::Nop
                         | Expr::InstantiateFunc(..)
@@ -603,7 +630,7 @@ impl Expr {
             | Expr::FromObj(..)
             | Expr::Closure { .. }
             | Expr::ClosureEnv(..)
-            | Expr::ClosureFuncRef(..)
+            | Expr::ClosureEntrypointTable(..)
             | Expr::Is(..)
             | Expr::Eq(..)
             | Expr::Not(..)
@@ -631,7 +658,13 @@ impl Expr {
             | Expr::Cdr(..)
             | Expr::GlobalGet(..)
             | Expr::SymbolToString(..)
-            | Expr::NumberToString(..) => ExprPurelity::ImpureRead,
+            | Expr::NumberToString(..)
+            | Expr::CreateMutFuncRef
+            | Expr::DerefMutFuncRef(..)
+            | Expr::SetMutFuncRef(..)
+            | Expr::EntrypointTable(..)
+            | Expr::EntrypointTableRef(..)
+            | Expr::SetEntrypointTable(..) => ExprPurelity::ImpureRead,
             Expr::InstantiateFunc(..)
             | Expr::InstantiateBB(..)
             | Expr::SetRef(..)
@@ -724,8 +757,15 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
             Expr::Call(call) => {
                 write!(f, "{}", call.display(self.meta))
             }
-            Expr::Closure { envs, func } => {
-                write!(f, "closure(func={}", func.display(self.meta),)?;
+            Expr::Closure {
+                envs,
+                entrypoint_table,
+            } => {
+                write!(
+                    f,
+                    "closure(entrypoint_table={}",
+                    entrypoint_table.display(self.meta),
+                )?;
                 for env in envs {
                     write!(f, ", {}", env.display(self.meta))?;
                 }
@@ -748,7 +788,9 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                 write!(f, ">({}, {})", closure.display(self.meta), index)?;
                 Ok(())
             }
-            Expr::ClosureFuncRef(id) => write!(f, "closure_func_ref({})", id.display(self.meta)),
+            Expr::ClosureEntrypointTable(id) => {
+                write!(f, "closure_entrypoint_table({})", id.display(self.meta))
+            }
             Expr::GlobalSet(id, value) => {
                 write!(
                     f,
@@ -813,6 +855,37 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                 write!(f, ")")
             }
             Expr::ArgsRef(id, index) => write!(f, "args_ref({}, {})", id.display(self.meta), index),
+            Expr::CreateMutFuncRef => write!(f, "create_mut_func_ref"),
+            Expr::DerefMutFuncRef(id) => write!(f, "deref_mut_func_ref({})", id.display(self.meta)),
+            Expr::SetMutFuncRef(mut_func_ref_id, func_ref_id) => write!(
+                f,
+                "set_mut_func_ref({}, {})",
+                mut_func_ref_id.display(self.meta),
+                func_ref_id.display(self.meta)
+            ),
+            Expr::EntrypointTable(mut_func_ref_ids) => {
+                write!(f, "entrypoint_table(")?;
+                for (i, id) in mut_func_ref_ids.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ",")?;
+                    }
+                    write!(f, "{}", id.display(self.meta))?;
+                }
+                write!(f, ")")
+            }
+            Expr::EntrypointTableRef(index, entrypoint_table_id) => write!(
+                f,
+                "entrypoint_table_ref({}, {})",
+                index,
+                entrypoint_table_id.display(self.meta),
+            ),
+            Expr::SetEntrypointTable(index, entrypoint_table_id, mut_func_ref_id) => write!(
+                f,
+                "set_entrypoint_table({}, {}, {})",
+                index,
+                entrypoint_table_id.display(self.meta),
+                mut_func_ref_id.display(self.meta)
+            ),
         }
     }
 }
