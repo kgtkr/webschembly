@@ -1,5 +1,4 @@
 (module
-  (type $VectorInner (array (mut eqref)))
   (type $Buf (array (mut i8)))
   (type $StringBuf (sub final (struct (field $buf (ref $Buf)) (field $shared (mut i8)))))
   
@@ -14,7 +13,7 @@
     (field $offset i32))))
   (type $Symbol (sub final (struct (field $name (ref null $String)))))
   (type $Cons (sub final (struct (field $car (mut eqref)) (field $cdr (mut eqref)))))
-  (type $Vector (sub final (struct (field $inner (ref $VectorInner)))))
+  (type $Vector (array (mut eqref)))
   (type $FuncRef (sub final (struct (field $func funcref))))
   (type $Closure (sub (struct
     ;; (Closure, Args) -> Obj

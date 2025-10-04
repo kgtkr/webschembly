@@ -53,7 +53,6 @@ struct ModuleGenerator<'a> {
     func_indices: FxHashMap<ir::FuncId, u32>,
     exports: ExportSection,
     // types
-    vector_inner_type: u32,
     ref_types: FxHashMap<ir::Type, u32>,
     nil_type: u32,
     bool_type: u32,
@@ -106,7 +105,6 @@ impl<'a> ModuleGenerator<'a> {
             datas: DataSection::new(),
             exports: ExportSection::new(),
             ref_types: FxHashMap::default(),
-            vector_inner_type: 0,
             nil_type: 0,
             bool_type: 0,
             int_type: 0,
@@ -213,7 +211,6 @@ impl<'a> ModuleGenerator<'a> {
     const SYMBOL_STRING_FIELD: u32 = 0;
     const CONS_CAR_FIELD: u32 = 0;
     const CONS_CDR_FIELD: u32 = 1;
-    const VECTOR_INNER_FIELD: u32 = 0;
     const FUNC_REF_FIELD_FUNC: u32 = 0;
     const CLOSURE_FUNC_FIELD: u32 = 0;
     const CLOSURE_ENVS_FIELD_OFFSET: u32 = 1;
@@ -223,12 +220,6 @@ impl<'a> ModuleGenerator<'a> {
     // const STRING_BUF_SHARED_FIELD: u32 = 1;
 
     pub fn generate(mut self) -> Module {
-        self.vector_inner_type = self.type_count;
-        self.type_count += 1;
-        self.types
-            .ty()
-            .array(&StorageType::Val(ValType::Ref(RefType::EQREF)), true);
-
         self.buf_type = self.type_count;
         self.type_count += 1;
         self.types.ty().array(&StorageType::I8, true);
@@ -402,26 +393,9 @@ impl<'a> ModuleGenerator<'a> {
 
         self.vector_type = self.type_count;
         self.type_count += 1;
-        self.types.ty().subtype(&SubType {
-            is_final: true,
-            supertype_idx: None,
-            composite_type: CompositeType {
-                shared: false,
-                inner: CompositeInnerType::Struct(StructType {
-                    fields: {
-                        let mut fields = Vec::new();
-                        fields.push(FieldType {
-                            element_type: StorageType::Val(ValType::Ref(RefType {
-                                nullable: false,
-                                heap_type: HeapType::Concrete(self.vector_inner_type),
-                            })),
-                            mutable: false,
-                        });
-                        fields.into_boxed_slice()
-                    },
-                }),
-            },
-        });
+        self.types
+            .ty()
+            .array(&StorageType::Val(ValType::Ref(RefType::EQREF)), true);
 
         self.func_ref_type = self.type_count;
         self.type_count += 1;
@@ -960,10 +934,9 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*elem)));
                 }
                 function.instruction(&Instruction::ArrayNewFixed {
-                    array_type_index: self.module_generator.vector_inner_type,
+                    array_type_index: self.module_generator.vector_type,
                     array_size: vec.len() as u32,
                 });
-                function.instruction(&Instruction::StructNew(self.module_generator.vector_type));
             }
             ir::Expr::CreateRef(typ) => {
                 function.instruction(&Instruction::RefNull(HeapType::Abstract {
@@ -1222,37 +1195,21 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             }
             ir::Expr::VectorLength(val) => {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
-                function.instruction(&Instruction::StructGet {
-                    struct_type_index: self.module_generator.vector_type,
-                    field_index: ModuleGenerator::VECTOR_INNER_FIELD,
-                });
                 function.instruction(&Instruction::ArrayLen);
                 function.instruction(&Instruction::I64ExtendI32U);
             }
             ir::Expr::VectorRef(vector, index) => {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*vector)));
-                function.instruction(&Instruction::StructGet {
-                    struct_type_index: self.module_generator.vector_type,
-                    field_index: ModuleGenerator::VECTOR_INNER_FIELD,
-                });
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*index)));
                 function.instruction(&Instruction::I32WrapI64);
-                function.instruction(&Instruction::ArrayGet(
-                    self.module_generator.vector_inner_type,
-                ));
+                function.instruction(&Instruction::ArrayGet(self.module_generator.vector_type));
             }
             ir::Expr::VectorSet(vector, index, val) => {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*vector)));
-                function.instruction(&Instruction::StructGet {
-                    struct_type_index: self.module_generator.vector_type,
-                    field_index: ModuleGenerator::VECTOR_INNER_FIELD,
-                });
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*index)));
                 function.instruction(&Instruction::I32WrapI64);
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
-                function.instruction(&Instruction::ArraySet(
-                    self.module_generator.vector_inner_type,
-                ));
+                function.instruction(&Instruction::ArraySet(self.module_generator.vector_type));
                 function.instruction(&Instruction::I32Const(0));
             }
             ir::Expr::Eq(lhs, rhs) => {
