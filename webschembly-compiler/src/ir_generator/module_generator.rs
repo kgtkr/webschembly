@@ -14,17 +14,19 @@ pub struct Config {
 }
 
 pub fn generate_module(
+    id: ModuleId,
     global_manager: &mut GlobalManager,
     ast: &ast::Ast<ast::Final>,
     config: Config,
 ) -> Module {
-    let module_gen = ModuleGenerator::new(config, global_manager, ast);
+    let module_gen = ModuleGenerator::new(id, config, global_manager, ast);
 
     module_gen.generate()
 }
 
 #[derive(Debug)]
 struct ModuleGenerator<'a> {
+    id: ModuleId,
     global_manager: &'a mut GlobalManager,
     ast: &'a ast::Ast<ast::Final>,
     funcs: TiVec<FuncId, Option<Func>>,
@@ -38,11 +40,13 @@ struct ModuleGenerator<'a> {
 
 impl<'a> ModuleGenerator<'a> {
     fn new(
+        id: ModuleId,
         config: Config,
         ir_generator: &'a mut GlobalManager,
         ast: &'a ast::Ast<ast::Final>,
     ) -> Self {
         Self {
+            id,
             ast,
             global_manager: ir_generator,
             funcs: TiVec::new(),
@@ -507,6 +511,8 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     local: Some(val_type_local),
                     expr: Expr::Closure {
                         envs: captures,
+                        func_id: self.id,
+                        module_id: self.module_generator.id,
                         entrypoint_table: entrypoint_table_local,
                     },
                 });

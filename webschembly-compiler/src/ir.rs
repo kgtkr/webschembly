@@ -351,6 +351,8 @@ pub enum Expr {
     CallRef(ExprCallRef),
     Closure {
         envs: Vec<LocalId>,
+        module_id: ModuleId,
+        func_id: FuncId,
         entrypoint_table: LocalId,
     },
     Move(LocalId),
@@ -361,6 +363,8 @@ pub enum Expr {
         LocalId,        /* closure */
         usize,          /* env index */
     ),
+    ClosureModuleId(LocalId),        // (Closure) -> int
+    ClosureFuncId(LocalId),          // (Closure) -> int
     ClosureEntrypointTable(LocalId), // (Closure) -> EntrypointTable
     GlobalSet(GlobalId, LocalId),
     GlobalGet(GlobalId),
@@ -454,6 +458,8 @@ macro_rules! impl_Expr_local_usages {
                         }
                         Expr::Closure {
                             envs,
+                            module_id: _,
+                            func_id: _,
                             entrypoint_table,
                         } => {
                             for env in envs {
@@ -470,6 +476,8 @@ macro_rules! impl_Expr_local_usages {
                         Expr::ToObj(_, id) => yield (id, LocalUsedFlag::NonPhi),
                         Expr::FromObj(_, id) => yield (id, LocalUsedFlag::NonPhi),
                         Expr::ClosureEnv(_, closure, _) => yield (closure, LocalUsedFlag::NonPhi),
+                        Expr::ClosureModuleId(closure) => yield (closure, LocalUsedFlag::NonPhi),
+                        Expr::ClosureFuncId(closure) => yield (closure, LocalUsedFlag::NonPhi),
                         Expr::ClosureEntrypointTable(id) => yield (id, LocalUsedFlag::NonPhi),
                         Expr::GlobalSet(_, value) => yield (value, LocalUsedFlag::NonPhi),
                         Expr::Display(id) => yield (id, LocalUsedFlag::NonPhi),
@@ -630,6 +638,8 @@ impl Expr {
             | Expr::FromObj(..)
             | Expr::Closure { .. }
             | Expr::ClosureEnv(..)
+            | Expr::ClosureModuleId(..)
+            | Expr::ClosureFuncId(..)
             | Expr::ClosureEntrypointTable(..)
             | Expr::Is(..)
             | Expr::Eq(..)
@@ -761,12 +771,16 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
             }
             Expr::Closure {
                 envs,
+                module_id,
+                func_id,
                 entrypoint_table,
             } => {
                 write!(
                     f,
-                    "closure(entrypoint_table={}",
+                    "closure(entrypoint_table={}, module_id={}, func_id={}",
                     entrypoint_table.display(self.meta),
+                    module_id.display(self.meta.meta),
+                    func_id.display(self.meta.meta)
                 )?;
                 for env in envs {
                     write!(f, ", {}", env.display(self.meta))?;
@@ -790,6 +804,8 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                 write!(f, ">({}, {})", closure.display(self.meta), index)?;
                 Ok(())
             }
+            Expr::ClosureModuleId(id) => write!(f, "closure_module_id({})", id.display(self.meta)),
+            Expr::ClosureFuncId(id) => write!(f, "closure_func_id({})", id.display(self.meta)),
             Expr::ClosureEntrypointTable(id) => {
                 write!(f, "closure_entrypoint_table({})", id.display(self.meta))
             }

@@ -19,6 +19,8 @@
   (type $MutFuncRef (sub final (struct (field $func (mut (ref null $FuncRef))))))
   (type $EntrypointTable (array (mut (ref null $MutFuncRef))))
   (type $Closure (sub (struct
+    (field $module_id i32)
+    (field $func_id i32)
     ;; (Closure, Args) -> Obj
     (field $entrypoint_table (ref null $EntrypointTable)))))
   (type $ClosureFunc (func (param (ref null $Closure)) (param (ref null $Args)) (result eqref)))

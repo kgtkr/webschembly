@@ -12,6 +12,7 @@ use crate::sexpr_parser;
 
 #[derive(Debug)]
 pub struct Compiler {
+    module_count: usize,
     ast_generator: ast::ASTGenerator,
     global_manager: ir_generator::GlobalManager,
     jit: Option<Jit>,
@@ -45,6 +46,7 @@ pub struct Config {
 impl Compiler {
     pub fn new(config: Config) -> Self {
         Self {
+            module_count: 0,
             ast_generator: ast::ASTGenerator::new(),
             global_manager: ir_generator::GlobalManager::new(),
             jit: config.jit.map(Jit::new),
@@ -66,10 +68,18 @@ impl Compiler {
         let sexprs =
             sexpr_parser::parse(tokens.as_slice()).map_err(|e| compiler_error!("{}", e))?;
         let ast = self.ast_generator.gen_ast(sexprs)?;
-        let mut module =
-            ir_generator::generate_module(&mut self.global_manager, &ast, ir_generator::Config {
+        // TODO: ここで生成するべきではない
+        let module_id = ir::ModuleId::from(self.module_count);
+        self.module_count += 1;
+        let mut module = ir_generator::generate_module(
+            module_id,
+            &mut self.global_manager,
+            &ast,
+            ir_generator::Config {
                 allow_set_builtin: is_stdlib,
-            });
+            },
+        );
+
         preprocess_module(&mut module);
         optimize_module(&mut module);
         if let Some(jit) = &mut self.jit {
