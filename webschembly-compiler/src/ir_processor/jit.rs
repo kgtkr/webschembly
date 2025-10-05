@@ -831,6 +831,8 @@ impl JitFunc {
                 bb_optimizer::copy_propagate(&new_locals, &mut bb);
             }*/
 
+            // このBB内で使えるdef_use_chainのようなもの
+            let mut local_to_expr_idx = FxHashMap::default();
             let mut exprs = Vec::new();
             for expr in bb.exprs.iter() {
                 // FuncRefとCall命令はget global命令に置き換えられる
@@ -913,7 +915,25 @@ impl JitFunc {
                             expr: Expr::EntrypointTable(locals),
                         });
                     }
+                    ExprAssign {
+                        local,
+                        expr: Expr::CallClosure(ref call_closure),
+                    } if call_closure.func_index == 0
+                        // func_index == 0 なら引数は[Args]を仮定してよい
+                        && let Some(args_expr_idx) =
+                            local_to_expr_idx.get(&call_closure.args[0])
+                        && let Expr::Args(args) = &exprs[*args_expr_idx as usize].expr =>
+                    {
+                        log::debug!("optimize call_closure to call_ref: {:?}", args);
+                        exprs.push(ExprAssign {
+                            local,
+                            expr: Expr::CallClosure(call_closure.clone()),
+                        });
+                    }
                     ref expr => {
+                        if let Some(local) = expr.local {
+                            local_to_expr_idx.insert(local, exprs.len());
+                        }
                         exprs.push(expr.clone());
                     }
                 }
