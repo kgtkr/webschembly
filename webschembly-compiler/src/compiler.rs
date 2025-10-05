@@ -103,7 +103,8 @@ impl Compiler {
         func_index: usize,
     ) -> ir::Module {
         let jit = self.jit.as_mut().expect("JIT is not enabled");
-        let mut module = jit.instantiate_func(&mut self.global_manager, module_id, func_id);
+        let mut module =
+            jit.instantiate_func(&mut self.global_manager, module_id, func_id, func_index);
         preprocess_module(&mut module);
         if jit.config().enable_optimization {
             optimize_module(&mut module);
@@ -121,7 +122,7 @@ impl Compiler {
         index: usize,
     ) -> ir::Module {
         let jit = self.jit.as_mut().expect("JIT is not enabled");
-        let mut module = jit.instantiate_bb(module_id, func_id, bb_id, index);
+        let mut module = jit.instantiate_bb(module_id, func_id, func_index, bb_id, index);
         preprocess_module(&mut module);
         if jit.config().enable_optimization {
             optimize_module(&mut module);

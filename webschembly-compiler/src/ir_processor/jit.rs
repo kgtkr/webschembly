@@ -67,6 +67,7 @@ impl Jit {
         global_manager: &mut GlobalManager,
         module_id: ModuleId,
         func_id: FuncId,
+        func_index: usize,
     ) -> Module {
         let jit_func = self.jit_module[module_id].generate_jit_func(global_manager, func_id);
         self.jit_module[module_id].jit_funcs[func_id] = Some(jit_func);
@@ -81,6 +82,7 @@ impl Jit {
         &mut self,
         module_id: ModuleId,
         func_id: FuncId,
+        func_index: usize,
         bb_id: BasicBlockId,
         index: usize,
     ) -> Module {
