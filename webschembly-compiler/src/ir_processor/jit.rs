@@ -69,12 +69,17 @@ impl Jit {
         func_id: FuncId,
         func_index: usize,
     ) -> Module {
-        let jit_func = self.jit_module[module_id].generate_jit_func(global_manager, func_id);
-        self.jit_module[module_id].jit_funcs[func_id] = Some(jit_func);
+        let jit_func = JitFunc::new(
+            global_manager,
+            &self.jit_module[module_id],
+            func_id,
+            func_index,
+        );
+        self.jit_module[module_id]
+            .jit_funcs
+            .insert((func_id, func_index), jit_func);
 
-        self.jit_module[module_id].jit_funcs[func_id]
-            .as_ref()
-            .unwrap()
+        self.jit_module[module_id].jit_funcs[&(func_id, func_index)]
             .generate_func_module(&self.global_layout, &self.jit_module[module_id])
     }
 
@@ -87,9 +92,7 @@ impl Jit {
         index: usize,
     ) -> Module {
         let jit_module = &self.jit_module[module_id];
-        let jit_func = self.jit_module[module_id].jit_funcs[func_id]
-            .as_ref()
-            .unwrap();
+        let jit_func = &self.jit_module[module_id].jit_funcs[&(func_id, func_index)];
         jit_func.generate_bb_module(
             &self.config,
             jit_module,
@@ -104,15 +107,13 @@ impl Jit {
 struct JitModule {
     module_id: ModuleId,
     module: Module,
-    jit_funcs: TiVec<FuncId, Option<JitFunc>>,
+    jit_funcs: FxHashMap<(FuncId, usize), JitFunc>,
     func_to_globals: TiVec<FuncId, GlobalId>,
     globals: FxHashMap<GlobalId, Global>,
 }
 
 impl JitModule {
     fn new(global_manager: &mut GlobalManager, module_id: ModuleId, module: Module) -> Self {
-        let jit_funcs = (0..module.funcs.len()).map(|_| None).collect();
-
         let func_to_globals = module
             .funcs
             .iter()
@@ -133,7 +134,7 @@ impl JitModule {
         Self {
             module_id,
             module,
-            jit_funcs,
+            jit_funcs: FxHashMap::default(),
             func_to_globals,
             globals,
         }
@@ -315,21 +316,23 @@ impl JitModule {
             },
         }
     }
-
-    fn generate_jit_func(&self, global_manager: &mut GlobalManager, func_id: FuncId) -> JitFunc {
-        JitFunc::new(global_manager, self, func_id)
-    }
 }
 
 #[derive(Debug)]
 struct JitFunc {
     func_id: FuncId,
+    func_index: usize,
     jit_bbs: VecMap<BasicBlockId, JitBB>,
     globals: FxHashMap<GlobalId, Global>,
 }
 
 impl JitFunc {
-    fn new(global_manager: &mut GlobalManager, jit_module: &JitModule, func_id: FuncId) -> Self {
+    fn new(
+        global_manager: &mut GlobalManager,
+        jit_module: &JitModule,
+        func_id: FuncId,
+        func_index: usize,
+    ) -> Self {
         let module = &jit_module.module;
         let func = &module.funcs[func_id];
         let bb_to_globals = func
@@ -403,6 +406,7 @@ impl JitFunc {
 
         Self {
             func_id,
+            func_index,
             jit_bbs: func
                 .bbs
                 .values()
