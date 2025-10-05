@@ -317,7 +317,7 @@ pub extern "C" fn get_global_id(buf_ptr: i32, buf_len: i32) -> i32 {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn instantiate_func(module_id: i32, func_id: i32) -> i32 {
+pub extern "C" fn instantiate_func(module_id: i32, func_id: i32, func_index: i32) -> i32 {
     let (wasm, ir) = COMPILER.with(|compiler| {
         let mut compiler = RefMut::map(compiler.borrow_mut(), |c| c.as_mut().unwrap());
         let module = compiler.instantiate_func(
@@ -348,7 +348,13 @@ pub extern "C" fn instantiate_func(module_id: i32, func_id: i32) -> i32 {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn instantiate_bb(module_id: i32, func_id: i32, bb_id: i32, index: i32) -> i32 {
+pub extern "C" fn instantiate_bb(
+    module_id: i32,
+    func_id: i32,
+    func_index: i32,
+    bb_id: i32,
+    index: i32,
+) -> i32 {
     let (wasm, ir) = COMPILER.with(|compiler| {
         let mut compiler = RefMut::map(compiler.borrow_mut(), |c| c.as_mut().unwrap());
         let module = compiler.instantiate_bb(

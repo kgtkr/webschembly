@@ -333,8 +333,8 @@ pub struct PhiIncomingValue {
 pub enum Expr {
     Nop,                        // 左辺はNoneでなければならない
     Phi(Vec<PhiIncomingValue>), // BBの先頭にのみ連続して出現可能(Nopが間に入るのは可)
-    InstantiateFunc(ModuleId, FuncId),
-    InstantiateBB(ModuleId, FuncId, BasicBlockId, usize),
+    InstantiateFunc(ModuleId, FuncId, usize),
+    InstantiateBB(ModuleId, FuncId, usize, BasicBlockId, usize),
     Bool(bool),
     Int(i64),
     String(String),
@@ -703,20 +703,22 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                 }
                 write!(f, ")")
             }
-            Expr::InstantiateFunc(module_id, func_id) => {
+            Expr::InstantiateFunc(module_id, func_id, func_index) => {
                 write!(
                     f,
-                    "instantiate_func({}, {})",
-                    module_id.display(self.meta.meta),
-                    func_id.display(self.meta.meta)
-                )
-            }
-            Expr::InstantiateBB(module_id, func_id, bb_id, index) => {
-                write!(
-                    f,
-                    "instantiate_bb({}, {}, {}, {})",
+                    "instantiate_func({}, {}, {})",
                     module_id.display(self.meta.meta),
                     func_id.display(self.meta.meta),
+                    func_index
+                )
+            }
+            Expr::InstantiateBB(module_id, func_id, func_index, bb_id, index) => {
+                write!(
+                    f,
+                    "instantiate_bb({}, {}, {}, {}, {})",
+                    module_id.display(self.meta.meta),
+                    func_id.display(self.meta.meta),
+                    func_index,
                     bb_id.display(self.meta.meta),
                     index,
                 )

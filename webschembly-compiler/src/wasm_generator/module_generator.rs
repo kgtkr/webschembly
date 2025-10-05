@@ -586,11 +586,17 @@ impl<'a> ModuleGenerator<'a> {
         }
 
         self.instantiate_func_func = self.add_runtime_function("instantiate_func", WasmFuncType {
-            params: vec![ValType::I32, ValType::I32],
+            params: vec![ValType::I32, ValType::I32, ValType::I32],
             results: vec![ValType::I32],
         });
         self.instantiate_bb_func = self.add_runtime_function("instantiate_bb", WasmFuncType {
-            params: vec![ValType::I32, ValType::I32, ValType::I32, ValType::I32],
+            params: vec![
+                ValType::I32,
+                ValType::I32,
+                ValType::I32,
+                ValType::I32,
+                ValType::I32,
+            ],
             results: vec![ValType::I32],
         });
 
@@ -975,16 +981,18 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             ir::Expr::Phi(..) => {
                 unreachable!("unexpected Phi");
             }
-            ir::Expr::InstantiateFunc(module_id, func_id) => {
+            ir::Expr::InstantiateFunc(module_id, func_id, func_index) => {
                 function.instruction(&Instruction::I32Const(usize::from(*module_id) as i32));
                 function.instruction(&Instruction::I32Const(usize::from(*func_id) as i32));
+                function.instruction(&Instruction::I32Const(*func_index as i32));
                 function.instruction(&Instruction::Call(
                     self.module_generator.instantiate_func_func,
                 ));
             }
-            ir::Expr::InstantiateBB(module_id, func_id, bb_id, index) => {
+            ir::Expr::InstantiateBB(module_id, func_id, func_index, bb_id, index) => {
                 function.instruction(&Instruction::I32Const(usize::from(*module_id) as i32));
                 function.instruction(&Instruction::I32Const(usize::from(*func_id) as i32));
+                function.instruction(&Instruction::I32Const(*func_index as i32));
                 function.instruction(&Instruction::I32Const(usize::from(*bb_id) as i32));
                 function.instruction(&Instruction::I32Const(*index as i32));
                 function.instruction(&Instruction::Call(

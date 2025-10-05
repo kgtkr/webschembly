@@ -277,7 +277,7 @@ impl JitModule {
                         id: BasicBlockId::from(1),
                         exprs: vec![ExprAssign {
                             local: None,
-                            expr: Expr::InstantiateFunc(self.module_id, func.id),
+                            expr: Expr::InstantiateFunc(self.module_id, func.id, 0), // TODO: func_index
                         }],
                         next: BasicBlockNext::Jump(BasicBlockId::from(2)),
                     },
@@ -694,6 +694,7 @@ impl JitFunc {
                         expr: Expr::InstantiateBB(
                             jit_module.module_id,
                             func.id,
+                            0, // TODO: func_index
                             jit_bb.bb_id,
                             index,
                         ),
