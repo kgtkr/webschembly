@@ -38,7 +38,6 @@ pub struct Jit {
     global_layout: GlobalLayout,
     // 0..GLOBAL_LAYOUT_MAX_SIZEまでのindexに対応する関数のスタブが入ったMutFuncRef
     // func_indexがインスタンス化されるときにMutFuncRefにFuncRefがセットされる
-    // TODO: 0はいらないかも
     stub_globals: FxHashMap<usize, Global>,
 }
 
@@ -79,6 +78,7 @@ impl Jit {
             &self.jit_module[module_id],
             func_id,
             func_index,
+            &self.stub_globals,
         );
         self.jit_module[module_id]
             .jit_funcs
@@ -104,6 +104,7 @@ impl Jit {
             bb_id,
             index,
             &mut self.global_layout,
+            &self.stub_globals,
         )
     }
 }
@@ -365,6 +366,7 @@ impl JitFunc {
         jit_module: &JitModule,
         func_id: FuncId,
         func_index: usize,
+        stub_globals: &FxHashMap<usize, Global>,
     ) -> Self {
         let module = &jit_module.module;
         let func = &module.funcs[func_id];
@@ -447,6 +449,7 @@ impl JitFunc {
                     // TODO: JitBB::newに移動する
                     let mut jit_bb_globals = FxHashMap::default();
                     jit_bb_globals.extend(globals.iter().map(|(id, g)| (*id, g.to_import())));
+                    jit_bb_globals.extend(stub_globals.iter().map(|(_, g)| (g.id, g.to_import())));
                     JitBB {
                         bb_id: bb.id,
                         global: bb_to_globals[bb.id],
@@ -773,6 +776,7 @@ impl JitFunc {
         orig_entry_bb_id: BasicBlockId,
         index: usize,
         global_layout: &mut GlobalLayout,
+        stub_globals: &FxHashMap<usize, Global>,
     ) -> Module {
         let mut required_stubs = Vec::new();
 
@@ -886,6 +890,27 @@ impl JitFunc {
                                 args: args.clone(),
                                 func_type: module.funcs[func_id].func_type(),
                             }),
+                        });
+                    }
+                    ExprAssign {
+                        local,
+                        expr: Expr::EntrypointTable(ref locals),
+                    } => {
+                        let mut locals = locals.clone();
+                        for index in locals.len()..GLOBAL_LAYOUT_MAX_SIZE {
+                            let stub = new_locals.push_with(|id| Local {
+                                id,
+                                typ: LocalType::MutFuncRef,
+                            });
+                            exprs.push(ExprAssign {
+                                local: Some(stub),
+                                expr: Expr::GlobalGet(stub_globals[&index].id),
+                            });
+                            locals.push(stub);
+                        }
+                        exprs.push(ExprAssign {
+                            local,
+                            expr: Expr::EntrypointTable(locals),
                         });
                     }
                     ref expr => {
