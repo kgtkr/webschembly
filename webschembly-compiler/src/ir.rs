@@ -395,7 +395,8 @@ pub enum Expr {
     ArgsRef(LocalId, usize),
     // ArgsVariadic(Vec<LocalId>, LocalId<Vector>)
     // ArgsRest(LocalId, usize) -> Vector
-    CreateMutFuncRef,                            // () -> MutFuncRef
+    CreateMutFuncRef(LocalId),                   // (FuncRef) -> MutFuncRef
+    CreateEmptyMutFuncRef,                       // () -> MutFuncRef
     DerefMutFuncRef(LocalId),                    // (MutFuncRef) -> FuncRef
     SetMutFuncRef(LocalId, LocalId),             // (MutFuncRef, FuncRef) -> Nil
     EntrypointTable(Vec<LocalId>),               // (MutFuncRef...) -> EntrypointTable
@@ -546,7 +547,10 @@ macro_rules! impl_Expr_local_usages {
                         Expr::ArgsRef(id, _) => {
                             yield (id, LocalUsedFlag::NonPhi);
                         }
-                        Expr::CreateMutFuncRef => {}
+                        Expr::CreateMutFuncRef(id) => {
+                            yield (id, LocalUsedFlag::NonPhi);
+                        }
+                        Expr::CreateEmptyMutFuncRef => {}
                         Expr::DerefMutFuncRef(id) => {
                             yield (id, LocalUsedFlag::NonPhi);
                         }
@@ -669,15 +673,16 @@ impl Expr {
             | Expr::GlobalGet(..)
             | Expr::SymbolToString(..)
             | Expr::NumberToString(..)
-            | Expr::CreateMutFuncRef
+            | Expr::CreateMutFuncRef(..)
+            | Expr::CreateEmptyMutFuncRef
             | Expr::DerefMutFuncRef(..)
-            | Expr::SetMutFuncRef(..)
             | Expr::EntrypointTable(..)
             | Expr::EntrypointTableRef(..)
             | Expr::SetEntrypointTable(..) => ExprPurelity::ImpureRead,
             Expr::InstantiateFunc(..)
             | Expr::InstantiateBB(..)
             | Expr::SetRef(..)
+            | Expr::SetMutFuncRef(..)
             | Expr::Call(..)
             | Expr::CallRef(..)
             | Expr::GlobalSet(..)
@@ -873,7 +878,10 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                 write!(f, ")")
             }
             Expr::ArgsRef(id, index) => write!(f, "args_ref({}, {})", id.display(self.meta), index),
-            Expr::CreateMutFuncRef => write!(f, "create_mut_func_ref"),
+            Expr::CreateMutFuncRef(func_ref_id) => {
+                write!(f, "create_mut_func_ref({})", func_ref_id.display(self.meta))
+            }
+            Expr::CreateEmptyMutFuncRef => write!(f, "create_empty_mut_func_ref"),
             Expr::DerefMutFuncRef(id) => write!(f, "deref_mut_func_ref({})", id.display(self.meta)),
             Expr::SetMutFuncRef(mut_func_ref_id, func_ref_id) => write!(
                 f,

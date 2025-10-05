@@ -103,11 +103,7 @@ impl<'a> ModuleGenerator<'a> {
             });
             entry_exprs.push(ExprAssign {
                 local: Some(mut_func_ref_local),
-                expr: Expr::CreateMutFuncRef,
-            });
-            entry_exprs.push(ExprAssign {
-                local: None,
-                expr: Expr::SetMutFuncRef(mut_func_ref_local, func_ref_local),
+                expr: Expr::CreateMutFuncRef(func_ref_local),
             });
             entry_exprs.push(ExprAssign {
                 local: Some(entrypoint_table_local),

@@ -1440,7 +1440,13 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 function.instruction(&Instruction::I32Const(*idx as i32));
                 function.instruction(&Instruction::ArrayGet(self.module_generator.args_type));
             }
-            ir::Expr::CreateMutFuncRef => {
+            ir::Expr::CreateMutFuncRef(id) => {
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*id)));
+                function.instruction(&Instruction::StructNew(
+                    self.module_generator.mut_func_ref_type,
+                ));
+            }
+            ir::Expr::CreateEmptyMutFuncRef => {
                 function.instruction(&Instruction::RefNull(HeapType::Concrete(
                     self.module_generator.func_ref_type,
                 )));

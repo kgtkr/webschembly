@@ -36,6 +36,9 @@ pub struct Jit {
     config: JitConfig,
     jit_module: TiVec<ModuleId, JitModule>,
     global_layout: GlobalLayout,
+    // 0..GLOBAL_LAYOUT_MAX_SIZEまでのindexに対応する関数のスタブが入ったMutFuncRef
+    // func_indexがインスタンス化されるときにMutFuncRefにFuncRefがセットされる
+    // TODO: 0はいらないかも
     stub_globals: FxHashMap<usize, Global>,
 }
 
@@ -202,7 +205,7 @@ impl JitModule {
                     });
                     exprs.push(ExprAssign {
                         local: Some(stub_local),
-                        expr: Expr::CreateMutFuncRef,
+                        expr: Expr::CreateEmptyMutFuncRef,
                     });
                     exprs.push(ExprAssign {
                         local: None,
