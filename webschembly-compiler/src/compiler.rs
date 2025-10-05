@@ -2,6 +2,7 @@ use crate::ast;
 use crate::compiler_error;
 use crate::ir;
 use crate::ir_generator;
+use crate::ir_processor::desugar::desugar;
 use crate::ir_processor::jit::{Jit, JitConfig};
 use crate::ir_processor::optimizer::remove_unreachable_bb;
 use crate::ir_processor::optimizer::remove_unused_local;
@@ -88,10 +89,10 @@ impl Compiler {
             if jit.config().enable_optimization {
                 optimize_module(&mut stub_module);
             }
-            postprocess_phi(&mut stub_module);
+            postprocess(&mut stub_module);
             Ok(stub_module)
         } else {
-            postprocess_phi(&mut module);
+            postprocess(&mut module);
             Ok(module)
         }
     }
@@ -109,7 +110,7 @@ impl Compiler {
         if jit.config().enable_optimization {
             optimize_module(&mut module);
         }
-        postprocess_phi(&mut module);
+        postprocess(&mut module);
         module
     }
 
@@ -127,7 +128,7 @@ impl Compiler {
         if jit.config().enable_optimization {
             optimize_module(&mut module);
         }
-        postprocess_phi(&mut module);
+        postprocess(&mut module);
         module
     }
 }
@@ -145,9 +146,11 @@ fn optimize_module(module: &mut ir::Module) {
     }
 }
 
-fn postprocess_phi(module: &mut ir::Module) {
+fn postprocess(module: &mut ir::Module) {
     for func in module.funcs.iter_mut() {
         debug_assert_ssa(func);
+
+        desugar(func);
 
         // TODO: クリティカルエッジの分割
         remove_phi(func);

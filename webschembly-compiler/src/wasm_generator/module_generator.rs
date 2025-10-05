@@ -949,6 +949,9 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 BasicBlockTerminator::TailCallRef(call_ref) => {
                     self.gen_call_ref(function, true, call_ref);
                 }
+                BasicBlockTerminator::TailCallClosure(..) => {
+                    unreachable!("unexpected TailCallClosure");
+                }
                 BasicBlockTerminator::Error(msg) => {
                     function.instruction(&Instruction::I32Const(2));
                     function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*msg)));
@@ -968,6 +971,8 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         expr: &ir::ExprAssign,
     ) {
         if let ir::Expr::Nop = expr.expr {
+            // desugarである程度は削除しているが、その後の最適化で再度Nopが発生することがあるためここでも除去
+            debug_assert!(expr.local.is_none());
             return;
         }
         self.gen_expr(function, locals, &expr.expr);
@@ -990,6 +995,9 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             }
             ir::Expr::Phi(..) => {
                 unreachable!("unexpected Phi");
+            }
+            ir::Expr::CallClosure(..) => {
+                unreachable!("unexpected CallClosure");
             }
             ir::Expr::InstantiateFunc(module_id, func_id, func_index) => {
                 function.instruction(&Instruction::I32Const(usize::from(*module_id) as i32));

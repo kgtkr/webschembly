@@ -1007,6 +1007,7 @@ impl JitFunc {
                 }
                 ref next @ BasicBlockNext::Terminator(
                     BasicBlockTerminator::TailCallRef(_)
+                    | BasicBlockTerminator::TailCallClosure(_)
                     | BasicBlockTerminator::Return(_)
                     | BasicBlockTerminator::Error(_),
                 ) => next.clone(),

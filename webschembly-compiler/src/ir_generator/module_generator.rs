@@ -709,24 +709,9 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
 
                     // TODO: funcがクロージャかのチェック
                     let closure_local = self.local(ValType::Closure);
-                    let entrypoint_table_local = self.local(LocalType::EntrypointTable);
-                    let mut_func_ref_local = self.local(LocalType::MutFuncRef);
-                    let func_local = self.local(ValType::FuncRef);
                     self.exprs.push(ExprAssign {
                         local: Some(closure_local),
                         expr: Expr::FromObj(ValType::Closure, obj_func_local),
-                    });
-                    self.exprs.push(ExprAssign {
-                        local: Some(entrypoint_table_local),
-                        expr: Expr::ClosureEntrypointTable(closure_local),
-                    });
-                    self.exprs.push(ExprAssign {
-                        local: Some(mut_func_ref_local),
-                        expr: Expr::EntrypointTableRef(0, entrypoint_table_local),
-                    });
-                    self.exprs.push(ExprAssign {
-                        local: Some(func_local),
-                        expr: Expr::DerefMutFuncRef(mut_func_ref_local),
                     });
 
                     let args_local = self.local(LocalType::Args);
@@ -742,25 +727,20 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     });
 
                     let is_tail = x.get_ref(type_map::key::<TailCall>()).is_tail;
-                    let call_ref = ExprCallRef {
-                        func: func_local,
-                        args: vec![closure_local, args_local],
-                        func_type: FuncType {
-                            ret: LocalType::Type(Type::Obj),
-                            args: vec![
-                                LocalType::Type(Type::Val(ValType::Closure)),
-                                LocalType::Args,
-                            ],
-                        },
+                    let call_closure = ExprCallClosure {
+                        closure: closure_local,
+                        args: vec![args_local],
+                        arg_types: vec![LocalType::Args],
+                        func_index: 0,
                     };
                     if is_tail {
                         self.close_bb(BasicBlockNext::Terminator(
-                            BasicBlockTerminator::TailCallRef(call_ref),
+                            BasicBlockTerminator::TailCallClosure(call_closure),
                         ));
                     } else {
                         self.exprs.push(ExprAssign {
                             local: result,
-                            expr: Expr::CallRef(call_ref),
+                            expr: Expr::CallClosure(call_closure),
                         });
                     }
                 }

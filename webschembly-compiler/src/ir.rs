@@ -323,6 +323,73 @@ impl fmt::Display for DisplayInFunc<'_, &'_ ExprCallRef> {
     }
 }
 
+/*
+以下に変換されるsyntax sugarのようなもの
+JITの際に最適化しやすいように特殊な命令として実装している
+
+l21 = closure_entrypoint_table(closure)
+l22 = entrypoint_table_ref(index, l21)
+l23 = deref_mut_func_ref(l22)
+l0 = call_ref<(closure, ...arg_types) -> obj>(l23)(closure, ...args)
+*/
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ExprCallClosure {
+    pub closure: LocalId,
+    pub args: Vec<LocalId>,
+    pub arg_types: Vec<LocalType>,
+    pub func_index: usize,
+}
+
+macro_rules! impl_ExprCallClosure_local_ids {
+    ($($suffix: ident)?,$($mutability: tt)?) => {
+        paste::paste! {
+            pub fn [<local_ids $($suffix)?>](&$($mutability)? self) -> impl Iterator<Item = &$($mutability)? LocalId> {
+                from_coroutine(
+                    #[coroutine]
+                    move || {
+                        yield &$($mutability)? self.closure;
+                        for arg in &$($mutability)? self.args {
+                            yield arg;
+                        }
+                    },
+                )
+            }
+        }
+    };
+}
+
+impl ExprCallClosure {
+    impl_ExprCallClosure_local_ids!(_mut, mut);
+    impl_ExprCallClosure_local_ids!(,);
+
+    pub fn display<'a>(&self, meta: MetaInFunc<'a>) -> DisplayInFunc<'a, &'_ ExprCallClosure> {
+        DisplayInFunc { value: self, meta }
+    }
+}
+
+impl fmt::Display for DisplayInFunc<'_, &'_ ExprCallClosure> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "call_closure<")?;
+        for (i, arg_type) in self.value.arg_types.iter().enumerate() {
+            if i > 0 {
+                write!(f, ",")?;
+            }
+            write!(f, "{}", arg_type)?;
+        }
+        write!(
+            f,
+            ">(closure={}, func_index={}",
+            self.value.closure.display(self.meta),
+            self.value.func_index
+        )?;
+        for arg in self.value.args.iter() {
+            write!(f, ", {}", arg.display(self.meta))?;
+        }
+        write!(f, ")")?;
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct PhiIncomingValue {
     pub bb: BasicBlockId,
@@ -402,6 +469,7 @@ pub enum Expr {
     EntrypointTable(Vec<LocalId>),               // (MutFuncRef...) -> EntrypointTable
     EntrypointTableRef(usize, LocalId),          // (EntrypointTable, index) -> MutFuncRef
     SetEntrypointTable(usize, LocalId, LocalId), // (EntrypointTable, index, MutFuncRef) -> Nil
+    CallClosure(ExprCallClosure),
 }
 
 macro_rules! impl_Expr_func_ids {
@@ -470,6 +538,11 @@ macro_rules! impl_Expr_local_usages {
                         }
                         Expr::CallRef(call_ref) => {
                             for id in call_ref.[<local_ids $($suffix)?>]() {
+                                yield (id, LocalUsedFlag::NonPhi);
+                            }
+                        }
+                        Expr::CallClosure(call_closure) => {
+                            for id in call_closure.[<local_ids $($suffix)?>]() {
                                 yield (id, LocalUsedFlag::NonPhi);
                             }
                         }
@@ -685,6 +758,7 @@ impl Expr {
             | Expr::SetMutFuncRef(..)
             | Expr::Call(..)
             | Expr::CallRef(..)
+            | Expr::CallClosure(..)
             | Expr::GlobalSet(..)
             | Expr::InitModule
             | Expr::Display(..)
@@ -794,6 +868,9 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
             }
             Expr::CallRef(call_ref) => {
                 write!(f, "{}", call_ref.display(self.meta))
+            }
+            Expr::CallClosure(call_closure) => {
+                write!(f, "{}", call_closure.display(self.meta))
             }
             Expr::Move(id) => write!(f, "move({})", id.display(self.meta)),
             Expr::ToObj(typ, id) => write!(f, "to_obj<{}>({})", typ, id.display(self.meta)),
@@ -1084,6 +1161,7 @@ pub enum BasicBlockTerminator {
     Return(LocalId),
     TailCall(ExprCall),
     TailCallRef(ExprCallRef),
+    TailCallClosure(ExprCallClosure),
     Error(LocalId),
 }
 macro_rules! impl_BasicBlockTerminator_local_ids {
@@ -1104,6 +1182,11 @@ macro_rules! impl_BasicBlockTerminator_local_ids {
                                 yield id;
                             }
                         }
+                        BasicBlockTerminator::TailCallClosure(call_closure) => {
+                            for id in call_closure.[<local_ids $($suffix)?>]() {
+                                yield id;
+                            }
+                        }
                         BasicBlockTerminator::Error(local) => yield local,
                     },
                 )
@@ -1121,6 +1204,7 @@ macro_rules! impl_BasicBlockTerminator_func_ids {
                     move || match self {
                         BasicBlockTerminator::Return(_)
                         | BasicBlockTerminator::TailCallRef(_)
+                        | BasicBlockTerminator::TailCallClosure(_)
                         | BasicBlockTerminator::Error(_) => {}
                         BasicBlockTerminator::TailCall(call) => {
                             for id in call.[<func_ids $($suffix)?>]() {
@@ -1155,6 +1239,9 @@ impl fmt::Display for DisplayInFunc<'_, &BasicBlockTerminator> {
             }
             BasicBlockTerminator::TailCallRef(call_ref) => {
                 write!(f, "tail_call_ref {}", call_ref.display(self.meta))
+            }
+            BasicBlockTerminator::TailCallClosure(call_closure) => {
+                write!(f, "tail_call_closure {}", call_closure.display(self.meta))
             }
             BasicBlockTerminator::Error(local) => write!(f, "error {}", local.display(self.meta)),
         }
