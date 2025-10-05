@@ -323,6 +323,7 @@ pub extern "C" fn instantiate_func(module_id: i32, func_id: i32, func_index: i32
         let module = compiler.instantiate_func(
             webschembly_compiler::ir::ModuleId::from(module_id as usize),
             webschembly_compiler::ir::FuncId::from(func_id as usize),
+            func_index as usize,
         );
         let wasm = webschembly_compiler::wasm_generator::generate(&module);
         let ir = if cfg!(debug_assertions) {
@@ -360,6 +361,7 @@ pub extern "C" fn instantiate_bb(
         let module = compiler.instantiate_bb(
             webschembly_compiler::ir::ModuleId::from(module_id as usize),
             webschembly_compiler::ir::FuncId::from(func_id as usize),
+            func_index as usize,
             webschembly_compiler::ir::BasicBlockId::from(bb_id as usize),
             index as usize,
         );

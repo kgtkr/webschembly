@@ -86,7 +86,12 @@ impl Compiler {
         }
     }
 
-    pub fn instantiate_func(&mut self, module_id: ir::ModuleId, func_id: ir::FuncId) -> ir::Module {
+    pub fn instantiate_func(
+        &mut self,
+        module_id: ir::ModuleId,
+        func_id: ir::FuncId,
+        func_index: usize,
+    ) -> ir::Module {
         let jit = self.jit.as_mut().expect("JIT is not enabled");
         let mut module = jit.instantiate_func(&mut self.global_manager, module_id, func_id);
         preprocess_module(&mut module);
@@ -101,6 +106,7 @@ impl Compiler {
         &mut self,
         module_id: ir::ModuleId,
         func_id: ir::FuncId,
+        func_index: usize,
         bb_id: ir::BasicBlockId,
         index: usize,
     ) -> ir::Module {
