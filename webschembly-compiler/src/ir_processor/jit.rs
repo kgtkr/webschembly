@@ -36,6 +36,7 @@ pub struct Jit {
     config: JitConfig,
     jit_module: TiVec<ModuleId, JitModule>,
     global_layout: GlobalLayout,
+    stub_globals: FxHashMap<usize, Global>,
 }
 
 impl Jit {
@@ -44,6 +45,7 @@ impl Jit {
             config,
             jit_module: TiVec::new(),
             global_layout: GlobalLayout::new(),
+            stub_globals: FxHashMap::default(),
         }
     }
 
@@ -59,7 +61,7 @@ impl Jit {
         let module_id = self.jit_module.next_key();
         self.jit_module
             .push(JitModule::new(global_manager, module_id, module));
-        self.jit_module[module_id].generate_stub_module()
+        self.jit_module[module_id].generate_stub_module(global_manager, &mut self.stub_globals)
     }
 
     pub fn instantiate_func(
@@ -140,7 +142,12 @@ impl JitModule {
         }
     }
 
-    fn generate_stub_module(&self) -> Module {
+    fn generate_stub_module(
+        &self,
+        global_manager: &mut GlobalManager,
+        stub_globals: &mut FxHashMap<usize, Global>,
+    ) -> Module {
+        let mut globals = self.globals.clone();
         // entry関数もあるので+1してる
         let stub_func_ids = self
             .module
@@ -183,6 +190,29 @@ impl JitModule {
                     expr: Expr::GlobalSet(self.func_to_globals[func.id], func_ref_local),
                 });
             }
+
+            // stub_globalsがempty(=最初にJITされるモジュール)なら、初期化を行う
+            if stub_globals.is_empty() {
+                for func_index in 0..GLOBAL_LAYOUT_MAX_SIZE {
+                    let stub_global = global_manager.gen_global(LocalType::MutFuncRef);
+                    stub_globals.insert(func_index, stub_global);
+                    let stub_local = locals.push_with(|id| Local {
+                        id,
+                        typ: LocalType::MutFuncRef,
+                    });
+                    exprs.push(ExprAssign {
+                        local: Some(stub_local),
+                        expr: Expr::CreateMutFuncRef,
+                    });
+                    exprs.push(ExprAssign {
+                        local: None,
+                        expr: Expr::GlobalSet(stub_global.id, stub_local),
+                    });
+                }
+                globals.extend(stub_globals.iter().map(|(_, &v)| (v.id, v)));
+            } else {
+                globals.extend(stub_globals.iter().map(|(_, v)| (v.id, v.to_import())))
+            };
 
             let func = Func {
                 id: funcs.next_key(),
@@ -306,7 +336,7 @@ impl JitModule {
         }
 
         Module {
-            globals: self.globals.clone(),
+            globals,
             funcs,
             entry: FuncId::from(0),
             meta: Meta {
