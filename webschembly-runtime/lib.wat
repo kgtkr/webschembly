@@ -14,9 +14,8 @@
   (type $Symbol (sub final (struct (field $name (ref null $String)))))
   (type $Cons (sub final (struct (field $car (mut eqref)) (field $cdr (mut eqref)))))
   (type $Vector (array (mut eqref)))
-  (type $FuncRef (sub final (struct (field $func funcref))))
   (type $Args (array (mut eqref)))
-  (type $MutFuncRef (sub final (struct (field $func (mut (ref null $FuncRef))))))
+  (type $MutFuncRef (sub final (struct (field $func (mut funcref)))))
   (type $EntrypointTable (array (mut (ref null $MutFuncRef))))
   (type $Closure (sub (struct
     (field $module_id i32)
@@ -193,7 +192,6 @@
     (struct.get $Closure $entrypoint_table)
     (array.get $EntrypointTable (i32.const 0))
     (struct.get $MutFuncRef $func)
-    (struct.get $FuncRef $func)
     (ref.cast (ref $ClosureFunc))
     (local.set $func)
 

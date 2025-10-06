@@ -60,7 +60,7 @@ fn desugar_call_closure(
     });
     let func_ref_local = locals.push_with(|id| Local {
         id,
-        typ: ValType::FuncRef.into(),
+        typ: LocalType::FuncRef,
     });
     new_expr_assigns.push(ExprAssign {
         local: Some(entrypoint_table_local),

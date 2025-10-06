@@ -137,7 +137,7 @@ impl JitModule {
         let func_to_globals = module
             .funcs
             .iter()
-            .map(|_| global_manager.gen_global(LocalType::Type(Type::Val(ValType::FuncRef))))
+            .map(|_| global_manager.gen_global(LocalType::FuncRef))
             .collect::<TiVec<FuncId, _>>();
 
         let func_to_globals = func_to_globals
@@ -182,14 +182,10 @@ impl JitModule {
             // entry
             let mut locals = VecMap::new();
             let mut exprs = Vec::new();
-            exprs.push(ExprAssign {
-                local: None,
-                expr: Expr::InitModule,
-            });
             for func in self.module.funcs.iter() {
                 let func_ref_local = locals.push_with(|id| Local {
                     id,
-                    typ: LocalType::Type(Type::Val(ValType::FuncRef)),
+                    typ: LocalType::FuncRef,
                 });
 
                 exprs.push(ExprAssign {
@@ -223,7 +219,7 @@ impl JitModule {
             };
             // instantiate_func_globalがNoneの場合も同様に初期化を行う
             if instantiate_func_global.is_none() {
-                let g = global_manager.gen_global(ValType::FuncRef.into());
+                let g = global_manager.gen_global(LocalType::FuncRef);
                 *instantiate_func_global = Some(g);
             }
 
@@ -258,7 +254,7 @@ impl JitModule {
             let mut new_locals = func.locals.clone();
             let f0_ref_local = new_locals.push_with(|id| Local {
                 id,
-                typ: LocalType::Type(Type::Val(ValType::FuncRef)),
+                typ: LocalType::FuncRef,
             });
 
             let func = Func {
@@ -328,12 +324,7 @@ impl JitFunc {
         let bb_to_globals = func
             .bbs
             .keys()
-            .map(|bb_id| {
-                (
-                    bb_id,
-                    global_manager.gen_global(LocalType::Type(Type::Val(ValType::FuncRef))),
-                )
-            })
+            .map(|bb_id| (bb_id, global_manager.gen_global(LocalType::FuncRef)))
             .collect::<VecMap<BasicBlockId, _>>();
         let bb_infos = calculate_bb_info(&func);
 
@@ -425,15 +416,11 @@ impl JitFunc {
             let mut locals = VecMap::new();
             let func_ref_local = locals.push_with(|id| Local {
                 id,
-                typ: LocalType::Type(Type::Val(ValType::FuncRef)),
+                typ: LocalType::FuncRef,
             });
 
             let mut exprs = Vec::new();
             exprs.extend([
-                ExprAssign {
-                    local: None,
-                    expr: Expr::InitModule,
-                },
                 ExprAssign {
                     local: Some(func_ref_local),
                     expr: Expr::FuncRef(FuncId::from(1)),
@@ -453,7 +440,7 @@ impl JitFunc {
             for jit_bb in self.jit_bbs.values() {
                 let func_ref_local = locals.push_with(|id| Local {
                     id,
-                    typ: LocalType::Type(Type::Val(ValType::FuncRef)),
+                    typ: LocalType::FuncRef,
                 });
                 let (_, index_global) = jit_bb
                     .bb_index_manager
@@ -473,7 +460,7 @@ impl JitFunc {
             Func {
                 id: entry_func_id,
                 args: vec![],
-                ret_type: LocalType::Type(Type::Val(ValType::FuncRef)), // TODO: Nilでも返したほうがよさそう
+                ret_type: LocalType::FuncRef, // TODO: Nilでも返したほうがよさそう
                 locals,
                 bb_entry: BasicBlockId::from(0),
                 bbs: [BasicBlock {
@@ -499,7 +486,7 @@ impl JitFunc {
 
             let func_ref_local = locals.push_with(|id| Local {
                 id,
-                typ: LocalType::Type(Type::Val(ValType::FuncRef)),
+                typ: LocalType::FuncRef,
             });
 
             let (_, index_global) = self.jit_bbs[self.func.bb_entry]
@@ -586,7 +573,7 @@ impl JitFunc {
 
         let func_ref_local = locals.push_with(|id| Local {
             id,
-            typ: LocalType::Type(Type::Val(ValType::FuncRef)),
+            typ: LocalType::FuncRef,
         });
 
         Func {
@@ -752,7 +739,7 @@ impl JitFunc {
                     } => {
                         let func_ref_local = new_locals.push_with(|id| Local {
                             id,
-                            typ: LocalType::Type(Type::Val(ValType::FuncRef)),
+                            typ: LocalType::FuncRef,
                         });
 
                         exprs.push(ExprAssign {
@@ -901,7 +888,7 @@ impl JitFunc {
                 })) => {
                     let func_ref_local = new_locals.push_with(|id| Local {
                         id,
-                        typ: LocalType::Type(Type::Val(ValType::FuncRef)),
+                        typ: LocalType::FuncRef,
                     });
                     let exprs = &mut bbs[new_bb_id].exprs;
                     exprs.push(ExprAssign {
@@ -1013,7 +1000,7 @@ impl JitFunc {
 
             let func_ref_local = new_locals.push_with(|id| Local {
                 id,
-                typ: LocalType::Type(Type::Val(ValType::FuncRef)),
+                typ: LocalType::FuncRef,
             });
 
             exprs.extend([ExprAssign {
@@ -1095,7 +1082,7 @@ impl JitFunc {
                 });
                 let func_ref_local = locals.push_with(|id| Local {
                     id,
-                    typ: LocalType::Type(Type::Val(ValType::FuncRef)),
+                    typ: LocalType::FuncRef,
                 });
                 let mut_func_ref_local = locals.push_with(|id| Local {
                     id,
@@ -1177,15 +1164,11 @@ impl JitFunc {
 
             let func_ref_local = locals.push_with(|id| Local {
                 id,
-                typ: LocalType::Type(Type::Val(ValType::FuncRef)),
+                typ: LocalType::FuncRef,
             });
 
             bbs.insert_node({
                 let mut exprs = vec![
-                    ExprAssign {
-                        local: None,
-                        expr: Expr::InitModule,
-                    },
                     ExprAssign {
                         local: Some(func_ref_local),
                         expr: Expr::FuncRef(body_func_id),
@@ -1199,7 +1182,7 @@ impl JitFunc {
                 for &(closure_idx, stub_func_id) in required_closure_idx.iter() {
                     let stub_func_ref_local = locals.push_with(|id| Local {
                         id,
-                        typ: LocalType::Type(Type::Val(ValType::FuncRef)),
+                        typ: LocalType::FuncRef,
                     });
                     let stub_mut_func_ref_local = locals.push_with(|id| Local {
                         id,
@@ -1226,7 +1209,7 @@ impl JitFunc {
                 for &(_, index_global, stub_func_id) in required_stubs.iter() {
                     let func_ref_local = locals.push_with(|id| Local {
                         id,
-                        typ: LocalType::Type(Type::Val(ValType::FuncRef)),
+                        typ: LocalType::FuncRef,
                     });
 
                     exprs.extend([
@@ -1251,7 +1234,7 @@ impl JitFunc {
             Func {
                 id: funcs.next_key(),
                 args: vec![],
-                ret_type: LocalType::Type(Type::Val(ValType::FuncRef)), // TODO: Nilでも返したほうがよさそう
+                ret_type: LocalType::FuncRef, // TODO: Nilでも返したほうがよさそう
                 locals,
                 bb_entry: BasicBlockId::from(0),
                 bbs,
@@ -1489,7 +1472,7 @@ impl BBIndexManager {
         } else if self.type_params_to_index.len() < GLOBAL_LAYOUT_MAX_SIZE {
             let index = self.type_params_to_index.len();
             self.type_params_to_index.insert(type_params.clone(), index);
-            let global = global_manager.gen_global(ValType::FuncRef.into());
+            let global = global_manager.gen_global(LocalType::FuncRef);
             self.index_to_global.insert(index, global);
             Some((global, index, IndexFlag::NewInstance))
         } else {

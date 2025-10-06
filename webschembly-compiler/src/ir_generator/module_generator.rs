@@ -79,15 +79,11 @@ impl<'a> ModuleGenerator<'a> {
         // エントリーポイントにモジュール初期化ロジックを追加
         let prev_bb_entry = entry_func.bb_entry;
         let mut entry_exprs = Vec::new();
-        entry_exprs.push(ExprAssign {
-            local: None,
-            expr: Expr::InitModule,
-        });
 
         for (func_id, entrypoint_table_global_id) in self.func_to_entrypoint_table {
             let func_ref_local = entry_func.locals.push_with(|id| Local {
                 id,
-                typ: ValType::FuncRef.into(),
+                typ: LocalType::FuncRef,
             });
             let mut_func_ref_local = entry_func.locals.push_with(|id| Local {
                 id,
@@ -479,7 +475,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     .map(|id| *self.local_ids.get(id).unwrap())
                     .collect::<Vec<_>>();
                 let func_id = self.module_generator.gen_func(x, lambda);
-                let func_local = self.local(ValType::FuncRef);
+                let func_local = self.local(LocalType::FuncRef);
                 let val_type_local = self.local(Type::Val(ValType::Closure));
                 self.exprs.push(ExprAssign {
                     local: Some(func_local),

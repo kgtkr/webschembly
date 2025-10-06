@@ -63,6 +63,8 @@ pub enum LocalType {
     MutFuncRef,
     #[display("entrypoint_table")]
     EntrypointTable,
+    #[display("func_ref")]
+    FuncRef,
 }
 
 impl From<Type> for LocalType {
@@ -120,8 +122,6 @@ pub enum ValType {
     Cons,
     #[display("vector")]
     Vector,
-    #[display("func_ref")]
-    FuncRef,
     #[display("closure")]
     Closure,
 }
@@ -436,7 +436,6 @@ pub enum Expr {
     ClosureEntrypointTable(LocalId), // (Closure) -> EntrypointTable
     GlobalSet(GlobalId, LocalId),
     GlobalGet(GlobalId),
-    InitModule,
     // builtins
     Display(LocalId),
     Add(LocalId, LocalId),
@@ -660,8 +659,7 @@ macro_rules! impl_Expr_local_usages {
                         | Expr::Char(..)
                         | Expr::CreateRef(..)
                         | Expr::FuncRef(..)
-                        | Expr::GlobalGet(..)
-                        | Expr::InitModule => {}
+                        | Expr::GlobalGet(..) => {}
                     },
                 )
             }
@@ -766,7 +764,6 @@ impl Expr {
             | Expr::CallRef(..)
             | Expr::CallClosure(..)
             | Expr::GlobalSet(..)
-            | Expr::InitModule
             | Expr::Display(..)
             | Expr::WriteChar(..)
             | Expr::VectorSet(..) => ExprPurelity::Effectful,
@@ -915,9 +912,6 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                 )
             }
             Expr::GlobalGet(id) => write!(f, "global_get({})", id.display(self.meta.meta)),
-            Expr::InitModule => {
-                write!(f, "init_module")
-            }
             Expr::Display(id) => write!(f, "display({})", id.display(self.meta)),
             Expr::Add(a, b) => write!(f, "add({}, {})", a.display(self.meta), b.display(self.meta)),
             Expr::Sub(a, b) => write!(f, "sub({}, {})", a.display(self.meta), b.display(self.meta)),
