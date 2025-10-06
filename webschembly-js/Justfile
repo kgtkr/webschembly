@@ -32,6 +32,9 @@ run src: build-runtime
 benchmark: build-runtime-release
 	{{LOG_DIR_ENV}}{{WEBSCHEMBLY_RUNTIME_ENV}}npm run benchmark
 
+benchmark-dev: build-runtime
+	{{LOG_DIR_ENV}}{{WEBSCHEMBLY_RUNTIME_ENV}}BENCH_DEV=1 npm run benchmark
+
 run-aot wasm:
 	make "{{wasm}}"
 	{{LOG_DIR_ENV}}npx tsx src/run-aot.ts "{{wasm}}"
