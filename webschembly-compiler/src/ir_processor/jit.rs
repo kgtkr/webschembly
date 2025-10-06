@@ -114,7 +114,9 @@ impl Jit {
         let jit_func = &self.jit_module[module_id].jit_funcs[&(func_id, func_index)];
         jit_func.generate_bb_module(
             &self.config,
-            jit_module,
+            &jit_module.func_to_globals,
+            module_id,
+            &jit_module.module,
             bb_id,
             index,
             &mut self.global_layout,
@@ -820,7 +822,9 @@ impl JitFunc {
     fn generate_bb_module(
         &self,
         _config: &JitConfig,
-        jit_module: &JitModule,
+        func_to_globals: &TiVec<FuncId, GlobalId>,
+        module_id: ModuleId,
+        module: &Module,
         orig_entry_bb_id: BasicBlockId,
         index: usize,
         global_layout: &mut GlobalLayout,
@@ -833,7 +837,6 @@ impl JitFunc {
 
         let type_args =
             &*global_layout.from_idx(index, self.jit_bbs[orig_entry_bb_id].info.type_params.len());
-        let module = &jit_module.module;
         let func = &self.func;
 
         // If/Jump命令で必要なBBの一覧。(新しいモジュールのBB ID, 元のモジュールのBB ID, isで分岐されたときの型情報)のペアのリスト
@@ -930,7 +933,7 @@ impl JitFunc {
                     } => {
                         exprs.push(ExprAssign {
                             local,
-                            expr: Expr::GlobalGet(jit_module.func_to_globals[id]),
+                            expr: Expr::GlobalGet(func_to_globals[id]),
                         });
                     }
                     ExprAssign {
@@ -944,7 +947,7 @@ impl JitFunc {
 
                         exprs.push(ExprAssign {
                             local: Some(func_ref_local),
-                            expr: Expr::GlobalGet(jit_module.func_to_globals[func_id]),
+                            expr: Expr::GlobalGet(func_to_globals[func_id]),
                         });
                         exprs.push(ExprAssign {
                             local,
@@ -1093,7 +1096,7 @@ impl JitFunc {
                     let exprs = &mut bbs[new_bb_id].exprs;
                     exprs.push(ExprAssign {
                         local: Some(func_ref_local),
-                        expr: Expr::GlobalGet(jit_module.func_to_globals[func_id]),
+                        expr: Expr::GlobalGet(func_to_globals[func_id]),
                     });
                     BasicBlockNext::Terminator(BasicBlockTerminator::TailCallRef(ExprCallRef {
                         func: func_ref_local,
@@ -1265,7 +1268,7 @@ impl JitFunc {
                 let bb_stub_func_id = funcs.next_key();
                 let func = self.generate_bb_stub_func(
                     global_layout,
-                    jit_module.module_id,
+                    module_id,
                     &self.jit_bbs[bb_id],
                     bb_stub_func_id,
                     index,
