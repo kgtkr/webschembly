@@ -26,7 +26,13 @@ const runtimeModule = new WebAssembly.Module(
   await fs.readFile(process.env["WEBSCHEMBLY_RUNTIME"]!)
 );
 
-const bench = new Bench();
+const bench = new Bench(
+  process.env["BENCH_DEV"]
+    ? {
+        iterations: 1,
+      }
+    : undefined
+);
 
 for (const filename of filenames) {
   for (const warmup of [false, true]) {
