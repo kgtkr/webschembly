@@ -507,7 +507,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     local: Some(val_type_local),
                     expr: Expr::Closure {
                         envs: captures,
-                        func_id: self.id,
+                        func_id,
                         module_id: self.module_generator.id,
                         entrypoint_table: entrypoint_table_local,
                     },
