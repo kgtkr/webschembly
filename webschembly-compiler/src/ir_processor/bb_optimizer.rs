@@ -455,7 +455,7 @@ mod tests {
         assert_eq!(
             typed_objs,
             [(LocalId::from(3), TypedObj {
-                val_type: LocalId::from(2),
+                val_type: LocalId::from(0),
                 typ: ValType::Int
             })]
             .into_iter()
