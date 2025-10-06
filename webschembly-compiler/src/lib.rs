@@ -11,6 +11,7 @@
     if_let_guard,
     impl_trait_in_assoc_type
 )]
+#![allow(clippy::vec_init_then_push)]
 pub mod lexer;
 pub mod parser_combinator;
 #[macro_use]

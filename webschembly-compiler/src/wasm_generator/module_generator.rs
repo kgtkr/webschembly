@@ -525,7 +525,7 @@ impl<'a> ModuleGenerator<'a> {
             .values()
             .filter(|g| g.linkage == ir::GlobalLinkage::Import)
         {
-            let global_idx = self.global_count as u32;
+            let global_idx = self.global_count;
             self.global_count += 1;
             let val_type = self.convert_local_type(import_global.typ);
             self.imports.import(
@@ -546,14 +546,14 @@ impl<'a> ModuleGenerator<'a> {
             .values()
             .filter(|g| g.linkage == ir::GlobalLinkage::Export)
         {
-            let global_idx = self.global_count as u32;
+            let global_idx = self.global_count;
             self.global_count += 1;
 
             let val_type = self.convert_local_type(export_global.typ);
             let init_expr = self.local_type_init_expr(export_global.typ);
             self.globals.global(
                 GlobalType {
-                    val_type: val_type,
+                    val_type,
                     mutable: true,
                     shared: false,
                 },
@@ -563,7 +563,7 @@ impl<'a> ModuleGenerator<'a> {
             self.exports.export(
                 &format!("global_{}", usize::from(export_global.id)),
                 ExportKind::Global,
-                global_idx as u32,
+                global_idx,
             );
         }
 
@@ -1070,7 +1070,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
             }
             ir::Expr::FuncRef(func) => {
-                let func_idx = self.module_generator.func_indices[&func];
+                let func_idx = self.module_generator.func_indices[func];
                 function.instruction(&Instruction::RefFunc(func_idx));
             }
             ir::Expr::Closure {

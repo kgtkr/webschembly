@@ -304,6 +304,7 @@ impl JitModule {
 
 #[derive(Debug)]
 struct JitFunc {
+    #[allow(dead_code)]
     func_id: FuncId,
     func_index: usize,
     func: Func,
@@ -615,6 +616,7 @@ impl JitFunc {
     }
 
     // TODO: JitBBに移動する
+    #[allow(clippy::too_many_arguments)]
     fn generate_bb_module(
         &mut self,
         _config: &JitConfig,
@@ -1257,7 +1259,7 @@ impl JitFunc {
 
     fn specialize_call_closure(
         call_closure: &ExprCallClosure,
-        exprs: &Vec<ExprAssign>,
+        exprs: &[ExprAssign],
         closure_global_layout: &mut ClosureGlobalLayout,
         local_to_args_expr_idx: &FxHashMap<LocalId, usize>,
         required_closure_idx: &mut Vec<usize>,
@@ -1269,7 +1271,7 @@ impl JitFunc {
 
         // func_index == 0 なら引数は[Args]を仮定してよい
         let args_expr_idx = *local_to_args_expr_idx.get(&call_closure.args[0])?;
-        let Expr::Args(args) = &exprs[args_expr_idx as usize].expr else {
+        let Expr::Args(args) = &exprs[args_expr_idx].expr else {
             return None;
         };
 
@@ -1293,10 +1295,7 @@ impl JitFunc {
         Some(ExprCallClosure {
             closure: call_closure.closure,
             args: fixed_args,
-            arg_types: fixed_arg_types
-                .into_iter()
-                .map(|typ| LocalType::Type(typ))
-                .collect(),
+            arg_types: fixed_arg_types.into_iter().map(LocalType::Type).collect(),
             func_index: closure_index,
         })
     }
