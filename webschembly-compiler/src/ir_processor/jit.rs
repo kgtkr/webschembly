@@ -551,10 +551,6 @@ impl JitFunc {
                 },
                 ExprAssign {
                     local: None,
-                    expr: Expr::GlobalSet(jit_module.func_to_globals[self.func.id], func_ref_local),
-                },
-                ExprAssign {
-                    local: None,
                     expr: Expr::GlobalSet(instantiate_func_global.id, func_ref_local),
                 },
                 ExprAssign {
@@ -566,6 +562,13 @@ impl JitFunc {
                     expr: Expr::ToObj(ValType::Nil, nil_local),
                 },
             ]);
+            if self.func_index == GLOBAL_LAYOUT_DEFAULT_INDEX {
+                // func_to_globalsはindex=0のためのもの
+                exprs.push(ExprAssign {
+                    local: None,
+                    expr: Expr::GlobalSet(jit_module.func_to_globals[self.func.id], func_ref_local),
+                });
+            }
             for jit_bb in self.jit_bbs.values() {
                 let func_ref_local = locals.push_with(|id| Local {
                     id,
