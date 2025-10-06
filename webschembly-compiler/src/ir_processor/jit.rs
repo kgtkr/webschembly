@@ -250,36 +250,15 @@ impl JitModule {
             /*
             以下のようなスタブを生成
             func f0_stub(x1, x2) {
-                if f0_ref == f0_stub
-                    instantiate_module(f0_module);
+                instantiate_module(f0_module);
                 f0 <- get_global f0_ref
                 f0(x1, x2)
             }
             */
             let mut new_locals = func.locals.clone();
-            let obj_f0_ref_local = new_locals.push_with(|id| Local {
-                id,
-                typ: LocalType::Type(Type::Obj),
-            });
             let f0_ref_local = new_locals.push_with(|id| Local {
                 id,
                 typ: LocalType::Type(Type::Val(ValType::FuncRef)),
-            });
-            let f0_ref_local2 = new_locals.push_with(|id| Local {
-                id,
-                typ: LocalType::Type(Type::Val(ValType::FuncRef)),
-            });
-            let obj_f0_stub_local = new_locals.push_with(|id| Local {
-                id,
-                typ: LocalType::Type(Type::Obj),
-            });
-            let f0_stub_local = new_locals.push_with(|id| Local {
-                id,
-                typ: LocalType::Type(Type::Val(ValType::FuncRef)),
-            });
-            let eq_local = new_locals.push_with(|id| Local {
-                id,
-                typ: LocalType::Type(Type::Val(ValType::Bool)),
             });
 
             let func = Func {
@@ -288,60 +267,26 @@ impl JitModule {
                 ret_type: func.ret_type,
                 locals: new_locals,
                 bb_entry: BasicBlockId::from(0),
-                bbs: [
-                    BasicBlock {
-                        id: BasicBlockId::from(0),
-                        exprs: vec![
-                            ExprAssign {
-                                local: Some(f0_ref_local),
-                                expr: Expr::GlobalGet(self.func_to_globals[func.id]),
-                            },
-                            ExprAssign {
-                                local: Some(obj_f0_ref_local),
-                                expr: Expr::ToObj(ValType::FuncRef, f0_ref_local),
-                            },
-                            ExprAssign {
-                                local: Some(f0_stub_local),
-                                expr: Expr::FuncRef(stub_func_ids[func.id]),
-                            },
-                            ExprAssign {
-                                local: Some(obj_f0_stub_local),
-                                expr: Expr::ToObj(ValType::FuncRef, f0_stub_local),
-                            },
-                            ExprAssign {
-                                local: Some(eq_local),
-                                expr: Expr::Eq(obj_f0_ref_local, obj_f0_stub_local),
-                            },
-                        ],
-                        next: BasicBlockNext::If(
-                            eq_local,
-                            BasicBlockId::from(1),
-                            BasicBlockId::from(2),
-                        ),
-                    },
-                    BasicBlock {
-                        id: BasicBlockId::from(1),
-                        exprs: vec![ExprAssign {
+                bbs: [BasicBlock {
+                    id: BasicBlockId::from(0),
+                    exprs: vec![
+                        ExprAssign {
                             local: None,
-                            expr: Expr::InstantiateFunc(self.module_id, func.id, 0), // TODO: func_index
-                        }],
-                        next: BasicBlockNext::Jump(BasicBlockId::from(2)),
-                    },
-                    BasicBlock {
-                        id: BasicBlockId::from(2),
-                        exprs: vec![ExprAssign {
-                            local: Some(f0_ref_local2),
+                            expr: Expr::InstantiateFunc(self.module_id, func.id, 0),
+                        },
+                        ExprAssign {
+                            local: Some(f0_ref_local),
                             expr: Expr::GlobalGet(self.func_to_globals[func.id]),
-                        }],
-                        next: BasicBlockNext::Terminator(BasicBlockTerminator::TailCallRef(
-                            ExprCallRef {
-                                func: f0_ref_local2,
-                                args: func.args.clone(),
-                                func_type: func.func_type(),
-                            },
-                        )),
-                    },
-                ]
+                        },
+                    ],
+                    next: BasicBlockNext::Terminator(BasicBlockTerminator::TailCallRef(
+                        ExprCallRef {
+                            func: f0_ref_local,
+                            args: func.args.clone(),
+                            func_type: func.func_type(),
+                        },
+                    )),
+                }]
                 .into_iter()
                 .collect(),
             };
