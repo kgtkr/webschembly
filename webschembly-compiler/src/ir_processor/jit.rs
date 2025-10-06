@@ -1,5 +1,3 @@
-use std::borrow::Cow;
-
 use rustc_hash::FxHashMap;
 use typed_index_collections::{TiVec, ti_vec};
 
@@ -106,6 +104,7 @@ impl Jit {
         func_index: usize,
         bb_id: BasicBlockId,
         index: usize,
+        global_manager: &mut GlobalManager,
     ) -> Module {
         let jit_module = &mut self.jit_module[module_id];
         let jit_func = jit_module
@@ -122,6 +121,7 @@ impl Jit {
             &self.stub_globals,
             &mut self.closure_global_layout,
             self.instantiate_func_global.as_ref().unwrap(),
+            global_manager,
         )
     }
 }
@@ -406,7 +406,7 @@ impl JitFunc {
             .map(|bb_id| {
                 (
                     bb_id,
-                    global_manager.gen_global(LocalType::Type(Type::Val(ValType::Vector))),
+                    global_manager.gen_global(LocalType::Type(Type::Val(ValType::FuncRef))),
                 )
             })
             .collect::<VecMap<BasicBlockId, _>>();
@@ -427,11 +427,6 @@ impl JitFunc {
             );
             globals
         };
-
-        let bb_to_globals = bb_to_globals
-            .iter()
-            .map(|(bb_id, g)| (bb_id, g.id))
-            .collect::<VecMap<BasicBlockId, _>>();
 
         // all_typed_objs: BBごとの型推論結果
         // あるBBの型推論結果はその支配集合にまで伝播させる
@@ -487,11 +482,13 @@ impl JitFunc {
                 );
                 JitBB {
                     bb_id: bb.id,
-                    global: bb_to_globals[bb.id],
                     info: bb_infos[bb.id].clone(),
                     typed_objs: all_typed_objs[bb.id].clone(), // TODO: cloneしないようにする
                     globals: jit_bb_globals,
-                    bb_index_manager: BBIndexManager::new(bb_infos[bb.id].type_params.len()),
+                    bb_index_manager: BBIndexManager::new(
+                        bb_infos[bb.id].type_params.len(),
+                        bb_to_globals[bb.id],
+                    ),
                 }
             })
             .collect::<VecMap<BasicBlockId, _>>();
@@ -531,14 +528,6 @@ impl JitFunc {
                 id,
                 typ: LocalType::Type(Type::Val(ValType::FuncRef)),
             });
-            let nil_local = locals.push_with(|id| Local {
-                id,
-                typ: LocalType::Type(Type::Val(ValType::Nil)),
-            });
-            let obj_nil_local = locals.push_with(|id| Local {
-                id,
-                typ: LocalType::Type(Type::Obj),
-            });
 
             let mut exprs = Vec::new();
             exprs.extend([
@@ -554,14 +543,6 @@ impl JitFunc {
                     local: None,
                     expr: Expr::GlobalSet(instantiate_func_global.id, func_ref_local),
                 },
-                ExprAssign {
-                    local: Some(nil_local),
-                    expr: Expr::Nil,
-                },
-                ExprAssign {
-                    local: Some(obj_nil_local),
-                    expr: Expr::ToObj(ValType::Nil, nil_local),
-                },
             ]);
             if self.func_index == GLOBAL_LAYOUT_DEFAULT_INDEX {
                 // func_to_globalsはindex=0のためのもの
@@ -575,37 +556,18 @@ impl JitFunc {
                     id,
                     typ: LocalType::Type(Type::Val(ValType::FuncRef)),
                 });
-                let vector_local = locals.push_with(|id| Local {
-                    id,
-                    typ: LocalType::Type(Type::Val(ValType::Vector)),
-                });
-                let func_obj_local = locals.push_with(|id| Local {
-                    id,
-                    typ: LocalType::Type(Type::Obj),
-                });
+                let (_, index_global) = jit_bb
+                    .bb_index_manager
+                    .from_idx(GLOBAL_LAYOUT_DEFAULT_INDEX);
 
                 exprs.push(ExprAssign {
                     local: Some(func_ref_local),
                     expr: Expr::FuncRef(bb_stub_func_ids[jit_bb.bb_id]),
                 });
-                exprs.push(ExprAssign {
-                    local: Some(func_obj_local),
-                    expr: Expr::ToObj(ValType::FuncRef, func_ref_local),
-                });
-                // TODO: ToObjの列であるVectorに入れるのは非効率なのでFuncTableのようなものが欲しい
-                exprs.push(ExprAssign {
-                    local: Some(vector_local),
-                    expr: Expr::Vector({
-                        let mut v = Vec::new();
-                        v.push(func_obj_local);
-                        v.resize(GLOBAL_LAYOUT_MAX_SIZE, obj_nil_local);
-                        v
-                    }),
-                });
 
                 exprs.push(ExprAssign {
                     local: None,
-                    expr: Expr::GlobalSet(jit_bb.global, vector_local),
+                    expr: Expr::GlobalSet(index_global.id, func_ref_local),
                 });
             }
 
@@ -635,22 +597,15 @@ impl JitFunc {
         let entry_bb_info = &self.jit_bbs[self.func.bb_entry].info;
         let body_func = {
             let mut locals = self.func.locals.clone();
-            let func_ref_obj_local = locals.push_with(|id| Local {
-                id,
-                typ: LocalType::Type(Type::Obj),
-            });
+
             let func_ref_local = locals.push_with(|id| Local {
                 id,
                 typ: LocalType::Type(Type::Val(ValType::FuncRef)),
             });
-            let vector_local = locals.push_with(|id| Local {
-                id,
-                typ: LocalType::Type(Type::Val(ValType::Vector)),
-            });
-            let index_local = locals.push_with(|id| Local {
-                id,
-                typ: LocalType::Type(Type::Val(ValType::Int)),
-            });
+
+            let (_, index_global) = self.jit_bbs[self.func.bb_entry]
+                .bb_index_manager
+                .from_idx(GLOBAL_LAYOUT_DEFAULT_INDEX);
 
             Func {
                 id: body_func_id,
@@ -660,24 +615,10 @@ impl JitFunc {
                 bb_entry: BasicBlockId::from(0),
                 bbs: [BasicBlock {
                     id: BasicBlockId::from(0),
-                    exprs: vec![
-                        ExprAssign {
-                            local: Some(vector_local),
-                            expr: Expr::GlobalGet(self.jit_bbs[self.func.bb_entry].global),
-                        },
-                        ExprAssign {
-                            local: Some(index_local),
-                            expr: Expr::Int(GLOBAL_LAYOUT_DEFAULT_INDEX as i64),
-                        },
-                        ExprAssign {
-                            local: Some(func_ref_obj_local),
-                            expr: Expr::VectorRef(vector_local, index_local),
-                        },
-                        ExprAssign {
-                            local: Some(func_ref_local),
-                            expr: Expr::FromObj(ValType::FuncRef, func_ref_obj_local),
-                        },
-                    ],
+                    exprs: vec![ExprAssign {
+                        local: Some(func_ref_local),
+                        expr: Expr::GlobalGet(index_global.id),
+                    }],
                     next: BasicBlockNext::Terminator(BasicBlockTerminator::TailCallRef(
                         ExprCallRef {
                             func: func_ref_local,
@@ -699,18 +640,20 @@ impl JitFunc {
 
         funcs[body_func_id] = Some(body_func);
 
+        let mut globals = self.globals.clone();
         for jit_bb in self.jit_bbs.values() {
             let func = self.generate_bb_stub_func(
                 jit_module.module_id,
                 jit_bb,
                 bb_stub_func_ids[jit_bb.bb_id],
                 GLOBAL_LAYOUT_DEFAULT_INDEX,
+                &mut globals,
             );
             funcs[bb_stub_func_ids[jit_bb.bb_id]] = Some(func);
         }
 
         Module {
-            globals: self.globals.clone(),
+            globals,
             funcs: funcs.into_iter().map(|f| f.unwrap()).collect(),
             entry: FuncId::from(0),
             meta: Meta {
@@ -727,17 +670,17 @@ impl JitFunc {
         jit_bb: &JitBB,
         id: FuncId,
         index: usize,
+        globals: &mut FxHashMap<GlobalId, Global>,
     ) -> Func {
         /*
         func bb0_stub(...) {
-            bb0 <- get_global bb0_ref
-            if bb0[index] == bb0_stub
-                instantiate_bb(..., index)
+            instantiate_bb(..., index)
             bb0 <- get_global bb0_ref
             bb0(...)
         }
         */
-        let type_args = jit_bb.bb_index_manager.from_idx(index);
+        let (type_args, index_global) = jit_bb.bb_index_manager.from_idx(index);
+        globals.insert(index_global.id, index_global);
         let mut locals = self.func.locals.clone();
         for (type_param_id, type_arg) in type_args.iter_enumerated() {
             if let Some(typ) = type_arg {
@@ -751,20 +694,6 @@ impl JitFunc {
             typ: LocalType::Type(Type::Val(ValType::FuncRef)),
         });
 
-        let index_local = locals.push_with(|id| Local {
-            id,
-            typ: LocalType::Type(Type::Val(ValType::Int)),
-        });
-
-        let vector_local = locals.push_with(|id| Local {
-            id,
-            typ: LocalType::Type(Type::Val(ValType::Vector)),
-        });
-        let vector_obj_local = locals.push_with(|id| Local {
-            id,
-            typ: LocalType::Type(Type::Obj),
-        });
-
         Func {
             id,
             args: jit_bb.info.args.clone(),
@@ -774,10 +703,6 @@ impl JitFunc {
             bbs: [BasicBlock {
                 id: BasicBlockId::from(0),
                 exprs: vec![
-                    ExprAssign {
-                        local: Some(index_local),
-                        expr: Expr::Int(index as i64),
-                    },
                     ExprAssign {
                         local: None,
                         expr: Expr::InstantiateBB(
@@ -789,16 +714,8 @@ impl JitFunc {
                         ),
                     },
                     ExprAssign {
-                        local: Some(vector_local),
-                        expr: Expr::GlobalGet(jit_bb.global),
-                    },
-                    ExprAssign {
-                        local: Some(vector_obj_local),
-                        expr: Expr::VectorRef(vector_local, index_local),
-                    },
-                    ExprAssign {
                         local: Some(func_ref_local),
-                        expr: Expr::FromObj(ValType::FuncRef, vector_obj_local),
+                        expr: Expr::GlobalGet(index_global.id),
                     },
                 ],
                 next: BasicBlockNext::Terminator(BasicBlockTerminator::TailCallRef(ExprCallRef {
@@ -827,13 +744,16 @@ impl JitFunc {
         stub_globals: &FxHashMap<usize, Global>,
         closure_global_layout: &mut ClosureGlobalLayout,
         instantiate_func_global: &Global,
+        global_manager: &mut GlobalManager,
     ) -> Module {
         let mut required_closure_idx = Vec::new();
         let mut required_stubs = Vec::new();
+        let mut globals = self.jit_bbs[orig_entry_bb_id].globals.clone();
 
-        let type_args = self.jit_bbs[orig_entry_bb_id]
+        let (type_args, index_global) = self.jit_bbs[orig_entry_bb_id]
             .bb_index_manager
             .from_idx(index);
+        globals.insert(index_global.id, index_global);
         let func = &self.func;
 
         // If/Jump命令で必要なBBの一覧。(新しいモジュールのBB ID, 元のモジュールのBB ID, isで分岐されたときの型情報)のペアのリスト
@@ -1168,7 +1088,7 @@ impl JitFunc {
             }
             // ここでのtyped_objsは事前計算で分かるもの or この分岐でのみ成り立つもの or assigned_local_to_obj によって追加されたto_objのいずれかである
             let callee_jit_bb = &mut self.jit_bbs[orig_bb_id];
-            let (locals_to_pass, type_args, index) = calculate_args_to_pass(
+            let (locals_to_pass, type_args, index_global) = calculate_args_to_pass(
                 &callee_jit_bb.info,
                 |obj_local| {
                     // TODO: typed_objs と branch_typed_objsのマージでいいかも
@@ -1195,43 +1115,19 @@ impl JitFunc {
                 &assigned_local_to_obj,
                 &mut callee_jit_bb.bb_index_manager,
                 &mut required_stubs,
+                global_manager,
+                &mut globals,
             );
 
-            let obj_local = new_locals.push_with(|id| Local {
-                id,
-                typ: LocalType::Type(Type::Obj),
-            });
             let func_ref_local = new_locals.push_with(|id| Local {
                 id,
                 typ: LocalType::Type(Type::Val(ValType::FuncRef)),
             });
-            let index_local = new_locals.push_with(|id| Local {
-                id,
-                typ: LocalType::Type(Type::Val(ValType::Int)),
-            });
-            let vector_local = new_locals.push_with(|id| Local {
-                id,
-                typ: LocalType::Type(Type::Val(ValType::Vector)),
-            });
 
-            exprs.extend([
-                ExprAssign {
-                    local: Some(vector_local),
-                    expr: Expr::GlobalGet(self.jit_bbs[orig_bb_id].global),
-                },
-                ExprAssign {
-                    local: Some(index_local),
-                    expr: Expr::Int(index as i64),
-                },
-                ExprAssign {
-                    local: Some(obj_local),
-                    expr: Expr::VectorRef(vector_local, index_local),
-                },
-                ExprAssign {
-                    local: Some(func_ref_local),
-                    expr: Expr::FromObj(ValType::FuncRef, obj_local),
-                },
-            ]);
+            exprs.extend([ExprAssign {
+                local: Some(func_ref_local),
+                expr: Expr::GlobalGet(index_global.id),
+            }]);
 
             bbs.insert_node(BasicBlock {
                 id: bb_id,
@@ -1261,17 +1157,18 @@ impl JitFunc {
 
         let required_stubs = required_stubs
             .iter()
-            .filter(|(_, index)| *index != GLOBAL_LAYOUT_DEFAULT_INDEX)
-            .map(|&(bb_id, index)| {
+            .filter(|(_, _, index)| *index != GLOBAL_LAYOUT_DEFAULT_INDEX)
+            .map(|&(bb_id, index_global, index)| {
                 let bb_stub_func_id = funcs.next_key();
                 let func = self.generate_bb_stub_func(
                     module_id,
                     &self.jit_bbs[bb_id],
                     bb_stub_func_id,
                     index,
+                    &mut globals,
                 );
                 funcs.push(func);
-                (bb_id, index, bb_stub_func_id)
+                (bb_id, index_global, bb_stub_func_id)
             })
             .collect::<Vec<_>>();
 
@@ -1391,61 +1288,20 @@ impl JitFunc {
                 id,
                 typ: LocalType::Type(Type::Val(ValType::FuncRef)),
             });
-            let vector_local = locals.push_with(|id| Local {
-                id,
-                typ: LocalType::Type(Type::Val(ValType::Vector)),
-            });
-            let index_local = locals.push_with(|id| Local {
-                id,
-                typ: LocalType::Type(Type::Val(ValType::Int)),
-            });
-            let nil_local = locals.push_with(|id| Local {
-                id,
-                typ: LocalType::Type(Type::Val(ValType::Nil)),
-            });
-            let obj_nil_local = locals.push_with(|id| Local {
-                id,
-                typ: LocalType::Type(Type::Obj),
-            });
 
             bbs.insert_node({
-                let obj_local = locals.push_with(|id| Local {
-                    id,
-                    typ: LocalType::Type(Type::Obj),
-                });
-
                 let mut exprs = vec![
                     ExprAssign {
                         local: None,
                         expr: Expr::InitModule,
                     },
                     ExprAssign {
-                        local: Some(index_local),
-                        expr: Expr::Int(index as i64),
-                    },
-                    ExprAssign {
-                        local: Some(vector_local),
-                        expr: Expr::GlobalGet(self.jit_bbs[orig_entry_bb_id].global),
-                    },
-                    ExprAssign {
                         local: Some(func_ref_local),
                         expr: Expr::FuncRef(body_func_id),
                     },
                     ExprAssign {
-                        local: Some(obj_local),
-                        expr: Expr::ToObj(ValType::FuncRef, func_ref_local),
-                    },
-                    ExprAssign {
                         local: None,
-                        expr: Expr::VectorSet(vector_local, index_local, obj_local),
-                    },
-                    ExprAssign {
-                        local: Some(nil_local),
-                        expr: Expr::Nil,
-                    },
-                    ExprAssign {
-                        local: Some(obj_nil_local),
-                        expr: Expr::ToObj(ValType::Nil, nil_local),
+                        expr: Expr::GlobalSet(index_global.id, func_ref_local),
                     },
                 ];
 
@@ -1473,26 +1329,10 @@ impl JitFunc {
                 }
 
                 /*
-                bbX_ref = get_global bbX_ref_global
-                bbX_ref[index] = to_obj(stub_func)
+                bbX_ref = stub_func
                 */
 
-                for &(bb_id, index, stub_func_id) in required_stubs.iter() {
-                    let vector_local = locals.push_with(|id| Local {
-                        id,
-                        typ: LocalType::Type(Type::Val(ValType::Vector)),
-                    });
-
-                    let index_local = locals.push_with(|id| Local {
-                        id,
-                        typ: LocalType::Type(Type::Val(ValType::Int)),
-                    });
-
-                    let obj_local = locals.push_with(|id| Local {
-                        id,
-                        typ: LocalType::Type(Type::Obj),
-                    });
-
+                for &(_, index_global, stub_func_id) in required_stubs.iter() {
                     let func_ref_local = locals.push_with(|id| Local {
                         id,
                         typ: LocalType::Type(Type::Val(ValType::FuncRef)),
@@ -1500,24 +1340,12 @@ impl JitFunc {
 
                     exprs.extend([
                         ExprAssign {
-                            local: Some(vector_local),
-                            expr: Expr::GlobalGet(self.jit_bbs[bb_id].global),
-                        },
-                        ExprAssign {
-                            local: Some(index_local),
-                            expr: Expr::Int(index as i64),
-                        },
-                        ExprAssign {
                             local: Some(func_ref_local),
                             expr: Expr::FuncRef(stub_func_id),
                         },
                         ExprAssign {
-                            local: Some(obj_local),
-                            expr: Expr::ToObj(ValType::FuncRef, func_ref_local),
-                        },
-                        ExprAssign {
                             local: None,
-                            expr: Expr::VectorSet(vector_local, index_local, obj_local),
+                            expr: Expr::GlobalSet(index_global.id, func_ref_local),
                         },
                     ]);
                 }
@@ -1542,7 +1370,7 @@ impl JitFunc {
         funcs.push(entry_func);
 
         Module {
-            globals: self.jit_bbs[orig_entry_bb_id].globals.clone(),
+            globals,
             funcs,
             entry: entry_func_id,
             meta: Meta {
@@ -1603,7 +1431,6 @@ impl JitFunc {
 #[derive(Debug)]
 struct JitBB {
     bb_id: BasicBlockId,
-    global: GlobalId,
     info: BBInfo,
     typed_objs: VecMap<LocalId, TypedObj>,
     globals: FxHashMap<GlobalId, Global>,
@@ -1692,8 +1519,10 @@ fn calculate_args_to_pass(
     caller_typed_objs: impl Fn(LocalId) -> Option<TypedObj>,
     caller_assigned_local_to_obj: &FxBiHashMap<LocalId, LocalId>,
     bb_index_manager: &mut BBIndexManager,
-    required_stubs: &mut Vec<(BasicBlockId, usize)>,
-) -> (Vec<LocalId>, TiVec<TypeParamId, Option<ValType>>, usize) {
+    required_stubs: &mut Vec<(BasicBlockId, Global, usize)>,
+    global_manager: &mut GlobalManager,
+    globals: &mut FxHashMap<GlobalId, Global>,
+) -> (Vec<LocalId>, TiVec<TypeParamId, Option<ValType>>, Global) {
     let mut type_args = ti_vec![None; callee.type_params.len()];
     let mut args_to_pass = Vec::new();
 
@@ -1715,11 +1544,12 @@ fn calculate_args_to_pass(
         args_to_pass.push(caller_args);
     }
 
-    if let Some((idx, flag)) = bb_index_manager.to_idx(&type_args) {
+    if let Some((global, index, flag)) = bb_index_manager.to_idx(&type_args, global_manager) {
+        globals.insert(global.id, global);
         if flag == IndexFlag::NewInstance {
-            required_stubs.push((callee.bb_id, idx));
+            required_stubs.push((callee.bb_id, global, index));
         }
-        (args_to_pass, type_args, idx)
+        (args_to_pass, type_args, global)
     } else {
         // `|_| None` を渡すと "reached the recursion limit while instantiating" が発生するため
         fn empty_typed_objs(_: LocalId) -> Option<TypedObj> {
@@ -1734,6 +1564,8 @@ fn calculate_args_to_pass(
             caller_assigned_local_to_obj,
             bb_index_manager,
             required_stubs,
+            global_manager,
+            globals,
         )
     }
 }
@@ -1744,34 +1576,45 @@ pub const GLOBAL_LAYOUT_DEFAULT_INDEX: usize = 0;
 #[derive(Debug)]
 pub struct BBIndexManager {
     type_params_to_index: FxBiHashMap<TiVec<TypeParamId, Option<ValType>>, usize>,
+    index_to_global: FxHashMap<usize, Global>,
 }
 
 impl BBIndexManager {
-    pub fn new(params_len: usize) -> Self {
+    pub fn new(params_len: usize, global: Global) -> Self {
         let mut type_params_to_index = FxBiHashMap::default();
+        let mut index_to_global = FxHashMap::default();
         type_params_to_index.insert(ti_vec![None; params_len], GLOBAL_LAYOUT_DEFAULT_INDEX);
+        index_to_global.insert(GLOBAL_LAYOUT_DEFAULT_INDEX, global);
         Self {
             type_params_to_index,
+            index_to_global,
         }
     }
 
     pub fn to_idx(
         &mut self,
         type_params: &TiVec<TypeParamId, Option<ValType>>,
-    ) -> Option<(usize, IndexFlag)> {
+        global_manager: &mut GlobalManager,
+    ) -> Option<(Global, usize, IndexFlag)> {
         if let Some(&index) = self.type_params_to_index.get_by_left(type_params) {
-            Some((index, IndexFlag::ExistingInstance))
+            let global = *self.index_to_global.get(&index).unwrap();
+            Some((global.to_import(), index, IndexFlag::ExistingInstance))
         } else if self.type_params_to_index.len() < GLOBAL_LAYOUT_MAX_SIZE {
             let index = self.type_params_to_index.len();
             self.type_params_to_index.insert(type_params.clone(), index);
-            Some((index, IndexFlag::NewInstance))
+            let global = global_manager.gen_global(ValType::FuncRef.into());
+            self.index_to_global.insert(index, global);
+            Some((global, index, IndexFlag::NewInstance))
         } else {
             None
         }
     }
 
-    pub fn from_idx(&self, index: usize) -> &TiVec<TypeParamId, Option<ValType>> {
-        self.type_params_to_index.get_by_right(&index).unwrap()
+    pub fn from_idx(&self, index: usize) -> (&TiVec<TypeParamId, Option<ValType>>, Global) {
+        (
+            self.type_params_to_index.get_by_right(&index).unwrap(),
+            self.index_to_global.get(&index).unwrap().to_import(),
+        )
     }
 }
 

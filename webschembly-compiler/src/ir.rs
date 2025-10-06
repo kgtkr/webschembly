@@ -1492,6 +1492,13 @@ impl Global {
             ..self
         }
     }
+
+    pub fn to_export(self) -> Self {
+        Self {
+            linkage: GlobalLinkage::Export,
+            ..self
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

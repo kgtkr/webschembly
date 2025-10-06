@@ -1,7 +1,11 @@
+use rustc_hash::FxHashSet;
+
 use crate::ast;
 use crate::compiler_error;
 use crate::ir;
 use crate::ir_generator;
+use crate::ir_generator::GlobalManager;
+use crate::ir_generator::global_manager;
 use crate::ir_processor::desugar::desugar;
 use crate::ir_processor::jit::{Jit, JitConfig};
 use crate::ir_processor::optimizer::remove_unreachable_bb;
@@ -89,10 +93,10 @@ impl Compiler {
             if jit.config().enable_optimization {
                 optimize_module(&mut stub_module);
             }
-            postprocess(&mut stub_module);
+            postprocess(&mut stub_module, &mut self.global_manager);
             Ok(stub_module)
         } else {
-            postprocess(&mut module);
+            postprocess(&mut module, &mut self.global_manager);
             Ok(module)
         }
     }
@@ -110,7 +114,7 @@ impl Compiler {
         if jit.config().enable_optimization {
             optimize_module(&mut module);
         }
-        postprocess(&mut module);
+        postprocess(&mut module, &mut self.global_manager);
         module
     }
 
@@ -123,12 +127,19 @@ impl Compiler {
         index: usize,
     ) -> ir::Module {
         let jit = self.jit.as_mut().expect("JIT is not enabled");
-        let mut module = jit.instantiate_bb(module_id, func_id, func_index, bb_id, index);
+        let mut module = jit.instantiate_bb(
+            module_id,
+            func_id,
+            func_index,
+            bb_id,
+            index,
+            &mut self.global_manager,
+        );
         preprocess_module(&mut module);
         if jit.config().enable_optimization {
             optimize_module(&mut module);
         }
-        postprocess(&mut module);
+        postprocess(&mut module, &mut self.global_manager);
         module
     }
 }
@@ -146,7 +157,7 @@ fn optimize_module(module: &mut ir::Module) {
     }
 }
 
-fn postprocess(module: &mut ir::Module) {
+fn postprocess(module: &mut ir::Module, global_manager: &mut GlobalManager) {
     for func in module.funcs.iter_mut() {
         debug_assert_ssa(func);
 
@@ -158,4 +169,20 @@ fn postprocess(module: &mut ir::Module) {
 
         remove_unused_local(func);
     }
+
+    // モジュールごとにグローバルを真面目に管理するのは大変なのでここで計算
+    let mut global_ids = FxHashSet::default();
+    for func in module.funcs.iter() {
+        for bbs in func.bbs.values() {
+            for expr_assign in bbs.exprs.iter() {
+                if let ir::Expr::GlobalGet(global_id) | ir::Expr::GlobalSet(global_id, _) =
+                    expr_assign.expr
+                {
+                    global_ids.insert(global_id);
+                }
+            }
+        }
+    }
+    module.globals =
+        global_manager.calc_module_globals(&global_ids.iter().copied().collect::<Vec<_>>());
 }
