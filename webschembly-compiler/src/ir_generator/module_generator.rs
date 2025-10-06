@@ -223,7 +223,39 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
     ) -> Func {
         let self_closure = self.local(Type::Val(ValType::Closure));
         let args = self.local(LocalType::VariadicArgs);
-        // TODO: 引数の数が合っているかのチェック
+        let args_len_local = self.local(Type::Val(ValType::Int));
+        let expected_args_len_local = self.local(Type::Val(ValType::Int));
+        let args_len_check_success_local = self.local(Type::Val(ValType::Bool));
+
+        self.exprs.push(ExprAssign {
+            local: Some(args_len_local),
+            expr: Expr::VariadicArgsLength(args),
+        });
+        self.exprs.push(ExprAssign {
+            local: Some(expected_args_len_local),
+            expr: Expr::Int(lambda.args.len() as i64),
+        });
+        self.exprs.push(ExprAssign {
+            local: Some(args_len_check_success_local),
+            expr: Expr::EqNum(args_len_local, expected_args_len_local),
+        });
+
+        let error_bb_id = self.bbs.allocate_key();
+        let merge_bb_id = self.bbs.allocate_key();
+        self.close_bb(BasicBlockNext::If(
+            args_len_check_success_local,
+            merge_bb_id,
+            error_bb_id,
+        ));
+        self.current_bb_id = Some(error_bb_id);
+        let msg = self.local(Type::Val(ValType::String));
+        self.exprs.push(ExprAssign {
+            local: Some(msg),
+            expr: Expr::String("args count mismatch\n".to_string()),
+        });
+        self.close_bb(BasicBlockNext::Terminator(BasicBlockTerminator::Error(msg)));
+        self.current_bb_id = Some(merge_bb_id);
+
         for (arg_idx, arg) in x.get_ref(type_map::key::<Used>()).args.iter().enumerate() {
             if self
                 .module_generator
