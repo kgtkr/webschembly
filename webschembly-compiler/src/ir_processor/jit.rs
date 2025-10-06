@@ -1194,8 +1194,8 @@ impl JitFunc {
                 },
                 &assigned_local_to_obj,
                 &mut callee_jit_bb.bb_index_manager,
+                &mut required_stubs,
             );
-            required_stubs.push((orig_bb_id, index));
 
             let obj_local = new_locals.push_with(|id| Local {
                 id,
@@ -1472,102 +1472,61 @@ impl JitFunc {
                     });
                 }
 
-                BasicBlock {
-                    id: BasicBlockId::from(0),
-                    exprs,
-                    next: BasicBlockNext::Jump(BasicBlockId::from(1)),
-                }
-            });
-
-            /*
-            bbX_ref = get_global bbX_ref_global
-            if bbX_ref[0] != bbX_ref[index]
+                /*
+                bbX_ref = get_global bbX_ref_global
                 bbX_ref[index] = to_obj(stub_func)
-            */
+                */
 
-            for &(bb_id, index, stub_func_id) in required_stubs.iter() {
-                let cond_bb_id = bbs.allocate_key();
-                let then_bb_id = bbs.allocate_key();
-                let next_bb_id = bbs.next_key();
+                for &(bb_id, index, stub_func_id) in required_stubs.iter() {
+                    let vector_local = locals.push_with(|id| Local {
+                        id,
+                        typ: LocalType::Type(Type::Val(ValType::Vector)),
+                    });
 
-                let vector_local = locals.push_with(|id| Local {
-                    id,
-                    typ: LocalType::Type(Type::Val(ValType::Vector)),
-                });
+                    let index_local = locals.push_with(|id| Local {
+                        id,
+                        typ: LocalType::Type(Type::Val(ValType::Int)),
+                    });
 
-                let index_local = locals.push_with(|id| Local {
-                    id,
-                    typ: LocalType::Type(Type::Val(ValType::Int)),
-                });
-
-                bbs.insert_node({
                     let obj_local = locals.push_with(|id| Local {
                         id,
                         typ: LocalType::Type(Type::Obj),
                     });
-                    let bool_local = locals.push_with(|id| Local {
-                        id,
-                        typ: LocalType::Type(Type::Val(ValType::Bool)),
-                    });
 
-                    BasicBlock {
-                        id: cond_bb_id,
-                        exprs: vec![
-                            ExprAssign {
-                                local: Some(vector_local),
-                                expr: Expr::GlobalGet(self.jit_bbs[bb_id].global),
-                            },
-                            ExprAssign {
-                                local: Some(index_local),
-                                expr: Expr::Int(index as i64),
-                            },
-                            ExprAssign {
-                                local: Some(obj_local),
-                                expr: Expr::VectorRef(vector_local, index_local),
-                            },
-                            ExprAssign {
-                                local: Some(bool_local),
-                                expr: Expr::Eq(obj_nil_local, obj_local),
-                            },
-                        ],
-                        next: BasicBlockNext::If(bool_local, then_bb_id, next_bb_id),
-                    }
-                });
-
-                bbs.insert_node({
-                    let obj_local = locals.push_with(|id| Local {
-                        id,
-                        typ: LocalType::Type(Type::Obj),
-                    });
                     let func_ref_local = locals.push_with(|id| Local {
                         id,
                         typ: LocalType::Type(Type::Val(ValType::FuncRef)),
                     });
 
-                    BasicBlock {
-                        id: then_bb_id,
-                        exprs: vec![
-                            ExprAssign {
-                                local: Some(func_ref_local),
-                                expr: Expr::FuncRef(stub_func_id),
-                            },
-                            ExprAssign {
-                                local: Some(obj_local),
-                                expr: Expr::ToObj(ValType::FuncRef, func_ref_local),
-                            },
-                            ExprAssign {
-                                local: None,
-                                expr: Expr::VectorSet(vector_local, index_local, obj_local),
-                            },
-                        ],
-                        next: BasicBlockNext::Jump(next_bb_id),
-                    }
-                });
-            }
-            bbs.push_with(|id| BasicBlock {
-                id,
-                exprs: vec![],
-                next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(func_ref_local)),
+                    exprs.extend([
+                        ExprAssign {
+                            local: Some(vector_local),
+                            expr: Expr::GlobalGet(self.jit_bbs[bb_id].global),
+                        },
+                        ExprAssign {
+                            local: Some(index_local),
+                            expr: Expr::Int(index as i64),
+                        },
+                        ExprAssign {
+                            local: Some(func_ref_local),
+                            expr: Expr::FuncRef(stub_func_id),
+                        },
+                        ExprAssign {
+                            local: Some(obj_local),
+                            expr: Expr::ToObj(ValType::FuncRef, func_ref_local),
+                        },
+                        ExprAssign {
+                            local: None,
+                            expr: Expr::VectorSet(vector_local, index_local, obj_local),
+                        },
+                    ]);
+                }
+
+                BasicBlock {
+                    id: BasicBlockId::from(0),
+                    exprs,
+                    next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(func_ref_local)),
+                }
             });
 
             Func {
@@ -1626,7 +1585,7 @@ impl JitFunc {
 
         let (closure_index, flag) = closure_global_layout.to_idx(&fixed_arg_types)?;
 
-        if flag == ClosureIndexFlag::NewInstance {
+        if flag == IndexFlag::NewInstance {
             required_closure_idx.push(closure_index);
         }
         Some(ExprCallClosure {
@@ -1733,6 +1692,7 @@ fn calculate_args_to_pass(
     caller_typed_objs: impl Fn(LocalId) -> Option<TypedObj>,
     caller_assigned_local_to_obj: &FxBiHashMap<LocalId, LocalId>,
     bb_index_manager: &mut BBIndexManager,
+    required_stubs: &mut Vec<(BasicBlockId, usize)>,
 ) -> (Vec<LocalId>, TiVec<TypeParamId, Option<ValType>>, usize) {
     let mut type_args = ti_vec![None; callee.type_params.len()];
     let mut args_to_pass = Vec::new();
@@ -1755,7 +1715,10 @@ fn calculate_args_to_pass(
         args_to_pass.push(caller_args);
     }
 
-    if let Some(idx) = bb_index_manager.to_idx(&type_args) {
+    if let Some((idx, flag)) = bb_index_manager.to_idx(&type_args) {
+        if flag == IndexFlag::NewInstance {
+            required_stubs.push((callee.bb_id, idx));
+        }
         (args_to_pass, type_args, idx)
     } else {
         // `|_| None` を渡すと "reached the recursion limit while instantiating" が発生するため
@@ -1770,6 +1733,7 @@ fn calculate_args_to_pass(
             empty_typed_objs,
             caller_assigned_local_to_obj,
             bb_index_manager,
+            required_stubs,
         )
     }
 }
@@ -1791,13 +1755,16 @@ impl BBIndexManager {
         }
     }
 
-    pub fn to_idx(&mut self, type_params: &TiVec<TypeParamId, Option<ValType>>) -> Option<usize> {
+    pub fn to_idx(
+        &mut self,
+        type_params: &TiVec<TypeParamId, Option<ValType>>,
+    ) -> Option<(usize, IndexFlag)> {
         if let Some(&index) = self.type_params_to_index.get_by_left(type_params) {
-            Some(index)
+            Some((index, IndexFlag::ExistingInstance))
         } else if self.type_params_to_index.len() < GLOBAL_LAYOUT_MAX_SIZE {
             let index = self.type_params_to_index.len();
             self.type_params_to_index.insert(type_params.clone(), index);
-            Some(index)
+            Some((index, IndexFlag::NewInstance))
         } else {
             None
         }
@@ -1809,7 +1776,7 @@ impl BBIndexManager {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ClosureIndexFlag {
+pub enum IndexFlag {
     NewInstance,
     ExistingInstance,
 }
@@ -1832,15 +1799,15 @@ impl ClosureGlobalLayout {
         }
     }
 
-    pub fn to_idx(&mut self, args: &Vec<Type>) -> Option<(usize, ClosureIndexFlag)> {
+    pub fn to_idx(&mut self, args: &Vec<Type>) -> Option<(usize, IndexFlag)> {
         // TODO: argsの長さに上限を設定
         if let Some(&index) = self.args_to_index.get_by_left(args) {
-            Some((index, ClosureIndexFlag::ExistingInstance))
+            Some((index, IndexFlag::ExistingInstance))
         } else if self.args_to_index.len() + 1 < GLOBAL_LAYOUT_MAX_SIZE {
             // + 1はGLOBAL_LAYOUT_DEFAULT_INDEXの分
             let index = self.args_to_index.len() + 1;
             self.args_to_index.insert(args.clone(), index);
-            Some((index, ClosureIndexFlag::NewInstance))
+            Some((index, IndexFlag::NewInstance))
         } else {
             None
         }
