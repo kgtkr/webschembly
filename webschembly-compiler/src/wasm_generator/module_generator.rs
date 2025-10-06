@@ -1403,6 +1403,11 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 function.instruction(&Instruction::I32Const(*idx as i32));
                 function.instruction(&Instruction::ArrayGet(self.module_generator.args_type));
             }
+            ir::Expr::VariadicArgsLength(args) => {
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*args)));
+                function.instruction(&Instruction::ArrayLen);
+                function.instruction(&Instruction::I64ExtendI32U);
+            }
             ir::Expr::CreateMutFuncRef(id) => {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*id)));
                 function.instruction(&Instruction::StructNew(

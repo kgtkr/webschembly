@@ -460,6 +460,7 @@ pub enum Expr {
     Ge(LocalId, LocalId),
     VariadicArgs(Vec<LocalId>),
     VariadicArgsRef(LocalId, usize),
+    VariadicArgsLength(LocalId),
     // ArgsVariadic(Vec<LocalId>, LocalId<Vector>)
     // ArgsRest(LocalId, usize) -> Vector
     CreateMutFuncRef(LocalId),                   // (FuncRef) -> MutFuncRef
@@ -620,6 +621,9 @@ macro_rules! impl_Expr_local_usages {
                         Expr::VariadicArgsRef(id, _) => {
                             yield (id, LocalUsedFlag::NonPhi);
                         }
+                        Expr::VariadicArgsLength(id) => {
+                            yield (id, LocalUsedFlag::NonPhi);
+                        }
                         Expr::CreateMutFuncRef(id) => {
                             yield (id, LocalUsedFlag::NonPhi);
                         }
@@ -731,6 +735,7 @@ impl Expr {
             | Expr::Ge(..)
             | Expr::VariadicArgs(..)
             | Expr::VariadicArgsRef(..)
+            | Expr::VariadicArgsLength(..)
             | Expr::Add(..)
             | Expr::Sub(..)
             | Expr::Mul(..)
@@ -965,6 +970,9 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
             }
             Expr::VariadicArgsRef(id, index) => {
                 write!(f, "variadic_args_ref({}, {})", id.display(self.meta), index)
+            }
+            Expr::VariadicArgsLength(id) => {
+                write!(f, "variadic_args_length({})", id.display(self.meta))
             }
             Expr::CreateMutFuncRef(func_ref_id) => {
                 write!(f, "create_mut_func_ref({})", func_ref_id.display(self.meta))
