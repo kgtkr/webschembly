@@ -83,8 +83,6 @@ impl Jit {
             &self.jit_module[module_id],
             func_id,
             func_index,
-            &self.stub_globals,
-            self.instantiate_func_global.as_ref().unwrap(),
             &mut self.closure_global_layout,
         );
         self.jit_module[module_id]
@@ -132,7 +130,6 @@ struct JitModule {
     module: Module,
     jit_funcs: FxHashMap<(FuncId, usize), JitFunc>,
     func_to_globals: TiVec<FuncId, GlobalId>,
-    globals: FxHashMap<GlobalId, Global>,
 }
 
 impl JitModule {
@@ -142,12 +139,6 @@ impl JitModule {
             .iter()
             .map(|_| global_manager.gen_global(LocalType::Type(Type::Val(ValType::FuncRef))))
             .collect::<TiVec<FuncId, _>>();
-
-        let globals = {
-            let mut globals = module.globals.clone();
-            globals.extend(func_to_globals.iter().copied().map(|g| (g.id, g)));
-            globals
-        };
 
         let func_to_globals = func_to_globals
             .iter()
@@ -159,7 +150,6 @@ impl JitModule {
             module,
             jit_funcs: FxHashMap::default(),
             func_to_globals,
-            globals,
         }
     }
 
@@ -169,7 +159,6 @@ impl JitModule {
         stub_globals: &mut FxHashMap<usize, Global>,
         instantiate_func_global: &mut Option<Global>,
     ) -> Module {
-        let mut globals = self.globals.clone();
         // entry関数もあるので+1してる
         let stub_func_ids = self
             .module
@@ -231,17 +220,11 @@ impl JitModule {
                         expr: Expr::GlobalSet(stub_global.id, stub_local),
                     });
                 }
-                globals.extend(stub_globals.iter().map(|(_, &v)| (v.id, v)));
-            } else {
-                globals.extend(stub_globals.iter().map(|(_, v)| (v.id, v.to_import())))
             };
             // instantiate_func_globalがNoneの場合も同様に初期化を行う
-            if let Some(g) = instantiate_func_global {
-                globals.insert(g.id, g.to_import());
-            } else {
+            if instantiate_func_global.is_none() {
                 let g = global_manager.gen_global(ValType::FuncRef.into());
                 *instantiate_func_global = Some(g);
-                globals.insert(g.id, g);
             }
 
             let func = Func {
@@ -366,7 +349,7 @@ impl JitModule {
         }
 
         Module {
-            globals,
+            globals: FxHashMap::default(),
             funcs,
             entry: FuncId::from(0),
             meta: Meta {
@@ -384,7 +367,6 @@ struct JitFunc {
     func_index: usize,
     func: Func,
     jit_bbs: VecMap<BasicBlockId, JitBB>,
-    globals: FxHashMap<GlobalId, Global>,
 }
 
 impl JitFunc {
@@ -393,8 +375,6 @@ impl JitFunc {
         jit_module: &JitModule,
         func_id: FuncId,
         func_index: usize,
-        stub_globals: &FxHashMap<usize, Global>,
-        instantiate_func_global: &Global,
         closure_global_layout: &mut ClosureGlobalLayout,
     ) -> Self {
         let module = &jit_module.module;
@@ -411,22 +391,6 @@ impl JitFunc {
             })
             .collect::<VecMap<BasicBlockId, _>>();
         let bb_infos = calculate_bb_info(&func);
-
-        let globals = {
-            let mut globals = FxHashMap::default();
-            globals.extend(
-                jit_module
-                    .globals
-                    .iter()
-                    .map(|(id, g)| (*id, g.to_import())),
-            );
-            globals.extend(bb_to_globals.values().copied().map(|g| (g.id, g)));
-            globals.insert(
-                instantiate_func_global.id,
-                instantiate_func_global.to_import(),
-            );
-            globals
-        };
 
         // all_typed_objs: BBごとの型推論結果
         // あるBBの型推論結果はその支配集合にまで伝播させる
@@ -472,19 +436,10 @@ impl JitFunc {
             .bbs
             .values()
             .map(|bb| {
-                // TODO: JitBB::newに移動する
-                let mut jit_bb_globals = FxHashMap::default();
-                jit_bb_globals.extend(globals.iter().map(|(id, g)| (*id, g.to_import())));
-                jit_bb_globals.extend(stub_globals.iter().map(|(_, g)| (g.id, g.to_import())));
-                jit_bb_globals.insert(
-                    instantiate_func_global.id,
-                    instantiate_func_global.to_import(),
-                );
                 JitBB {
                     bb_id: bb.id,
                     info: bb_infos[bb.id].clone(),
                     typed_objs: all_typed_objs[bb.id].clone(), // TODO: cloneしないようにする
-                    globals: jit_bb_globals,
                     bb_index_manager: BBIndexManager::new(
                         bb_infos[bb.id].type_params.len(),
                         bb_to_globals[bb.id],
@@ -498,7 +453,6 @@ impl JitFunc {
             func_index,
             func,
             jit_bbs,
-            globals,
         }
     }
 
@@ -640,20 +594,18 @@ impl JitFunc {
 
         funcs[body_func_id] = Some(body_func);
 
-        let mut globals = self.globals.clone();
         for jit_bb in self.jit_bbs.values() {
             let func = self.generate_bb_stub_func(
                 jit_module.module_id,
                 jit_bb,
                 bb_stub_func_ids[jit_bb.bb_id],
                 GLOBAL_LAYOUT_DEFAULT_INDEX,
-                &mut globals,
             );
             funcs[bb_stub_func_ids[jit_bb.bb_id]] = Some(func);
         }
 
         Module {
-            globals,
+            globals: FxHashMap::default(),
             funcs: funcs.into_iter().map(|f| f.unwrap()).collect(),
             entry: FuncId::from(0),
             meta: Meta {
@@ -670,7 +622,6 @@ impl JitFunc {
         jit_bb: &JitBB,
         id: FuncId,
         index: usize,
-        globals: &mut FxHashMap<GlobalId, Global>,
     ) -> Func {
         /*
         func bb0_stub(...) {
@@ -680,7 +631,6 @@ impl JitFunc {
         }
         */
         let (type_args, index_global) = jit_bb.bb_index_manager.from_idx(index);
-        globals.insert(index_global.id, index_global);
         let mut locals = self.func.locals.clone();
         for (type_param_id, type_arg) in type_args.iter_enumerated() {
             if let Some(typ) = type_arg {
@@ -748,12 +698,10 @@ impl JitFunc {
     ) -> Module {
         let mut required_closure_idx = Vec::new();
         let mut required_stubs = Vec::new();
-        let mut globals = self.jit_bbs[orig_entry_bb_id].globals.clone();
 
         let (type_args, index_global) = self.jit_bbs[orig_entry_bb_id]
             .bb_index_manager
             .from_idx(index);
-        globals.insert(index_global.id, index_global);
         let func = &self.func;
 
         // If/Jump命令で必要なBBの一覧。(新しいモジュールのBB ID, 元のモジュールのBB ID, isで分岐されたときの型情報)のペアのリスト
@@ -1116,7 +1064,6 @@ impl JitFunc {
                 &mut callee_jit_bb.bb_index_manager,
                 &mut required_stubs,
                 global_manager,
-                &mut globals,
             );
 
             let func_ref_local = new_locals.push_with(|id| Local {
@@ -1165,7 +1112,6 @@ impl JitFunc {
                     &self.jit_bbs[bb_id],
                     bb_stub_func_id,
                     index,
-                    &mut globals,
                 );
                 funcs.push(func);
                 (bb_id, index_global, bb_stub_func_id)
@@ -1370,7 +1316,7 @@ impl JitFunc {
         funcs.push(entry_func);
 
         Module {
-            globals,
+            globals: FxHashMap::default(),
             funcs,
             entry: entry_func_id,
             meta: Meta {
@@ -1433,7 +1379,6 @@ struct JitBB {
     bb_id: BasicBlockId,
     info: BBInfo,
     typed_objs: VecMap<LocalId, TypedObj>,
-    globals: FxHashMap<GlobalId, Global>,
     bb_index_manager: BBIndexManager,
 }
 
@@ -1521,7 +1466,6 @@ fn calculate_args_to_pass(
     bb_index_manager: &mut BBIndexManager,
     required_stubs: &mut Vec<(BasicBlockId, Global, usize)>,
     global_manager: &mut GlobalManager,
-    globals: &mut FxHashMap<GlobalId, Global>,
 ) -> (Vec<LocalId>, TiVec<TypeParamId, Option<ValType>>, Global) {
     let mut type_args = ti_vec![None; callee.type_params.len()];
     let mut args_to_pass = Vec::new();
@@ -1545,7 +1489,6 @@ fn calculate_args_to_pass(
     }
 
     if let Some((global, index, flag)) = bb_index_manager.to_idx(&type_args, global_manager) {
-        globals.insert(global.id, global);
         if flag == IndexFlag::NewInstance {
             required_stubs.push((callee.bb_id, global, index));
         }
@@ -1565,7 +1508,6 @@ fn calculate_args_to_pass(
             bb_index_manager,
             required_stubs,
             global_manager,
-            globals,
         )
     }
 }

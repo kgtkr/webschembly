@@ -5,7 +5,6 @@ use crate::compiler_error;
 use crate::ir;
 use crate::ir_generator;
 use crate::ir_generator::GlobalManager;
-use crate::ir_generator::global_manager;
 use crate::ir_processor::desugar::desugar;
 use crate::ir_processor::jit::{Jit, JitConfig};
 use crate::ir_processor::optimizer::remove_unreachable_bb;
