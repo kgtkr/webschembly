@@ -1007,6 +1007,16 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     self.module_generator.instantiate_func_func,
                 ));
             }
+            ir::Expr::InstantiateClosureFunc(module_id, func_id, func_index) => {
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*module_id)));
+                function.instruction(&Instruction::I32WrapI64);
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*func_id)));
+                function.instruction(&Instruction::I32WrapI64);
+                function.instruction(&Instruction::I32Const(*func_index as i32));
+                function.instruction(&Instruction::Call(
+                    self.module_generator.instantiate_func_func,
+                ));
+            }
             ir::Expr::InstantiateBB(module_id, func_id, func_index, bb_id, index) => {
                 function.instruction(&Instruction::I32Const(usize::from(*module_id) as i32));
                 function.instruction(&Instruction::I32Const(usize::from(*func_id) as i32));
@@ -1140,6 +1150,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     struct_type_index: self.module_generator.closure_type,
                     field_index: ModuleGenerator::CLOSURE_MODULE_ID_FIELD,
                 });
+                function.instruction(&Instruction::I64ExtendI32S);
             }
             ir::Expr::ClosureFuncId(closure) => {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*closure)));
@@ -1147,6 +1158,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     struct_type_index: self.module_generator.closure_type,
                     field_index: ModuleGenerator::CLOSURE_FUNC_ID_FIELD,
                 });
+                function.instruction(&Instruction::I64ExtendI32S);
             }
             ir::Expr::ClosureEntrypointTable(closure) => {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*closure)));

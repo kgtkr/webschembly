@@ -401,6 +401,7 @@ pub enum Expr {
     Nop,                        // 左辺はNoneでなければならない
     Phi(Vec<PhiIncomingValue>), // BBの先頭にのみ連続して出現可能(Nopが間に入るのは可)
     InstantiateFunc(ModuleId, FuncId, usize),
+    InstantiateClosureFunc(LocalId, LocalId, usize), // InstantiateFuncのModuleId/FuncIdを動的に指定する版
     InstantiateBB(ModuleId, FuncId, usize, BasicBlockId, usize),
     Bool(bool),
     Int(i64),
@@ -643,6 +644,10 @@ macro_rules! impl_Expr_local_usages {
                             yield (entrypoint_table_id, LocalUsedFlag::NonPhi);
                             yield (mut_func_ref_id, LocalUsedFlag::NonPhi);
                         }
+                        Expr::InstantiateClosureFunc(module_id, func_id, _) => {
+                            yield (module_id, LocalUsedFlag::NonPhi);
+                            yield (func_id, LocalUsedFlag::NonPhi);
+                        }
 
 
                         Expr::Nop
@@ -753,6 +758,7 @@ impl Expr {
             | Expr::EntrypointTableRef(..)
             | Expr::SetEntrypointTable(..) => ExprPurelity::ImpureRead,
             Expr::InstantiateFunc(..)
+            | Expr::InstantiateClosureFunc(..)
             | Expr::InstantiateBB(..)
             | Expr::SetRef(..)
             | Expr::SetMutFuncRef(..)
@@ -798,6 +804,15 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                     "instantiate_func({}, {}, {})",
                     module_id.display(self.meta.meta),
                     func_id.display(self.meta.meta),
+                    func_index
+                )
+            }
+            Expr::InstantiateClosureFunc(module_id, func_id, func_index) => {
+                write!(
+                    f,
+                    "instantiate_closure_func({}, {}, {})",
+                    module_id.display(self.meta),
+                    func_id.display(self.meta),
                     func_index
                 )
             }

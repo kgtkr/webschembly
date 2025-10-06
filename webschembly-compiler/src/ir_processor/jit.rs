@@ -36,9 +36,12 @@ pub struct Jit {
     config: JitConfig,
     jit_module: TiVec<ModuleId, JitModule>,
     global_layout: GlobalLayout,
+    closure_global_layout: ClosureGlobalLayout,
     // 0..GLOBAL_LAYOUT_MAX_SIZEまでのindexに対応する関数のスタブが入ったMutFuncRef
     // func_indexがインスタンス化されるときにMutFuncRefにFuncRefがセットされる
     stub_globals: FxHashMap<usize, Global>,
+    // instantiate_funcの結果を保存するグローバル
+    instantiate_func_global: Option<Global>,
 }
 
 impl Jit {
@@ -47,7 +50,9 @@ impl Jit {
             config,
             jit_module: TiVec::new(),
             global_layout: GlobalLayout::new(),
+            closure_global_layout: ClosureGlobalLayout::new(),
             stub_globals: FxHashMap::default(),
+            instantiate_func_global: None,
         }
     }
 
@@ -63,7 +68,11 @@ impl Jit {
         let module_id = self.jit_module.next_key();
         self.jit_module
             .push(JitModule::new(global_manager, module_id, module));
-        self.jit_module[module_id].generate_stub_module(global_manager, &mut self.stub_globals)
+        self.jit_module[module_id].generate_stub_module(
+            global_manager,
+            &mut self.stub_globals,
+            &mut self.instantiate_func_global,
+        )
     }
 
     pub fn instantiate_func(
@@ -79,13 +88,17 @@ impl Jit {
             func_id,
             func_index,
             &self.stub_globals,
+            self.instantiate_func_global.as_ref().unwrap(),
         );
         self.jit_module[module_id]
             .jit_funcs
             .insert((func_id, func_index), jit_func);
 
-        self.jit_module[module_id].jit_funcs[&(func_id, func_index)]
-            .generate_func_module(&self.global_layout, &self.jit_module[module_id])
+        self.jit_module[module_id].jit_funcs[&(func_id, func_index)].generate_func_module(
+            &self.global_layout,
+            &self.jit_module[module_id],
+            self.instantiate_func_global.as_ref().unwrap(),
+        )
     }
 
     pub fn instantiate_bb(
@@ -105,6 +118,8 @@ impl Jit {
             index,
             &mut self.global_layout,
             &self.stub_globals,
+            &mut self.closure_global_layout,
+            self.instantiate_func_global.as_ref().unwrap(),
         )
     }
 }
@@ -150,6 +165,7 @@ impl JitModule {
         &self,
         global_manager: &mut GlobalManager,
         stub_globals: &mut FxHashMap<usize, Global>,
+        instantiate_func_global: &mut Option<Global>,
     ) -> Module {
         let mut globals = self.globals.clone();
         // entry関数もあるので+1してる
@@ -217,6 +233,14 @@ impl JitModule {
             } else {
                 globals.extend(stub_globals.iter().map(|(_, v)| (v.id, v.to_import())))
             };
+            // instantiate_func_globalがNoneの場合も同様に初期化を行う
+            if let Some(g) = instantiate_func_global {
+                globals.insert(g.id, g.to_import());
+            } else {
+                let g = global_manager.gen_global(ValType::FuncRef.into());
+                *instantiate_func_global = Some(g);
+                globals.insert(g.id, g);
+            }
 
             let func = Func {
                 id: funcs.next_key(),
@@ -367,6 +391,7 @@ impl JitFunc {
         func_id: FuncId,
         func_index: usize,
         stub_globals: &FxHashMap<usize, Global>,
+        instantiate_func_global: &Global,
     ) -> Self {
         let module = &jit_module.module;
         let func = &module.funcs[func_id];
@@ -391,6 +416,10 @@ impl JitFunc {
                     .map(|(id, g)| (*id, g.to_import())),
             );
             globals.extend(bb_to_globals.values().copied().map(|g| (g.id, g)));
+            globals.insert(
+                instantiate_func_global.id,
+                instantiate_func_global.to_import(),
+            );
             globals
         };
 
@@ -450,6 +479,10 @@ impl JitFunc {
                     let mut jit_bb_globals = FxHashMap::default();
                     jit_bb_globals.extend(globals.iter().map(|(id, g)| (*id, g.to_import())));
                     jit_bb_globals.extend(stub_globals.iter().map(|(_, g)| (g.id, g.to_import())));
+                    jit_bb_globals.insert(
+                        instantiate_func_global.id,
+                        instantiate_func_global.to_import(),
+                    );
                     JitBB {
                         bb_id: bb.id,
                         global: bb_to_globals[bb.id],
@@ -463,7 +496,12 @@ impl JitFunc {
         }
     }
 
-    fn generate_func_module(&self, global_layout: &GlobalLayout, jit_module: &JitModule) -> Module {
+    fn generate_func_module(
+        &self,
+        global_layout: &GlobalLayout,
+        jit_module: &JitModule,
+        instantiate_func_global: &Global,
+    ) -> Module {
         let module = &jit_module.module;
         let func = &module.funcs[self.func_id];
 
@@ -510,6 +548,10 @@ impl JitFunc {
                 ExprAssign {
                     local: None,
                     expr: Expr::GlobalSet(jit_module.func_to_globals[func.id], func_ref_local),
+                },
+                ExprAssign {
+                    local: None,
+                    expr: Expr::GlobalSet(instantiate_func_global.id, func_ref_local),
                 },
                 ExprAssign {
                     local: Some(nil_local),
@@ -777,7 +819,10 @@ impl JitFunc {
         index: usize,
         global_layout: &mut GlobalLayout,
         stub_globals: &FxHashMap<usize, Global>,
+        closure_global_layout: &mut ClosureGlobalLayout,
+        instantiate_func_global: &Global,
     ) -> Module {
+        let mut required_closure_idx = Vec::new();
         let mut required_stubs = Vec::new();
 
         let type_args =
@@ -821,6 +866,16 @@ impl JitFunc {
                         *local = obj_local;
                     }
                 }
+            }
+            let mut typed_objs = self.jit_bbs[orig_bb_id].typed_objs.clone();
+            for (local, obj_local) in &assigned_local_to_obj {
+                typed_objs.insert(*obj_local, TypedObj {
+                    val_type: *local,
+                    typ: match new_locals[*local].typ {
+                        LocalType::Type(Type::Val(v)) => v,
+                        _ => unreachable!("obj_local must be Val type"),
+                    },
+                });
             }
 
             /*
@@ -924,10 +979,38 @@ impl JitFunc {
                             local_to_expr_idx.get(&call_closure.args[0])
                         && let Expr::Args(args) = &exprs[*args_expr_idx as usize].expr =>
                     {
-                        log::debug!("optimize call_closure to call_ref: {:?}", args);
+                        let mut fixed_args = Vec::new();
+                        let mut fixed_arg_types = Vec::new();
+                        for &obj_arg in args {
+                            if let Some(typed_obj) = typed_objs.get(obj_arg) {
+                                fixed_args.push(typed_obj.val_type);
+                                fixed_arg_types.push(Type::from(typed_obj.typ));
+                            } else {
+                                fixed_args.push(obj_arg);
+                                fixed_arg_types.push(Type::Obj);
+                            }
+                        }
+                        let call_closure = if let Some((closure_index, flag)) =
+                            closure_global_layout.to_idx(&fixed_arg_types)
+                        {
+                            if flag == ClosureIndexFlag::NewInstance {
+                                required_closure_idx.push(closure_index);
+                            }
+                            ExprCallClosure {
+                                closure: call_closure.closure,
+                                args: fixed_args,
+                                arg_types: fixed_arg_types
+                                    .into_iter()
+                                    .map(|typ| LocalType::Type(typ))
+                                    .collect(),
+                                func_index: closure_index,
+                            }
+                        } else {
+                            call_closure.clone()
+                        };
                         exprs.push(ExprAssign {
                             local,
-                            expr: Expr::CallClosure(call_closure.clone()),
+                            expr: Expr::CallClosure(call_closure),
                         });
                     }
                     ref expr => {
@@ -1081,6 +1164,7 @@ impl JitFunc {
             let (locals_to_pass, type_args, index) = calculate_args_to_pass(
                 &self.jit_bbs[orig_bb_id].info,
                 |obj_local| {
+                    // TODO: typed_objs と branch_typed_objsのマージでいいかも
                     self.jit_bbs[orig_bb_id]
                         .typed_objs
                         .get(obj_local)
@@ -1186,6 +1270,113 @@ impl JitFunc {
             })
             .collect::<Vec<_>>();
 
+        let required_closure_idx = required_closure_idx
+            .iter()
+            .map(|&closure_idx| {
+                let arg_types = closure_global_layout.from_idx(closure_idx).unwrap();
+                let stub_func_id = funcs.next_key();
+                let mut locals = VecMap::new();
+                let mut args = Vec::new();
+                let closure_local = locals.push_with(|id| Local {
+                    id,
+                    typ: ValType::Closure.into(),
+                });
+                let mut arg_locals = Vec::new();
+                args.push(closure_local);
+                for &typ in arg_types.iter() {
+                    let local = locals.push_with(|id| Local {
+                        id,
+                        typ: LocalType::Type(typ),
+                    });
+                    args.push(local);
+                    arg_locals.push(local);
+                }
+
+                let module_id_local = locals.push_with(|id| Local {
+                    id,
+                    typ: LocalType::Type(Type::Val(ValType::Int)),
+                });
+                let func_id_local = locals.push_with(|id| Local {
+                    id,
+                    typ: LocalType::Type(Type::Val(ValType::Int)),
+                });
+                let func_ref_local = locals.push_with(|id| Local {
+                    id,
+                    typ: LocalType::Type(Type::Val(ValType::FuncRef)),
+                });
+                let mut_func_ref_local = locals.push_with(|id| Local {
+                    id,
+                    typ: LocalType::MutFuncRef,
+                });
+                let entrypoint_table_local = locals.push_with(|id| Local {
+                    id,
+                    typ: LocalType::EntrypointTable,
+                });
+
+                let mut exprs = Vec::new();
+
+                exprs.push(ExprAssign {
+                    local: Some(module_id_local),
+                    expr: Expr::ClosureModuleId(closure_local),
+                });
+                exprs.push(ExprAssign {
+                    local: Some(func_id_local),
+                    expr: Expr::ClosureFuncId(closure_local),
+                });
+                exprs.push(ExprAssign {
+                    local: None,
+                    expr: Expr::InstantiateClosureFunc(module_id_local, func_id_local, closure_idx),
+                });
+                exprs.push(ExprAssign {
+                    local: Some(func_ref_local),
+                    expr: Expr::GlobalGet(instantiate_func_global.id),
+                });
+                exprs.push(ExprAssign {
+                    local: Some(mut_func_ref_local),
+                    expr: Expr::CreateMutFuncRef(func_ref_local),
+                });
+                exprs.push(ExprAssign {
+                    local: Some(entrypoint_table_local),
+                    expr: Expr::ClosureEntrypointTable(closure_local),
+                });
+                exprs.push(ExprAssign {
+                    local: None,
+                    expr: Expr::SetEntrypointTable(
+                        closure_idx,
+                        entrypoint_table_local,
+                        mut_func_ref_local,
+                    ),
+                });
+
+                funcs.push(Func {
+                    id: stub_func_id,
+                    args,
+                    ret_type: LocalType::Type(Type::Obj),
+                    locals,
+                    bb_entry: BasicBlockId::from(0),
+                    bbs: [BasicBlock {
+                        id: BasicBlockId::from(0),
+                        exprs,
+                        next: BasicBlockNext::Terminator(BasicBlockTerminator::TailCallClosure(
+                            ExprCallClosure {
+                                closure: closure_local,
+                                args: arg_locals,
+                                arg_types: arg_types
+                                    .iter()
+                                    .map(|&typ| LocalType::Type(typ))
+                                    .collect(),
+                                func_index: closure_idx,
+                            },
+                        )),
+                    }]
+                    .into_iter()
+                    .collect(),
+                });
+
+                (closure_idx, stub_func_id)
+            })
+            .collect::<Vec<_>>();
+
         let entry_func = {
             let mut locals = VecMap::new();
 
@@ -1218,42 +1409,67 @@ impl JitFunc {
                     typ: LocalType::Type(Type::Obj),
                 });
 
+                let mut exprs = vec![
+                    ExprAssign {
+                        local: None,
+                        expr: Expr::InitModule,
+                    },
+                    ExprAssign {
+                        local: Some(index_local),
+                        expr: Expr::Int(index as i64),
+                    },
+                    ExprAssign {
+                        local: Some(vector_local),
+                        expr: Expr::GlobalGet(self.jit_bbs[orig_entry_bb_id].global),
+                    },
+                    ExprAssign {
+                        local: Some(func_ref_local),
+                        expr: Expr::FuncRef(body_func_id),
+                    },
+                    ExprAssign {
+                        local: Some(obj_local),
+                        expr: Expr::ToObj(ValType::FuncRef, func_ref_local),
+                    },
+                    ExprAssign {
+                        local: None,
+                        expr: Expr::VectorSet(vector_local, index_local, obj_local),
+                    },
+                    ExprAssign {
+                        local: Some(nil_local),
+                        expr: Expr::Nil,
+                    },
+                    ExprAssign {
+                        local: Some(obj_nil_local),
+                        expr: Expr::ToObj(ValType::Nil, nil_local),
+                    },
+                ];
+
+                for &(closure_idx, stub_func_id) in required_closure_idx.iter() {
+                    let stub_func_ref_local = locals.push_with(|id| Local {
+                        id,
+                        typ: LocalType::Type(Type::Val(ValType::FuncRef)),
+                    });
+                    let stub_mut_func_ref_local = locals.push_with(|id| Local {
+                        id,
+                        typ: LocalType::MutFuncRef,
+                    });
+                    exprs.push(ExprAssign {
+                        local: Some(stub_func_ref_local),
+                        expr: Expr::FuncRef(stub_func_id),
+                    });
+                    exprs.push(ExprAssign {
+                        local: Some(stub_mut_func_ref_local),
+                        expr: Expr::GlobalGet(stub_globals[&closure_idx].id),
+                    });
+                    exprs.push(ExprAssign {
+                        local: None,
+                        expr: Expr::SetMutFuncRef(stub_mut_func_ref_local, stub_func_ref_local),
+                    });
+                }
+
                 BasicBlock {
                     id: BasicBlockId::from(0),
-                    exprs: vec![
-                        ExprAssign {
-                            local: None,
-                            expr: Expr::InitModule,
-                        },
-                        ExprAssign {
-                            local: Some(index_local),
-                            expr: Expr::Int(index as i64),
-                        },
-                        ExprAssign {
-                            local: Some(vector_local),
-                            expr: Expr::GlobalGet(self.jit_bbs[orig_entry_bb_id].global),
-                        },
-                        ExprAssign {
-                            local: Some(func_ref_local),
-                            expr: Expr::FuncRef(body_func_id),
-                        },
-                        ExprAssign {
-                            local: Some(obj_local),
-                            expr: Expr::ToObj(ValType::FuncRef, func_ref_local),
-                        },
-                        ExprAssign {
-                            local: None,
-                            expr: Expr::VectorSet(vector_local, index_local, obj_local),
-                        },
-                        ExprAssign {
-                            local: Some(nil_local),
-                            expr: Expr::Nil,
-                        },
-                        ExprAssign {
-                            local: Some(obj_nil_local),
-                            expr: Expr::ToObj(ValType::Nil, nil_local),
-                        },
-                    ],
+                    exprs,
                     next: BasicBlockNext::Jump(BasicBlockId::from(1)),
                 }
             });
@@ -1553,6 +1769,53 @@ impl GlobalLayout {
             Cow::Owned(ti_vec![None; params_len])
         } else {
             Cow::Borrowed(self.type_params_to_index.get_by_right(&index).unwrap())
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClosureIndexFlag {
+    NewInstance,
+    ExistingInstance,
+}
+
+#[derive(Debug)]
+pub struct ClosureGlobalLayout {
+    args_to_index: FxBiHashMap<Vec<Type>, usize>,
+}
+
+impl Default for ClosureGlobalLayout {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ClosureGlobalLayout {
+    pub fn new() -> Self {
+        Self {
+            args_to_index: FxBiHashMap::default(),
+        }
+    }
+
+    pub fn to_idx(&mut self, args: &Vec<Type>) -> Option<(usize, ClosureIndexFlag)> {
+        // TODO: argsの長さに上限を設定
+        if let Some(&index) = self.args_to_index.get_by_left(args) {
+            Some((index, ClosureIndexFlag::ExistingInstance))
+        } else if self.args_to_index.len() + 1 < GLOBAL_LAYOUT_MAX_SIZE {
+            // + 1はGLOBAL_LAYOUT_DEFAULT_INDEXの分
+            let index = self.args_to_index.len() + 1;
+            self.args_to_index.insert(args.clone(), index);
+            Some((index, ClosureIndexFlag::NewInstance))
+        } else {
+            None
+        }
+    }
+
+    pub fn from_idx(&self, index: usize) -> Option<&Vec<Type>> {
+        if index == GLOBAL_LAYOUT_DEFAULT_INDEX {
+            None
+        } else {
+            Some(self.args_to_index.get_by_right(&index).unwrap())
         }
     }
 }
