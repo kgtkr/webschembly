@@ -701,7 +701,7 @@ impl JitFunc {
         for jit_bb in self.jit_bbs.values() {
             let func = self.generate_bb_stub_func(
                 global_layout,
-                jit_module,
+                jit_module.module_id,
                 jit_bb,
                 bb_stub_func_ids[jit_bb.bb_id],
                 GLOBAL_LAYOUT_DEFAULT_INDEX,
@@ -724,7 +724,7 @@ impl JitFunc {
     fn generate_bb_stub_func(
         &self,
         global_layout: &GlobalLayout,
-        jit_module: &JitModule,
+        module_id: ModuleId,
         jit_bb: &JitBB,
         id: FuncId,
         index: usize,
@@ -782,7 +782,7 @@ impl JitFunc {
                     ExprAssign {
                         local: None,
                         expr: Expr::InstantiateBB(
-                            jit_module.module_id,
+                            module_id,
                             self.func.id,
                             self.func_index,
                             jit_bb.bb_id,
@@ -1265,7 +1265,7 @@ impl JitFunc {
                 let bb_stub_func_id = funcs.next_key();
                 let func = self.generate_bb_stub_func(
                     global_layout,
-                    jit_module,
+                    jit_module.module_id,
                     &self.jit_bbs[bb_id],
                     bb_stub_func_id,
                     index,
