@@ -35,7 +35,6 @@ impl JitConfig {
 pub struct Jit {
     config: JitConfig,
     jit_module: TiVec<ModuleId, JitModule>,
-    global_layout: GlobalLayout,
     closure_global_layout: ClosureGlobalLayout,
     // 0..GLOBAL_LAYOUT_MAX_SIZEまでのindexに対応する関数のスタブが入ったMutFuncRef
     // func_indexがインスタンス化されるときにMutFuncRefにFuncRefがセットされる
@@ -49,7 +48,6 @@ impl Jit {
         Self {
             config,
             jit_module: TiVec::new(),
-            global_layout: GlobalLayout::new(),
             closure_global_layout: ClosureGlobalLayout::new(),
             stub_globals: FxHashMap::default(),
             instantiate_func_global: None,
@@ -96,7 +94,6 @@ impl Jit {
             .insert((func_id, func_index), jit_func);
 
         self.jit_module[module_id].jit_funcs[&(func_id, func_index)].generate_func_module(
-            &self.global_layout,
             &self.jit_module[module_id],
             self.instantiate_func_global.as_ref().unwrap(),
         )
@@ -122,7 +119,6 @@ impl Jit {
             &jit_module.module,
             bb_id,
             index,
-            &mut self.global_layout,
             &self.stub_globals,
             &mut self.closure_global_layout,
             self.instantiate_func_global.as_ref().unwrap(),
@@ -495,6 +491,7 @@ impl JitFunc {
                     info: bb_infos[bb.id].clone(),
                     typed_objs: all_typed_objs[bb.id].clone(), // TODO: cloneしないようにする
                     globals: jit_bb_globals,
+                    global_layout: GlobalLayout::new(),
                 }
             })
             .collect::<VecMap<BasicBlockId, _>>();
@@ -510,7 +507,6 @@ impl JitFunc {
 
     fn generate_func_module(
         &self,
-        global_layout: &GlobalLayout,
         jit_module: &JitModule,
         instantiate_func_global: &Global,
     ) -> Module {
@@ -705,7 +701,6 @@ impl JitFunc {
 
         for jit_bb in self.jit_bbs.values() {
             let func = self.generate_bb_stub_func(
-                global_layout,
                 jit_module.module_id,
                 jit_bb,
                 bb_stub_func_ids[jit_bb.bb_id],
@@ -728,7 +723,6 @@ impl JitFunc {
 
     fn generate_bb_stub_func(
         &self,
-        global_layout: &GlobalLayout,
         module_id: ModuleId,
         jit_bb: &JitBB,
         id: FuncId,
@@ -743,7 +737,9 @@ impl JitFunc {
             bb0(...)
         }
         */
-        let type_args = &*global_layout.from_idx(index, jit_bb.info.type_params.len());
+        let type_args = &*jit_bb
+            .global_layout
+            .from_idx(index, jit_bb.info.type_params.len());
         let mut locals = self.func.locals.clone();
         for (type_param_id, type_arg) in type_args.iter_enumerated() {
             if let Some(typ) = type_arg {
@@ -830,7 +826,6 @@ impl JitFunc {
         module: &Module,
         orig_entry_bb_id: BasicBlockId,
         index: usize,
-        global_layout: &mut GlobalLayout,
         stub_globals: &FxHashMap<usize, Global>,
         closure_global_layout: &mut ClosureGlobalLayout,
         instantiate_func_global: &Global,
@@ -838,8 +833,9 @@ impl JitFunc {
         let mut required_closure_idx = Vec::new();
         let mut required_stubs = Vec::new();
 
-        let type_args =
-            &*global_layout.from_idx(index, self.jit_bbs[orig_entry_bb_id].info.type_params.len());
+        let type_args = &*self.jit_bbs[orig_entry_bb_id]
+            .global_layout
+            .from_idx(index, self.jit_bbs[orig_entry_bb_id].info.type_params.len());
         let func = &self.func;
 
         // If/Jump命令で必要なBBの一覧。(新しいモジュールのBB ID, 元のモジュールのBB ID, isで分岐されたときの型情報)のペアのリスト
@@ -1173,11 +1169,12 @@ impl JitFunc {
                 });
             }
             // ここでのtyped_objsは事前計算で分かるもの or この分岐でのみ成り立つもの or assigned_local_to_obj によって追加されたto_objのいずれかである
+            let callee_jit_bb = &mut self.jit_bbs[orig_bb_id];
             let (locals_to_pass, type_args, index) = calculate_args_to_pass(
-                &self.jit_bbs[orig_bb_id].info,
+                &callee_jit_bb.info,
                 |obj_local| {
                     // TODO: typed_objs と branch_typed_objsのマージでいいかも
-                    self.jit_bbs[orig_bb_id]
+                    callee_jit_bb
                         .typed_objs
                         .get(obj_local)
                         .copied()
@@ -1198,7 +1195,7 @@ impl JitFunc {
                         })
                 },
                 &assigned_local_to_obj,
-                global_layout,
+                &mut callee_jit_bb.global_layout,
             );
             required_stubs.push((orig_bb_id, index));
 
@@ -1270,7 +1267,6 @@ impl JitFunc {
             .map(|&(bb_id, index)| {
                 let bb_stub_func_id = funcs.next_key();
                 let func = self.generate_bb_stub_func(
-                    global_layout,
                     module_id,
                     &self.jit_bbs[bb_id],
                     bb_stub_func_id,
@@ -1654,6 +1650,7 @@ struct JitBB {
     info: BBInfo,
     typed_objs: VecMap<LocalId, TypedObj>,
     globals: FxHashMap<GlobalId, Global>,
+    global_layout: GlobalLayout,
 }
 
 impl HasId for JitBB {
