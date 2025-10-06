@@ -491,7 +491,7 @@ impl JitFunc {
                     info: bb_infos[bb.id].clone(),
                     typed_objs: all_typed_objs[bb.id].clone(), // TODO: cloneしないようにする
                     globals: jit_bb_globals,
-                    global_layout: GlobalLayout::new(),
+                    bb_index_manager: BBIndexManager::new(bb_infos[bb.id].type_params.len()),
                 }
             })
             .collect::<VecMap<BasicBlockId, _>>();
@@ -737,9 +737,7 @@ impl JitFunc {
             bb0(...)
         }
         */
-        let type_args = &*jit_bb
-            .global_layout
-            .from_idx(index, jit_bb.info.type_params.len());
+        let type_args = jit_bb.bb_index_manager.from_idx(index);
         let mut locals = self.func.locals.clone();
         for (type_param_id, type_arg) in type_args.iter_enumerated() {
             if let Some(typ) = type_arg {
@@ -833,9 +831,9 @@ impl JitFunc {
         let mut required_closure_idx = Vec::new();
         let mut required_stubs = Vec::new();
 
-        let type_args = &*self.jit_bbs[orig_entry_bb_id]
-            .global_layout
-            .from_idx(index, self.jit_bbs[orig_entry_bb_id].info.type_params.len());
+        let type_args = self.jit_bbs[orig_entry_bb_id]
+            .bb_index_manager
+            .from_idx(index);
         let func = &self.func;
 
         // If/Jump命令で必要なBBの一覧。(新しいモジュールのBB ID, 元のモジュールのBB ID, isで分岐されたときの型情報)のペアのリスト
@@ -1195,7 +1193,7 @@ impl JitFunc {
                         })
                 },
                 &assigned_local_to_obj,
-                &mut callee_jit_bb.global_layout,
+                &mut callee_jit_bb.bb_index_manager,
             );
             required_stubs.push((orig_bb_id, index));
 
@@ -1650,7 +1648,7 @@ struct JitBB {
     info: BBInfo,
     typed_objs: VecMap<LocalId, TypedObj>,
     globals: FxHashMap<GlobalId, Global>,
-    global_layout: GlobalLayout,
+    bb_index_manager: BBIndexManager,
 }
 
 impl HasId for JitBB {
@@ -1734,7 +1732,7 @@ fn calculate_args_to_pass(
     callee: &BBInfo,
     caller_typed_objs: impl Fn(LocalId) -> Option<TypedObj>,
     caller_assigned_local_to_obj: &FxBiHashMap<LocalId, LocalId>,
-    global_layout: &mut GlobalLayout,
+    bb_index_manager: &mut BBIndexManager,
 ) -> (Vec<LocalId>, TiVec<TypeParamId, Option<ValType>>, usize) {
     let mut type_args = ti_vec![None; callee.type_params.len()];
     let mut args_to_pass = Vec::new();
@@ -1757,7 +1755,7 @@ fn calculate_args_to_pass(
         args_to_pass.push(caller_args);
     }
 
-    if let Some(idx) = global_layout.to_idx(&type_args) {
+    if let Some(idx) = bb_index_manager.to_idx(&type_args) {
         (args_to_pass, type_args, idx)
     } else {
         // `|_| None` を渡すと "reached the recursion limit while instantiating" が発生するため
@@ -1771,7 +1769,7 @@ fn calculate_args_to_pass(
             callee,
             empty_typed_objs,
             caller_assigned_local_to_obj,
-            global_layout,
+            bb_index_manager,
         )
     }
 }
@@ -1780,30 +1778,21 @@ pub const GLOBAL_LAYOUT_MAX_SIZE: usize = 32;
 pub const GLOBAL_LAYOUT_DEFAULT_INDEX: usize = 0;
 
 #[derive(Debug)]
-pub struct GlobalLayout {
+pub struct BBIndexManager {
     type_params_to_index: FxBiHashMap<TiVec<TypeParamId, Option<ValType>>, usize>,
 }
 
-impl Default for GlobalLayout {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl GlobalLayout {
-    pub fn new() -> Self {
+impl BBIndexManager {
+    pub fn new(params_len: usize) -> Self {
         let mut type_params_to_index = FxBiHashMap::default();
-        type_params_to_index.insert(ti_vec![], GLOBAL_LAYOUT_DEFAULT_INDEX); // 全ての型パラメータがNoneの時に対応
+        type_params_to_index.insert(ti_vec![None; params_len], GLOBAL_LAYOUT_DEFAULT_INDEX);
         Self {
             type_params_to_index,
         }
     }
 
     pub fn to_idx(&mut self, type_params: &TiVec<TypeParamId, Option<ValType>>) -> Option<usize> {
-        if type_params.iter().all(|t| t.is_none()) {
-            // 全ての型パラメータがNoneなら0を返す
-            Some(GLOBAL_LAYOUT_DEFAULT_INDEX)
-        } else if let Some(&index) = self.type_params_to_index.get_by_left(type_params) {
+        if let Some(&index) = self.type_params_to_index.get_by_left(type_params) {
             Some(index)
         } else if self.type_params_to_index.len() < GLOBAL_LAYOUT_MAX_SIZE {
             let index = self.type_params_to_index.len();
@@ -1814,16 +1803,8 @@ impl GlobalLayout {
         }
     }
 
-    pub fn from_idx(
-        &self,
-        index: usize,
-        params_len: usize,
-    ) -> Cow<TiVec<TypeParamId, Option<ValType>>> {
-        if index == GLOBAL_LAYOUT_DEFAULT_INDEX {
-            Cow::Owned(ti_vec![None; params_len])
-        } else {
-            Cow::Borrowed(self.type_params_to_index.get_by_right(&index).unwrap())
-        }
+    pub fn from_idx(&self, index: usize) -> &TiVec<TypeParamId, Option<ValType>> {
+        self.type_params_to_index.get_by_right(&index).unwrap()
     }
 }
 
