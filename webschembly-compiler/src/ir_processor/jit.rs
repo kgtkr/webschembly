@@ -979,41 +979,17 @@ impl JitFunc {
                     ExprAssign {
                         local,
                         expr: Expr::CallClosure(ref call_closure),
-                    } if call_closure.func_index == 0
-                        // func_index == 0 なら引数は[Args]を仮定してよい
-                        && let Some(args_expr_idx) =
-                            local_to_args_expr_idx.get(&call_closure.args[0])
-                        && let Expr::Args(args) = &exprs[*args_expr_idx as usize].expr =>
-                    {
-                        let mut fixed_args = Vec::new();
-                        let mut fixed_arg_types = Vec::new();
-                        for &obj_arg in args {
-                            if let Some(typed_obj) = typed_objs.get(obj_arg) {
-                                fixed_args.push(typed_obj.val_type);
-                                fixed_arg_types.push(Type::from(typed_obj.typ));
-                            } else {
-                                fixed_args.push(obj_arg);
-                                fixed_arg_types.push(Type::Obj);
-                            }
-                        }
-                        let call_closure = if let Some((closure_index, flag)) =
-                            closure_global_layout.to_idx(&fixed_arg_types)
-                        {
-                            if flag == ClosureIndexFlag::NewInstance {
-                                required_closure_idx.push(closure_index);
-                            }
-                            ExprCallClosure {
-                                closure: call_closure.closure,
-                                args: fixed_args,
-                                arg_types: fixed_arg_types
-                                    .into_iter()
-                                    .map(|typ| LocalType::Type(typ))
-                                    .collect(),
-                                func_index: closure_index,
-                            }
-                        } else {
-                            call_closure.clone()
-                        };
+                    } => {
+                        let call_closure = Self::specialize_call_closure(
+                            call_closure,
+                            &exprs,
+                            closure_global_layout,
+                            &local_to_args_expr_idx,
+                            &mut required_closure_idx,
+                            &typed_objs,
+                        )
+                        .unwrap_or_else(|| call_closure.clone());
+
                         exprs.push(ExprAssign {
                             local,
                             expr: Expr::CallClosure(call_closure),
@@ -1125,9 +1101,22 @@ impl JitFunc {
                         func_type: module.funcs[func_id].func_type(),
                     }))
                 }
+                BasicBlockNext::Terminator(BasicBlockTerminator::TailCallClosure(
+                    ref call_closure,
+                )) => {
+                    let call_closure = Self::specialize_call_closure(
+                        call_closure,
+                        &bbs[new_bb_id].exprs,
+                        closure_global_layout,
+                        &local_to_args_expr_idx,
+                        &mut required_closure_idx,
+                        &typed_objs,
+                    )
+                    .unwrap_or_else(|| call_closure.clone());
+                    BasicBlockNext::Terminator(BasicBlockTerminator::TailCallClosure(call_closure))
+                }
                 ref next @ BasicBlockNext::Terminator(
                     BasicBlockTerminator::TailCallRef(_)
-                    | BasicBlockTerminator::TailCallClosure(_)
                     | BasicBlockTerminator::Return(_)
                     | BasicBlockTerminator::Error(_),
                 ) => next.clone(),
@@ -1603,6 +1592,52 @@ impl JitFunc {
                 global_metas: FxHashMap::default(),
             },
         }
+    }
+
+    fn specialize_call_closure(
+        call_closure: &ExprCallClosure,
+        exprs: &Vec<ExprAssign>,
+        closure_global_layout: &mut ClosureGlobalLayout,
+        local_to_args_expr_idx: &FxHashMap<LocalId, usize>,
+        required_closure_idx: &mut Vec<usize>,
+        typed_objs: &VecMap<LocalId, TypedObj>,
+    ) -> Option<ExprCallClosure> {
+        if call_closure.func_index != 0 {
+            return None;
+        }
+
+        // func_index == 0 なら引数は[Args]を仮定してよい
+        let args_expr_idx = *local_to_args_expr_idx.get(&call_closure.args[0])?;
+        let Expr::Args(args) = &exprs[args_expr_idx as usize].expr else {
+            return None;
+        };
+
+        let mut fixed_args = Vec::new();
+        let mut fixed_arg_types = Vec::new();
+        for &obj_arg in args {
+            if let Some(typed_obj) = typed_objs.get(obj_arg) {
+                fixed_args.push(typed_obj.val_type);
+                fixed_arg_types.push(Type::from(typed_obj.typ));
+            } else {
+                fixed_args.push(obj_arg);
+                fixed_arg_types.push(Type::Obj);
+            }
+        }
+
+        let (closure_index, flag) = closure_global_layout.to_idx(&fixed_arg_types)?;
+
+        if flag == ClosureIndexFlag::NewInstance {
+            required_closure_idx.push(closure_index);
+        }
+        Some(ExprCallClosure {
+            closure: call_closure.closure,
+            args: fixed_args,
+            arg_types: fixed_arg_types
+                .into_iter()
+                .map(|typ| LocalType::Type(typ))
+                .collect(),
+            func_index: closure_index,
+        })
     }
 }
 
