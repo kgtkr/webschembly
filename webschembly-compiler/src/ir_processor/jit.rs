@@ -110,8 +110,11 @@ impl Jit {
         bb_id: BasicBlockId,
         index: usize,
     ) -> Module {
-        let jit_module = &self.jit_module[module_id];
-        let jit_func = &self.jit_module[module_id].jit_funcs[&(func_id, func_index)];
+        let jit_module = &mut self.jit_module[module_id];
+        let jit_func = jit_module
+            .jit_funcs
+            .get_mut(&(func_id, func_index))
+            .unwrap();
         jit_func.generate_bb_module(
             &self.config,
             &jit_module.func_to_globals,
@@ -820,7 +823,7 @@ impl JitFunc {
 
     // TODO: JitBBに移動する
     fn generate_bb_module(
-        &self,
+        &mut self,
         _config: &JitConfig,
         func_to_globals: &TiVec<FuncId, GlobalId>,
         module_id: ModuleId,
