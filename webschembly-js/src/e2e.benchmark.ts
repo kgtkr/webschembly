@@ -70,11 +70,7 @@ for (const filename of filenames) {
               );
               runtime.loadStdlib();
               runtime.loadSrc(srcBuf);
-              const mainString = runtime.mallocString("main");
-              mainClosure = runtime.instance.exports.get_global(
-                mainString[0],
-                mainString[1]
-              );
+              mainClosure = runtime.getGlobal("main");
               mainArgs = runtime.instance.exports.new_args(0);
               runtime.instance.exports.call_closure(mainClosure, mainArgs);
               afterWarmup = true;
