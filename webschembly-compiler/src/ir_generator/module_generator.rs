@@ -222,7 +222,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         lambda: &ast::Lambda<ast::Final>,
     ) -> Func {
         let self_closure = self.local(Type::Val(ValType::Closure));
-        let args = self.local(LocalType::Args);
+        let args = self.local(LocalType::VariadicArgs);
         // TODO: 引数の数が合っているかのチェック
         for (arg_idx, arg) in x.get_ref(type_map::key::<Used>()).args.iter().enumerate() {
             if self
@@ -236,7 +236,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 let local = self.local(LocalType::Type(Type::Obj));
                 self.exprs.push(ExprAssign {
                     local: Some(local),
-                    expr: Expr::ArgsRef(args, arg_idx),
+                    expr: Expr::VariadicArgsRef(args, arg_idx),
                 });
 
                 let ref_ = self.define_ast_local(*arg);
@@ -252,7 +252,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 let arg_id = self.define_ast_local(*arg);
                 self.exprs.push(ExprAssign {
                     local: Some(arg_id),
-                    expr: Expr::ArgsRef(args, arg_idx),
+                    expr: Expr::VariadicArgsRef(args, arg_idx),
                 });
             }
         }
@@ -710,7 +710,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                         expr: Expr::FromObj(ValType::Closure, obj_func_local),
                     });
 
-                    let args_local = self.local(LocalType::Args);
+                    let args_local = self.local(LocalType::VariadicArgs);
                     let mut args_locals = Vec::new();
                     for arg in args {
                         let arg_local = self.local(Type::Obj);
@@ -719,14 +719,14 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     }
                     self.exprs.push(ExprAssign {
                         local: Some(args_local),
-                        expr: Expr::Args(args_locals),
+                        expr: Expr::VariadicArgs(args_locals),
                     });
 
                     let is_tail = x.get_ref(type_map::key::<TailCall>()).is_tail;
                     let call_closure = ExprCallClosure {
                         closure: closure_local,
                         args: vec![args_local],
-                        arg_types: vec![LocalType::Args],
+                        arg_types: vec![LocalType::VariadicArgs],
                         func_index: 0,
                     };
                     if is_tail {

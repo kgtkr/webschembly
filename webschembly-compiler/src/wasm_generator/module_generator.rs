@@ -694,7 +694,7 @@ impl<'a> ModuleGenerator<'a> {
                 })
             }
             ir::LocalType::Type(ty) => self.convert_type(ty),
-            ir::LocalType::Args => ValType::Ref(RefType {
+            ir::LocalType::VariadicArgs => ValType::Ref(RefType {
                 nullable: true,
                 heap_type: HeapType::Concrete(self.args_type),
             }),
@@ -745,7 +745,7 @@ impl<'a> ModuleGenerator<'a> {
     fn local_type_init_expr(&mut self, ty: ir::LocalType) -> ConstExpr {
         match ty {
             ir::LocalType::Ref(typ) => ConstExpr::ref_null(HeapType::Concrete(self.ref_type(typ))),
-            ir::LocalType::Args => ConstExpr::ref_null(HeapType::Concrete(self.args_type)),
+            ir::LocalType::VariadicArgs => ConstExpr::ref_null(HeapType::Concrete(self.args_type)),
             ir::LocalType::MutFuncRef => {
                 ConstExpr::ref_null(HeapType::Concrete(self.mut_func_ref_type))
             }
@@ -1389,7 +1389,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*rhs)));
                 function.instruction(&Instruction::I64GeS);
             }
-            ir::Expr::Args(args) => {
+            ir::Expr::VariadicArgs(args) => {
                 for arg in args.iter() {
                     function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*arg)));
                 }
@@ -1398,7 +1398,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     array_size: args.len() as u32,
                 });
             }
-            ir::Expr::ArgsRef(args, idx) => {
+            ir::Expr::VariadicArgsRef(args, idx) => {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*args)));
                 function.instruction(&Instruction::I32Const(*idx as i32));
                 function.instruction(&Instruction::ArrayGet(self.module_generator.args_type));

@@ -799,7 +799,7 @@ impl JitFunc {
                     }
                     ExprAssign {
                         local: Some(local),
-                        expr: Expr::Args(_),
+                        expr: Expr::VariadicArgs(_),
                     } => {
                         local_to_args_expr_idx.insert(local, exprs.len());
                         exprs.push(expr.clone());
@@ -1271,7 +1271,7 @@ impl JitFunc {
 
         // func_index == 0 なら引数は[Args]を仮定してよい
         let args_expr_idx = *local_to_args_expr_idx.get(&call_closure.args[0])?;
-        let Expr::Args(args) = &exprs[args_expr_idx].expr else {
+        let Expr::VariadicArgs(args) = &exprs[args_expr_idx].expr else {
             return None;
         };
 
@@ -1551,7 +1551,7 @@ fn closure_func_assign_types(
             .collect::<Vec<_>>(),
         vec![
             LocalType::Type(Type::Val(ValType::Closure)),
-            LocalType::Args
+            LocalType::VariadicArgs
         ]
     );
     debug_assert_eq!(func.ret_type, LocalType::Type(Type::Obj));
@@ -1591,7 +1591,7 @@ fn closure_func_assign_types(
 
         exprs.push(ExprAssign {
             local: Some(variadic_args_local),
-            expr: Expr::Args(obj_locals),
+            expr: Expr::VariadicArgs(obj_locals),
         });
 
         BasicBlock {

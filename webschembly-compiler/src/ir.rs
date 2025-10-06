@@ -57,8 +57,8 @@ pub enum LocalType {
     Ref(Type), // TODO: Ref<Obj>固定で良いかも？
     #[display("{}", _0)]
     Type(Type),
-    #[display("args")]
-    Args,
+    #[display("variadic_args")]
+    VariadicArgs,
     #[display("mut_func_ref")]
     MutFuncRef,
     #[display("entrypoint_table")]
@@ -458,8 +458,8 @@ pub enum Expr {
     Gt(LocalId, LocalId),
     Le(LocalId, LocalId),
     Ge(LocalId, LocalId),
-    Args(Vec<LocalId>),
-    ArgsRef(LocalId, usize),
+    VariadicArgs(Vec<LocalId>),
+    VariadicArgsRef(LocalId, usize),
     // ArgsVariadic(Vec<LocalId>, LocalId<Vector>)
     // ArgsRest(LocalId, usize) -> Vector
     CreateMutFuncRef(LocalId),                   // (FuncRef) -> MutFuncRef
@@ -612,12 +612,12 @@ macro_rules! impl_Expr_local_usages {
                             yield (a, LocalUsedFlag::NonPhi);
                             yield (b, LocalUsedFlag::NonPhi);
                         }
-                        Expr::Args(ids) => {
+                        Expr::VariadicArgs(ids) => {
                             for id in ids {
                                 yield (id, LocalUsedFlag::NonPhi);
                             }
                         }
-                        Expr::ArgsRef(id, _) => {
+                        Expr::VariadicArgsRef(id, _) => {
                             yield (id, LocalUsedFlag::NonPhi);
                         }
                         Expr::CreateMutFuncRef(id) => {
@@ -729,8 +729,8 @@ impl Expr {
             | Expr::Gt(..)
             | Expr::Le(..)
             | Expr::Ge(..)
-            | Expr::Args(..)
-            | Expr::ArgsRef(..)
+            | Expr::VariadicArgs(..)
+            | Expr::VariadicArgsRef(..)
             | Expr::Add(..)
             | Expr::Sub(..)
             | Expr::Mul(..)
@@ -953,8 +953,8 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
             Expr::Gt(a, b) => write!(f, "gt({}, {})", a.display(self.meta), b.display(self.meta)),
             Expr::Le(a, b) => write!(f, "le({}, {})", a.display(self.meta), b.display(self.meta)),
             Expr::Ge(a, b) => write!(f, "ge({}, {})", a.display(self.meta), b.display(self.meta)),
-            Expr::Args(ids) => {
-                write!(f, "args(")?;
+            Expr::VariadicArgs(ids) => {
+                write!(f, "variadic_args(")?;
                 for (i, id) in ids.iter().enumerate() {
                     if i > 0 {
                         write!(f, ",")?;
@@ -963,7 +963,9 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                 }
                 write!(f, ")")
             }
-            Expr::ArgsRef(id, index) => write!(f, "args_ref({}, {})", id.display(self.meta), index),
+            Expr::VariadicArgsRef(id, index) => {
+                write!(f, "variadic_args_ref({}, {})", id.display(self.meta), index)
+            }
             Expr::CreateMutFuncRef(func_ref_id) => {
                 write!(f, "create_mut_func_ref({})", func_ref_id.display(self.meta))
             }
