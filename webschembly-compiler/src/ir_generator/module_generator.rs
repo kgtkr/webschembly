@@ -221,6 +221,9 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         x: &RunX<ast::LambdaX, ast::Final>,
         lambda: &ast::Lambda<ast::Final>,
     ) -> Func {
+        let bb_entry = self.bbs.allocate_key();
+        self.current_bb_id = Some(bb_entry);
+
         let self_closure = self.local(Type::Val(ValType::Closure));
         let args = self.local(LocalType::VariadicArgs);
         let args_len_local = self.local(Type::Val(ValType::Int));
@@ -317,8 +320,6 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
 
         self.define_all_ast_local_and_create_ref(&x.get_ref(type_map::key::<Used>()).defines);
 
-        let bb_entry = self.bbs.allocate_key();
-        self.current_bb_id = Some(bb_entry);
         let ret = self.local(Type::Obj);
         self.gen_exprs(Some(ret), &lambda.body);
         self.close_bb(BasicBlockNext::Terminator(BasicBlockTerminator::Return(
