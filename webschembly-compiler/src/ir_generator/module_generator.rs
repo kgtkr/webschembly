@@ -1,4 +1,4 @@
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashMap;
 
 use crate::ir_generator::GlobalManager;
 use crate::{VecMap, ir::*};
@@ -14,21 +14,25 @@ pub struct Config {
 }
 
 pub fn generate_module(
+    id: ModuleId,
     global_manager: &mut GlobalManager,
     ast: &ast::Ast<ast::Final>,
     config: Config,
 ) -> Module {
-    let module_gen = ModuleGenerator::new(config, global_manager, ast);
+    let module_gen = ModuleGenerator::new(id, config, global_manager, ast);
 
     module_gen.generate()
 }
 
 #[derive(Debug)]
 struct ModuleGenerator<'a> {
+    id: ModuleId,
     global_manager: &'a mut GlobalManager,
     ast: &'a ast::Ast<ast::Final>,
     funcs: TiVec<FuncId, Option<Func>>,
     config: Config,
+    func_to_entrypoint_table: FxHashMap<FuncId, GlobalId>,
+    globals: FxHashMap<GlobalId, Global>,
     // メタ情報
     local_metas: FxHashMap<(FuncId, LocalId), VarMeta>,
     global_metas: FxHashMap<GlobalId, VarMeta>,
@@ -36,49 +40,100 @@ struct ModuleGenerator<'a> {
 
 impl<'a> ModuleGenerator<'a> {
     fn new(
+        id: ModuleId,
         config: Config,
         ir_generator: &'a mut GlobalManager,
         ast: &'a ast::Ast<ast::Final>,
     ) -> Self {
         Self {
+            id,
             ast,
             global_manager: ir_generator,
             funcs: TiVec::new(),
             config,
             local_metas: FxHashMap::default(),
             global_metas: FxHashMap::default(),
+            func_to_entrypoint_table: FxHashMap::default(),
+            globals: FxHashMap::default(),
         }
     }
 
     fn generate(mut self) -> Module {
-        let func_id = self.funcs.push_and_get_key(None);
-        let func = FuncGenerator::new(&mut self, func_id).entry_gen();
-        self.funcs[func_id] = Some(func);
-
-        let globals = self
+        let ast_globals = self
             .ast
             .x
             .get_ref(type_map::key::<Used>())
             .global_vars
             .clone()
             .into_iter()
-            .map(|id| self.global_id(id))
-            .collect::<FxHashSet<_>>();
+            .map(|id| {
+                let global = self.global(id);
+                (global.id, global)
+            })
+            .collect::<FxHashMap<_, _>>();
+        self.globals.extend(ast_globals);
+
+        let entry_func_id = self.funcs.push_and_get_key(None);
+        let mut entry_func = FuncGenerator::new(&mut self, entry_func_id).entry_gen();
+
+        // エントリーポイントにモジュール初期化ロジックを追加
+        let prev_bb_entry = entry_func.bb_entry;
+        let mut entry_exprs = Vec::new();
+
+        for (func_id, entrypoint_table_global_id) in self.func_to_entrypoint_table {
+            let func_ref_local = entry_func.locals.push_with(|id| Local {
+                id,
+                typ: LocalType::FuncRef,
+            });
+            let mut_func_ref_local = entry_func.locals.push_with(|id| Local {
+                id,
+                typ: LocalType::MutFuncRef,
+            });
+            let entrypoint_table_local = entry_func.locals.push_with(|id| Local {
+                id,
+                typ: LocalType::EntrypointTable,
+            });
+            entry_exprs.push(ExprAssign {
+                local: Some(func_ref_local),
+                expr: Expr::FuncRef(func_id),
+            });
+            entry_exprs.push(ExprAssign {
+                local: Some(mut_func_ref_local),
+                expr: Expr::CreateMutFuncRef(func_ref_local),
+            });
+            entry_exprs.push(ExprAssign {
+                local: Some(entrypoint_table_local),
+                expr: Expr::EntrypointTable(vec![mut_func_ref_local]),
+            });
+            entry_exprs.push(ExprAssign {
+                local: None,
+                expr: Expr::GlobalSet(entrypoint_table_global_id, entrypoint_table_local),
+            });
+        }
+        let new_bb_entry = entry_func.bbs.push_with(|bb_id| BasicBlock {
+            id: bb_id,
+            exprs: entry_exprs,
+            next: BasicBlockNext::Jump(prev_bb_entry),
+        });
+        entry_func.bb_entry = new_bb_entry;
+
+        self.funcs[entry_func_id] = Some(entry_func);
+
         let meta = Meta {
             local_metas: self.local_metas,
             global_metas: self.global_metas,
         };
 
         Module {
-            globals,
+            globals: self.globals,
             funcs: self.funcs.into_iter().map(|f| f.unwrap()).collect(),
-            entry: func_id,
+            entry: entry_func_id,
             meta,
         }
     }
 
-    fn global_id(&mut self, id: ast::GlobalVarId) -> GlobalId {
-        let global_id = self.global_manager.global_id(id);
+    fn global(&mut self, id: ast::GlobalVarId) -> Global {
+        let global = self.global_manager.global(id);
         let ast_meta = self
             .ast
             .x
@@ -87,12 +142,12 @@ impl<'a> ModuleGenerator<'a> {
             .get(&id);
         if let Some(ast_meta) = ast_meta {
             self.global_metas
-                .entry(global_id)
+                .entry(global.id)
                 .or_insert_with(|| VarMeta {
                     name: ast_meta.name.clone(),
                 });
         }
-        global_id
+        global
     }
 
     fn gen_func(
@@ -113,10 +168,10 @@ struct FuncGenerator<'a, 'b> {
     id: FuncId,
     locals: VecMap<LocalId, Local>,
     local_ids: FxHashMap<ast::LocalVarId, LocalId>,
-    bbs: VecMap<BasicBlockId, BasicBlockOptionalNext>,
-    next_undecided_bb_ids: FxHashSet<BasicBlockId>,
+    bbs: VecMap<BasicBlockId, BasicBlock>,
     module_generator: &'a mut ModuleGenerator<'b>,
     exprs: Vec<ExprAssign>,
+    current_bb_id: Option<BasicBlockId>,
 }
 
 impl<'a, 'b> FuncGenerator<'a, 'b> {
@@ -126,19 +181,14 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             locals: VecMap::new(),
             local_ids: FxHashMap::default(),
             bbs: VecMap::new(),
-            next_undecided_bb_ids: FxHashSet::default(),
             module_generator,
             exprs: Vec::new(),
+            current_bb_id: None,
         }
     }
 
     fn entry_gen(mut self) -> Func {
         let obj_local = self.local(Type::Obj);
-
-        self.exprs.push(ExprAssign {
-            local: None,
-            expr: Expr::InitModule,
-        });
 
         self.define_all_ast_local_and_create_ref(
             &self
@@ -149,25 +199,20 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 .defines,
         );
 
+        let bb_entry = self.bbs.allocate_key();
+        self.current_bb_id = Some(bb_entry);
         self.gen_exprs(Some(obj_local), &self.module_generator.ast.exprs);
-        self.close_bb(Some(BasicBlockNext::Terminator(
-            BasicBlockTerminator::Return(obj_local),
+        self.close_bb(BasicBlockNext::Terminator(BasicBlockTerminator::Return(
+            obj_local,
         )));
+
         Func {
             id: self.id,
             args: vec![],
             ret_type: LocalType::Type(Type::Obj),
             locals: self.locals,
-            bb_entry: BasicBlockId::from(0), // TODO: もっと綺麗な書き方があるはず
-            bbs: self
-                .bbs
-                .into_iter()
-                .map(|(id, bb)| BasicBlock {
-                    id,
-                    exprs: bb.exprs,
-                    next: bb.next.unwrap(),
-                })
-                .collect(),
+            bb_entry,
+            bbs: self.bbs,
         }
     }
 
@@ -176,9 +221,44 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         x: &RunX<ast::LambdaX, ast::Final>,
         lambda: &ast::Lambda<ast::Final>,
     ) -> Func {
+        let bb_entry = self.bbs.allocate_key();
+        self.current_bb_id = Some(bb_entry);
+
         let self_closure = self.local(Type::Val(ValType::Closure));
-        let args = self.local(LocalType::Args);
-        // TODO: 引数の数が合っているかのチェック
+        let args = self.local(LocalType::VariadicArgs);
+        let args_len_local = self.local(Type::Val(ValType::Int));
+        let expected_args_len_local = self.local(Type::Val(ValType::Int));
+        let args_len_check_success_local = self.local(Type::Val(ValType::Bool));
+
+        self.exprs.push(ExprAssign {
+            local: Some(args_len_local),
+            expr: Expr::VariadicArgsLength(args),
+        });
+        self.exprs.push(ExprAssign {
+            local: Some(expected_args_len_local),
+            expr: Expr::Int(lambda.args.len() as i64),
+        });
+        self.exprs.push(ExprAssign {
+            local: Some(args_len_check_success_local),
+            expr: Expr::EqNum(args_len_local, expected_args_len_local),
+        });
+
+        let error_bb_id = self.bbs.allocate_key();
+        let merge_bb_id = self.bbs.allocate_key();
+        self.close_bb(BasicBlockNext::If(
+            args_len_check_success_local,
+            merge_bb_id,
+            error_bb_id,
+        ));
+        self.current_bb_id = Some(error_bb_id);
+        let msg = self.local(Type::Val(ValType::String));
+        self.exprs.push(ExprAssign {
+            local: Some(msg),
+            expr: Expr::String("args count mismatch\n".to_string()),
+        });
+        self.close_bb(BasicBlockNext::Terminator(BasicBlockTerminator::Error(msg)));
+        self.current_bb_id = Some(merge_bb_id);
+
         for (arg_idx, arg) in x.get_ref(type_map::key::<Used>()).args.iter().enumerate() {
             if self
                 .module_generator
@@ -191,7 +271,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 let local = self.local(LocalType::Type(Type::Obj));
                 self.exprs.push(ExprAssign {
                     local: Some(local),
-                    expr: Expr::ArgsRef(args, arg_idx),
+                    expr: Expr::VariadicArgsRef(args, arg_idx),
                 });
 
                 let ref_ = self.define_ast_local(*arg);
@@ -207,7 +287,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 let arg_id = self.define_ast_local(*arg);
                 self.exprs.push(ExprAssign {
                     local: Some(arg_id),
-                    expr: Expr::ArgsRef(args, arg_idx),
+                    expr: Expr::VariadicArgsRef(args, arg_idx),
                 });
             }
         }
@@ -242,24 +322,16 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
 
         let ret = self.local(Type::Obj);
         self.gen_exprs(Some(ret), &lambda.body);
-        self.close_bb(Some(BasicBlockNext::Terminator(
-            BasicBlockTerminator::Return(ret),
+        self.close_bb(BasicBlockNext::Terminator(BasicBlockTerminator::Return(
+            ret,
         )));
         Func {
             id: self.id,
             args: vec![self_closure, args],
             ret_type: LocalType::Type(Type::Obj),
             locals: self.locals,
-            bb_entry: BasicBlockId::from(0), // TODO: もっと綺麗な書き方があるはず
-            bbs: self
-                .bbs
-                .into_iter()
-                .map(|(id, bb)| BasicBlock {
-                    id,
-                    exprs: bb.exprs,
-                    next: bb.next.unwrap(),
-                })
-                .collect(),
+            bb_entry,
+            bbs: self.bbs,
         }
     }
 
@@ -311,6 +383,36 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 LocalType::Type(Type::Obj)
             },
         );
+        let prev = self.local_ids.insert(id, local);
+        debug_assert!(prev.is_none());
+        if let Some(ast_meta) = ast_meta {
+            self.module_generator
+                .local_metas
+                .insert((self.id, local), VarMeta {
+                    name: ast_meta.name.clone(),
+                });
+        }
+        local
+    }
+
+    fn new_version_ast_local(&mut self, id: ast::LocalVarId) -> LocalId {
+        let ast_meta = self
+            .module_generator
+            .ast
+            .x
+            .get_ref(type_map::key::<Used>())
+            .local_metas
+            .get(&id);
+        debug_assert!(
+            !self
+                .module_generator
+                .ast
+                .x
+                .get_ref(type_map::key::<Used>())
+                .box_vars
+                .contains(&id)
+        );
+        let local = self.local(LocalType::Type(Type::Obj));
         self.local_ids.insert(id, local);
         if let Some(ast_meta) = ast_meta {
             self.module_generator
@@ -406,17 +508,37 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     .map(|id| *self.local_ids.get(id).unwrap())
                     .collect::<Vec<_>>();
                 let func_id = self.module_generator.gen_func(x, lambda);
-                let func_local = self.local(ValType::FuncRef);
+                let func_local = self.local(LocalType::FuncRef);
                 let val_type_local = self.local(Type::Val(ValType::Closure));
                 self.exprs.push(ExprAssign {
                     local: Some(func_local),
                     expr: Expr::FuncRef(func_id),
                 });
+
+                let entrypoint_table_global = self
+                    .module_generator
+                    .global_manager
+                    .gen_global(LocalType::EntrypointTable);
+                self.module_generator
+                    .globals
+                    .insert(entrypoint_table_global.id, entrypoint_table_global);
+                self.module_generator
+                    .func_to_entrypoint_table
+                    .insert(func_id, entrypoint_table_global.id);
+
+                let entrypoint_table_local = self.local(LocalType::EntrypointTable);
+                self.exprs.push(ExprAssign {
+                    local: Some(entrypoint_table_local),
+                    expr: Expr::GlobalGet(entrypoint_table_global.id),
+                });
+
                 self.exprs.push(ExprAssign {
                     local: Some(val_type_local),
                     expr: Expr::Closure {
                         envs: captures,
-                        func: func_local,
+                        func_id,
+                        module_id: self.module_generator.id,
+                        entrypoint_table: entrypoint_table_local,
                     },
                 });
                 self.exprs.push(ExprAssign {
@@ -435,24 +557,81 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     expr: Expr::FromObj(ValType::Bool, obj_cond_local),
                 });
 
-                let bb_id = self.close_bb(None);
+                let then_bb_id = self.bbs.allocate_key();
+                let else_bb_id = self.bbs.allocate_key();
+                let merge_bb_id = self.bbs.allocate_key();
+                self.close_bb(BasicBlockNext::If(cond_local, then_bb_id, else_bb_id));
 
-                let then_first_bb_id = self.bbs.next_key();
-                self.gen_expr(result, then);
-                let then_last_bb_id = self.close_bb(None);
+                let before_locals = self.local_ids.clone();
 
-                let else_first_bb_id = self.bbs.next_key();
-                self.gen_expr(result, els);
-                let else_last_bb_id = self.close_bb(None);
+                self.current_bb_id = Some(then_bb_id);
+                let then_result = self.local(Type::Obj);
+                self.gen_expr(Some(then_result), then);
+                let then_locals = self.local_ids.clone();
+                let then_ended_bb_id = self.current_bb_id;
+                self.close_bb(BasicBlockNext::Jump(merge_bb_id));
 
-                self.bbs[bb_id].next = Some(BasicBlockNext::If(
-                    cond_local,
-                    then_first_bb_id,
-                    else_first_bb_id,
-                ));
+                self.current_bb_id = Some(else_bb_id);
+                let els_result = self.local(Type::Obj);
+                self.gen_expr(Some(els_result), els);
+                let els_locals = self.local_ids.clone();
+                let els_ended_bb_id = self.current_bb_id;
+                self.close_bb(BasicBlockNext::Jump(merge_bb_id));
 
-                self.next_undecided_bb_ids.insert(then_last_bb_id);
-                self.next_undecided_bb_ids.insert(else_last_bb_id);
+                self.current_bb_id = Some(merge_bb_id);
+                self.exprs.push(ExprAssign {
+                    local: result,
+                    expr: Expr::Phi({
+                        let mut incomings = Vec::new();
+                        if let Some(bb) = then_ended_bb_id {
+                            incomings.push(PhiIncomingValue {
+                                bb,
+                                local: then_result,
+                            });
+                        }
+                        if let Some(bb) = els_ended_bb_id {
+                            incomings.push(PhiIncomingValue {
+                                bb,
+                                local: els_result,
+                            });
+                        }
+                        incomings
+                    }),
+                });
+
+                // thenとelseでset!された変数をphiノードで結合
+                for (var_id, before_local) in before_locals {
+                    let then_local = *then_locals.get(&var_id).unwrap();
+                    let els_local = *els_locals.get(&var_id).unwrap();
+
+                    if then_local != els_local || then_local != before_local {
+                        debug_assert_eq!(self.locals[then_local].typ, self.locals[els_local].typ,);
+                        debug_assert_eq!(
+                            self.locals[then_local].typ,
+                            self.locals[before_local].typ,
+                        );
+                        let phi_local = self.new_version_ast_local(var_id);
+                        self.exprs.push(ExprAssign {
+                            local: Some(phi_local),
+                            expr: Expr::Phi({
+                                let mut incomings = Vec::new();
+                                if let Some(bb) = then_ended_bb_id {
+                                    incomings.push(PhiIncomingValue {
+                                        bb,
+                                        local: then_local,
+                                    });
+                                }
+                                if let Some(bb) = els_ended_bb_id {
+                                    incomings.push(PhiIncomingValue {
+                                        bb,
+                                        local: els_local,
+                                    });
+                                }
+                                incomings
+                            }),
+                        });
+                    }
+                }
             }
             ast::Expr::Call(x, ast::Call { func, args }) => {
                 if let ast::Expr::Var(x, name) = func.as_ref()
@@ -468,10 +647,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                             local: Some(msg),
                             expr: Expr::String("builtin args count mismatch\n".to_string()),
                         });
-                        self.exprs.push(ExprAssign {
-                            local: result,
-                            expr: Expr::Error(msg),
-                        });
+                        self.close_bb(BasicBlockNext::Terminator(BasicBlockTerminator::Error(msg)));
                     } else {
                         let mut arg_locals = Vec::new();
                         for (typ, arg) in rule.arg_types().iter().zip(args) {
@@ -480,12 +656,44 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                             let arg_local = match typ {
                                 Type::Obj => obj_arg_local,
                                 Type::Val(val_type) => {
+                                    let is_result_local = self.local(Type::Val(ValType::Bool));
+                                    self.exprs.push(ExprAssign {
+                                        local: Some(is_result_local),
+                                        expr: Expr::Is(*val_type, obj_arg_local),
+                                    });
                                     let val_type_arg_local = self.local(Type::Val(*val_type));
-                                    // TODO: 動的型チェック
+                                    let then_bb_id = self.bbs.allocate_key();
+                                    let else_bb_id = self.bbs.allocate_key();
+                                    let merge_bb_id = self.bbs.allocate_key();
+
+                                    self.close_bb(BasicBlockNext::If(
+                                        is_result_local,
+                                        then_bb_id,
+                                        else_bb_id,
+                                    ));
+
+                                    self.current_bb_id = Some(then_bb_id);
                                     self.exprs.push(ExprAssign {
                                         local: Some(val_type_arg_local),
                                         expr: Expr::FromObj(*val_type, obj_arg_local),
                                     });
+                                    self.close_bb(BasicBlockNext::Jump(merge_bb_id));
+
+                                    self.current_bb_id = Some(else_bb_id);
+                                    let msg = self.local(Type::Val(ValType::String));
+                                    self.exprs.push(ExprAssign {
+                                        local: Some(msg),
+                                        expr: Expr::String(format!(
+                                            "{:?}: arg type mismatch\n",
+                                            builtin
+                                        )),
+                                    });
+                                    self.close_bb(BasicBlockNext::Terminator(
+                                        BasicBlockTerminator::Error(msg),
+                                    ));
+
+                                    self.current_bb_id = Some(merge_bb_id);
+
                                     val_type_arg_local
                                 }
                             };
@@ -530,17 +738,12 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
 
                     // TODO: funcがクロージャかのチェック
                     let closure_local = self.local(ValType::Closure);
-                    let func_local = self.local(ValType::FuncRef);
                     self.exprs.push(ExprAssign {
                         local: Some(closure_local),
                         expr: Expr::FromObj(ValType::Closure, obj_func_local),
                     });
-                    self.exprs.push(ExprAssign {
-                        local: Some(func_local),
-                        expr: Expr::ClosureFuncRef(closure_local),
-                    });
 
-                    let args_local = self.local(LocalType::Args);
+                    let args_local = self.local(LocalType::VariadicArgs);
                     let mut args_locals = Vec::new();
                     for arg in args {
                         let arg_local = self.local(Type::Obj);
@@ -549,29 +752,24 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     }
                     self.exprs.push(ExprAssign {
                         local: Some(args_local),
-                        expr: Expr::Args(args_locals),
+                        expr: Expr::VariadicArgs(args_locals),
                     });
 
                     let is_tail = x.get_ref(type_map::key::<TailCall>()).is_tail;
-                    let call_ref = ExprCallRef {
-                        func: func_local,
-                        args: vec![closure_local, args_local],
-                        func_type: FuncType {
-                            ret: LocalType::Type(Type::Obj),
-                            args: vec![
-                                LocalType::Type(Type::Val(ValType::Closure)),
-                                LocalType::Args,
-                            ],
-                        },
+                    let call_closure = ExprCallClosure {
+                        closure: closure_local,
+                        args: vec![args_local],
+                        arg_types: vec![LocalType::VariadicArgs],
+                        func_index: 0,
                     };
                     if is_tail {
-                        self.close_bb(Some(BasicBlockNext::Terminator(
-                            BasicBlockTerminator::TailCallRef(call_ref),
-                        )));
+                        self.close_bb(BasicBlockNext::Terminator(
+                            BasicBlockTerminator::TailCallClosure(call_closure),
+                        ));
                     } else {
                         self.exprs.push(ExprAssign {
                             local: result,
-                            expr: Expr::CallRef(call_ref),
+                            expr: Expr::CallClosure(call_closure),
                         });
                     }
                 }
@@ -598,10 +796,10 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     }
                 }
                 ast::VarId::Global(id) => {
-                    let global = self.module_generator.global_id(*id);
+                    let global = self.module_generator.global(*id);
                     self.exprs.push(ExprAssign {
                         local: result,
-                        expr: Expr::GlobalGet(global),
+                        expr: Expr::GlobalGet(global.id),
                     });
                 }
             },
@@ -631,7 +829,8 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                                 expr: Expr::Move(obj_local),
                             });
                         } else {
-                            let local = *self.local_ids.get(id).unwrap();
+                            // SSA形式のため、新しいローカルを定義して代入する
+                            let local = self.new_version_ast_local(*id);
                             self.gen_expr(Some(local), expr);
                             self.exprs.push(ExprAssign {
                                 local: result,
@@ -648,17 +847,16 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                                 local: Some(msg),
                                 expr: Expr::String("set! builtin is not allowed\n".to_string()),
                             });
-                            self.exprs.push(ExprAssign {
-                                local: result,
-                                expr: Expr::Error(msg),
-                            });
+                            self.close_bb(BasicBlockNext::Terminator(BasicBlockTerminator::Error(
+                                msg,
+                            )));
                         } else {
                             let local = self.local(Type::Obj);
                             self.gen_expr(Some(local), expr);
-                            let global = self.module_generator.global_id(*id);
+                            let global = self.module_generator.global(*id);
                             self.exprs.push(ExprAssign {
                                 local: None,
-                                expr: Expr::GlobalSet(global, local),
+                                expr: Expr::GlobalSet(global.id, local),
                             });
                             self.exprs.push(ExprAssign {
                                 local: result,
@@ -725,18 +923,18 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         }
     }
 
-    fn close_bb(&mut self, next: Option<BasicBlockNext>) -> BasicBlockId {
+    fn close_bb(&mut self, next: BasicBlockNext) {
         let bb_exprs = std::mem::take(&mut self.exprs);
-        let bb_id = self.bbs.push(BasicBlockOptionalNext {
-            exprs: bb_exprs,
-            next,
-        });
-
-        let undecided_bb_ids = std::mem::take(&mut self.next_undecided_bb_ids);
-        for undecided_bb_id in undecided_bb_ids {
-            self.bbs[undecided_bb_id].next = Some(BasicBlockNext::Jump(bb_id));
+        if let Some(id) = self.current_bb_id {
+            self.bbs.insert(self.current_bb_id.unwrap(), BasicBlock {
+                id,
+                exprs: bb_exprs,
+                next,
+            });
+            self.current_bb_id = None;
+        } else {
+            // self.current_bb_idがNoneのとき到達不能ブロックである
         }
-        bb_id
     }
 }
 
@@ -820,42 +1018,42 @@ impl BuiltinConversionRule {
             Builtin::IsPair => BuiltinConversionRule::Unary {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
-                to_ir: Expr::IsPair,
+                to_ir: |local| Expr::Is(ValType::Cons, local),
             },
             Builtin::IsSymbol => BuiltinConversionRule::Unary {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
-                to_ir: Expr::IsSymbol,
+                to_ir: |local| Expr::Is(ValType::Symbol, local),
             },
             Builtin::IsString => BuiltinConversionRule::Unary {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
-                to_ir: Expr::IsString,
+                to_ir: |local| Expr::Is(ValType::String, local),
             },
             Builtin::IsNumber => BuiltinConversionRule::Unary {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
-                to_ir: Expr::IsNumber,
+                to_ir: |local| Expr::Is(ValType::Int, local), // TODO: 一般のnumberかを判定
             },
             Builtin::IsBoolean => BuiltinConversionRule::Unary {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
-                to_ir: Expr::IsBoolean,
+                to_ir: |local| Expr::Is(ValType::Bool, local),
             },
             Builtin::IsProcedure => BuiltinConversionRule::Unary {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
-                to_ir: Expr::IsProcedure,
+                to_ir: |local| Expr::Is(ValType::Closure, local),
             },
             Builtin::IsChar => BuiltinConversionRule::Unary {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
-                to_ir: Expr::IsChar,
+                to_ir: |local| Expr::Is(ValType::Char, local),
             },
             Builtin::IsVector => BuiltinConversionRule::Unary {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
-                to_ir: Expr::IsVector,
+                to_ir: |local| Expr::Is(ValType::Vector, local),
             },
             Builtin::VectorLength => BuiltinConversionRule::Unary {
                 args: [Type::Val(ValType::Vector)],
@@ -934,10 +1132,4 @@ impl BuiltinConversionRule {
             },
         }
     }
-}
-
-#[derive(Debug, Clone)]
-struct BasicBlockOptionalNext {
-    pub exprs: Vec<ExprAssign>,
-    pub next: Option<BasicBlockNext>,
 }

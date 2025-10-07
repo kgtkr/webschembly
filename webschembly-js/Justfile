@@ -2,7 +2,8 @@ WEBSCHEMBLY_RUNTIME_DIR := clean(justfile_directory() / "../webschembly-runtime"
 WEBSCHEMBLY_RUNTIME_FILE := "webschembly_runtime.wasm"
 WEBSCHEMBLY_RUNTIME := WEBSCHEMBLY_RUNTIME_DIR / WEBSCHEMBLY_RUNTIME_FILE
 LOG := "0"
-LOG_DIR_ENV := if LOG == "1" { "LOG_DIR=" + '"' + (justfile_directory() / "log") + '"' + " " } else { "" }
+LOG_DIR := justfile_directory() / "log"
+LOG_DIR_ENV := if LOG == "1" { "LOG_DIR=" + '"' + LOG_DIR + '"' + " " } else { "" }
 export LOG_STDOUT := "0"
 WEBSCHEMBLY_RUNTIME_ENV := "WEBSCHEMBLY_RUNTIME=" + '"' + WEBSCHEMBLY_RUNTIME + '"' + " "
 
@@ -31,6 +32,12 @@ run src: build-runtime
 benchmark: build-runtime-release
 	{{LOG_DIR_ENV}}{{WEBSCHEMBLY_RUNTIME_ENV}}npm run benchmark
 
+benchmark-dev: build-runtime
+	{{LOG_DIR_ENV}}{{WEBSCHEMBLY_RUNTIME_ENV}}BENCH_DEV=1 npm run benchmark
+
 run-aot wasm:
 	make "{{wasm}}"
 	{{LOG_DIR_ENV}}npx tsx src/run-aot.ts "{{wasm}}"
+
+clean:
+	rm "{{LOG_DIR}}"/* || true

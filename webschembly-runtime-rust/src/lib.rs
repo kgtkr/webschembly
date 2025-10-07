@@ -126,12 +126,14 @@ fn load_src_inner(src: String, is_stdlib: bool) {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn load_stdlib() {
+    log::debug!("loading stdlib");
     let stdlib = webschembly_compiler::stdlib::generate_stdlib();
     load_src_inner(stdlib, true);
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn load_src(buf_ptr: i32, buf_len: i32) {
+    log::debug!("loading src");
     let buf_ptr = buf_ptr as *const u8;
     let mut bytes = Vec::with_capacity(buf_len as usize);
     for i in 0..buf_len {
@@ -317,12 +319,19 @@ pub extern "C" fn get_global_id(buf_ptr: i32, buf_len: i32) -> i32 {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn instantiate_func(module_id: i32, func_id: i32) -> i32 {
+pub extern "C" fn instantiate_func(module_id: i32, func_id: i32, func_index: i32) -> i32 {
+    log::debug!(
+        "instantiate_func: module_id={}, func_id={}, func_index={}",
+        module_id,
+        func_id,
+        func_index
+    );
     let (wasm, ir) = COMPILER.with(|compiler| {
         let mut compiler = RefMut::map(compiler.borrow_mut(), |c| c.as_mut().unwrap());
         let module = compiler.instantiate_func(
             webschembly_compiler::ir::ModuleId::from(module_id as usize),
             webschembly_compiler::ir::FuncId::from(func_id as usize),
+            func_index as usize,
         );
         let wasm = webschembly_compiler::wasm_generator::generate(&module);
         let ir = if cfg!(debug_assertions) {
@@ -348,12 +357,27 @@ pub extern "C" fn instantiate_func(module_id: i32, func_id: i32) -> i32 {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn instantiate_bb(module_id: i32, func_id: i32, bb_id: i32, index: i32) -> i32 {
+pub extern "C" fn instantiate_bb(
+    module_id: i32,
+    func_id: i32,
+    func_index: i32,
+    bb_id: i32,
+    index: i32,
+) -> i32 {
+    log::debug!(
+        "instantiate_bb: module_id={}, func_id={}, func_index={}, bb_id={}, index={}",
+        module_id,
+        func_id,
+        func_index,
+        bb_id,
+        index
+    );
     let (wasm, ir) = COMPILER.with(|compiler| {
         let mut compiler = RefMut::map(compiler.borrow_mut(), |c| c.as_mut().unwrap());
         let module = compiler.instantiate_bb(
             webschembly_compiler::ir::ModuleId::from(module_id as usize),
             webschembly_compiler::ir::FuncId::from(func_id as usize),
+            func_index as usize,
             webschembly_compiler::ir::BasicBlockId::from(bb_id as usize),
             index as usize,
         );

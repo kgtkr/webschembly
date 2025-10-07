@@ -11,6 +11,7 @@
     if_let_guard,
     impl_trait_in_assoc_type
 )]
+#![allow(clippy::vec_init_then_push)]
 pub mod lexer;
 pub mod parser_combinator;
 #[macro_use]
@@ -29,8 +30,8 @@ pub mod sexpr_parser;
 pub mod span;
 pub mod stdlib;
 pub mod token;
-mod tokens;
+pub mod tokens;
 mod vec_map;
 pub use vec_map::VecMap;
-pub mod cfg;
+pub mod ir_processor;
 pub mod x;

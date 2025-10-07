@@ -7,6 +7,7 @@ import {
   createRuntime,
   type CompilerConfig,
   type Runtime,
+  type SchemeValue,
 } from "./runtime";
 import { createNodeRuntimeEnv } from "./node-runtime-env";
 
@@ -25,29 +26,49 @@ const runtimeModule = new WebAssembly.Module(
   await fs.readFile(process.env["WEBSCHEMBLY_RUNTIME"]!)
 );
 
-const bench = new Bench();
+const bench = new Bench(
+  process.env["BENCH_DEV"]
+    ? {
+        iterations: 1,
+      }
+    : undefined
+);
 
 for (const filename of filenames) {
   for (const warmup of [false, true]) {
     for (const compilerConfig of compilerConfigs) {
       const srcBuf = await fs.readFile(path.join(sourceDir, filename));
-      const runMainSrcBuf = new TextEncoder().encode("(main)");
+
       let runtime: Runtime;
 
       if (warmup) {
+        let mainClosure: SchemeValue;
+        let mainArgs: SchemeValue;
+        let afterWarmup = false;
         bench.add(
           `${filename},with warmup,${compilerConfigToString(compilerConfig)}`,
           () => {
-            runtime.loadSrc(runMainSrcBuf);
+            runtime.instance.exports.call_closure(mainClosure, mainArgs);
           },
           {
             beforeEach: async () => {
+              afterWarmup = false;
               runtime = await createRuntime(
                 await createNodeRuntimeEnv({
                   runtimeName: filename,
                   exit: () => {},
                   writeBuf: () => {},
                   loadRuntimeModule: async () => runtimeModule,
+                  logger: {
+                    log: () => {},
+                    instantiate: () => {
+                      if (afterWarmup) {
+                        throw new Error(
+                          "instantiate should not be called after warmup"
+                        );
+                      }
+                    },
+                  },
                 }),
                 {
                   compilerConfig,
@@ -55,6 +76,10 @@ for (const filename of filenames) {
               );
               runtime.loadStdlib();
               runtime.loadSrc(srcBuf);
+              mainClosure = runtime.getGlobal("main");
+              mainArgs = runtime.instance.exports.new_args(0);
+              runtime.instance.exports.call_closure(mainClosure, mainArgs);
+              afterWarmup = true;
             },
             afterEach: () => {
               runtime.cleanup();
