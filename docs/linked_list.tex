@@ -1,0 +1,19 @@
+\begin{figure}[htbp]
+  \centering
+  \begin{tikzpicture}[
+    listnode/.style={
+      rectangle split, rectangle split parts=2, draw,
+      minimum width=1.5cm, minimum height=0.7cm
+    },
+    -Stealth
+  ]
+    \node[listnode] (A) {10};
+    \node[listnode, right=of A] (B) {20};
+    \node[right=2cm of B] (NULL) {NULL};
+
+    \draw[->] (A.two) -- (B.text);
+    \draw[->] (B.two) -- (NULL.west);
+  \end{tikzpicture}
+  \caption{連結リスト}
+  \label{fig:linked_list}
+\end{figure}
