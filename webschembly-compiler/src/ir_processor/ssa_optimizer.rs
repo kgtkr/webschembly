@@ -156,6 +156,7 @@ pub fn constant_folding(
     rpo: &FxHashMap<BasicBlockId, usize>,
     def_use: &DefUseChain,
 ) {
+    // TODO: オーバーフローを考慮
     let mut rpo_nodes = func.bbs.keys().collect::<Vec<_>>();
     rpo_nodes.sort_by_key(|id| rpo.get(id).unwrap());
 
