@@ -151,6 +151,180 @@ pub fn eliminate_redundant_obj(func: &mut Func, def_use: &DefUseChain) {
     }
 }
 
+pub fn constant_folding(
+    func: &mut Func,
+    rpo: &FxHashMap<BasicBlockId, usize>,
+    def_use: &DefUseChain,
+) {
+    let mut rpo_nodes = func.bbs.keys().collect::<Vec<_>>();
+    rpo_nodes.sort_by_key(|id| rpo.get(id).unwrap());
+
+    for bb_id in &rpo_nodes {
+        let expr_indices = (0..func.bbs[*bb_id].exprs.len()).collect::<Vec<_>>();
+
+        for expr_idx in expr_indices {
+            let expr_assign = &func.bbs[*bb_id].exprs[expr_idx];
+            match expr_assign.expr {
+                Expr::Add(local1, local2)
+                    if let Some(&Expr::Int(a)) =
+                        def_use.get_def_non_move_expr(&func.bbs, local1)
+                        && let Some(&Expr::Int(b)) =
+                            def_use.get_def_non_move_expr(&func.bbs, local2) =>
+                {
+                    func.bbs[*bb_id].exprs[expr_idx].expr = Expr::Int(a + b);
+                }
+                Expr::Sub(local1, local2)
+                    if let Some(&Expr::Int(a)) =
+                        def_use.get_def_non_move_expr(&func.bbs, local1)
+                        && let Some(&Expr::Int(b)) =
+                            def_use.get_def_non_move_expr(&func.bbs, local2) =>
+                {
+                    func.bbs[*bb_id].exprs[expr_idx].expr = Expr::Int(a - b);
+                }
+                Expr::Mul(local1, local2)
+                    if let Some(&Expr::Int(a)) =
+                        def_use.get_def_non_move_expr(&func.bbs, local1)
+                        && let Some(&Expr::Int(b)) =
+                            def_use.get_def_non_move_expr(&func.bbs, local2) =>
+                {
+                    func.bbs[*bb_id].exprs[expr_idx].expr = Expr::Int(a * b);
+                }
+                Expr::Div(local1, local2)
+                    if let Some(&Expr::Int(a)) =
+                        def_use.get_def_non_move_expr(&func.bbs, local1)
+                        && let Some(&Expr::Int(b)) =
+                            def_use.get_def_non_move_expr(&func.bbs, local2)
+                        && b != 0 =>
+                {
+                    func.bbs[*bb_id].exprs[expr_idx].expr = Expr::Int(a / b);
+                }
+                Expr::EqNum(local1, local2)
+                    if let Some(&Expr::Int(a)) =
+                        def_use.get_def_non_move_expr(&func.bbs, local1)
+                        && let Some(&Expr::Int(b)) =
+                            def_use.get_def_non_move_expr(&func.bbs, local2) =>
+                {
+                    func.bbs[*bb_id].exprs[expr_idx].expr = Expr::Bool(a == b);
+                }
+                Expr::Lt(local1, local2)
+                    if let Some(&Expr::Int(a)) =
+                        def_use.get_def_non_move_expr(&func.bbs, local1)
+                        && let Some(&Expr::Int(b)) =
+                            def_use.get_def_non_move_expr(&func.bbs, local2) =>
+                {
+                    func.bbs[*bb_id].exprs[expr_idx].expr = Expr::Bool(a < b);
+                }
+                Expr::Gt(local1, local2)
+                    if let Some(&Expr::Int(a)) =
+                        def_use.get_def_non_move_expr(&func.bbs, local1)
+                        && let Some(&Expr::Int(b)) =
+                            def_use.get_def_non_move_expr(&func.bbs, local2) =>
+                {
+                    func.bbs[*bb_id].exprs[expr_idx].expr = Expr::Bool(a > b);
+                }
+                Expr::Le(local1, local2)
+                    if let Some(&Expr::Int(a)) =
+                        def_use.get_def_non_move_expr(&func.bbs, local1)
+                        && let Some(&Expr::Int(b)) =
+                            def_use.get_def_non_move_expr(&func.bbs, local2) =>
+                {
+                    func.bbs[*bb_id].exprs[expr_idx].expr = Expr::Bool(a <= b);
+                }
+                Expr::Ge(local1, local2)
+                    if let Some(&Expr::Int(a)) =
+                        def_use.get_def_non_move_expr(&func.bbs, local1)
+                        && let Some(&Expr::Int(b)) =
+                            def_use.get_def_non_move_expr(&func.bbs, local2) =>
+                {
+                    func.bbs[*bb_id].exprs[expr_idx].expr = Expr::Bool(a >= b);
+                }
+                Expr::Not(local)
+                    if let Some(&Expr::Bool(a)) =
+                        def_use.get_def_non_move_expr(&func.bbs, local) =>
+                {
+                    func.bbs[*bb_id].exprs[expr_idx].expr = Expr::Bool(!a);
+                }
+                Expr::EqNum(local1, local2)
+                    if let Some(&Expr::Bool(a)) =
+                        def_use.get_def_non_move_expr(&func.bbs, local1)
+                        && let Some(&Expr::Bool(b)) =
+                            def_use.get_def_non_move_expr(&func.bbs, local2) =>
+                {
+                    func.bbs[*bb_id].exprs[expr_idx].expr = Expr::Bool(a == b);
+                }
+                Expr::VariadicArgsRef(local, index)
+                    if let Some(&Expr::VariadicArgs(ref args)) =
+                        def_use.get_def_non_move_expr(&func.bbs, local)
+                        && index < args.len() =>
+                {
+                    func.bbs[*bb_id].exprs[expr_idx].expr = Expr::Move(args[index]);
+                }
+                Expr::VariadicArgsLength(local)
+                    if let Some(&Expr::VariadicArgs(ref args)) =
+                        def_use.get_def_non_move_expr(&func.bbs, local) =>
+                {
+                    func.bbs[*bb_id].exprs[expr_idx].expr = Expr::Int(args.len() as i64);
+                }
+                Expr::VectorLength(local)
+                    if let Some(&Expr::Vector(ref elements)) =
+                        def_use.get_def_non_move_expr(&func.bbs, local) =>
+                {
+                    // Vectorは可変だが長さは変わらないので定数畳み込みできる
+                    func.bbs[*bb_id].exprs[expr_idx].expr = Expr::Int(elements.len() as i64);
+                }
+                Expr::ToObj(typ1, src)
+                    if let Some(src_expr) = def_use.get_def_non_move_expr(&func.bbs, src)
+                        && let Expr::FromObj(typ2, obj_src) = *src_expr
+                        && typ1 == typ2 =>
+                {
+                    func.bbs[*bb_id].exprs[expr_idx].expr = Expr::Move(obj_src);
+                }
+                Expr::FromObj(typ1, src)
+                    if let Some(src_expr) = def_use.get_def_non_move_expr(&func.bbs, src)
+                        && let Expr::ToObj(typ2, obj_src) = *src_expr
+                        && typ1 == typ2 =>
+                {
+                    func.bbs[*bb_id].exprs[expr_idx].expr = Expr::Move(obj_src);
+                }
+                Expr::Is(typ1, src)
+                    if let Some(&Expr::ToObj(typ2, _)) =
+                        def_use.get_def_non_move_expr(&func.bbs, src) =>
+                {
+                    func.bbs[*bb_id].exprs[expr_idx].expr = Expr::Bool(typ1 == typ2);
+                }
+                Expr::Eq(local1, local2)
+                    if let Some(&Expr::ToObj(typ1, src1)) =
+                        def_use.get_def_non_move_expr(&func.bbs, local1)
+                        && let Some(&Expr::ToObj(typ2, src2)) =
+                            def_use.get_def_non_move_expr(&func.bbs, local2) =>
+                {
+                    if typ1 != typ2 {
+                        func.bbs[*bb_id].exprs[expr_idx].expr = Expr::Bool(false);
+                    } else if typ1 == ValType::Bool {
+                        if let Some(&Expr::Bool(a)) = def_use.get_def_non_move_expr(&func.bbs, src1)
+                            && let Some(&Expr::Bool(b)) =
+                                def_use.get_def_non_move_expr(&func.bbs, src2)
+                        {
+                            func.bbs[*bb_id].exprs[expr_idx].expr = Expr::Bool(a == b);
+                        }
+                    } else if typ1 == ValType::Nil {
+                        func.bbs[*bb_id].exprs[expr_idx].expr = Expr::Bool(true);
+                    } else if typ1 == ValType::Int {
+                        // Int参照の中身が同じ時のEqの結果は未規定なので畳み込んでもよい
+                        if let Some(&Expr::Int(a)) = def_use.get_def_non_move_expr(&func.bbs, src1)
+                            && let Some(&Expr::Int(b)) =
+                                def_use.get_def_non_move_expr(&func.bbs, src2)
+                        {
+                            func.bbs[*bb_id].exprs[expr_idx].expr = Expr::Bool(a == b);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
 pub fn ssa_optimize(func: &mut Func) {
     let mut def_use = DefUseChain::from_bbs(&func.bbs);
     let rpo = calculate_rpo(&func.bbs, func.bb_entry);
@@ -162,6 +336,7 @@ pub fn ssa_optimize(func: &mut Func) {
         debug_assert_ssa(func);
         copy_propagation(func, &rpo);
         eliminate_redundant_obj(func, &def_use);
+        constant_folding(func, &rpo, &def_use);
         common_subexpression_elimination(func, &dom_tree);
     }
 
