@@ -52,25 +52,32 @@ pub fn dead_code_elimination(func: &mut Func, def_use: &mut DefUseChain) {
     }
 }
 
-pub fn copy_propagation(func: &mut Func, def_use: &DefUseChain) {
-    for local in func.locals.keys() {
-        let Some(def) = def_use.get_def(local) else {
-            continue;
-        };
-        let mut current = def;
-        while let ExprAssign {
-            local: _,
-            expr: Expr::Move(src),
-        } = func.bbs[current.bb_id].exprs[current.expr_idx]
-        {
-            if let Some(next) = def_use.get_def(src) {
-                current = next;
-            } else {
-                break;
+pub fn copy_propagation(func: &mut Func, rpo: &FxHashMap<BasicBlockId, usize>) {
+    let mut rpo_nodes = func.bbs.keys().collect::<Vec<_>>();
+    rpo_nodes.sort_by_key(|id| rpo.get(id).unwrap());
+
+    let mut copies = FxHashMap::default();
+
+    for bb_id in &rpo_nodes {
+        let bb = &mut func.bbs[*bb_id];
+
+        for expr_assign in &bb.exprs {
+            if let ExprAssign {
+                local: Some(dest),
+                expr: Expr::Move(src),
+            } = *expr_assign
+            {
+                let src = copies.get(&src).copied().unwrap_or(src);
+                copies.insert(dest, src);
             }
         }
-        if current != def {
-            func.bbs[def.bb_id].exprs[def.expr_idx].expr = Expr::Move(current.local);
+
+        for (local, flag) in bb.local_usages_mut() {
+            if let LocalFlag::Used(_) = flag {
+                if let Some(&src) = copies.get(local) {
+                    *local = src;
+                }
+            }
         }
     }
 }
@@ -143,7 +150,7 @@ pub fn ssa_optimize(func: &mut Func) {
 
     for _ in 0..5 {
         debug_assert_ssa(func);
-        copy_propagation(func, &def_use);
+        copy_propagation(func, &rpo);
         eliminate_redundant_obj(func, &def_use);
         common_subexpression_elimination(func, &dom_tree);
     }
