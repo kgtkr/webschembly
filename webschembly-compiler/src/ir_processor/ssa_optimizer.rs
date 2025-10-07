@@ -254,20 +254,20 @@ pub fn constant_folding(
                     func.bbs[*bb_id].exprs[expr_idx].expr = Expr::Bool(a == b);
                 }
                 Expr::VariadicArgsRef(local, index)
-                    if let Some(&Expr::VariadicArgs(ref args)) =
+                    if let Some(Expr::VariadicArgs(args)) =
                         def_use.get_def_non_move_expr(&func.bbs, local)
                         && index < args.len() =>
                 {
                     func.bbs[*bb_id].exprs[expr_idx].expr = Expr::Move(args[index]);
                 }
                 Expr::VariadicArgsLength(local)
-                    if let Some(&Expr::VariadicArgs(ref args)) =
+                    if let Some(Expr::VariadicArgs(args)) =
                         def_use.get_def_non_move_expr(&func.bbs, local) =>
                 {
                     func.bbs[*bb_id].exprs[expr_idx].expr = Expr::Int(args.len() as i64);
                 }
                 Expr::VectorLength(local)
-                    if let Some(&Expr::Vector(ref elements)) =
+                    if let Some(Expr::Vector(elements)) =
                         def_use.get_def_non_move_expr(&func.bbs, local) =>
                 {
                     // Vectorは可変だが長さは変わらないので定数畳み込みできる
