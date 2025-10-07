@@ -831,7 +831,7 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
             }
             Expr::Bool(b) => write!(f, "{}", b),
             Expr::Int(i) => write!(f, "{}", i),
-            Expr::String(s) => write!(f, "\"{}\"", s),
+            Expr::String(s) => write!(f, "{:?}", s),
             Expr::StringToSymbol(id) => write!(f, "string_to_symbol({})", id.display(self.meta)),
             Expr::Nil => write!(f, "nil"),
             Expr::Char(c) => write!(f, "'{}'", c),
