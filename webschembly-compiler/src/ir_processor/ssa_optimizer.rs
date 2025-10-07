@@ -119,21 +119,33 @@ pub fn eliminate_redundant_obj(func: &mut Func, def_use: &DefUseChain) {
         let Some(def) = def_use.get_def(local) else {
             continue;
         };
+        /*
+        typ1 == typ でないものが到達不能コードとして現れる可能性がある
+        例:
+
+        l1 = to_obj<int>(..)
+        l2 = is<string>(l1)
+        if l2 {
+            l3 = from_obj<string>(l1) // ここは到達不能であるので無視してよい
+        }
+        */
         match func.bbs[def.bb_id].exprs[def.expr_idx].expr {
             Expr::ToObj(typ1, src) => {
                 if let Some(src_expr) = def_use.get_def_non_move_expr(&func.bbs, src)
                     && let Expr::FromObj(typ2, obj_src) = *src_expr
                 {
-                    debug_assert_eq!(typ1, typ2);
-                    func.bbs[def.bb_id].exprs[def.expr_idx].expr = Expr::Move(obj_src);
+                    if typ1 == typ2 {
+                        func.bbs[def.bb_id].exprs[def.expr_idx].expr = Expr::Move(obj_src);
+                    }
                 }
             }
             Expr::FromObj(typ1, src) => {
                 if let Some(src_expr) = def_use.get_def_non_move_expr(&func.bbs, src)
                     && let Expr::ToObj(typ2, obj_src) = *src_expr
                 {
-                    debug_assert_eq!(typ1, typ2);
-                    func.bbs[def.bb_id].exprs[def.expr_idx].expr = Expr::Move(obj_src);
+                    if typ1 == typ2 {
+                        func.bbs[def.bb_id].exprs[def.expr_idx].expr = Expr::Move(obj_src);
+                    }
                 }
             }
             _ => {}
