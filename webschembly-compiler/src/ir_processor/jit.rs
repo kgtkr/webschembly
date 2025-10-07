@@ -857,7 +857,10 @@ impl JitFunc {
                         && let Some(&Expr::ToObj(ty2, _)) =
                             def_use_chain.get_def_non_move_expr(&bbs, obj)
                     {
+                        // TODO: 定数畳み込みを実装したのでもうなくていいかも
                         Some(ty1 == ty2)
+                    } else if let Some(&Expr::Bool(b)) = cond_expr {
+                        Some(b)
                     } else {
                         None
                     };
