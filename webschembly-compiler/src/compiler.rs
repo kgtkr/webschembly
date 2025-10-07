@@ -85,7 +85,6 @@ impl Compiler {
         );
 
         preprocess_module(&mut module);
-        optimize_module(&mut module);
         if let Some(jit) = &mut self.jit {
             let mut stub_module = jit.register_module(&mut self.global_manager, module);
             preprocess_module(&mut stub_module);
@@ -95,6 +94,7 @@ impl Compiler {
             postprocess(&mut stub_module, &mut self.global_manager);
             Ok(stub_module)
         } else {
+            optimize_module(&mut module);
             postprocess(&mut module, &mut self.global_manager);
             Ok(module)
         }

@@ -8,6 +8,7 @@ use super::dataflow::{analyze_liveness, calc_def_use};
 use crate::fxbihashmap::FxBiHashMap;
 use crate::ir_generator::GlobalManager;
 use crate::ir_processor::ssa::{DefUseChain, collect_defs};
+use crate::ir_processor::ssa_optimizer::ssa_optimize;
 use crate::vec_map::VecMap;
 use crate::{HasId, ir::*};
 
@@ -322,6 +323,7 @@ impl JitFunc {
         let module = &jit_module.module;
         let mut func = module.funcs[func_id].clone();
         closure_func_assign_types(&mut func, func_index, closure_global_layout);
+        ssa_optimize(&mut func);
         let bb_to_globals = func
             .bbs
             .keys()
