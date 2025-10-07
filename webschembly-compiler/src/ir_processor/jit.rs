@@ -1,4 +1,4 @@
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 use typed_index_collections::{TiVec, ti_vec};
 
 use super::bb_optimizer;
@@ -759,10 +759,10 @@ impl JitFunc {
                     }
                     ExprAssign {
                         local,
-                        expr: Expr::EntrypointTable(ref locals),
+                        expr: Expr::EntrypointTable(_),
                     } => {
-                        let mut locals = locals.clone();
-                        for index in locals.len()..GLOBAL_LAYOUT_MAX_SIZE {
+                        let mut locals = Vec::new();
+                        for index in 0..GLOBAL_LAYOUT_MAX_SIZE {
                             let stub = new_locals.push_with(|id| Local {
                                 id,
                                 typ: LocalType::MutFuncRef,
@@ -1055,8 +1055,8 @@ impl JitFunc {
         let required_closure_idx = required_closure_idx
             .iter()
             .map(|&closure_idx| {
-                let arg_types = closure_global_layout.from_idx(closure_idx).unwrap();
                 let stub_func_id = funcs.next_key();
+
                 let mut locals = VecMap::new();
                 let mut args = Vec::new();
                 let closure_local = locals.push_with(|id| Local {
@@ -1065,13 +1065,26 @@ impl JitFunc {
                 });
                 let mut arg_locals = Vec::new();
                 args.push(closure_local);
-                for &typ in arg_types.iter() {
-                    let local = locals.push_with(|id| Local {
-                        id,
-                        typ: LocalType::Type(typ),
-                    });
-                    args.push(local);
-                    arg_locals.push(local);
+
+                match closure_global_layout.from_idx(closure_idx) {
+                    ClosureArgs::Specified(arg_types) => {
+                        for &typ in arg_types.iter() {
+                            let local = locals.push_with(|id| Local {
+                                id,
+                                typ: LocalType::Type(typ),
+                            });
+                            args.push(local);
+                            arg_locals.push(local);
+                        }
+                    }
+                    ClosureArgs::Variadic => {
+                        let local = locals.push_with(|id| Local {
+                            id,
+                            typ: LocalType::VariadicArgs,
+                        });
+                        args.push(local);
+                        arg_locals.push(local);
+                    }
                 }
 
                 let module_id_local = locals.push_with(|id| Local {
@@ -1130,6 +1143,8 @@ impl JitFunc {
                     ),
                 });
 
+                let arg_types = arg_locals.iter().map(|&local| locals[local].typ).collect();
+
                 funcs.push(Func {
                     id: stub_func_id,
                     args,
@@ -1143,10 +1158,7 @@ impl JitFunc {
                             ExprCallClosure {
                                 closure: closure_local,
                                 args: arg_locals,
-                                arg_types: arg_types
-                                    .iter()
-                                    .map(|&typ| LocalType::Type(typ))
-                                    .collect(),
+                                arg_types,
                                 func_index: closure_idx,
                             },
                         )),
@@ -1265,14 +1277,22 @@ impl JitFunc {
         required_closure_idx: &mut Vec<usize>,
         typed_objs: &VecMap<LocalId, TypedObj>,
     ) -> Option<ExprCallClosure> {
-        if call_closure.func_index != 0 {
+        if call_closure.func_index != GLOBAL_LAYOUT_DEFAULT_INDEX {
             return None;
         }
 
-        // func_index == 0 なら引数は[Args]を仮定してよい
-        let args_expr_idx = *local_to_args_expr_idx.get(&call_closure.args[0])?;
-        let Expr::VariadicArgs(args) = &exprs[args_expr_idx].expr else {
+        // func_index == GLOBAL_LAYOUT_DEFAULT_INDEX なら引数は[Args]を仮定してよい
+        let Some(&args_expr_idx) = local_to_args_expr_idx.get(&call_closure.args[0]) else {
+            let (closure_index, flag) = closure_global_layout
+                .to_idx(&ClosureArgs::Variadic)
+                .unwrap();
+            if flag == IndexFlag::NewInstance {
+                required_closure_idx.push(closure_index);
+            }
             return None;
+        };
+        let Expr::VariadicArgs(args) = &exprs[args_expr_idx].expr else {
+            unreachable!("unexpected expr other than VariadicArgs");
         };
 
         let mut fixed_args = Vec::new();
@@ -1287,16 +1307,31 @@ impl JitFunc {
             }
         }
 
-        let (closure_index, flag) = closure_global_layout.to_idx(&fixed_arg_types)?;
+        let arg_types = fixed_arg_types
+            .iter()
+            .copied()
+            .map(LocalType::Type)
+            .collect();
+        let (closure_index, flag) = closure_global_layout
+            .to_idx(&ClosureArgs::Specified(fixed_arg_types))
+            .unwrap_or_else(|| {
+                closure_global_layout
+                    .to_idx(&ClosureArgs::Variadic)
+                    .unwrap()
+            });
 
         if flag == IndexFlag::NewInstance {
             required_closure_idx.push(closure_index);
         }
-        Some(ExprCallClosure {
-            closure: call_closure.closure,
-            args: fixed_args,
-            arg_types: fixed_arg_types.into_iter().map(LocalType::Type).collect(),
-            func_index: closure_index,
+        Some(if closure_index == GLOBAL_LAYOUT_DEFAULT_INDEX {
+            call_closure.clone()
+        } else {
+            ExprCallClosure {
+                closure: call_closure.closure,
+                args: fixed_args,
+                arg_types,
+                func_index: closure_index,
+            }
         })
     }
 }
@@ -1493,9 +1528,16 @@ pub enum IndexFlag {
     ExistingInstance,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ClosureArgs {
+    Specified(Vec<Type>),
+    Variadic,
+}
+
 #[derive(Debug)]
 pub struct ClosureGlobalLayout {
-    args_to_index: FxBiHashMap<Vec<Type>, usize>,
+    args_to_index: FxBiHashMap<ClosureArgs, usize>,
+    instantiated_idx: FxHashSet<usize>,
 }
 
 impl Default for ClosureGlobalLayout {
@@ -1506,31 +1548,35 @@ impl Default for ClosureGlobalLayout {
 
 impl ClosureGlobalLayout {
     pub fn new() -> Self {
+        let mut args_to_index = FxBiHashMap::default();
+        args_to_index.insert(ClosureArgs::Variadic, GLOBAL_LAYOUT_DEFAULT_INDEX);
         Self {
-            args_to_index: FxBiHashMap::default(),
+            args_to_index,
+            instantiated_idx: FxHashSet::default(),
         }
     }
 
-    pub fn to_idx(&mut self, args: &Vec<Type>) -> Option<(usize, IndexFlag)> {
+    pub fn to_idx(&mut self, args: &ClosureArgs) -> Option<(usize, IndexFlag)> {
         // TODO: argsの長さに上限を設定
-        if let Some(&index) = self.args_to_index.get_by_left(args) {
-            Some((index, IndexFlag::ExistingInstance))
-        } else if self.args_to_index.len() + 1 < GLOBAL_LAYOUT_MAX_SIZE {
-            // + 1はGLOBAL_LAYOUT_DEFAULT_INDEXの分
-            let index = self.args_to_index.len() + 1;
+        let index = if let Some(&index) = self.args_to_index.get_by_left(args) {
+            index
+        } else if self.args_to_index.len() < GLOBAL_LAYOUT_MAX_SIZE {
+            let index = self.args_to_index.len();
             self.args_to_index.insert(args.clone(), index);
-            Some((index, IndexFlag::NewInstance))
+            index
         } else {
-            None
-        }
+            return None;
+        };
+        let flag = if self.instantiated_idx.insert(index) {
+            IndexFlag::NewInstance
+        } else {
+            IndexFlag::ExistingInstance
+        };
+        Some((index, flag))
     }
 
-    pub fn from_idx(&self, index: usize) -> Option<&Vec<Type>> {
-        if index == GLOBAL_LAYOUT_DEFAULT_INDEX {
-            None
-        } else {
-            Some(self.args_to_index.get_by_right(&index).unwrap())
-        }
+    pub fn from_idx(&self, index: usize) -> &ClosureArgs {
+        self.args_to_index.get_by_right(&index).unwrap()
     }
 }
 
@@ -1539,7 +1585,7 @@ fn closure_func_assign_types(
     func_index: usize,
     closure_global_layout: &ClosureGlobalLayout,
 ) {
-    let Some(args_type) = closure_global_layout.from_idx(func_index) else {
+    let ClosureArgs::Specified(args_type) = closure_global_layout.from_idx(func_index) else {
         return;
     };
 
