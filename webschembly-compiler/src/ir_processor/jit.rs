@@ -631,6 +631,18 @@ impl JitFunc {
         global_manager: &mut GlobalManager,
     ) -> Module {
         let mut required_closure_idx = Vec::new();
+
+        {
+            // entrypoint_table[0]のスタブはJS APIからも使われるので未初期化の場合作成しておく
+            // TODO: generate_stub_moduleで行うべき
+            let (closure_idx, flag) = closure_global_layout
+                .to_idx(&ClosureArgs::Variadic)
+                .unwrap();
+            if flag == IndexFlag::NewInstance {
+                required_closure_idx.push(closure_idx);
+            }
+        }
+
         let mut required_stubs = Vec::new();
 
         let (type_args, index_global) = self.jit_bbs[orig_entry_bb_id]
@@ -1282,15 +1294,7 @@ impl JitFunc {
         }
 
         // func_index == GLOBAL_LAYOUT_DEFAULT_INDEX なら引数は[Args]を仮定してよい
-        let Some(&args_expr_idx) = local_to_args_expr_idx.get(&call_closure.args[0]) else {
-            let (closure_index, flag) = closure_global_layout
-                .to_idx(&ClosureArgs::Variadic)
-                .unwrap();
-            if flag == IndexFlag::NewInstance {
-                required_closure_idx.push(closure_index);
-            }
-            return None;
-        };
+        let args_expr_idx = *local_to_args_expr_idx.get(&call_closure.args[0])?;
         let Expr::VariadicArgs(args) = &exprs[args_expr_idx].expr else {
             unreachable!("unexpected expr other than VariadicArgs");
         };
