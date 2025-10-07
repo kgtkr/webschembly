@@ -335,13 +335,20 @@ impl JitFunc {
         let predecessors = calc_predecessors(&func.bbs);
         let rpo = calculate_rpo(&func.bbs, func.bb_entry);
         let doms = calc_doms(&func.bbs, &rpo, func.bb_entry, &predecessors);
+        let mut rev_doms: FxHashMap<BasicBlockId, FxHashSet<BasicBlockId>> = FxHashMap::default();
+        for (&bb, dom_set) in &doms {
+            for &dom in dom_set {
+                rev_doms.entry(dom).or_default().insert(bb);
+            }
+        }
+
         for bb_id in func.bbs.keys() {
             all_typed_objs.insert(bb_id, VecMap::new());
         }
         for bb in func.bbs.values() {
             let defs = collect_defs(bb);
             let typed_objs = bb_optimizer::analyze_typed_obj(bb, &defs);
-            let dom_set = doms.get(&bb.id).unwrap();
+            let dom_set = rev_doms.get(&bb.id).unwrap();
             for &dom_bb_id in dom_set {
                 if dom_bb_id == bb.id {
                     // 自分自身のBBで定義されているものは未初期化の可能性があるので伝播しない
@@ -353,6 +360,7 @@ impl JitFunc {
                 }
             }
         }
+
         /*
         all_typed_objs TODO:
         JITに関係なく行える最適化なのでここに置くべきではない
