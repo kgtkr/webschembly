@@ -120,7 +120,7 @@ pub fn eliminate_redundant_obj(func: &mut Func, def_use: &DefUseChain) {
             continue;
         };
         /*
-        typ1 == typ でないものが到達不能コードとして現れる可能性がある
+        typ1 == typ2 でないものが到達不能コードとして現れる可能性がある
         例:
 
         l1 = to_obj<int>(..)
