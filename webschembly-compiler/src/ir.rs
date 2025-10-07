@@ -834,7 +834,7 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
             Expr::String(s) => write!(f, "{:?}", s),
             Expr::StringToSymbol(id) => write!(f, "string_to_symbol({})", id.display(self.meta)),
             Expr::Nil => write!(f, "nil"),
-            Expr::Char(c) => write!(f, "'{}'", c),
+            Expr::Char(c) => write!(f, "{:?}", c),
             Expr::Vector(v) => {
                 write!(f, "[")?;
                 for (i, id) in v.iter().enumerate() {
