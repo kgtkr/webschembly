@@ -1,8 +1,7 @@
 { lib, ... }: {
   perSystem = { self', pkgs, ... }:
     {
-      packages = {
-      };
+      packages = { };
       make-shells.default = {
         packages = [
           pkgs.texlive.combined.scheme-full
