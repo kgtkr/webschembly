@@ -699,13 +699,16 @@ impl JitFunc {
             }
             let mut typed_objs = self.jit_bbs[orig_bb_id].typed_objs.clone();
             for (local, obj_local) in &assigned_local_to_obj {
-                typed_objs.insert(*obj_local, TypedObj {
-                    val_type: *local,
-                    typ: match new_locals[*local].typ {
-                        LocalType::Type(Type::Val(v)) => v,
-                        _ => unreachable!("obj_local must be Val type"),
+                typed_objs.insert(
+                    *obj_local,
+                    TypedObj {
+                        val_type: *local,
+                        typ: match new_locals[*local].typ {
+                            LocalType::Type(Type::Val(v)) => v,
+                            _ => unreachable!("obj_local must be Val type"),
+                        },
                     },
-                });
+                );
             }
 
             /*
@@ -988,10 +991,13 @@ impl JitFunc {
                     local: Some(val_local),
                     expr: Expr::FromObj(typ, obj_local),
                 });
-                branch_typed_objs.insert(obj_local, TypedObj {
-                    val_type: val_local,
-                    typ,
-                });
+                branch_typed_objs.insert(
+                    obj_local,
+                    TypedObj {
+                        val_type: val_local,
+                        typ,
+                    },
+                );
             }
             // ここでのtyped_objsは事前計算で分かるもの or この分岐でのみ成り立つもの or assigned_local_to_obj によって追加されたto_objのいずれかである
             let callee_jit_bb = &mut self.jit_bbs[orig_bb_id];

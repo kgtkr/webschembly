@@ -299,17 +299,20 @@ impl Ast<Used> {
             .collect();
 
         Ast {
-            x: ast.x.add(type_map::key::<Used>(), UsedAstR {
-                box_vars: var_id_gen
-                    .mutated_vars
-                    .intersection(&var_id_gen.captured_vars)
-                    .copied()
-                    .collect(),
-                global_vars: var_id_gen.use_globals.clone(),
-                local_metas: var_id_gen.local_metas.clone(),
-                global_metas: var_id_gen.global_metas.clone(),
-                defines,
-            }),
+            x: ast.x.add(
+                type_map::key::<Used>(),
+                UsedAstR {
+                    box_vars: var_id_gen
+                        .mutated_vars
+                        .intersection(&var_id_gen.captured_vars)
+                        .copied()
+                        .collect(),
+                    global_vars: var_id_gen.use_globals.clone(),
+                    local_metas: var_id_gen.local_metas.clone(),
+                    global_metas: var_id_gen.global_metas.clone(),
+                    defines,
+                },
+            ),
             exprs: new_exprs,
         }
     }
@@ -344,10 +347,13 @@ impl Expr<Used> {
                     .iter()
                     .map(|arg| {
                         let id = var_id_gen.gen_local(VarMeta { name: arg.clone() });
-                        new_env.insert(arg.clone(), EnvLocalVar {
-                            id,
-                            is_captured: false,
-                        });
+                        new_env.insert(
+                            arg.clone(),
+                            EnvLocalVar {
+                                id,
+                                is_captured: false,
+                            },
+                        );
                         id
                     })
                     .collect::<Vec<_>>();
@@ -356,10 +362,13 @@ impl Expr<Used> {
 
                 for def in x.get_ref(type_map::key::<Defined>()).defines.iter() {
                     let id = var_id_gen.gen_local(VarMeta { name: def.clone() });
-                    new_env.insert(def.clone(), EnvLocalVar {
-                        id,
-                        is_captured: false,
-                    });
+                    new_env.insert(
+                        def.clone(),
+                        EnvLocalVar {
+                            id,
+                            is_captured: false,
+                        },
+                    );
                     new_state.defines.push(id);
                 }
 
@@ -385,11 +394,14 @@ impl Expr<Used> {
                 }
 
                 Expr::Lambda(
-                    x.add(type_map::key::<Used>(), UsedLambdaR {
-                        args,
-                        defines: new_state.defines,
-                        captures: new_state.captures.into_iter().collect(), // 非決定的だが問題ないはず
-                    }),
+                    x.add(
+                        type_map::key::<Used>(),
+                        UsedLambdaR {
+                            args,
+                            defines: new_state.defines,
+                            captures: new_state.captures.into_iter().collect(), // 非決定的だが問題ないはず
+                        },
+                    ),
                     Lambda {
                         args: lambda.args,
                         body: new_body,
@@ -400,11 +412,14 @@ impl Expr<Used> {
                 let new_cond = Box::new(Self::from_expr(*if_.cond, ctx, var_id_gen, state));
                 let new_then = Box::new(Self::from_expr(*if_.then, ctx, var_id_gen, state));
                 let new_els = Box::new(Self::from_expr(*if_.els, ctx, var_id_gen, state));
-                Expr::If(x.add(type_map::key::<Used>(), ()), If {
-                    cond: new_cond,
-                    then: new_then,
-                    els: new_els,
-                })
+                Expr::If(
+                    x.add(type_map::key::<Used>(), ()),
+                    If {
+                        cond: new_cond,
+                        then: new_then,
+                        els: new_els,
+                    },
+                )
             }
             Expr::Call(x, call) => {
                 let new_func = Box::new(Self::from_expr(*call.func, ctx, var_id_gen, state));
@@ -413,10 +428,13 @@ impl Expr<Used> {
                     .into_iter()
                     .map(|arg| Self::from_expr(arg, ctx, var_id_gen, state))
                     .collect();
-                Expr::Call(x.add(type_map::key::<Used>(), ()), Call {
-                    func: new_func,
-                    args: new_args,
-                })
+                Expr::Call(
+                    x.add(type_map::key::<Used>(), ()),
+                    Call {
+                        func: new_func,
+                        args: new_args,
+                    },
+                )
             }
             Expr::Begin(x, begin) => {
                 let new_exprs = begin
@@ -424,9 +442,10 @@ impl Expr<Used> {
                     .into_iter()
                     .map(|expr| Self::from_expr(expr, ctx, var_id_gen, state))
                     .collect();
-                Expr::Begin(x.add(type_map::key::<Used>(), ()), Begin {
-                    exprs: new_exprs,
-                })
+                Expr::Begin(
+                    x.add(type_map::key::<Used>(), ()),
+                    Begin { exprs: new_exprs },
+                )
             }
             Expr::Set(x, set) => {
                 // TODO: flag_mutateが保守的すぎる。定義時にしかset!されない変数には不要
@@ -440,10 +459,13 @@ impl Expr<Used> {
                     VarId::Global(var_id_gen.global_var_id(&set.name))
                 };
                 let new_expr = Self::from_expr(*set.expr, ctx, var_id_gen, state);
-                Expr::Set(x.add(type_map::key::<Used>(), UsedSetR { var_id }), Set {
-                    name: set.name,
-                    expr: Box::new(new_expr),
-                })
+                Expr::Set(
+                    x.add(type_map::key::<Used>(), UsedSetR { var_id }),
+                    Set {
+                        name: set.name,
+                        expr: Box::new(new_expr),
+                    },
+                )
             }
             Expr::Let(x, let_) => {
                 let mut new_env = FxHashMap::default();
@@ -453,10 +475,13 @@ impl Expr<Used> {
                     let id = var_id_gen.gen_local(VarMeta { name: name.clone() });
                     // TODO: let recは必要な場合もあるが、letならflag_mutateは不要では
                     var_id_gen.flag_mutate(id);
-                    new_env.insert(name.clone(), EnvLocalVar {
-                        id,
-                        is_captured: false,
-                    });
+                    new_env.insert(
+                        name.clone(),
+                        EnvLocalVar {
+                            id,
+                            is_captured: false,
+                        },
+                    );
                     state.defines.push(id);
 
                     let expr = Self::from_expr(expr.clone(), ctx, var_id_gen, state);
@@ -477,10 +502,13 @@ impl Expr<Used> {
 
                 for def in x.get_ref(type_map::key::<Defined>()).defines.iter() {
                     let id = var_id_gen.gen_local(VarMeta { name: def.clone() });
-                    new_env.insert(def.clone(), EnvLocalVar {
-                        id,
-                        is_captured: false,
-                    });
+                    new_env.insert(
+                        def.clone(),
+                        EnvLocalVar {
+                            id,
+                            is_captured: false,
+                        },
+                    );
                     state.defines.push(id);
                 }
 
@@ -512,10 +540,13 @@ impl Expr<Used> {
             Expr::Cons(x, cons) => {
                 let new_car = Box::new(Self::from_expr(*cons.car, ctx, var_id_gen, state));
                 let new_cdr = Box::new(Self::from_expr(*cons.cdr, ctx, var_id_gen, state));
-                Expr::Cons(x.add(type_map::key::<Used>(), ()), Cons {
-                    car: new_car,
-                    cdr: new_cdr,
-                })
+                Expr::Cons(
+                    x.add(type_map::key::<Used>(), ()),
+                    Cons {
+                        car: new_car,
+                        cdr: new_cdr,
+                    },
+                )
             }
         }
     }

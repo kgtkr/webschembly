@@ -419,28 +419,31 @@ mod tests {
             .collect::<VecMap<LocalId, _>>()
         );
 
-        assert_eq!(bb.exprs, vec![
-            ExprAssign {
-                local: Some(LocalId::from(3)),
-                expr: Expr::ToObj(ValType::Int, LocalId::from(0)),
-            },
-            ExprAssign {
-                local: None,
-                expr: Expr::Cons(LocalId::from(3), LocalId::from(3)),
-            },
-            ExprAssign {
-                local: Some(LocalId::from(1)),
-                expr: Expr::FromObj(ValType::Int, LocalId::from(3)),
-            },
-            ExprAssign {
-                local: Some(LocalId::from(2)),
-                expr: Expr::FromObj(ValType::Int, LocalId::from(3)),
-            },
-            ExprAssign {
-                local: None,
-                expr: Expr::Add(LocalId::from(1), LocalId::from(2)),
-            },
-        ]);
+        assert_eq!(
+            bb.exprs,
+            vec![
+                ExprAssign {
+                    local: Some(LocalId::from(3)),
+                    expr: Expr::ToObj(ValType::Int, LocalId::from(0)),
+                },
+                ExprAssign {
+                    local: None,
+                    expr: Expr::Cons(LocalId::from(3), LocalId::from(3)),
+                },
+                ExprAssign {
+                    local: Some(LocalId::from(1)),
+                    expr: Expr::FromObj(ValType::Int, LocalId::from(3)),
+                },
+                ExprAssign {
+                    local: Some(LocalId::from(2)),
+                    expr: Expr::FromObj(ValType::Int, LocalId::from(3)),
+                },
+                ExprAssign {
+                    local: None,
+                    expr: Expr::Add(LocalId::from(1), LocalId::from(2)),
+                },
+            ]
+        );
 
         assert_eq!(
             assigned_local_to_obj,
@@ -454,10 +457,13 @@ mod tests {
 
         assert_eq!(
             typed_objs,
-            [(LocalId::from(3), TypedObj {
-                val_type: LocalId::from(0),
-                typ: ValType::Int
-            })]
+            [(
+                LocalId::from(3),
+                TypedObj {
+                    val_type: LocalId::from(0),
+                    typ: ValType::Int
+                }
+            )]
             .into_iter()
             .collect::<VecMap<LocalId, _>>()
         );
@@ -499,20 +505,23 @@ mod tests {
 
         copy_propagate(&locals, &mut bb);
 
-        assert_eq!(bb, BasicBlock {
-            id: BasicBlockId::from(0),
-            exprs: vec![
-                ExprAssign {
-                    local: Some(LocalId::from(1)),
-                    expr: Expr::Move(LocalId::from(0)),
-                },
-                ExprAssign {
-                    local: Some(LocalId::from(2)),
-                    expr: Expr::Add(LocalId::from(0), LocalId::from(0)),
-                },
-            ],
-            next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(2))),
-        });
+        assert_eq!(
+            bb,
+            BasicBlock {
+                id: BasicBlockId::from(0),
+                exprs: vec![
+                    ExprAssign {
+                        local: Some(LocalId::from(1)),
+                        expr: Expr::Move(LocalId::from(0)),
+                    },
+                    ExprAssign {
+                        local: Some(LocalId::from(2)),
+                        expr: Expr::Add(LocalId::from(0), LocalId::from(0)),
+                    },
+                ],
+                next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(2))),
+            }
+        );
     }
 
     #[test]
@@ -559,24 +568,27 @@ mod tests {
 
         copy_propagate(&locals, &mut bb);
 
-        assert_eq!(bb, BasicBlock {
-            id: BasicBlockId::from(0),
-            exprs: vec![
-                ExprAssign {
-                    local: Some(LocalId::from(1)),
-                    expr: Expr::ToObj(ValType::Int, LocalId::from(0)),
-                },
-                ExprAssign {
-                    local: Some(LocalId::from(2)),
-                    expr: Expr::FromObj(ValType::Int, LocalId::from(1)),
-                },
-                ExprAssign {
-                    local: Some(LocalId::from(3)),
-                    expr: Expr::Add(LocalId::from(0), LocalId::from(0)),
-                },
-            ],
-            next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(3))),
-        });
+        assert_eq!(
+            bb,
+            BasicBlock {
+                id: BasicBlockId::from(0),
+                exprs: vec![
+                    ExprAssign {
+                        local: Some(LocalId::from(1)),
+                        expr: Expr::ToObj(ValType::Int, LocalId::from(0)),
+                    },
+                    ExprAssign {
+                        local: Some(LocalId::from(2)),
+                        expr: Expr::FromObj(ValType::Int, LocalId::from(1)),
+                    },
+                    ExprAssign {
+                        local: Some(LocalId::from(3)),
+                        expr: Expr::Add(LocalId::from(0), LocalId::from(0)),
+                    },
+                ],
+                next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(3))),
+            }
+        );
     }
 
     #[test]
@@ -617,19 +629,22 @@ mod tests {
 
         dead_code_elimination(&locals, &mut bb, &out_used_locals);
 
-        assert_eq!(bb, BasicBlock {
-            id: BasicBlockId::from(0),
-            exprs: vec![
-                ExprAssign {
-                    local: None,
-                    expr: Expr::Nop,
-                },
-                ExprAssign {
-                    local: Some(LocalId::from(2)),
-                    expr: Expr::Add(LocalId::from(0), LocalId::from(0)),
-                },
-            ],
-            next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(2))),
-        });
+        assert_eq!(
+            bb,
+            BasicBlock {
+                id: BasicBlockId::from(0),
+                exprs: vec![
+                    ExprAssign {
+                        local: None,
+                        expr: Expr::Nop,
+                    },
+                    ExprAssign {
+                        local: Some(LocalId::from(2)),
+                        expr: Expr::Add(LocalId::from(0), LocalId::from(0)),
+                    },
+                ],
+                next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(2))),
+            }
+        );
     }
 }

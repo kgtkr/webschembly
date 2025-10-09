@@ -80,17 +80,21 @@ impl Expr<TailCall> {
             Expr::Const(x, lit) => Expr::Const(x.add(type_map::key::<TailCall>(), ()), lit),
             Expr::Var(x, var) => Expr::Var(x.add(type_map::key::<TailCall>(), ()), var),
             Expr::Define(x, _) => x.get_owned(type_map::key::<Defined>()),
-            Expr::Lambda(x, lambda) => {
-                Expr::Lambda(x.add(type_map::key::<TailCall>(), ()), Lambda {
+            Expr::Lambda(x, lambda) => Expr::Lambda(
+                x.add(type_map::key::<TailCall>(), ()),
+                Lambda {
                     args: lambda.args,
                     body: Self::from_exprs(lambda.body, true),
-                })
-            }
-            Expr::If(x, if_) => Expr::If(x.add(type_map::key::<TailCall>(), ()), If {
-                cond: Box::new(Self::from_expr(*if_.cond, false)),
-                then: Box::new(Self::from_expr(*if_.then, is_tail)),
-                els: Box::new(Self::from_expr(*if_.els, is_tail)),
-            }),
+                },
+            ),
+            Expr::If(x, if_) => Expr::If(
+                x.add(type_map::key::<TailCall>(), ()),
+                If {
+                    cond: Box::new(Self::from_expr(*if_.cond, false)),
+                    then: Box::new(Self::from_expr(*if_.then, is_tail)),
+                    els: Box::new(Self::from_expr(*if_.els, is_tail)),
+                },
+            ),
             Expr::Call(x, call) => Expr::Call(
                 x.add(type_map::key::<TailCall>(), TailCallCallR { is_tail }),
                 Call {
@@ -98,31 +102,43 @@ impl Expr<TailCall> {
                     args: Self::from_exprs(call.args, false),
                 },
             ),
-            Expr::Begin(x, begin) => Expr::Begin(x.add(type_map::key::<TailCall>(), ()), Begin {
-                exprs: Self::from_exprs(begin.exprs, is_tail),
-            }),
-            Expr::Set(x, set) => Expr::Set(x.add(type_map::key::<TailCall>(), ()), Set {
-                name: set.name,
-                expr: Box::new(Self::from_expr(*set.expr, false)),
-            }),
-            Expr::Let(x, let_) => Expr::Let(x.add(type_map::key::<TailCall>(), ()), Let {
-                bindings: let_
-                    .bindings
-                    .into_iter()
-                    .map(|(name, expr)| (name, Self::from_expr(expr, false)))
-                    .collect(),
-                body: Self::from_exprs(let_.body, is_tail),
-            }),
+            Expr::Begin(x, begin) => Expr::Begin(
+                x.add(type_map::key::<TailCall>(), ()),
+                Begin {
+                    exprs: Self::from_exprs(begin.exprs, is_tail),
+                },
+            ),
+            Expr::Set(x, set) => Expr::Set(
+                x.add(type_map::key::<TailCall>(), ()),
+                Set {
+                    name: set.name,
+                    expr: Box::new(Self::from_expr(*set.expr, false)),
+                },
+            ),
+            Expr::Let(x, let_) => Expr::Let(
+                x.add(type_map::key::<TailCall>(), ()),
+                Let {
+                    bindings: let_
+                        .bindings
+                        .into_iter()
+                        .map(|(name, expr)| (name, Self::from_expr(expr, false)))
+                        .collect(),
+                    body: Self::from_exprs(let_.body, is_tail),
+                },
+            ),
             Expr::Vector(x, vec) => Expr::Vector(x.add(type_map::key::<TailCall>(), ()), {
                 vec.into_iter()
                     .map(|expr| Self::from_expr(expr, false))
                     .collect()
             }),
             Expr::Quote(x, _) => x.get_owned(type_map::key::<Desugared>()),
-            Expr::Cons(x, cons) => Expr::Cons(x.add(type_map::key::<TailCall>(), ()), Cons {
-                car: Box::new(Self::from_expr(*cons.car, false)),
-                cdr: Box::new(Self::from_expr(*cons.cdr, false)),
-            }),
+            Expr::Cons(x, cons) => Expr::Cons(
+                x.add(type_map::key::<TailCall>(), ()),
+                Cons {
+                    car: Box::new(Self::from_expr(*cons.car, false)),
+                    cdr: Box::new(Self::from_expr(*cons.cdr, false)),
+                },
+            ),
         }
     }
 

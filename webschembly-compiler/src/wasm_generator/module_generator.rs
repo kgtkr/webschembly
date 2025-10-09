@@ -567,66 +567,89 @@ impl<'a> ModuleGenerator<'a> {
             );
         }
 
-        self.instantiate_func_func = self.add_runtime_function("instantiate_func", WasmFuncType {
-            params: vec![ValType::I32, ValType::I32, ValType::I32],
-            results: vec![ValType::I32],
-        });
-        self.instantiate_bb_func = self.add_runtime_function("instantiate_bb", WasmFuncType {
-            params: vec![
-                ValType::I32,
-                ValType::I32,
-                ValType::I32,
-                ValType::I32,
-                ValType::I32,
-            ],
-            results: vec![ValType::I32],
-        });
+        self.instantiate_func_func = self.add_runtime_function(
+            "instantiate_func",
+            WasmFuncType {
+                params: vec![ValType::I32, ValType::I32, ValType::I32],
+                results: vec![ValType::I32],
+            },
+        );
+        self.instantiate_bb_func = self.add_runtime_function(
+            "instantiate_bb",
+            WasmFuncType {
+                params: vec![
+                    ValType::I32,
+                    ValType::I32,
+                    ValType::I32,
+                    ValType::I32,
+                    ValType::I32,
+                ],
+                results: vec![ValType::I32],
+            },
+        );
 
-        self.display_func = self.add_runtime_function("display", WasmFuncType {
-            params: vec![ValType::Ref(RefType {
-                nullable: true,
-                heap_type: HeapType::Concrete(self.string_type),
-            })],
-            results: vec![],
-        });
-        self.display_fd_func = self.add_runtime_function("display_fd", WasmFuncType {
-            params: vec![
-                ValType::I32,
-                ValType::Ref(RefType {
+        self.display_func = self.add_runtime_function(
+            "display",
+            WasmFuncType {
+                params: vec![ValType::Ref(RefType {
                     nullable: true,
                     heap_type: HeapType::Concrete(self.string_type),
-                }),
-            ],
-            results: vec![],
-        });
-        self.string_to_symbol_func = self.add_runtime_function("string_to_symbol", WasmFuncType {
-            params: vec![ValType::Ref(RefType {
-                nullable: true,
-                heap_type: HeapType::Concrete(self.string_type),
-            })],
-            results: vec![ValType::Ref(RefType {
-                nullable: true,
-                heap_type: HeapType::Concrete(self.symbol_type),
-            })],
-        });
+                })],
+                results: vec![],
+            },
+        );
+        self.display_fd_func = self.add_runtime_function(
+            "display_fd",
+            WasmFuncType {
+                params: vec![
+                    ValType::I32,
+                    ValType::Ref(RefType {
+                        nullable: true,
+                        heap_type: HeapType::Concrete(self.string_type),
+                    }),
+                ],
+                results: vec![],
+            },
+        );
+        self.string_to_symbol_func = self.add_runtime_function(
+            "string_to_symbol",
+            WasmFuncType {
+                params: vec![ValType::Ref(RefType {
+                    nullable: true,
+                    heap_type: HeapType::Concrete(self.string_type),
+                })],
+                results: vec![ValType::Ref(RefType {
+                    nullable: true,
+                    heap_type: HeapType::Concrete(self.symbol_type),
+                })],
+            },
+        );
 
-        self.write_char_func = self.add_runtime_function("write_char", WasmFuncType {
-            params: vec![ValType::I32],
-            results: vec![],
-        });
-        self.int_to_string_func = self.add_runtime_function("int_to_string", WasmFuncType {
-            params: vec![ValType::I64],
-            results: vec![ValType::Ref(RefType {
-                nullable: true,
-                heap_type: HeapType::Concrete(self.string_type),
-            })],
-        });
+        self.write_char_func = self.add_runtime_function(
+            "write_char",
+            WasmFuncType {
+                params: vec![ValType::I32],
+                results: vec![],
+            },
+        );
+        self.int_to_string_func = self.add_runtime_function(
+            "int_to_string",
+            WasmFuncType {
+                params: vec![ValType::I64],
+                results: vec![ValType::Ref(RefType {
+                    nullable: true,
+                    heap_type: HeapType::Concrete(self.string_type),
+                })],
+            },
+        );
 
-        self.throw_webassembly_exception =
-            self.add_runtime_function("throw_webassembly_exception", WasmFuncType {
+        self.throw_webassembly_exception = self.add_runtime_function(
+            "throw_webassembly_exception",
+            WasmFuncType {
                 params: vec![],
                 results: vec![],
-            });
+            },
+        );
 
         for func in self.module.funcs.iter() {
             let func_idx = self.func_count;

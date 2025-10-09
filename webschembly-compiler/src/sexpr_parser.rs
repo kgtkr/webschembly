@@ -127,14 +127,17 @@ fn quote(input: Tokens) -> IResult<Tokens, SExpr> {
     let (input, expr) = sexpr(input)?;
     let span = quote.span.merge(expr.span);
 
-    Ok((input, list![
-        SExpr {
-            kind: SExprKind::Symbol("quote".to_string()),
-            span: quote.span,
-        } => span,
-        expr => span,
-        => span
-    ]))
+    Ok((
+        input,
+        list![
+            SExpr {
+                kind: SExprKind::Symbol("quote".to_string()),
+                span: quote.span,
+            } => span,
+            expr => span,
+            => span
+        ],
+    ))
 }
 
 fn sexpr(input: Tokens) -> IResult<Tokens, SExpr> {

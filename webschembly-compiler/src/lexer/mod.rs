@@ -126,19 +126,25 @@ fn ignore<'a, E: ErrorBound<'a>>(input: LocatedStr<'a>) -> IResult<LocatedStr<'a
 fn token<'a, E: ErrorBound<'a>>(input: LocatedStr<'a>) -> IResult<LocatedStr<'a>, Token, E> {
     let (input, _) = ignore(input)?;
     let (input, (pos, kind)) = consumed(token_kind)(input)?;
-    Ok((input, Token {
-        kind,
-        span: to_span(&pos),
-    }))
+    Ok((
+        input,
+        Token {
+            kind,
+            span: to_span(&pos),
+        },
+    ))
 }
 
 fn eof<'a, E: ErrorBound<'a>>(input: LocatedStr<'a>) -> IResult<LocatedStr<'a>, Token, E> {
     let (input, _) = ignore(input)?;
     let (input, (pos, _)) = consumed(nom_eof)(input)?;
-    Ok((input, Token {
-        kind: TokenKind::Eof,
-        span: to_span(&pos),
-    }))
+    Ok((
+        input,
+        Token {
+            kind: TokenKind::Eof,
+            span: to_span(&pos),
+        },
+    ))
 }
 
 fn tokens<'a, E: ErrorBound<'a>>(input: LocatedStr<'a>) -> IResult<LocatedStr<'a>, Vec<Token>, E> {

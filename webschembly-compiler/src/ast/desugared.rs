@@ -107,53 +107,75 @@ impl Expr<Desugared> {
         match expr {
             Expr::Const(x, lit) => Expr::Const(x.add(type_map::key::<Desugared>(), ()), lit),
             Expr::Var(x, var) => Expr::Var(x.add(type_map::key::<Desugared>(), ()), var),
-            Expr::Define(x, def) => Expr::Define(x.add(type_map::key::<Desugared>(), ()), Define {
-                name: def.name,
-                expr: Box::new(Self::from_expr(*def.expr)),
-            }),
-            Expr::Lambda(x, lambda) => {
-                Expr::Lambda(x.add(type_map::key::<Desugared>(), ()), Lambda {
+            Expr::Define(x, def) => Expr::Define(
+                x.add(type_map::key::<Desugared>(), ()),
+                Define {
+                    name: def.name,
+                    expr: Box::new(Self::from_expr(*def.expr)),
+                },
+            ),
+            Expr::Lambda(x, lambda) => Expr::Lambda(
+                x.add(type_map::key::<Desugared>(), ()),
+                Lambda {
                     args: lambda.args,
                     body: lambda.body.into_iter().map(Self::from_expr).collect(),
-                })
-            }
-            Expr::If(x, if_) => Expr::If(x.add(type_map::key::<Desugared>(), ()), If {
-                cond: Box::new(Self::from_expr(*if_.cond)),
-                then: Box::new(Self::from_expr(*if_.then)),
-                els: Box::new(Self::from_expr(*if_.els)),
-            }),
-            Expr::Call(x, call) => Expr::Call(x.add(type_map::key::<Desugared>(), ()), Call {
-                func: Box::new(Self::from_expr(*call.func)),
-                args: call.args.into_iter().map(Self::from_expr).collect(),
-            }),
-            Expr::Begin(x, begin) => Expr::Begin(x.add(type_map::key::<Desugared>(), ()), Begin {
-                exprs: begin.exprs.into_iter().map(Self::from_expr).collect(),
-            }),
-            Expr::Set(x, set) => Expr::Set(x.add(type_map::key::<Desugared>(), ()), Set {
-                name: set.name,
-                expr: Box::new(Self::from_expr(*set.expr)),
-            }),
-            Expr::Let(x, let_) => Expr::Let(x.add(type_map::key::<Desugared>(), ()), Let {
-                bindings: let_
-                    .bindings
-                    .into_iter()
-                    .map(|(name, expr)| (name, Self::from_expr(expr)))
-                    .collect(),
-                body: let_
-                    .body
-                    .into_iter()
-                    .map(Self::from_expr)
-                    .collect::<Vec<_>>(),
-            }),
+                },
+            ),
+            Expr::If(x, if_) => Expr::If(
+                x.add(type_map::key::<Desugared>(), ()),
+                If {
+                    cond: Box::new(Self::from_expr(*if_.cond)),
+                    then: Box::new(Self::from_expr(*if_.then)),
+                    els: Box::new(Self::from_expr(*if_.els)),
+                },
+            ),
+            Expr::Call(x, call) => Expr::Call(
+                x.add(type_map::key::<Desugared>(), ()),
+                Call {
+                    func: Box::new(Self::from_expr(*call.func)),
+                    args: call.args.into_iter().map(Self::from_expr).collect(),
+                },
+            ),
+            Expr::Begin(x, begin) => Expr::Begin(
+                x.add(type_map::key::<Desugared>(), ()),
+                Begin {
+                    exprs: begin.exprs.into_iter().map(Self::from_expr).collect(),
+                },
+            ),
+            Expr::Set(x, set) => Expr::Set(
+                x.add(type_map::key::<Desugared>(), ()),
+                Set {
+                    name: set.name,
+                    expr: Box::new(Self::from_expr(*set.expr)),
+                },
+            ),
+            Expr::Let(x, let_) => Expr::Let(
+                x.add(type_map::key::<Desugared>(), ()),
+                Let {
+                    bindings: let_
+                        .bindings
+                        .into_iter()
+                        .map(|(name, expr)| (name, Self::from_expr(expr)))
+                        .collect(),
+                    body: let_
+                        .body
+                        .into_iter()
+                        .map(Self::from_expr)
+                        .collect::<Vec<_>>(),
+                },
+            ),
             Expr::Vector(x, vec) => Expr::Vector(
                 x.add(type_map::key::<Desugared>(), ()),
                 vec.into_iter().map(Self::from_expr).collect(),
             ),
             Expr::Quote(x, sexpr) => Self::from_quoted_sexpr(x, sexpr),
-            Expr::Cons(x, cons) => Expr::Cons(x.add(type_map::key::<Desugared>(), ()), Cons {
-                car: Box::new(Self::from_expr(*cons.car)),
-                cdr: Box::new(Self::from_expr(*cons.cdr)),
-            }),
+            Expr::Cons(x, cons) => Expr::Cons(
+                x.add(type_map::key::<Desugared>(), ()),
+                Cons {
+                    car: Box::new(Self::from_expr(*cons.car)),
+                    cdr: Box::new(Self::from_expr(*cons.cdr)),
+                },
+            ),
         }
     }
 

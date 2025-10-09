@@ -170,9 +170,10 @@ impl Expr<Defined> {
                 Ok((
                     ctx,
                     Expr::Lambda(
-                        x.add(type_map::key::<Defined>(), DefinedLambdaR {
-                            defines: names,
-                        }),
+                        x.add(
+                            type_map::key::<Defined>(),
+                            DefinedLambdaR { defines: names },
+                        ),
                         Lambda {
                             args: lambda.args,
                             body: new_body,
@@ -182,20 +183,23 @@ impl Expr<Defined> {
             }
             Expr::If(x, if_) => Ok((
                 ctx.to_undefinable_if_local(),
-                Expr::If(x.add(type_map::key::<Defined>(), ()), If {
-                    cond: Box::new(
-                        Self::from_expr(*if_.cond, ctx.to_undefinable_if_local(), names)
-                            .map(|(_, expr)| expr)?,
-                    ),
-                    then: Box::new(
-                        Self::from_expr(*if_.then, ctx.to_undefinable_if_local(), names)
-                            .map(|(_, expr)| expr)?,
-                    ),
-                    els: Box::new(
-                        Self::from_expr(*if_.els, ctx.to_undefinable_if_local(), names)
-                            .map(|(_, expr)| expr)?,
-                    ),
-                }),
+                Expr::If(
+                    x.add(type_map::key::<Defined>(), ()),
+                    If {
+                        cond: Box::new(
+                            Self::from_expr(*if_.cond, ctx.to_undefinable_if_local(), names)
+                                .map(|(_, expr)| expr)?,
+                        ),
+                        then: Box::new(
+                            Self::from_expr(*if_.then, ctx.to_undefinable_if_local(), names)
+                                .map(|(_, expr)| expr)?,
+                        ),
+                        els: Box::new(
+                            Self::from_expr(*if_.els, ctx.to_undefinable_if_local(), names)
+                                .map(|(_, expr)| expr)?,
+                        ),
+                    },
+                ),
             )),
             Expr::Call(x, call) => {
                 let new_func = Self::from_expr(*call.func, ctx.to_undefinable_if_local(), names)
@@ -210,19 +214,23 @@ impl Expr<Defined> {
                     .collect::<Result<Vec<_>>>()?;
                 Ok((
                     ctx.to_undefinable_if_local(),
-                    Expr::Call(x.add(type_map::key::<Defined>(), ()), Call {
-                        func: Box::new(new_func),
-                        args: new_args,
-                    }),
+                    Expr::Call(
+                        x.add(type_map::key::<Defined>(), ()),
+                        Call {
+                            func: Box::new(new_func),
+                            args: new_args,
+                        },
+                    ),
                 ))
             }
             Expr::Begin(x, begin) => {
                 let new_exprs = Self::from_block(begin.exprs, ctx, names)?;
                 Ok((
                     ctx.to_undefinable_if_local(),
-                    Expr::Begin(x.add(type_map::key::<Defined>(), ()), Begin {
-                        exprs: new_exprs,
-                    }),
+                    Expr::Begin(
+                        x.add(type_map::key::<Defined>(), ()),
+                        Begin { exprs: new_exprs },
+                    ),
                 ))
             }
             Expr::Set(x, set) => {
@@ -230,10 +238,13 @@ impl Expr<Defined> {
                     .map(|(_, expr)| expr)?;
                 Ok((
                     ctx.to_undefinable_if_local(),
-                    Expr::Set(x.add(type_map::key::<Defined>(), ()), Set {
-                        name: set.name,
-                        expr: Box::new(new_expr),
-                    }),
+                    Expr::Set(
+                        x.add(type_map::key::<Defined>(), ()),
+                        Set {
+                            name: set.name,
+                            expr: Box::new(new_expr),
+                        },
+                    ),
                 ))
             }
             Expr::Let(x, let_) => {
@@ -243,9 +254,10 @@ impl Expr<Defined> {
                 Ok((
                     ctx.to_undefinable_if_local(),
                     Expr::Let(
-                        x.add(type_map::key::<Defined>(), DefinedLetR {
-                            defines: new_names,
-                        }),
+                        x.add(
+                            type_map::key::<Defined>(),
+                            DefinedLetR { defines: new_names },
+                        ),
                         Let {
                             bindings: let_
                                 .bindings
@@ -275,16 +287,19 @@ impl Expr<Defined> {
             Expr::Quote(x, _) => x.get_owned(type_map::key::<Desugared>()),
             Expr::Cons(x, cons) => Ok((
                 ctx.to_undefinable_if_local(),
-                Expr::Cons(x.add(type_map::key::<Defined>(), ()), Cons {
-                    car: Box::new(
-                        Self::from_expr(*cons.car, ctx.to_undefinable_if_local(), names)
-                            .map(|(_, expr)| expr)?,
-                    ),
-                    cdr: Box::new(
-                        Self::from_expr(*cons.cdr, ctx.to_undefinable_if_local(), names)
-                            .map(|(_, expr)| expr)?,
-                    ),
-                }),
+                Expr::Cons(
+                    x.add(type_map::key::<Defined>(), ()),
+                    Cons {
+                        car: Box::new(
+                            Self::from_expr(*cons.car, ctx.to_undefinable_if_local(), names)
+                                .map(|(_, expr)| expr)?,
+                        ),
+                        cdr: Box::new(
+                            Self::from_expr(*cons.cdr, ctx.to_undefinable_if_local(), names)
+                                .map(|(_, expr)| expr)?,
+                        ),
+                    },
+                ),
             )),
         }
     }

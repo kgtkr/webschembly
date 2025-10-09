@@ -386,11 +386,12 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         let prev = self.local_ids.insert(id, local);
         debug_assert!(prev.is_none());
         if let Some(ast_meta) = ast_meta {
-            self.module_generator
-                .local_metas
-                .insert((self.id, local), VarMeta {
+            self.module_generator.local_metas.insert(
+                (self.id, local),
+                VarMeta {
                     name: ast_meta.name.clone(),
-                });
+                },
+            );
         }
         local
     }
@@ -415,11 +416,12 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         let local = self.local(LocalType::Type(Type::Obj));
         self.local_ids.insert(id, local);
         if let Some(ast_meta) = ast_meta {
-            self.module_generator
-                .local_metas
-                .insert((self.id, local), VarMeta {
+            self.module_generator.local_metas.insert(
+                (self.id, local),
+                VarMeta {
                     name: ast_meta.name.clone(),
-                });
+                },
+            );
         }
         local
     }
@@ -926,11 +928,14 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
     fn close_bb(&mut self, next: BasicBlockNext) {
         let bb_exprs = std::mem::take(&mut self.exprs);
         if let Some(id) = self.current_bb_id {
-            self.bbs.insert(self.current_bb_id.unwrap(), BasicBlock {
-                id,
-                exprs: bb_exprs,
-                next,
-            });
+            self.bbs.insert(
+                self.current_bb_id.unwrap(),
+                BasicBlock {
+                    id,
+                    exprs: bb_exprs,
+                    next,
+                },
+            );
             self.current_bb_id = None;
         } else {
             // self.current_bb_idがNoneのとき到達不能ブロックである
