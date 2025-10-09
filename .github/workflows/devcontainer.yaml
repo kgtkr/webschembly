@@ -1,3 +1,4 @@
+# arm runnerはprivateリポジトリで使えない
 name: ci
 on: push
 jobs:
@@ -22,8 +23,8 @@ jobs:
         include:
           - runner: ubuntu-latest
             arch: amd64
-          - runner: ubuntu-24.04-arm
-            arch: arm64
+          #- runner: ubuntu-24.04-arm
+          #  arch: arm64
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v3
@@ -64,8 +65,8 @@ jobs:
           skopeo login ghcr.io -u "$DOCKER_USER" -p "$DOCKER_PASS"
           for TAG in ${TAGS//,/ }; do
             skopeo manifest create "$TAG" \
-              --add "$TAG-amd64" \
-              --add "$TAG-arm64"
+              --add "$TAG-amd64" # \
+              # --add "$TAG-arm64"
             skopeo manifest push "$TAG" "docker://$TAG"
           done
         env:
