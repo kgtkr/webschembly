@@ -50,7 +50,12 @@ impl FamilyX<Defined> for BeginX {
     type R = ();
 }
 impl FamilyX<Defined> for SetX {
-    type R = ();
+    type R = DefinedSetR;
+}
+
+#[derive(Debug, Clone)]
+pub struct DefinedSetR {
+    pub reassign: bool,
 }
 
 impl ElementInto<parsed::ParsedSetR> for parsed::ParsedDefineR {
@@ -152,7 +157,9 @@ impl Expr<Defined> {
                 Ok((
                     ctx,
                     Expr::Set(
-                        x.into_type_map(()).add(type_map::key::<Defined>(), ()),
+                        // defineは再帰呼び出し可能なのでreassign: trueにする必要がある
+                        x.into_type_map(())
+                            .add(type_map::key::<Defined>(), DefinedSetR { reassign: true }),
                         Set {
                             name: def.name,
                             expr: Box::new(
@@ -239,7 +246,7 @@ impl Expr<Defined> {
                 Ok((
                     ctx.to_undefinable_if_local(),
                     Expr::Set(
-                        x.add(type_map::key::<Defined>(), ()),
+                        x.add(type_map::key::<Defined>(), DefinedSetR { reassign: true }),
                         Set {
                             name: set.name,
                             expr: Box::new(new_expr),

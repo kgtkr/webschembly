@@ -126,6 +126,12 @@ impl ElementInto<parsed::ParsedSetR> for parsed::ParsedLetR {
     }
 }
 
+impl From<defined::DefinedLetR> for defined::DefinedSetR {
+    fn from(_: defined::DefinedLetR) -> Self {
+        defined::DefinedSetR { reassign: false }
+    }
+}
+
 impl FamilyX<Used> for LetX {
     type R = !;
 }
@@ -448,12 +454,13 @@ impl Expr<Used> {
                 )
             }
             Expr::Set(x, set) => {
-                // TODO: flag_mutateが保守的すぎる。定義時にしかset!されない変数には不要
                 let var_id = if let Some(local_var) = ctx.env.get(&set.name) {
                     if local_var.is_captured {
                         state.captures.insert(local_var.id);
                     }
-                    var_id_gen.flag_mutate(local_var.id);
+                    if x.get_ref(type_map::key::<Defined>()).reassign {
+                        var_id_gen.flag_mutate(local_var.id);
+                    }
                     VarId::Local(local_var.id)
                 } else {
                     VarId::Global(var_id_gen.global_var_id(&set.name))

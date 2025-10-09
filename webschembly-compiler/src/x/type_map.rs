@@ -70,11 +70,11 @@ pub trait ElementInto<T> {
     fn element_into(self, param: Self::Param) -> T;
 }
 
-impl<T> ElementInto<T> for T {
+impl<T: Into<U>, U> ElementInto<U> for T {
     type Param = ();
 
-    fn element_into(self, _: Self::Param) -> T {
-        self
+    fn element_into(self, _: ()) -> U {
+        self.into()
     }
 }
 
