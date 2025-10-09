@@ -293,6 +293,13 @@ pub fn constant_folding(
                 {
                     func.bbs[*bb_id].exprs[expr_idx].expr = Expr::Bool(typ1 == typ2);
                 }
+                Expr::ClosureEnv(_, closure, index)
+                    if let Some(Expr::Closure { envs, .. }) =
+                        def_use.get_def_non_move_expr(&func.bbs, closure)
+                        && index < envs.len() =>
+                {
+                    func.bbs[*bb_id].exprs[expr_idx].expr = Expr::Move(envs[index]);
+                }
                 Expr::Eq(local1, local2)
                     if let Some(&Expr::ToObj(typ1, src1)) =
                         def_use.get_def_non_move_expr(&func.bbs, local1)
