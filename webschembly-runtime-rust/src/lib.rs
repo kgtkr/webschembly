@@ -216,7 +216,7 @@ impl WasmWriter {
 
     fn write_buf(&mut self, buf: &[u8]) {
         self.buf.extend_from_slice(buf);
-        if buf.iter().any(|&c| c == b'\n') {
+        if buf.contains(&b'\n') {
             self.flush();
         } else {
             self.flush_if_needed();

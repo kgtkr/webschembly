@@ -112,10 +112,10 @@ where
         F: FnMut(K, &mut V) -> bool,
     {
         for (i, v) in self.vec.iter_mut().enumerate() {
-            if let Some(v2) = v {
-                if !f(K::from(i), v2) {
-                    *v = None;
-                }
+            if let Some(v2) = v
+                && !f(K::from(i), v2)
+            {
+                *v = None;
             }
         }
     }

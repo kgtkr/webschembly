@@ -156,18 +156,16 @@ pub fn extend_typed_obj(
 
     // 前方のmoveをたどって型情報を伝播
     while let Some(local) = worklist.pop() {
-        if let Some(def_idx) = defs.get(local) {
-            if let Some(&ExprAssign {
+        if let Some(def_idx) = defs.get(local)
+            && let Some(&ExprAssign {
                 local: Some(_),
                 expr: Expr::Move(value),
             }) = bb.exprs.get(*def_idx)
-            {
-                if !typed_objs.contains_key(value) {
-                    let typed_obj = typed_objs[local];
-                    typed_objs.entry(value).or_insert(typed_obj);
-                    worklist.push(value);
-                }
-            }
+            && !typed_objs.contains_key(value)
+        {
+            let typed_obj = typed_objs[local];
+            typed_objs.entry(value).or_insert(typed_obj);
+            worklist.push(value);
         }
     }
 }

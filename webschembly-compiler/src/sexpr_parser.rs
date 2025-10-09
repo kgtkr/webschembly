@@ -149,7 +149,9 @@ fn sexprs(input: Tokens) -> IResult<Tokens, Vec<SExpr>> {
     Ok((input, sexprs))
 }
 
-pub fn parse(input: &[Token]) -> Result<Vec<SExpr>, nom::Err<nom::error::Error<Tokens>>> {
+pub fn parse<'a>(
+    input: &'a [Token],
+) -> Result<Vec<SExpr>, nom::Err<nom::error::Error<Tokens<'a>>>> {
     let input = Tokens::new(input);
     let (input, sexprs) = sexprs(input)?;
     let (_, _) = satisfy(|t: &Token| t.kind == TokenKind::Eof).parse(input)?;

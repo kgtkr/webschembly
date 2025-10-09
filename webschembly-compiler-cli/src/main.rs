@@ -1,5 +1,3 @@
-#![feature(path_add_extension)]
-
 use clap::Parser;
 use std::io::Write;
 use std::path::Path;

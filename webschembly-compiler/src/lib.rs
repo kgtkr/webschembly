@@ -3,7 +3,6 @@
     box_patterns,
     trait_alias,
     never_type,
-    let_chains,
     associated_type_defaults,
     coroutines,
     stmt_expr_attributes,

@@ -41,10 +41,10 @@ pub fn dead_code_elimination(func: &mut Func, def_use: &mut DefUseChain) {
             for (&operand, _) in expr_assign.expr.local_usages() {
                 let count = &mut use_counts[operand];
                 *count -= 1;
-                if *count == 0 {
-                    if let Some(def) = def_use.get_def(operand) {
-                        worklist.push(def);
-                    }
+                if *count == 0
+                    && let Some(def) = def_use.get_def(operand)
+                {
+                    worklist.push(def);
                 }
             }
             expr_assign.expr = Expr::Nop;
@@ -73,10 +73,10 @@ pub fn copy_propagation(func: &mut Func, rpo: &FxHashMap<BasicBlockId, usize>) {
         }
 
         for (local, flag) in bb.local_usages_mut() {
-            if let LocalFlag::Used(_) = flag {
-                if let Some(&src) = copies.get(local) {
-                    *local = src;
-                }
+            if let LocalFlag::Used(_) = flag
+                && let Some(&src) = copies.get(local)
+            {
+                *local = src;
             }
         }
     }
