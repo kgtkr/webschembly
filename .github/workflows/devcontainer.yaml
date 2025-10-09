@@ -64,10 +64,10 @@ jobs:
         run: |
           skopeo login ghcr.io -u "$DOCKER_USER" -p "$DOCKER_PASS"
           for TAG in ${TAGS//,/ }; do
-            skopeo manifest create "$TAG" \
-              --add "$TAG-amd64" # \
-              # --add "$TAG-arm64"
-            skopeo manifest push "$TAG" "docker://$TAG"
+            skopeo copy \
+              --all \
+              "docker-manifest-list:[$TAG-amd64]" \
+              "docker://$TAG"
           done
         env:
           DOCKER_USER: ${{ github.repository_owner }}
