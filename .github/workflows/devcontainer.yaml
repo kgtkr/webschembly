@@ -59,15 +59,15 @@ jobs:
       - uses: DeterminateSystems/magic-nix-cache-action@main
       - name: Install dependencies
         run: |
-          nix profile add --inputs-from . nixpkgs#skopeo
+          nix profile add --inputs-from . nixpkgs#buildah
       - name: Create and push manifest
         run: |
-          skopeo login ghcr.io -u "$DOCKER_USER" -p "$DOCKER_PASS"
+          buildah login ghcr.io -u "$DOCKER_USER" -p "$DOCKER_PASS"
           for TAG in ${TAGS//,/ }; do
-            skopeo copy \
-              --all \
-              "docker-manifest-list:[$TAG-amd64]" \
-              "docker://$TAG"
+            buildah manifest create $TAG
+            buildah manifest add $TAG $TAG-amd64
+            # buildah manifest add $TAG $TAG-arm64
+            buildah manifest push --all $TAG "docker://$TAG"
           done
         env:
           DOCKER_USER: ${{ github.repository_owner }}
