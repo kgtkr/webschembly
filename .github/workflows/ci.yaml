@@ -115,11 +115,18 @@ jobs:
       - name: Build
         run: |
           $(nix build .#stream-devcontainer --no-link --print-out-paths) > devcontainer.tar
+      - name: Generate tags
+        uses: kgtkr/docker-tags-gen-action@master
+        id: tags
+        with:
+          name: ghcr.io/${{ github.repository_owner }}/webschembly-devcontainer
       - name: Push
         run: |
           skopeo login ghcr.io -u "$DOCKER_USER" -p "$DOCKER_PASS"
-          skopeo copy docker-archive:./devcontainer.tar "docker://ghcr.io/kgtkr/webschembly-devcontainer:latest"
+          TAGS=${{ steps.tags.outputs.tags }}
+          for TAG in ${TAGS//,/ }; do
+            skopeo copy docker-archive:./devcontainer.tar "docker://$TAG"
+          done
         env:
           DOCKER_USER: ${{ github.repository_owner }}
           DOCKER_PASS: ${{ secrets.GITHUB_TOKEN }}
-        if: github.ref == 'refs/heads/master'
