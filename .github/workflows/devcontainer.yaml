@@ -68,8 +68,9 @@ jobs:
       - name: Create and push manifest
         run: |
           for TAG in ${TAGS//,/ }; do
+            # --platforms linux/amd64,linux/arm64
             manifest-tool push from-args \
-              --platforms linux/amd64 \ # linux/amd64,linux/arm64
+              --platforms linux/amd64 \
               --template $TAG-ARCH \
               --target $TAG
           done
