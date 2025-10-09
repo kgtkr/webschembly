@@ -1,6 +1,7 @@
 {
     "name": "webschembly-dev",
     "image": "ghcr.io/kgtkr/webschembly-devcontainer:latest",
+    "initializeCommand": "./.devcontainer/select-image.sh",
     "customizations": {
         "vscode": {
             "settings": {},
