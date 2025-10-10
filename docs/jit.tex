@@ -59,6 +59,8 @@
     }
 
     \node[labelstyle, left=2cm of stub1.west] (stub_label) {Stub memory space};
+
+    \draw[->, bend left=45] ($(closure_10.one split west)!0.5!(closure_10.one split)$) to (entry1.north west);
   \end{tikzpicture}
   \caption{JIT}
   \label{fig:jit}
