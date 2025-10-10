@@ -46,6 +46,8 @@
               pkgs.just
               pkgs.nil
               pkgs.gauche
+              pkgs.skopeo
+              pkgs.manifest-tool
             ];
           };
         };
