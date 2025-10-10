@@ -1,9 +1,9 @@
 \begin{figure}[htbp]
   \centering
   \begin{tikzpicture}[
-    block/.style={
+    generated/.style={
       draw, fill=white,
-      minimum width=4cm, minimum height=1.5cm,
+      minimum width=1.5cm, minimum height=1cm,
       align=left,
       outer sep=0pt, inner sep=0pt
     },
@@ -40,10 +40,10 @@
     }
     \node[labelstyle, left=2cm of entry3.west] (entry_tables_label) {Entry point tables};
 
-    \node[closurenode, below=1cm of entry5.south west, anchor=north west, xshift=1cm] (closure_10) {\nodepart{one} \nodepart{two} evns};
+    \node[closurenode, below=1cm of entry5.south west, anchor=north west] (closure_10) {\nodepart{one} \nodepart{two} evns1};
     \fill ($(closure_10.one split west)!0.5!(closure_10.one split)$) circle (0.05cm);
 
-    \node[closurenode, below=0.5cm of closure_10.south west, anchor=north west, xshift=1cm] (closure_pi) {\nodepart{one} \nodepart{two} envs};
+    \node[closurenode, below=0.5cm of closure_10.south west, anchor=north west] (closure_pi) {\nodepart{one} \nodepart{two} envs2};
     \fill ($(closure_pi.one split west)!0.5!(closure_pi.one split)$) circle (0.05cm);
 
     \node[labelstyle, left=2cm of closure_10.west, yshift=-0.75cm] (closure_label) {Closure instances};
@@ -51,14 +51,14 @@
 
     \foreach \i in {1,...,5} {
       \ifnum\i=1
-        \node[block, below=0.5cm of closure_label] (stub\i) {};
+        \node[generated, below=0.5cm of closure_pi.south west, anchor=north west] (stub\i) {};
       \else
         \pgfmathtruncatemacro{\prevI}{\i-1}
-        \node[block, right=0pt of stub\prevI] (stub\i) {};
+        \node[generated, right=0pt of stub\prevI] (stub\i) {};
       \fi
     }
 
-    \node[labelstyle, left=2cm of stub5.west] (stub_label) {Stub memory space};
+    \node[labelstyle, left=2cm of stub1.west] (stub_label) {Stub memory space};
   \end{tikzpicture}
   \caption{JIT}
   \label{fig:jit}
