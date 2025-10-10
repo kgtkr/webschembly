@@ -10,4 +10,5 @@ if [[ -n "$GIT_BRANCH" && "$GIT_BRANCH" != "HEAD" ]]; then
         FINAL_IMAGE="${BRANCH_IMAGE}"
     fi
 fi
-echo "{\"image\": \"${FINAL_IMAGE}\"}"
+docker pull "$FINAL_IMAGE"
+docker image tag "$FINAL_IMAGE" webschembly-devcontainer:local
