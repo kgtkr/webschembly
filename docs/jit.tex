@@ -1,7 +1,13 @@
 \begin{figure}[htbp]
   \centering
   \begin{tikzpicture}[
-    generated/.style={
+    funcnode/.style={
+      draw, fill=white,
+      minimum width=1cm, minimum height=1cm,
+      align=left,
+      outer sep=0pt, inner sep=0pt
+    },
+    stubnode/.style={
       draw, fill=white,
       minimum width=1.5cm, minimum height=1cm,
       align=left,
@@ -19,48 +25,76 @@
       rectangle split, rectangle split parts=2, draw,
       minimum width=1.5cm, minimum height=0.7cm
     },
-    entry/.style={
+    entrynode/.style={
       draw, fill=white,
       minimum width=0.8cm, minimum height=0.7cm,
       outer sep=0pt, inner sep=0pt
     },
-    labelstyle/.style={
+    mutfuncnode/.style={
+      draw, fill=white,
+      minimum width=0.8cm, minimum height=0.7cm,
+      outer sep=0pt, inner sep=0pt
+    },
+    labelnode/.style={
       align=right, anchor=east, font=\small
     },
     -Stealth
   ]
-    \foreach \i in {1,...,5} {
-      \ifnum\i=1
-        \node[entry] (entry\i) at (4,6) {};
+    \foreach \i in {0,...,4} {
+      \ifnum\i=0
+        \node[funcnode] (func\i) {};
       \else
         \pgfmathtruncatemacro{\prevI}{\i-1}
-        \node[entry, below=0pt of entry\prevI] (entry\i) {};
+        \node[funcnode, right=0pt of func\prevI] (func\i) {};
+      \fi
+    }
+    \node[labelnode, left=2cm of func0.west] (funcs_label) {Generated code};
+
+    \foreach \i in {0,...,4} {
+      \ifnum\i=0
+        \node[mutfuncnode, below=1cm of func0.south west] (mutfunc\i) {};
+      \else
+        \pgfmathtruncatemacro{\prevI}{\i-1}
+        \node[mutfuncnode, right=5pt of mutfunc\prevI] (mutfunc\i) {};
+      \fi
+      \fill ($(mutfunc\i.west)!0.5!(mutfunc\i.east)$) circle (0.05cm);
+
+      \node[labelnode, below=0.5cm of mutfunc\i.west] (mutfunc\i_label) {Stub\i};
+    }
+    \node[labelnode, left=2cm of mutfunc0.west] (mutfuncs_label) {Mut Funcref};
+
+    \foreach \i in {0,...,4} {
+      \ifnum\i=0
+        \node[entrynode, below=1cm of mutfunc1.south west] (entry\i) {};
+      \else
+        \pgfmathtruncatemacro{\prevI}{\i-1}
+        \node[entrynode, below=0pt of entry\prevI] (entry\i) {};
       \fi
       \fill ($(entry\i.west)!0.5!(entry\i.east)$) circle (0.05cm);
     }
-    \node[labelstyle, left=2cm of entry3.west] (entry_tables_label) {Entry point tables};
+    \node[labelnode, left=2cm of entry2.west] (entry_tables_label) {Entry point tables};
 
-    \node[closurenode, below=1cm of entry5.south west, anchor=north west] (closure_10) {\nodepart{one} \nodepart{two} evns1};
+    \node[closurenode, below=1cm of entry4.south west, anchor=north west] (closure_10) {\nodepart{one} \nodepart{two} envs1};
     \fill ($(closure_10.one split west)!0.5!(closure_10.one split)$) circle (0.05cm);
 
     \node[closurenode, below=0.5cm of closure_10.south west, anchor=north west] (closure_pi) {\nodepart{one} \nodepart{two} envs2};
     \fill ($(closure_pi.one split west)!0.5!(closure_pi.one split)$) circle (0.05cm);
 
-    \node[labelstyle, left=2cm of closure_10.west, yshift=-0.75cm] (closure_label) {Closure instances};
+    \node[labelnode, left=2cm of closure_10.west, yshift=-0.75cm] (closure_label) {Closure instances};
 
 
-    \foreach \i in {1,...,5} {
-      \ifnum\i=1
-        \node[generated, below=0.5cm of closure_pi.south west, anchor=north west] (stub\i) {};
+    \foreach \i in {0,...,4} {
+      \ifnum\i=0
+        \node[stubnode, below=0.5cm of closure_pi.south west] (stub\i) {};
       \else
         \pgfmathtruncatemacro{\prevI}{\i-1}
-        \node[generated, right=0pt of stub\prevI] (stub\i) {};
+        \node[stubnode, right=0pt of stub\prevI] (stub\i) {};
       \fi
     }
 
-    \node[labelstyle, left=2cm of stub1.west] (stub_label) {Stub memory space};
+    \node[labelnode, left=2cm of stub0.west] (stub_label) {Stub memory space};
 
-    \draw[->, bend left=45] ($(closure_10.one split west)!0.5!(closure_10.one split)$) to (entry1.north west);
+    \draw[->, bend left=45] ($(closure_10.one split west)!0.5!(closure_10.one split)$) to (entry0.north west);
   \end{tikzpicture}
   \caption{JIT}
   \label{fig:jit}
