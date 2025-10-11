@@ -245,6 +245,44 @@ pub fn constant_folding(
                 {
                     func.bbs[*bb_id].exprs[expr_idx].expr = Expr::Bool(!a);
                 }
+                Expr::And(local1, local2) => {
+                    let expr1 = def_use.get_def_non_move_expr(&func.bbs, local1);
+                    let expr2 = def_use.get_def_non_move_expr(&func.bbs, local2);
+                    match (expr1, expr2) {
+                        (Some(&Expr::Bool(a)), Some(&Expr::Bool(b))) => {
+                            func.bbs[*bb_id].exprs[expr_idx].expr = Expr::Bool(a && b);
+                        }
+                        (Some(&Expr::Bool(false)), _) | (_, Some(&Expr::Bool(false))) => {
+                            func.bbs[*bb_id].exprs[expr_idx].expr = Expr::Bool(false);
+                        }
+                        (Some(&Expr::Bool(true)), Some(_)) => {
+                            func.bbs[*bb_id].exprs[expr_idx].expr = Expr::Move(local2);
+                        }
+                        (Some(_), Some(&Expr::Bool(true))) => {
+                            func.bbs[*bb_id].exprs[expr_idx].expr = Expr::Move(local1);
+                        }
+                        _ => {}
+                    }
+                }
+                Expr::Or(local1, local2) => {
+                    let expr1 = def_use.get_def_non_move_expr(&func.bbs, local1);
+                    let expr2 = def_use.get_def_non_move_expr(&func.bbs, local2);
+                    match (expr1, expr2) {
+                        (Some(&Expr::Bool(a)), Some(&Expr::Bool(b))) => {
+                            func.bbs[*bb_id].exprs[expr_idx].expr = Expr::Bool(a || b);
+                        }
+                        (Some(&Expr::Bool(true)), _) | (_, Some(&Expr::Bool(true))) => {
+                            func.bbs[*bb_id].exprs[expr_idx].expr = Expr::Bool(true);
+                        }
+                        (Some(&Expr::Bool(false)), Some(_)) => {
+                            func.bbs[*bb_id].exprs[expr_idx].expr = Expr::Move(local2);
+                        }
+                        (Some(_), Some(&Expr::Bool(false))) => {
+                            func.bbs[*bb_id].exprs[expr_idx].expr = Expr::Move(local1);
+                        }
+                        _ => {}
+                    }
+                }
                 Expr::EqNum(local1, local2)
                     if let Some(&Expr::Bool(a)) =
                         def_use.get_def_non_move_expr(&func.bbs, local1)

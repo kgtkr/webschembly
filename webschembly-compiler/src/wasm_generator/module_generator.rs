@@ -1361,6 +1361,16 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 function.instruction(&Instruction::I32Const(1));
                 function.instruction(&Instruction::I32Xor);
             }
+            ir::Expr::And(lhs, rhs) => {
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*lhs)));
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*rhs)));
+                function.instruction(&Instruction::I32And);
+            }
+            ir::Expr::Or(lhs, rhs) => {
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*lhs)));
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*rhs)));
+                function.instruction(&Instruction::I32Or);
+            }
             ir::Expr::Car(val) => {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
                 function.instruction(&Instruction::StructGet {

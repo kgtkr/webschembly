@@ -449,6 +449,8 @@ pub enum Expr {
     VectorSet(LocalId, LocalId, LocalId),
     Eq(LocalId, LocalId),
     Not(LocalId),
+    And(LocalId, LocalId),
+    Or(LocalId, LocalId),
     Car(LocalId),
     Cdr(LocalId),
     SymbolToString(LocalId),
@@ -589,6 +591,14 @@ macro_rules! impl_Expr_local_usages {
                             yield (b, LocalUsedFlag::NonPhi);
                         }
                         Expr::Not(id) => yield (id, LocalUsedFlag::NonPhi),
+                        Expr::And(a, b) => {
+                            yield (a, LocalUsedFlag::NonPhi);
+                            yield (b, LocalUsedFlag::NonPhi);
+                        }
+                        Expr::Or(a, b) => {
+                            yield (a, LocalUsedFlag::NonPhi);
+                            yield (b, LocalUsedFlag::NonPhi);
+                        }
                         Expr::Car(id) => yield (id, LocalUsedFlag::NonPhi),
                         Expr::Cdr(id) => yield (id, LocalUsedFlag::NonPhi),
                         Expr::SymbolToString(id) => yield (id, LocalUsedFlag::NonPhi),
@@ -728,6 +738,8 @@ impl Expr {
             | Expr::Is(..)
             | Expr::Eq(..)
             | Expr::Not(..)
+            | Expr::And(..)
+            | Expr::Or(..)
             | Expr::EqNum(..)
             | Expr::Lt(..)
             | Expr::Gt(..)
@@ -944,6 +956,8 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
             }
             Expr::Eq(a, b) => write!(f, "eq({}, {})", a.display(self.meta), b.display(self.meta)),
             Expr::Not(id) => write!(f, "not({})", id.display(self.meta)),
+            Expr::And(a, b) => write!(f, "and({}, {})", a.display(self.meta), b.display(self.meta)),
+            Expr::Or(a, b) => write!(f, "or({}, {})", a.display(self.meta), b.display(self.meta)),
             Expr::Car(id) => write!(f, "car({})", id.display(self.meta)),
             Expr::Cdr(id) => write!(f, "cdr({})", id.display(self.meta)),
             Expr::SymbolToString(id) => write!(f, "symbol_to_string({})", id.display(self.meta)),
