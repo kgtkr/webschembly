@@ -163,7 +163,10 @@ fn quote(input: Tokens) -> IResult<Tokens, SExpr> {
 }
 
 fn sexpr(input: Tokens) -> IResult<Tokens, SExpr> {
-    alt((bool, int, float, string, symbol, char, list, vector, quote)).parse(input)
+    alt((
+        bool, int, float, nan, string, symbol, char, list, vector, quote,
+    ))
+    .parse(input)
 }
 
 fn sexprs(input: Tokens) -> IResult<Tokens, Vec<SExpr>> {

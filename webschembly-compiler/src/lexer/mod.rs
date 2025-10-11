@@ -3,7 +3,7 @@ use crate::{error::CompilerError, token::TokenKind};
 use super::token::Token;
 use located::{to_pos, to_span};
 use nom::{
-    Err, Finish, IResult, Parser,
+    Finish, IResult, Parser,
     branch::alt,
     bytes::complete::{tag, take, take_while, take_while1},
     combinator::{consumed, eof as nom_eof, map, success, value},
