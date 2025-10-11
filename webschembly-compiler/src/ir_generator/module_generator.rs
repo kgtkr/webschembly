@@ -552,17 +552,27 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 let obj_cond_local = self.local(Type::Obj);
                 self.gen_expr(Some(obj_cond_local), cond);
 
-                // TODO: condがboolかのチェック
-                let cond_local = self.local(Type::Val(ValType::Bool));
+                let false_local = self.local(Type::Val(ValType::Bool));
                 self.exprs.push(ExprAssign {
-                    local: Some(cond_local),
-                    expr: Expr::FromObj(ValType::Bool, obj_cond_local),
+                    local: Some(false_local),
+                    expr: Expr::Bool(false),
+                });
+                let false_obj_local = self.local(Type::Obj);
+                self.exprs.push(ExprAssign {
+                    local: Some(false_obj_local),
+                    expr: Expr::ToObj(ValType::Bool, false_local),
+                });
+
+                let cond_not_local = self.local(Type::Val(ValType::Bool));
+                self.exprs.push(ExprAssign {
+                    local: Some(cond_not_local),
+                    expr: Expr::Eq(obj_cond_local, false_obj_local),
                 });
 
                 let then_bb_id = self.bbs.allocate_key();
                 let else_bb_id = self.bbs.allocate_key();
                 let merge_bb_id = self.bbs.allocate_key();
-                self.close_bb(BasicBlockNext::If(cond_local, then_bb_id, else_bb_id));
+                self.close_bb(BasicBlockNext::If(cond_not_local, else_bb_id, then_bb_id));
 
                 let before_locals = self.local_ids.clone();
 

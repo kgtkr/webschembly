@@ -1358,8 +1358,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             }
             ir::Expr::Not(val) => {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
-                function.instruction(&Instruction::I32Const(1));
-                function.instruction(&Instruction::I32Xor);
+                function.instruction(&Instruction::I32Eqz);
             }
             ir::Expr::And(lhs, rhs) => {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*lhs)));
