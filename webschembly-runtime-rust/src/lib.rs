@@ -292,6 +292,18 @@ pub extern "C" fn _int_to_string(i: i64) -> i64 {
     cons_tuple_i32(s_ptr, s_len)
 }
 
+#[unsafe(no_mangle)]
+pub extern "C" fn _float_to_string(f: f64) -> i64 {
+    let s = f.to_string();
+    let s = s.as_bytes();
+    let s_ptr = unsafe { malloc(s.len() as i32) };
+    unsafe {
+        std::ptr::copy_nonoverlapping(s.as_ptr(), s_ptr as *mut u8, s.len());
+    }
+    let s_len = s.len() as i32;
+    cons_tuple_i32(s_ptr, s_len)
+}
+
 fn cons_tuple_i32(a: i32, b: i32) -> i64 {
     // rustではmultivalueが使えないので、(i32, i32) を i64 として表す
     let a = a.to_le_bytes();

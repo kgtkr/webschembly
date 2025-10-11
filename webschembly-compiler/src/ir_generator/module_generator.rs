@@ -674,8 +674,12 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     } = x.get_ref(type_map::key::<Used>())
                     && let Some(builtin) = ast::Builtin::from_name(name)
                 {
-                    let rule = BuiltinConversionRule::from_builtin(builtin);
-                    if rule.arg_count() != args.len() {
+                    let rules = BuiltinConversionRule::from_builtin(builtin)
+                        .into_iter()
+                        .filter(|rule| rule.arg_count() == args.len())
+                        .collect::<Vec<_>>();
+
+                    if rules.is_empty() {
                         let msg = self.local(Type::Val(ValType::String));
                         self.exprs.push(ExprAssign {
                             local: Some(msg),
@@ -683,26 +687,32 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                         });
                         self.close_bb(BasicBlockNext::Terminator(BasicBlockTerminator::Error(msg)));
                     } else {
-                        let mut obj_arg_locals = Vec::new();
-                        let mut type_check_success_locals = Vec::new();
-                        for (typ, arg) in rule.arg_types().iter().zip(args) {
-                            let obj_arg_local = self.local(Type::Obj);
-                            self.gen_expr(Some(obj_arg_local), arg);
-                            obj_arg_locals.push(obj_arg_local);
-                            if let Type::Val(val_type) = typ {
-                                let type_check_success_local = self.local(Type::Val(ValType::Bool));
-                                self.exprs.push(ExprAssign {
-                                    local: Some(type_check_success_local),
-                                    expr: Expr::Is(*val_type, obj_arg_local),
-                                });
-                                type_check_success_locals.push(type_check_success_local);
+                        let merge_bb_id = self.bbs.allocate_key();
+                        let mut phi_incoming_values = Vec::new();
+                        for rule in rules {
+                            let mut obj_arg_locals = Vec::new();
+                            let mut type_check_success_locals = Vec::new();
+                            for (typ, arg) in rule.arg_types().iter().zip(args) {
+                                let obj_arg_local = self.local(Type::Obj);
+                                self.gen_expr(Some(obj_arg_local), arg);
+                                obj_arg_locals.push(obj_arg_local);
+                                if let Type::Val(val_type) = typ {
+                                    let type_check_success_local =
+                                        self.local(Type::Val(ValType::Bool));
+                                    self.exprs.push(ExprAssign {
+                                        local: Some(type_check_success_local),
+                                        expr: Expr::Is(*val_type, obj_arg_local),
+                                    });
+                                    type_check_success_locals.push(type_check_success_local);
+                                }
                             }
-                        }
 
-                        if let Some((&type_check_success_local, type_check_success_locals)) =
-                            type_check_success_locals.split_first()
-                        {
-                            let mut all_type_check_success_local = type_check_success_local;
+                            let mut all_type_check_success_local =
+                                self.local(Type::Val(ValType::Bool));
+                            self.exprs.push(ExprAssign {
+                                local: Some(all_type_check_success_local),
+                                expr: Expr::Bool(true),
+                            });
                             for type_check_success_local in type_check_success_locals {
                                 let new_all_type_check_success_local =
                                     self.local(Type::Val(ValType::Bool));
@@ -710,7 +720,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                                     local: Some(new_all_type_check_success_local),
                                     expr: Expr::And(
                                         all_type_check_success_local,
-                                        *type_check_success_local,
+                                        type_check_success_local,
                                     ),
                                 });
                                 all_type_check_success_local = new_all_type_check_success_local;
@@ -725,66 +735,71 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                                 else_bb_id,
                             ));
 
-                            self.current_bb_id = Some(else_bb_id);
-                            let msg = self.local(Type::Val(ValType::String));
-                            self.exprs.push(ExprAssign {
-                                local: Some(msg),
-                                expr: Expr::String(format!("{:?}: arg type mismatch\n", builtin)),
-                            });
-                            self.close_bb(BasicBlockNext::Terminator(BasicBlockTerminator::Error(
-                                msg,
-                            )));
-
                             self.current_bb_id = Some(then_bb_id);
-                        }
 
-                        let mut arg_locals = Vec::new();
-                        for (typ, obj_arg_local) in rule.arg_types().iter().zip(obj_arg_locals) {
-                            let arg_local = match typ {
-                                Type::Obj => obj_arg_local,
-                                Type::Val(val_type) => {
-                                    let val_type_local = self.local(Type::Val(*val_type));
-                                    self.exprs.push(ExprAssign {
-                                        local: Some(val_type_local),
-                                        expr: Expr::FromObj(*val_type, obj_arg_local),
-                                    });
-                                    val_type_local
+                            let mut arg_locals = Vec::new();
+                            for (typ, obj_arg_local) in rule.arg_types().iter().zip(obj_arg_locals)
+                            {
+                                let arg_local = match typ {
+                                    Type::Obj => obj_arg_local,
+                                    Type::Val(val_type) => {
+                                        let val_type_local = self.local(Type::Val(*val_type));
+                                        self.exprs.push(ExprAssign {
+                                            local: Some(val_type_local),
+                                            expr: Expr::FromObj(*val_type, obj_arg_local),
+                                        });
+                                        val_type_local
+                                    }
+                                };
+                                arg_locals.push(arg_local);
+                            }
+
+                            let ret_local = match rule.ret_type() {
+                                Type::Obj => self.local(Type::Obj),
+                                Type::Val(val_type) => self.local(Type::Val(val_type)),
+                            };
+                            let expr = match rule {
+                                BuiltinConversionRule::Unary { to_ir, .. } => to_ir(arg_locals[0]),
+                                BuiltinConversionRule::Binary { to_ir, .. } => {
+                                    to_ir(arg_locals[0], arg_locals[1])
+                                }
+                                BuiltinConversionRule::Ternary { to_ir, .. } => {
+                                    to_ir(arg_locals[0], arg_locals[1], arg_locals[2])
                                 }
                             };
-                            arg_locals.push(arg_local);
+                            self.exprs.push(ExprAssign {
+                                local: Some(ret_local),
+                                expr,
+                            });
+
+                            let ret_obj_local = self.local(Type::Obj);
+                            self.exprs.push(ExprAssign {
+                                local: Some(ret_obj_local),
+                                expr: match rule.ret_type() {
+                                    Type::Obj => Expr::Move(ret_local),
+                                    Type::Val(val_type) => Expr::ToObj(val_type, ret_local),
+                                },
+                            });
+                            phi_incoming_values.push(PhiIncomingValue {
+                                bb: then_bb_id,
+                                local: ret_obj_local,
+                            });
+
+                            self.close_bb(BasicBlockNext::Jump(merge_bb_id));
+                            self.current_bb_id = Some(else_bb_id);
                         }
 
-                        let ret_local = match rule.ret_type() {
-                            Type::Obj => self.local(Type::Obj),
-                            Type::Val(val_type) => self.local(Type::Val(val_type)),
-                        };
-                        let expr = match rule {
-                            BuiltinConversionRule::Unary { to_ir, .. } => to_ir(arg_locals[0]),
-                            BuiltinConversionRule::Binary { to_ir, .. } => {
-                                to_ir(arg_locals[0], arg_locals[1])
-                            }
-                            BuiltinConversionRule::Ternary { to_ir, .. } => {
-                                to_ir(arg_locals[0], arg_locals[1], arg_locals[2])
-                            }
-                        };
+                        let msg = self.local(Type::Val(ValType::String));
                         self.exprs.push(ExprAssign {
-                            local: Some(ret_local),
-                            expr,
+                            local: Some(msg),
+                            expr: Expr::String(format!("{}: arg type mismatch\n", builtin.name())),
                         });
-                        match rule.ret_type() {
-                            Type::Obj => {
-                                self.exprs.push(ExprAssign {
-                                    local: result,
-                                    expr: Expr::Move(ret_local),
-                                });
-                            }
-                            Type::Val(val_type) => {
-                                self.exprs.push(ExprAssign {
-                                    local: result,
-                                    expr: Expr::ToObj(val_type, ret_local),
-                                });
-                            }
-                        }
+                        self.close_bb(BasicBlockNext::Terminator(BasicBlockTerminator::Error(msg)));
+                        self.current_bb_id = Some(merge_bb_id);
+                        self.exprs.push(ExprAssign {
+                            local: result,
+                            expr: Expr::Phi(phi_incoming_values),
+                        });
                     }
                 } else {
                     let obj_func_local = self.local(Type::Obj);
@@ -1037,92 +1052,92 @@ impl BuiltinConversionRule {
         }
     }
 
-    pub fn from_builtin(builtin: ast::Builtin) -> BuiltinConversionRule {
+    pub fn from_builtin(builtin: ast::Builtin) -> Vec<BuiltinConversionRule> {
         use ast::Builtin;
 
         match builtin {
-            Builtin::Display => BuiltinConversionRule::Unary {
+            Builtin::Display => vec![BuiltinConversionRule::Unary {
                 // TODO: 一旦Stringのみ
                 args: [Type::Val(ValType::String)],
                 ret: Type::Val(ValType::Nil),
                 to_ir: Expr::Display,
-            },
-            Builtin::Add => BuiltinConversionRule::Binary {
+            }],
+            Builtin::Add => vec![BuiltinConversionRule::Binary {
                 args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
                 ret: Type::Val(ValType::Int),
                 to_ir: Expr::AddInt,
-            },
-            Builtin::Sub => BuiltinConversionRule::Binary {
+            }],
+            Builtin::Sub => vec![BuiltinConversionRule::Binary {
                 args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
                 ret: Type::Val(ValType::Int),
                 to_ir: Expr::SubInt,
-            },
-            Builtin::Mul => BuiltinConversionRule::Binary {
+            }],
+            Builtin::Mul => vec![BuiltinConversionRule::Binary {
                 args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
                 ret: Type::Val(ValType::Int),
                 to_ir: Expr::MulInt,
-            },
-            Builtin::Quotient => BuiltinConversionRule::Binary {
+            }],
+            Builtin::Quotient => vec![BuiltinConversionRule::Binary {
                 args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
                 ret: Type::Val(ValType::Int),
                 to_ir: Expr::DivInt,
-            },
-            Builtin::WriteChar => BuiltinConversionRule::Unary {
+            }],
+            Builtin::WriteChar => vec![BuiltinConversionRule::Unary {
                 args: [Type::Val(ValType::Char)],
                 ret: Type::Val(ValType::Nil),
                 to_ir: Expr::WriteChar,
-            },
-            Builtin::IsPair => BuiltinConversionRule::Unary {
+            }],
+            Builtin::IsPair => vec![BuiltinConversionRule::Unary {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
                 to_ir: |local| Expr::Is(ValType::Cons, local),
-            },
-            Builtin::IsSymbol => BuiltinConversionRule::Unary {
+            }],
+            Builtin::IsSymbol => vec![BuiltinConversionRule::Unary {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
                 to_ir: |local| Expr::Is(ValType::Symbol, local),
-            },
-            Builtin::IsString => BuiltinConversionRule::Unary {
+            }],
+            Builtin::IsString => vec![BuiltinConversionRule::Unary {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
                 to_ir: |local| Expr::Is(ValType::String, local),
-            },
-            Builtin::IsNumber => BuiltinConversionRule::Unary {
+            }],
+            Builtin::IsNumber => vec![BuiltinConversionRule::Unary {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
                 to_ir: |local| Expr::Is(ValType::Int, local), // TODO: 一般のnumberかを判定
-            },
-            Builtin::IsBoolean => BuiltinConversionRule::Unary {
+            }],
+            Builtin::IsBoolean => vec![BuiltinConversionRule::Unary {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
                 to_ir: |local| Expr::Is(ValType::Bool, local),
-            },
-            Builtin::IsProcedure => BuiltinConversionRule::Unary {
+            }],
+            Builtin::IsProcedure => vec![BuiltinConversionRule::Unary {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
                 to_ir: |local| Expr::Is(ValType::Closure, local),
-            },
-            Builtin::IsChar => BuiltinConversionRule::Unary {
+            }],
+            Builtin::IsChar => vec![BuiltinConversionRule::Unary {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
                 to_ir: |local| Expr::Is(ValType::Char, local),
-            },
-            Builtin::IsVector => BuiltinConversionRule::Unary {
+            }],
+            Builtin::IsVector => vec![BuiltinConversionRule::Unary {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
                 to_ir: |local| Expr::Is(ValType::Vector, local),
-            },
-            Builtin::VectorLength => BuiltinConversionRule::Unary {
+            }],
+            Builtin::VectorLength => vec![BuiltinConversionRule::Unary {
                 args: [Type::Val(ValType::Vector)],
                 ret: Type::Val(ValType::Int),
                 to_ir: Expr::VectorLength,
-            },
-            Builtin::VectorRef => BuiltinConversionRule::Binary {
+            }],
+            Builtin::VectorRef => vec![BuiltinConversionRule::Binary {
                 args: [Type::Val(ValType::Vector), Type::Val(ValType::Int)],
                 ret: Type::Obj,
                 to_ir: Expr::VectorRef,
-            },
-            Builtin::VectorSet => BuiltinConversionRule::Ternary {
+            }],
+            Builtin::VectorSet => vec![BuiltinConversionRule::Ternary {
                 args: [
                     Type::Val(ValType::Vector),
                     Type::Val(ValType::Int),
@@ -1130,63 +1145,69 @@ impl BuiltinConversionRule {
                 ],
                 ret: Type::Val(ValType::Nil),
                 to_ir: Expr::VectorSet,
-            },
-            Builtin::Eq => BuiltinConversionRule::Binary {
+            }],
+            Builtin::Eq => vec![BuiltinConversionRule::Binary {
                 args: [Type::Obj, Type::Obj],
                 ret: Type::Val(ValType::Bool),
                 to_ir: Expr::EqObj,
-            },
-            Builtin::Cons => BuiltinConversionRule::Binary {
+            }],
+            Builtin::Cons => vec![BuiltinConversionRule::Binary {
                 args: [Type::Obj, Type::Obj],
                 ret: Type::Val(ValType::Cons),
                 to_ir: Expr::Cons,
-            },
-            Builtin::Car => BuiltinConversionRule::Unary {
+            }],
+            Builtin::Car => vec![BuiltinConversionRule::Unary {
                 args: [Type::Val(ValType::Cons)],
                 ret: Type::Obj,
                 to_ir: Expr::Car,
-            },
-            Builtin::Cdr => BuiltinConversionRule::Unary {
+            }],
+            Builtin::Cdr => vec![BuiltinConversionRule::Unary {
                 args: [Type::Val(ValType::Cons)],
                 ret: Type::Obj,
                 to_ir: Expr::Cdr,
-            },
-            Builtin::SymbolToString => BuiltinConversionRule::Unary {
+            }],
+            Builtin::SymbolToString => vec![BuiltinConversionRule::Unary {
                 args: [Type::Val(ValType::Symbol)],
                 ret: Type::Val(ValType::String),
                 to_ir: Expr::SymbolToString,
-            },
-            Builtin::NumberToString => BuiltinConversionRule::Unary {
-                // TODO: 一般のnumberに使えるように
-                args: [Type::Val(ValType::Int)],
-                ret: Type::Val(ValType::String),
-                to_ir: Expr::NumberToString,
-            },
-            Builtin::EqNum => BuiltinConversionRule::Binary {
+            }],
+            Builtin::NumberToString => vec![
+                BuiltinConversionRule::Unary {
+                    args: [Type::Val(ValType::Int)],
+                    ret: Type::Val(ValType::String),
+                    to_ir: Expr::IntToString,
+                },
+                BuiltinConversionRule::Unary {
+                    args: [Type::Val(ValType::Float)],
+                    ret: Type::Val(ValType::String),
+                    to_ir: Expr::FloatToString,
+                },
+            ],
+            Builtin::EqNum => vec![BuiltinConversionRule::Binary {
                 args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
                 ret: Type::Val(ValType::Bool),
                 to_ir: Expr::EqNum,
-            },
-            Builtin::Lt => BuiltinConversionRule::Binary {
+            }],
+            Builtin::Lt => vec![BuiltinConversionRule::Binary {
                 args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
                 ret: Type::Val(ValType::Bool),
                 to_ir: Expr::LtInt,
-            },
-            Builtin::Gt => BuiltinConversionRule::Binary {
+            }],
+            Builtin::Gt => vec![BuiltinConversionRule::Binary {
                 args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
                 ret: Type::Val(ValType::Bool),
                 to_ir: Expr::GtInt,
-            },
-            Builtin::Le => BuiltinConversionRule::Binary {
+            }],
+            Builtin::Le => vec![BuiltinConversionRule::Binary {
                 args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
                 ret: Type::Val(ValType::Bool),
                 to_ir: Expr::LeInt,
-            },
-            Builtin::Ge => BuiltinConversionRule::Binary {
+            }],
+            Builtin::Ge => vec![BuiltinConversionRule::Binary {
                 args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
                 ret: Type::Val(ValType::Bool),
                 to_ir: Expr::GeInt,
-            },
+            }],
         }
     }
 }

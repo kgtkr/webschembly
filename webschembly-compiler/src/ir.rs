@@ -459,7 +459,8 @@ pub enum Expr {
     Car(LocalId),
     Cdr(LocalId),
     SymbolToString(LocalId),
-    NumberToString(LocalId),
+    IntToString(LocalId),
+    FloatToString(LocalId),
     EqNum(LocalId, LocalId),
     LtInt(LocalId, LocalId),
     GtInt(LocalId, LocalId),
@@ -607,7 +608,8 @@ macro_rules! impl_Expr_local_usages {
                         Expr::Car(id) => yield (id, LocalUsedFlag::NonPhi),
                         Expr::Cdr(id) => yield (id, LocalUsedFlag::NonPhi),
                         Expr::SymbolToString(id) => yield (id, LocalUsedFlag::NonPhi),
-                        Expr::NumberToString(id) => yield (id, LocalUsedFlag::NonPhi),
+                        Expr::IntToString(id) => yield (id, LocalUsedFlag::NonPhi),
+                        Expr::FloatToString(id) => yield (id, LocalUsedFlag::NonPhi),
                         Expr::EqNum(a, b) => {
                             yield (a, LocalUsedFlag::NonPhi);
                             yield (b, LocalUsedFlag::NonPhi);
@@ -774,7 +776,8 @@ impl Expr {
             | Expr::Cdr(..)
             | Expr::GlobalGet(..)
             | Expr::SymbolToString(..)
-            | Expr::NumberToString(..)
+            | Expr::IntToString(..)
+            | Expr::FloatToString(..)
             | Expr::CreateMutFuncRef(..)
             | Expr::CreateEmptyMutFuncRef
             | Expr::DerefMutFuncRef(..)
@@ -1007,7 +1010,8 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
             Expr::Car(id) => write!(f, "car({})", id.display(self.meta)),
             Expr::Cdr(id) => write!(f, "cdr({})", id.display(self.meta)),
             Expr::SymbolToString(id) => write!(f, "symbol_to_string({})", id.display(self.meta)),
-            Expr::NumberToString(id) => write!(f, "number_to_string({})", id.display(self.meta)),
+            Expr::IntToString(id) => write!(f, "int_to_string({})", id.display(self.meta)),
+            Expr::FloatToString(id) => write!(f, "float_to_string({})", id.display(self.meta)),
             Expr::EqNum(a, b) => write!(
                 f,
                 "eq_num({}, {})",

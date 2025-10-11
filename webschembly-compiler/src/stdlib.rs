@@ -13,7 +13,7 @@ pub fn generate_stdlib() -> String {
 }
 
 fn generate_builtin(builtin: Builtin) -> String {
-    let rule = BuiltinConversionRule::from_builtin(builtin);
+    let rule = BuiltinConversionRule::from_builtin(builtin)[0]; // TODO: オーバーロード対応
     let args = (0..rule.arg_count())
         .map(|i| format!("x{}", i))
         .collect::<Vec<_>>()

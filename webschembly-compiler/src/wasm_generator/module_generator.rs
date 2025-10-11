@@ -39,6 +39,7 @@ struct ModuleGenerator<'a> {
     string_to_symbol_func: u32,
     write_char_func: u32,
     int_to_string_func: u32,
+    float_to_string_func: u32,
     throw_webassembly_exception: u32,
     // wasm section
     imports: ImportSection,
@@ -92,6 +93,7 @@ impl<'a> ModuleGenerator<'a> {
             string_to_symbol_func: 0,
             write_char_func: 0,
             int_to_string_func: 0,
+            float_to_string_func: 0,
             throw_webassembly_exception: 0,
             imports: ImportSection::new(),
             types: TypeSection::new(),
@@ -659,6 +661,17 @@ impl<'a> ModuleGenerator<'a> {
             "int_to_string",
             WasmFuncType {
                 params: vec![ValType::I64],
+                results: vec![ValType::Ref(RefType {
+                    nullable: true,
+                    heap_type: HeapType::Concrete(self.string_type),
+                })],
+            },
+        );
+
+        self.float_to_string_func = self.add_runtime_function(
+            "float_to_string",
+            WasmFuncType {
+                params: vec![ValType::F64],
                 results: vec![ValType::Ref(RefType {
                     nullable: true,
                     heap_type: HeapType::Concrete(self.string_type),
@@ -1437,10 +1450,15 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     field_index: ModuleGenerator::SYMBOL_STRING_FIELD,
                 });
             }
-            ir::Expr::NumberToString(val) => {
-                // TODO: 一般のnumberに対応
+            ir::Expr::IntToString(val) => {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
                 function.instruction(&Instruction::Call(self.module_generator.int_to_string_func));
+            }
+            ir::Expr::FloatToString(val) => {
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
+                function.instruction(&Instruction::Call(
+                    self.module_generator.float_to_string_func,
+                ));
             }
             ir::Expr::EqNum(lhs, rhs) => {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*lhs)));
