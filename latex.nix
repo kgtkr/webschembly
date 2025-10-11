@@ -20,11 +20,11 @@
           src = ./docs;
           buildInputs = [ tex pkgs.pandoc pkgs.gnumake ];
           buildPhase = ''
-            make index.pdf
+            make all
           '';
           installPhase = ''
             mkdir -p $out
-            cp index.pdf $out/
+            cp *.pdf $out/
           '';
         };
       };

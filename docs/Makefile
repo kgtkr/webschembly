@@ -1,2 +1,6 @@
-index.pdf: *.md *.tex
-	pandoc index.md -o index.pdf --pdf-engine=lualatex -V documentclass=ltjsarticle -H header.tex
+MDS := $(wildcard *.md)
+
+all: $(MDS:.md=.pdf)
+
+%.pdf: %.md *.tex
+	pandoc $< -o $@ --pdf-engine=lualatex -V documentclass=ltjsarticle -H header.tex
