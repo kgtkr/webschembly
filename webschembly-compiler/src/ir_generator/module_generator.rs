@@ -566,7 +566,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 let cond_not_local = self.local(Type::Val(ValType::Bool));
                 self.exprs.push(ExprAssign {
                     local: Some(cond_not_local),
-                    expr: Expr::Eq(obj_cond_local, false_obj_local),
+                    expr: Expr::EqObj(obj_cond_local, false_obj_local),
                 });
 
                 let then_bb_id = self.bbs.allocate_key();
@@ -1028,22 +1028,22 @@ impl BuiltinConversionRule {
             Builtin::Add => BuiltinConversionRule::Binary {
                 args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
                 ret: Type::Val(ValType::Int),
-                to_ir: Expr::Add,
+                to_ir: Expr::AddInt,
             },
             Builtin::Sub => BuiltinConversionRule::Binary {
                 args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
                 ret: Type::Val(ValType::Int),
-                to_ir: Expr::Sub,
+                to_ir: Expr::SubInt,
             },
             Builtin::Mul => BuiltinConversionRule::Binary {
                 args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
                 ret: Type::Val(ValType::Int),
-                to_ir: Expr::Mul,
+                to_ir: Expr::MulInt,
             },
             Builtin::Quotient => BuiltinConversionRule::Binary {
                 args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
                 ret: Type::Val(ValType::Int),
-                to_ir: Expr::Div,
+                to_ir: Expr::DivInt,
             },
             Builtin::WriteChar => BuiltinConversionRule::Unary {
                 args: [Type::Val(ValType::Char)],
@@ -1112,7 +1112,7 @@ impl BuiltinConversionRule {
             Builtin::Eq => BuiltinConversionRule::Binary {
                 args: [Type::Obj, Type::Obj],
                 ret: Type::Val(ValType::Bool),
-                to_ir: Expr::Eq,
+                to_ir: Expr::EqObj,
             },
             Builtin::Cons => BuiltinConversionRule::Binary {
                 args: [Type::Obj, Type::Obj],
@@ -1148,22 +1148,22 @@ impl BuiltinConversionRule {
             Builtin::Lt => BuiltinConversionRule::Binary {
                 args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
                 ret: Type::Val(ValType::Bool),
-                to_ir: Expr::Lt,
+                to_ir: Expr::LtInt,
             },
             Builtin::Gt => BuiltinConversionRule::Binary {
                 args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
                 ret: Type::Val(ValType::Bool),
-                to_ir: Expr::Gt,
+                to_ir: Expr::GtInt,
             },
             Builtin::Le => BuiltinConversionRule::Binary {
                 args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
                 ret: Type::Val(ValType::Bool),
-                to_ir: Expr::Le,
+                to_ir: Expr::LeInt,
             },
             Builtin::Ge => BuiltinConversionRule::Binary {
                 args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
                 ret: Type::Val(ValType::Bool),
-                to_ir: Expr::Ge,
+                to_ir: Expr::GeInt,
             },
         }
     }

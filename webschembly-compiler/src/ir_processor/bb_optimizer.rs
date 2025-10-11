@@ -381,7 +381,7 @@ mod tests {
                 },
                 ExprAssign {
                     local: None,
-                    expr: Expr::Add(LocalId::from(1), LocalId::from(2)),
+                    expr: Expr::AddInt(LocalId::from(1), LocalId::from(2)),
                 },
             ],
             next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(1))),
@@ -438,7 +438,7 @@ mod tests {
                 },
                 ExprAssign {
                     local: None,
-                    expr: Expr::Add(LocalId::from(1), LocalId::from(2)),
+                    expr: Expr::AddInt(LocalId::from(1), LocalId::from(2)),
                 },
             ]
         );
@@ -495,7 +495,7 @@ mod tests {
                 },
                 ExprAssign {
                     local: Some(LocalId::from(2)),
-                    expr: Expr::Add(LocalId::from(1), LocalId::from(1)),
+                    expr: Expr::AddInt(LocalId::from(1), LocalId::from(1)),
                 },
             ],
             next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(2))),
@@ -514,7 +514,7 @@ mod tests {
                     },
                     ExprAssign {
                         local: Some(LocalId::from(2)),
-                        expr: Expr::Add(LocalId::from(0), LocalId::from(0)),
+                        expr: Expr::AddInt(LocalId::from(0), LocalId::from(0)),
                     },
                 ],
                 next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(2))),
@@ -558,7 +558,7 @@ mod tests {
                 },
                 ExprAssign {
                     local: Some(LocalId::from(3)),
-                    expr: Expr::Add(LocalId::from(2), LocalId::from(2)),
+                    expr: Expr::AddInt(LocalId::from(2), LocalId::from(2)),
                 },
             ],
             next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(3))),
@@ -581,7 +581,7 @@ mod tests {
                     },
                     ExprAssign {
                         local: Some(LocalId::from(3)),
-                        expr: Expr::Add(LocalId::from(0), LocalId::from(0)),
+                        expr: Expr::AddInt(LocalId::from(0), LocalId::from(0)),
                     },
                 ],
                 next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(3))),
@@ -613,11 +613,11 @@ mod tests {
             exprs: vec![
                 ExprAssign {
                     local: Some(LocalId::from(1)),
-                    expr: Expr::Add(LocalId::from(0), LocalId::from(0)),
+                    expr: Expr::AddInt(LocalId::from(0), LocalId::from(0)),
                 },
                 ExprAssign {
                     local: Some(LocalId::from(2)),
-                    expr: Expr::Add(LocalId::from(0), LocalId::from(0)),
+                    expr: Expr::AddInt(LocalId::from(0), LocalId::from(0)),
                 },
             ],
             next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(2))),
@@ -638,7 +638,7 @@ mod tests {
                     },
                     ExprAssign {
                         local: Some(LocalId::from(2)),
-                        expr: Expr::Add(LocalId::from(0), LocalId::from(0)),
+                        expr: Expr::AddInt(LocalId::from(0), LocalId::from(0)),
                     },
                 ],
                 next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(2))),

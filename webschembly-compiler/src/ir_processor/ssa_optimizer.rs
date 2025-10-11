@@ -166,7 +166,7 @@ pub fn constant_folding(
         for expr_idx in expr_indices {
             let expr_assign = &func.bbs[*bb_id].exprs[expr_idx];
             match expr_assign.expr {
-                Expr::Add(local1, local2)
+                Expr::AddInt(local1, local2)
                     if let Some(&Expr::Int(a)) =
                         def_use.get_def_non_move_expr(&func.bbs, local1)
                         && let Some(&Expr::Int(b)) =
@@ -174,7 +174,7 @@ pub fn constant_folding(
                 {
                     func.bbs[*bb_id].exprs[expr_idx].expr = Expr::Int(a + b);
                 }
-                Expr::Sub(local1, local2)
+                Expr::SubInt(local1, local2)
                     if let Some(&Expr::Int(a)) =
                         def_use.get_def_non_move_expr(&func.bbs, local1)
                         && let Some(&Expr::Int(b)) =
@@ -182,7 +182,7 @@ pub fn constant_folding(
                 {
                     func.bbs[*bb_id].exprs[expr_idx].expr = Expr::Int(a - b);
                 }
-                Expr::Mul(local1, local2)
+                Expr::MulInt(local1, local2)
                     if let Some(&Expr::Int(a)) =
                         def_use.get_def_non_move_expr(&func.bbs, local1)
                         && let Some(&Expr::Int(b)) =
@@ -190,7 +190,7 @@ pub fn constant_folding(
                 {
                     func.bbs[*bb_id].exprs[expr_idx].expr = Expr::Int(a * b);
                 }
-                Expr::Div(local1, local2)
+                Expr::DivInt(local1, local2)
                     if let Some(&Expr::Int(a)) =
                         def_use.get_def_non_move_expr(&func.bbs, local1)
                         && let Some(&Expr::Int(b)) =
@@ -207,7 +207,7 @@ pub fn constant_folding(
                 {
                     func.bbs[*bb_id].exprs[expr_idx].expr = Expr::Bool(a == b);
                 }
-                Expr::Lt(local1, local2)
+                Expr::LtInt(local1, local2)
                     if let Some(&Expr::Int(a)) =
                         def_use.get_def_non_move_expr(&func.bbs, local1)
                         && let Some(&Expr::Int(b)) =
@@ -215,7 +215,7 @@ pub fn constant_folding(
                 {
                     func.bbs[*bb_id].exprs[expr_idx].expr = Expr::Bool(a < b);
                 }
-                Expr::Gt(local1, local2)
+                Expr::GtInt(local1, local2)
                     if let Some(&Expr::Int(a)) =
                         def_use.get_def_non_move_expr(&func.bbs, local1)
                         && let Some(&Expr::Int(b)) =
@@ -223,7 +223,7 @@ pub fn constant_folding(
                 {
                     func.bbs[*bb_id].exprs[expr_idx].expr = Expr::Bool(a > b);
                 }
-                Expr::Le(local1, local2)
+                Expr::LeInt(local1, local2)
                     if let Some(&Expr::Int(a)) =
                         def_use.get_def_non_move_expr(&func.bbs, local1)
                         && let Some(&Expr::Int(b)) =
@@ -231,7 +231,7 @@ pub fn constant_folding(
                 {
                     func.bbs[*bb_id].exprs[expr_idx].expr = Expr::Bool(a <= b);
                 }
-                Expr::Ge(local1, local2)
+                Expr::GeInt(local1, local2)
                     if let Some(&Expr::Int(a)) =
                         def_use.get_def_non_move_expr(&func.bbs, local1)
                         && let Some(&Expr::Int(b)) =
@@ -338,7 +338,7 @@ pub fn constant_folding(
                 {
                     func.bbs[*bb_id].exprs[expr_idx].expr = Expr::Move(envs[index]);
                 }
-                Expr::Eq(local1, local2)
+                Expr::EqObj(local1, local2)
                     if let Some(&Expr::ToObj(typ1, src1)) =
                         def_use.get_def_non_move_expr(&func.bbs, local1)
                         && let Some(&Expr::ToObj(typ2, src2)) =

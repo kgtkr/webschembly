@@ -438,16 +438,16 @@ pub enum Expr {
     GlobalGet(GlobalId),
     // builtins
     Display(LocalId),
-    Add(LocalId, LocalId),
-    Sub(LocalId, LocalId),
-    Mul(LocalId, LocalId),
-    Div(LocalId, LocalId),
+    AddInt(LocalId, LocalId),
+    SubInt(LocalId, LocalId),
+    MulInt(LocalId, LocalId),
+    DivInt(LocalId, LocalId),
     WriteChar(LocalId),
     Is(ValType, LocalId),
     VectorLength(LocalId),
     VectorRef(LocalId, LocalId),
     VectorSet(LocalId, LocalId, LocalId),
-    Eq(LocalId, LocalId),
+    EqObj(LocalId, LocalId),
     Not(LocalId),
     And(LocalId, LocalId),
     Or(LocalId, LocalId),
@@ -456,10 +456,10 @@ pub enum Expr {
     SymbolToString(LocalId),
     NumberToString(LocalId),
     EqNum(LocalId, LocalId),
-    Lt(LocalId, LocalId),
-    Gt(LocalId, LocalId),
-    Le(LocalId, LocalId),
-    Ge(LocalId, LocalId),
+    LtInt(LocalId, LocalId),
+    GtInt(LocalId, LocalId),
+    LeInt(LocalId, LocalId),
+    GeInt(LocalId, LocalId),
     VariadicArgs(Vec<LocalId>),
     VariadicArgsRef(LocalId, usize),
     VariadicArgsLength(LocalId),
@@ -558,19 +558,19 @@ macro_rules! impl_Expr_local_usages {
                         Expr::ClosureEntrypointTable(id) => yield (id, LocalUsedFlag::NonPhi),
                         Expr::GlobalSet(_, value) => yield (value, LocalUsedFlag::NonPhi),
                         Expr::Display(id) => yield (id, LocalUsedFlag::NonPhi),
-                        Expr::Add(a, b) => {
+                        Expr::AddInt(a, b) => {
                             yield (a, LocalUsedFlag::NonPhi);
                             yield (b, LocalUsedFlag::NonPhi);
                         }
-                        Expr::Sub(a, b) => {
+                        Expr::SubInt(a, b) => {
                             yield (a, LocalUsedFlag::NonPhi);
                             yield (b, LocalUsedFlag::NonPhi);
                         }
-                        Expr::Mul(a, b) => {
+                        Expr::MulInt(a, b) => {
                             yield (a, LocalUsedFlag::NonPhi);
                             yield (b, LocalUsedFlag::NonPhi);
                         }
-                        Expr::Div(a, b) => {
+                        Expr::DivInt(a, b) => {
                             yield (a, LocalUsedFlag::NonPhi);
                             yield (b, LocalUsedFlag::NonPhi);
                         }
@@ -586,7 +586,7 @@ macro_rules! impl_Expr_local_usages {
                             yield (index_id, LocalUsedFlag::NonPhi);
                             yield (value_id, LocalUsedFlag::NonPhi);
                         }
-                        Expr::Eq(a, b) => {
+                        Expr::EqObj(a, b) => {
                             yield (a, LocalUsedFlag::NonPhi);
                             yield (b, LocalUsedFlag::NonPhi);
                         }
@@ -607,19 +607,19 @@ macro_rules! impl_Expr_local_usages {
                             yield (a, LocalUsedFlag::NonPhi);
                             yield (b, LocalUsedFlag::NonPhi);
                         }
-                        Expr::Lt(a, b) => {
+                        Expr::LtInt(a, b) => {
                             yield (a, LocalUsedFlag::NonPhi);
                             yield (b, LocalUsedFlag::NonPhi);
                         }
-                        Expr::Gt(a, b) => {
+                        Expr::GtInt(a, b) => {
                             yield (a, LocalUsedFlag::NonPhi);
                             yield (b, LocalUsedFlag::NonPhi);
                         }
-                        Expr::Le(a, b) => {
+                        Expr::LeInt(a, b) => {
                             yield (a, LocalUsedFlag::NonPhi);
                             yield (b, LocalUsedFlag::NonPhi);
                         }
-                        Expr::Ge(a, b) => {
+                        Expr::GeInt(a, b) => {
                             yield (a, LocalUsedFlag::NonPhi);
                             yield (b, LocalUsedFlag::NonPhi);
                         }
@@ -736,22 +736,22 @@ impl Expr {
             | Expr::ClosureFuncId(..)
             | Expr::ClosureEntrypointTable(..)
             | Expr::Is(..)
-            | Expr::Eq(..)
+            | Expr::EqObj(..)
             | Expr::Not(..)
             | Expr::And(..)
             | Expr::Or(..)
             | Expr::EqNum(..)
-            | Expr::Lt(..)
-            | Expr::Gt(..)
-            | Expr::Le(..)
-            | Expr::Ge(..)
+            | Expr::LtInt(..)
+            | Expr::GtInt(..)
+            | Expr::LeInt(..)
+            | Expr::GeInt(..)
             | Expr::VariadicArgs(..)
             | Expr::VariadicArgsRef(..)
             | Expr::VariadicArgsLength(..)
-            | Expr::Add(..)
-            | Expr::Sub(..)
-            | Expr::Mul(..)
-            | Expr::Div(..) => ExprPurelity::Pure,
+            | Expr::AddInt(..)
+            | Expr::SubInt(..)
+            | Expr::MulInt(..)
+            | Expr::DivInt(..) => ExprPurelity::Pure,
             // String/Cons/Vectorなどは可変なオブジェクトを生成するので純粋ではない
             Expr::String(..)
             | Expr::StringToSymbol(..)
@@ -930,10 +930,38 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
             }
             Expr::GlobalGet(id) => write!(f, "global_get({})", id.display(self.meta.meta)),
             Expr::Display(id) => write!(f, "display({})", id.display(self.meta)),
-            Expr::Add(a, b) => write!(f, "add({}, {})", a.display(self.meta), b.display(self.meta)),
-            Expr::Sub(a, b) => write!(f, "sub({}, {})", a.display(self.meta), b.display(self.meta)),
-            Expr::Mul(a, b) => write!(f, "mul({}, {})", a.display(self.meta), b.display(self.meta)),
-            Expr::Div(a, b) => write!(f, "div({}, {})", a.display(self.meta), b.display(self.meta)),
+            Expr::AddInt(a, b) => {
+                write!(
+                    f,
+                    "add_int({}, {})",
+                    a.display(self.meta),
+                    b.display(self.meta)
+                )
+            }
+            Expr::SubInt(a, b) => {
+                write!(
+                    f,
+                    "sub_int({}, {})",
+                    a.display(self.meta),
+                    b.display(self.meta)
+                )
+            }
+            Expr::MulInt(a, b) => {
+                write!(
+                    f,
+                    "mul_int({}, {})",
+                    a.display(self.meta),
+                    b.display(self.meta)
+                )
+            }
+            Expr::DivInt(a, b) => {
+                write!(
+                    f,
+                    "div_int({}, {})",
+                    a.display(self.meta),
+                    b.display(self.meta)
+                )
+            }
             Expr::WriteChar(id) => write!(f, "write_char({})", id.display(self.meta)),
             Expr::Is(typ, id) => write!(f, "is<{}>({})", typ, id.display(self.meta)),
             Expr::VectorLength(id) => write!(f, "vector_length({})", id.display(self.meta)),
@@ -954,7 +982,14 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                     value.display(self.meta)
                 )
             }
-            Expr::Eq(a, b) => write!(f, "eq({}, {})", a.display(self.meta), b.display(self.meta)),
+            Expr::EqObj(a, b) => {
+                write!(
+                    f,
+                    "eq_obj({}, {})",
+                    a.display(self.meta),
+                    b.display(self.meta)
+                )
+            }
             Expr::Not(id) => write!(f, "not({})", id.display(self.meta)),
             Expr::And(a, b) => write!(f, "and({}, {})", a.display(self.meta), b.display(self.meta)),
             Expr::Or(a, b) => write!(f, "or({}, {})", a.display(self.meta), b.display(self.meta)),
@@ -968,10 +1003,38 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                 a.display(self.meta),
                 b.display(self.meta)
             ),
-            Expr::Lt(a, b) => write!(f, "lt({}, {})", a.display(self.meta), b.display(self.meta)),
-            Expr::Gt(a, b) => write!(f, "gt({}, {})", a.display(self.meta), b.display(self.meta)),
-            Expr::Le(a, b) => write!(f, "le({}, {})", a.display(self.meta), b.display(self.meta)),
-            Expr::Ge(a, b) => write!(f, "ge({}, {})", a.display(self.meta), b.display(self.meta)),
+            Expr::LtInt(a, b) => {
+                write!(
+                    f,
+                    "lt_int({}, {})",
+                    a.display(self.meta),
+                    b.display(self.meta)
+                )
+            }
+            Expr::GtInt(a, b) => {
+                write!(
+                    f,
+                    "gt_int({}, {})",
+                    a.display(self.meta),
+                    b.display(self.meta)
+                )
+            }
+            Expr::LeInt(a, b) => {
+                write!(
+                    f,
+                    "le_int({}, {})",
+                    a.display(self.meta),
+                    b.display(self.meta)
+                )
+            }
+            Expr::GeInt(a, b) => {
+                write!(
+                    f,
+                    "ge_int({}, {})",
+                    a.display(self.meta),
+                    b.display(self.meta)
+                )
+            }
             Expr::VariadicArgs(ids) => {
                 write!(f, "variadic_args(")?;
                 for (i, id) in ids.iter().enumerate() {

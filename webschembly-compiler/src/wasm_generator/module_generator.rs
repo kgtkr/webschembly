@@ -1291,22 +1291,22 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 function.instruction(&Instruction::Call(self.module_generator.display_func));
                 function.instruction(&Instruction::I32Const(0));
             }
-            ir::Expr::Add(lhs, rhs) => {
+            ir::Expr::AddInt(lhs, rhs) => {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*lhs)));
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*rhs)));
                 function.instruction(&Instruction::I64Add);
             }
-            ir::Expr::Sub(lhs, rhs) => {
+            ir::Expr::SubInt(lhs, rhs) => {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*lhs)));
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*rhs)));
                 function.instruction(&Instruction::I64Sub);
             }
-            ir::Expr::Mul(lhs, rhs) => {
+            ir::Expr::MulInt(lhs, rhs) => {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*lhs)));
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*rhs)));
                 function.instruction(&Instruction::I64Mul);
             }
-            ir::Expr::Div(lhs, rhs) => {
+            ir::Expr::DivInt(lhs, rhs) => {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*lhs)));
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*rhs)));
                 function.instruction(&Instruction::I64DivS);
@@ -1351,7 +1351,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 function.instruction(&Instruction::ArraySet(self.module_generator.vector_type));
                 function.instruction(&Instruction::I32Const(0));
             }
-            ir::Expr::Eq(lhs, rhs) => {
+            ir::Expr::EqObj(lhs, rhs) => {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*lhs)));
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*rhs)));
                 function.instruction(&Instruction::RefEq);
@@ -1401,22 +1401,22 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*rhs)));
                 function.instruction(&Instruction::I64Eq);
             }
-            ir::Expr::Lt(lhs, rhs) => {
+            ir::Expr::LtInt(lhs, rhs) => {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*lhs)));
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*rhs)));
                 function.instruction(&Instruction::I64LtS);
             }
-            ir::Expr::Gt(lhs, rhs) => {
+            ir::Expr::GtInt(lhs, rhs) => {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*lhs)));
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*rhs)));
                 function.instruction(&Instruction::I64GtS);
             }
-            ir::Expr::Le(lhs, rhs) => {
+            ir::Expr::LeInt(lhs, rhs) => {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*lhs)));
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*rhs)));
                 function.instruction(&Instruction::I64LeS);
             }
-            ir::Expr::Ge(lhs, rhs) => {
+            ir::Expr::GeInt(lhs, rhs) => {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*lhs)));
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*rhs)));
                 function.instruction(&Instruction::I64GeS);
