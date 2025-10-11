@@ -651,52 +651,72 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                         });
                         self.close_bb(BasicBlockNext::Terminator(BasicBlockTerminator::Error(msg)));
                     } else {
-                        let mut arg_locals = Vec::new();
+                        let mut obj_arg_locals = Vec::new();
+                        let mut type_check_success_locals = Vec::new();
                         for (typ, arg) in rule.arg_types().iter().zip(args) {
                             let obj_arg_local = self.local(Type::Obj);
                             self.gen_expr(Some(obj_arg_local), arg);
+                            obj_arg_locals.push(obj_arg_local);
+                            if let Type::Val(val_type) = typ {
+                                let type_check_success_local = self.local(Type::Val(ValType::Bool));
+                                self.exprs.push(ExprAssign {
+                                    local: Some(type_check_success_local),
+                                    expr: Expr::Is(*val_type, obj_arg_local),
+                                });
+                                type_check_success_locals.push(type_check_success_local);
+                            }
+                        }
+
+                        if let Some((&type_check_success_local, type_check_success_locals)) =
+                            type_check_success_locals.split_first()
+                        {
+                            let mut all_type_check_success_local = type_check_success_local;
+                            for type_check_success_local in type_check_success_locals {
+                                let new_all_type_check_success_local =
+                                    self.local(Type::Val(ValType::Bool));
+                                self.exprs.push(ExprAssign {
+                                    local: Some(new_all_type_check_success_local),
+                                    expr: Expr::And(
+                                        all_type_check_success_local,
+                                        *type_check_success_local,
+                                    ),
+                                });
+                                all_type_check_success_local = new_all_type_check_success_local;
+                            }
+
+                            let then_bb_id = self.bbs.allocate_key();
+                            let else_bb_id = self.bbs.allocate_key();
+
+                            self.close_bb(BasicBlockNext::If(
+                                all_type_check_success_local,
+                                then_bb_id,
+                                else_bb_id,
+                            ));
+
+                            self.current_bb_id = Some(else_bb_id);
+                            let msg = self.local(Type::Val(ValType::String));
+                            self.exprs.push(ExprAssign {
+                                local: Some(msg),
+                                expr: Expr::String(format!("{:?}: arg type mismatch\n", builtin)),
+                            });
+                            self.close_bb(BasicBlockNext::Terminator(BasicBlockTerminator::Error(
+                                msg,
+                            )));
+
+                            self.current_bb_id = Some(then_bb_id);
+                        }
+
+                        let mut arg_locals = Vec::new();
+                        for (typ, obj_arg_local) in rule.arg_types().iter().zip(obj_arg_locals) {
                             let arg_local = match typ {
                                 Type::Obj => obj_arg_local,
                                 Type::Val(val_type) => {
-                                    let is_result_local = self.local(Type::Val(ValType::Bool));
+                                    let val_type_local = self.local(Type::Val(*val_type));
                                     self.exprs.push(ExprAssign {
-                                        local: Some(is_result_local),
-                                        expr: Expr::Is(*val_type, obj_arg_local),
-                                    });
-                                    let val_type_arg_local = self.local(Type::Val(*val_type));
-                                    let then_bb_id = self.bbs.allocate_key();
-                                    let else_bb_id = self.bbs.allocate_key();
-                                    let merge_bb_id = self.bbs.allocate_key();
-
-                                    self.close_bb(BasicBlockNext::If(
-                                        is_result_local,
-                                        then_bb_id,
-                                        else_bb_id,
-                                    ));
-
-                                    self.current_bb_id = Some(then_bb_id);
-                                    self.exprs.push(ExprAssign {
-                                        local: Some(val_type_arg_local),
+                                        local: Some(val_type_local),
                                         expr: Expr::FromObj(*val_type, obj_arg_local),
                                     });
-                                    self.close_bb(BasicBlockNext::Jump(merge_bb_id));
-
-                                    self.current_bb_id = Some(else_bb_id);
-                                    let msg = self.local(Type::Val(ValType::String));
-                                    self.exprs.push(ExprAssign {
-                                        local: Some(msg),
-                                        expr: Expr::String(format!(
-                                            "{:?}: arg type mismatch\n",
-                                            builtin
-                                        )),
-                                    });
-                                    self.close_bb(BasicBlockNext::Terminator(
-                                        BasicBlockTerminator::Error(msg),
-                                    ));
-
-                                    self.current_bb_id = Some(merge_bb_id);
-
-                                    val_type_arg_local
+                                    val_type_local
                                 }
                             };
                             arg_locals.push(arg_local);
