@@ -152,7 +152,7 @@ fn preprocess_module(module: &mut ir::Module) {
 
 fn optimize_module(module: &mut ir::Module) {
     for func in module.funcs.iter_mut() {
-        ssa_optimize(func);
+        ssa_optimize(func, true);
     }
 }
 

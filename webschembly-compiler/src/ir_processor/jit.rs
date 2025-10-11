@@ -323,7 +323,8 @@ impl JitFunc {
         let module = &jit_module.module;
         let mut func = module.funcs[func_id].clone();
         closure_func_assign_types(&mut func, func_index, closure_global_layout);
-        ssa_optimize(&mut func);
+        // 共通部分式除去を行うと変数の生存期間が伸びてしまい、JITでのパフォーマンスが落ちるのでここでは行わない
+        ssa_optimize(&mut func, false);
         let bb_to_globals = func
             .bbs
             .keys()

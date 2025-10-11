@@ -397,7 +397,9 @@ pub fn constant_folding(
     }
 }
 
-pub fn ssa_optimize(func: &mut Func) {
+// enable_cseはもう少し汎用的な方法で渡す
+// for jit
+pub fn ssa_optimize(func: &mut Func, enable_cse: bool) {
     let mut def_use = DefUseChain::from_bbs(&func.bbs);
     let rpo = calculate_rpo(&func.bbs, func.bb_entry);
     let predecessors = calc_predecessors(&func.bbs);
@@ -409,7 +411,9 @@ pub fn ssa_optimize(func: &mut Func) {
         copy_propagation(func, &rpo);
         eliminate_redundant_obj(func, &def_use);
         constant_folding(func, &rpo, &def_use);
-        common_subexpression_elimination(func, &dom_tree);
+        if enable_cse {
+            common_subexpression_elimination(func, &dom_tree);
+        }
     }
 
     dead_code_elimination(func, &mut def_use);
