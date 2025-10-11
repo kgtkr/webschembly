@@ -1030,7 +1030,7 @@ impl BuiltinConversionRule {
                 ret: Type::Val(ValType::Int),
                 to_ir: Expr::Mul,
             },
-            Builtin::Div => BuiltinConversionRule::Binary {
+            Builtin::Quotient => BuiltinConversionRule::Binary {
                 args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
                 ret: Type::Val(ValType::Int),
                 to_ir: Expr::Div,
