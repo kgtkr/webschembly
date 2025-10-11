@@ -1,5 +1,7 @@
 use std::fmt::Debug;
 
+use ordered_float::NotNan;
+
 use crate::sexpr::SExpr;
 use crate::x::{FamilyRunX, Phase, RunX};
 
@@ -90,6 +92,8 @@ where
 pub enum Const {
     Bool(bool),
     Int(i64),
+    Float(NotNan<f64>),
+    NaN,
     String(String),
     Nil,
     Char(char),

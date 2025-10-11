@@ -451,6 +451,28 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                         expr: Expr::ToObj(ValType::Int, val_type_local),
                     });
                 }
+                ast::Const::Float(f) => {
+                    let val_type_local = self.local(Type::Val(ValType::Float));
+                    self.exprs.push(ExprAssign {
+                        local: Some(val_type_local),
+                        expr: Expr::Float(*f),
+                    });
+                    self.exprs.push(ExprAssign {
+                        local: result,
+                        expr: Expr::ToObj(ValType::Float, val_type_local),
+                    });
+                }
+                ast::Const::NaN => {
+                    let val_type_local = self.local(Type::Val(ValType::Float));
+                    self.exprs.push(ExprAssign {
+                        local: Some(val_type_local),
+                        expr: Expr::NaN,
+                    });
+                    self.exprs.push(ExprAssign {
+                        local: result,
+                        expr: Expr::ToObj(ValType::Float, val_type_local),
+                    });
+                }
                 ast::Const::String(s) => {
                     let val_type_local = self.local(Type::Val(ValType::String));
                     self.exprs.push(ExprAssign {

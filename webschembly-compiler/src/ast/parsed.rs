@@ -157,6 +157,22 @@ impl Expr<Parsed> {
                 Const::Int(i),
             )),
             SExpr {
+                kind: SExprKind::Float(f),
+                span,
+                ..
+            } => Ok(Expr::Const(
+                type_map::singleton(type_map::key::<Parsed>(), ParsedConstR { span }),
+                Const::Float(f),
+            )),
+            SExpr {
+                kind: SExprKind::NaN,
+                span,
+                ..
+            } => Ok(Expr::Const(
+                type_map::singleton(type_map::key::<Parsed>(), ParsedConstR { span }),
+                Const::NaN,
+            )),
+            SExpr {
                 kind: SExprKind::String(s),
                 span,
                 ..

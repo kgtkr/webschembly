@@ -1,6 +1,7 @@
 use std::{fmt, iter::from_coroutine};
 
 use derive_more::{From, Into};
+use ordered_float::NotNan;
 use rustc_hash::FxHashMap;
 use strum_macros::EnumIter;
 use typed_index_collections::TiVec;
@@ -114,6 +115,8 @@ pub enum ValType {
     Char,
     #[display("int")]
     Int,
+    #[display("float")]
+    Float,
     #[display("string")]
     String,
     #[display("symbol")]
@@ -405,6 +408,8 @@ pub enum Expr {
     InstantiateBB(ModuleId, FuncId, usize, BasicBlockId, usize),
     Bool(bool),
     Int(i64),
+    Float(NotNan<f64>),
+    NaN,
     String(String),
     StringToSymbol(LocalId),
     Nil,
@@ -668,6 +673,8 @@ macro_rules! impl_Expr_local_usages {
                         | Expr::InstantiateBB(..)
                         | Expr::Bool(..)
                         | Expr::Int(..)
+                        | Expr::Float(..)
+                        | Expr::NaN
                         | Expr::String(..)
                         | Expr::Nil
                         | Expr::Char(..)
@@ -724,6 +731,8 @@ impl Expr {
             Expr::Nop
             | Expr::Bool(..)
             | Expr::Int(..)
+            | Expr::Float(..)
+            | Expr::NaN
             | Expr::Nil
             | Expr::Char(..)
             | Expr::FuncRef(..)
@@ -843,6 +852,8 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
             }
             Expr::Bool(b) => write!(f, "{}", b),
             Expr::Int(i) => write!(f, "{}", i),
+            Expr::Float(fl) => write!(f, "{}", fl),
+            Expr::NaN => write!(f, "nan"),
             Expr::String(s) => write!(f, "{:?}", s),
             Expr::StringToSymbol(id) => write!(f, "string_to_symbol({})", id.display(self.meta)),
             Expr::Nil => write!(f, "nil"),

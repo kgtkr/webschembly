@@ -6,7 +6,7 @@
   (type $Bool (sub final (struct (field i8))))
   (type $Char (sub final (struct (field i32))))
   (type $Int (sub final (struct (field i64))))
-  ;; (type $Float (sub final (struct (field f64))))
+  (type $Float (sub final (struct (field f64))))
   (type $String (sub final (struct
     (field $buf (mut (ref $StringBuf)))
     (field $len i32)

@@ -10,6 +10,7 @@ use nom::{
     error::{ErrorKind, FromExternalError, ParseError, VerboseError, VerboseErrorKind},
     multi::many0,
 };
+use ordered_float::NotNan;
 use std::fmt::Write;
 mod error;
 mod located;
@@ -40,10 +41,20 @@ fn number<'a, E: ErrorBound<'a>>(input: LocatedStr<'a>) -> IResult<LocatedStr<'a
     let (input, sign) = alt((value(1, tag("+")), value(-1, tag("-")), success(1)))(input)?;
     let (input, ident) = identifier_like(input)?;
     if ident.starts_with(|c: char| c.is_ascii_digit() || c == '.') {
-        let num = ident
-            .parse::<i64>()
-            .map_err(|_| Err::Failure(E::from_error_kind(input, ErrorKind::Digit)))?;
-        Ok((input, TokenKind::Int(sign * num)))
+        if let Ok(int) = ident.parse::<i64>() {
+            return Ok((input, TokenKind::Int(sign * int)));
+        } else if let Ok(float) = ident.parse::<f64>() {
+            if let Ok(not_nan) = NotNan::new(sign as f64 * float) {
+                return Ok((input, TokenKind::Float(not_nan)));
+            } else {
+                return Ok((input, TokenKind::NaN));
+            }
+        } else {
+            return Err(nom::Err::Failure(E::from_error_kind(
+                input,
+                ErrorKind::Float,
+            )));
+        }
     } else {
         Err(nom::Err::Error(E::from_error_kind(input, ErrorKind::Digit)))
     }

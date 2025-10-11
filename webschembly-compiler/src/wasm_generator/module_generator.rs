@@ -56,6 +56,7 @@ struct ModuleGenerator<'a> {
     nil_type: u32,
     bool_type: u32,
     int_type: u32,
+    float_type: u32,
     char_type: u32,
     cons_type: u32,
     buf_type: u32,
@@ -106,6 +107,7 @@ impl<'a> ModuleGenerator<'a> {
             nil_type: 0,
             bool_type: 0,
             int_type: 0,
+            float_type: 0,
             char_type: 0,
             cons_type: 0,
             buf_type: 0,
@@ -202,6 +204,7 @@ impl<'a> ModuleGenerator<'a> {
     const BOOL_VALUE_FIELD: u32 = 0;
     const CHAR_VALUE_FIELD: u32 = 0;
     const INT_VALUE_FIELD: u32 = 0;
+    const FLOAT_VALUE_FIELD: u32 = 0;
     // const STRING_BUF_FIELD: u32 = 0;
     // const STRING_LEN_FIELD: u32 = 1;
     // const STRING_OFFSET_FIELD: u32 = 2;
@@ -305,6 +308,26 @@ impl<'a> ModuleGenerator<'a> {
                         let mut fields = Vec::new();
                         fields.push(FieldType {
                             element_type: StorageType::Val(ValType::I64),
+                            mutable: false,
+                        });
+                        fields.into_boxed_slice()
+                    },
+                }),
+            },
+        });
+
+        self.float_type = self.type_count;
+        self.type_count += 1;
+        self.types.ty().subtype(&SubType {
+            is_final: true,
+            supertype_idx: None,
+            composite_type: CompositeType {
+                shared: false,
+                inner: CompositeInnerType::Struct(StructType {
+                    fields: {
+                        let mut fields = Vec::new();
+                        fields.push(FieldType {
+                            element_type: StorageType::Val(ValType::F64),
                             mutable: false,
                         });
                         fields.into_boxed_slice()
@@ -739,6 +762,7 @@ impl<'a> ModuleGenerator<'a> {
             ir::Type::Val(val) => match val {
                 ir::ValType::Bool => ValType::I32,
                 ir::ValType::Int => ValType::I64,
+                ir::ValType::Float => ValType::F64,
                 ir::ValType::Char => ValType::I32,
                 ir::ValType::String => ValType::Ref(RefType {
                     nullable: true,
@@ -785,6 +809,7 @@ impl<'a> ModuleGenerator<'a> {
             }),
             ir::LocalType::Type(ir::Type::Val(ir::ValType::Bool)) => ConstExpr::i32_const(0),
             ir::LocalType::Type(ir::Type::Val(ir::ValType::Int)) => ConstExpr::i64_const(0),
+            ir::LocalType::Type(ir::Type::Val(ir::ValType::Float)) => ConstExpr::f64_const(0.0),
             ir::LocalType::Type(ir::Type::Val(ir::ValType::Char)) => ConstExpr::i32_const(0),
             ir::LocalType::Type(ir::Type::Val(ir::ValType::String)) => {
                 ConstExpr::ref_null(HeapType::Concrete(self.string_type))
@@ -1012,6 +1037,12 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             ir::Expr::Int(i) => {
                 function.instruction(&Instruction::I64Const(*i));
             }
+            ir::Expr::Float(f) => {
+                function.instruction(&Instruction::F64Const(f64::from(*f)));
+            }
+            ir::Expr::NaN => {
+                function.instruction(&Instruction::F64Const(f64::NAN));
+            }
             ir::Expr::Char(c) => {
                 function.instruction(&Instruction::I32Const(*c as i32));
             }
@@ -1170,6 +1201,16 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                         field_index: ModuleGenerator::INT_VALUE_FIELD,
                     });
                 }
+                ir::ValType::Float => {
+                    function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
+                    function.instruction(&Instruction::RefCastNonNull(HeapType::Concrete(
+                        self.module_generator.float_type,
+                    )));
+                    function.instruction(&Instruction::StructGet {
+                        struct_type_index: self.module_generator.float_type,
+                        field_index: ModuleGenerator::FLOAT_VALUE_FIELD,
+                    });
+                }
                 ir::ValType::Char => {
                     function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
                     function.instruction(&Instruction::RefCastNonNull(HeapType::Concrete(
@@ -1236,6 +1277,10 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 ir::ValType::Int => {
                     function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
                     function.instruction(&Instruction::StructNew(self.module_generator.int_type));
+                }
+                ir::ValType::Float => {
+                    function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
+                    function.instruction(&Instruction::StructNew(self.module_generator.float_type));
                 }
                 ir::ValType::Char => {
                     function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
@@ -1322,6 +1367,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     match typ {
                         ir::ValType::Bool => self.module_generator.bool_type,
                         ir::ValType::Int => self.module_generator.int_type,
+                        ir::ValType::Float => self.module_generator.float_type,
                         ir::ValType::Char => self.module_generator.char_type,
                         ir::ValType::String => self.module_generator.string_type,
                         ir::ValType::Symbol => self.module_generator.symbol_type,

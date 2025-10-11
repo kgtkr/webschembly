@@ -32,6 +32,28 @@ fn int(input: Tokens) -> IResult<Tokens, SExpr> {
     .parse(input)
 }
 
+fn float(input: Tokens) -> IResult<Tokens, SExpr> {
+    satisfy_map_opt(|t: &Token| match &t.kind {
+        TokenKind::Float(f) => Some(SExpr {
+            kind: SExprKind::Float(*f),
+            span: t.span,
+        }),
+        _ => None,
+    })
+    .parse(input)
+}
+
+fn nan(input: Tokens) -> IResult<Tokens, SExpr> {
+    satisfy_map_opt(|t: &Token| match &t.kind {
+        TokenKind::NaN => Some(SExpr {
+            kind: SExprKind::NaN,
+            span: t.span,
+        }),
+        _ => None,
+    })
+    .parse(input)
+}
+
 fn string(input: Tokens) -> IResult<Tokens, SExpr> {
     satisfy_map_opt(|t: &Token| match &t.kind {
         TokenKind::String(s) => Some(SExpr {
@@ -141,7 +163,7 @@ fn quote(input: Tokens) -> IResult<Tokens, SExpr> {
 }
 
 fn sexpr(input: Tokens) -> IResult<Tokens, SExpr> {
-    alt((bool, int, string, symbol, char, list, vector, quote)).parse(input)
+    alt((bool, int, float, string, symbol, char, list, vector, quote)).parse(input)
 }
 
 fn sexprs(input: Tokens) -> IResult<Tokens, Vec<SExpr>> {

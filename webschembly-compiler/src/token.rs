@@ -1,3 +1,5 @@
+use ordered_float::NotNan;
+
 use crate::span::Span;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -6,6 +8,8 @@ pub enum TokenKind {
     OpenParen,
     CloseParen,
     Int(i64),
+    Float(NotNan<f64>),
+    NaN,
     String(String),
     Bool(bool),
     Quote,

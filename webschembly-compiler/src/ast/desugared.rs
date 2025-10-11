@@ -189,6 +189,14 @@ impl Expr<Desugared> {
                 x.into_type_map(()).add(type_map::key::<Desugared>(), ()),
                 Const::Int(i),
             ),
+            sexpr::SExprKind::Float(f) => Expr::Const(
+                x.into_type_map(()).add(type_map::key::<Desugared>(), ()),
+                Const::Float(f),
+            ),
+            sexpr::SExprKind::NaN => Expr::Const(
+                x.into_type_map(()).add(type_map::key::<Desugared>(), ()),
+                Const::NaN,
+            ),
             sexpr::SExprKind::String(s) => Expr::Const(
                 x.into_type_map(()).add(type_map::key::<Desugared>(), ()),
                 Const::String(s),

@@ -1,9 +1,13 @@
+use ordered_float::NotNan;
+
 use crate::span::Span;
 
 #[derive(Debug, Clone)]
 pub enum SExprKind {
     Bool(bool),
     Int(i64),
+    Float(NotNan<f64>),
+    NaN,
     String(String),
     Char(char),
     Symbol(String),
