@@ -74,6 +74,7 @@ pub fn assign_type_args(
         }
     }
 
+    // TODO: BBを拡張するのではなくBBを追加
     bb.exprs.splice(0..0, additional_expr_assigns);
 
     assigned_local_to_obj

@@ -62,13 +62,39 @@ pub fn copy_propagation(func: &mut Func, rpo: &FxHashMap<BasicBlockId, usize>) {
         let bb = &mut func.bbs[*bb_id];
 
         for expr_assign in &bb.exprs {
-            if let ExprAssign {
-                local: Some(dest),
-                expr: Expr::Move(src),
-            } = *expr_assign
-            {
-                let src = copies.get(&src).copied().unwrap_or(src);
-                copies.insert(dest, src);
+            match *expr_assign {
+                ExprAssign {
+                    local: Some(dest),
+                    expr: Expr::Move(src),
+                } => {
+                    let src = copies.get(&src).copied().unwrap_or(src);
+                    copies.insert(dest, src);
+                }
+                ExprAssign {
+                    local: Some(dest),
+                    expr: Expr::Phi(ref incomings),
+                } => {
+                    let mut all_same = true;
+                    let mut first = None;
+                    for incoming in incomings {
+                        let src = copies
+                            .get(&incoming.local)
+                            .copied()
+                            .unwrap_or(incoming.local);
+                        if let Some(first) = first {
+                            if first != src {
+                                all_same = false;
+                                break;
+                            }
+                        } else {
+                            first = Some(src);
+                        }
+                    }
+                    if all_same && let Some(src) = first {
+                        copies.insert(dest, src);
+                    }
+                }
+                _ => {}
             }
         }
 

@@ -949,7 +949,15 @@ impl JitFunc {
                     BasicBlockTerminator::TailCallRef(_)
                     | BasicBlockTerminator::Return(_)
                     | BasicBlockTerminator::Error(_),
-                ) => next.clone(),
+                ) => {
+                    let mut new_next = next.clone();
+                    for local in new_next.local_ids_mut() {
+                        if let Some(&obj_local) = assigned_local_to_obj.get_by_left(local) {
+                            *local = obj_local;
+                        }
+                    }
+                    new_next
+                }
             };
 
             bbs[new_bb_id].next = next;

@@ -108,12 +108,26 @@ fn assert_ssa(func: &Func) {
         assigned[local_id] = true;
     }
     for bb in func.bbs.values() {
+        let mut phi_area = true;
+
         for expr in bb.exprs.iter() {
             if let Some(local_id) = expr.local {
                 if assigned[local_id] {
                     panic!("local {:?} is assigned more than once", local_id);
                 }
                 assigned[local_id] = true;
+            }
+
+            if phi_area {
+                if let Expr::Phi(_) | Expr::Nop = expr.expr {
+                    // do nothing
+                } else {
+                    phi_area = false;
+                }
+            } else {
+                if let Expr::Phi(_) = expr.expr {
+                    panic!("phi instruction must be at the beginning of a basic block");
+                }
             }
         }
     }

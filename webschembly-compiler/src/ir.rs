@@ -54,7 +54,7 @@ TODO: LocalTypeという名前は適切ではない
 */
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, derive_more::Display)]
 pub enum LocalType {
-    #[display("ref({})", _0)]
+    #[display("ref<{}>", _0)]
     Ref(Type), // TODO: Ref<Obj>固定で良いかも？
     #[display("{}", _0)]
     Type(Type),
