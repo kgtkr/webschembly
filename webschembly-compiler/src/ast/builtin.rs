@@ -37,6 +37,18 @@ pub enum Builtin {
     VectorSet,
     #[strum(serialize = "vector?")]
     IsVector,
+    #[strum(serialize = "uvector-length")]
+    UVectorLength,
+    #[strum(serialize = "uvector-ref")]
+    UVectorRef,
+    #[strum(serialize = "uvector-set!")]
+    UVectorSet,
+    #[strum(serialize = "uvector?")]
+    IsUVector,
+    #[strum(serialize = "s64vector?")]
+    IsS64Vector,
+    #[strum(serialize = "f64vector?")]
+    IsF64Vector,
     #[strum(serialize = "eq?")]
     Eq,
     #[strum(serialize = "cons")]

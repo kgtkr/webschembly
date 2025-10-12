@@ -1477,6 +1477,29 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 function.instruction(&Instruction::ArraySet(self.module_generator.vector_type));
                 function.instruction(&Instruction::I32Const(0));
             }
+            ir::Expr::UVectorLength(_, val) => {
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
+                function.instruction(&Instruction::ArrayLen);
+                function.instruction(&Instruction::I64ExtendI32U);
+            }
+            ir::Expr::UVectorRef(kind, vector, index) => {
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*vector)));
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*index)));
+                function.instruction(&Instruction::I32WrapI64);
+                function.instruction(&Instruction::ArrayGet(
+                    self.module_generator.uvector_kind_to_type_idx(*kind),
+                ));
+            }
+            ir::Expr::UVectorSet(kind, vector, index, val) => {
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*vector)));
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*index)));
+                function.instruction(&Instruction::I32WrapI64);
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
+                function.instruction(&Instruction::ArraySet(
+                    self.module_generator.uvector_kind_to_type_idx(*kind),
+                ));
+                function.instruction(&Instruction::I32Const(0));
+            }
             ir::Expr::EqObj(lhs, rhs) => {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*lhs)));
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*rhs)));

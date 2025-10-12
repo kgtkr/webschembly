@@ -475,6 +475,9 @@ pub enum Expr {
     VectorLength(LocalId),
     VectorRef(LocalId, LocalId),
     VectorSet(LocalId, LocalId, LocalId),
+    UVectorLength(UVectorKind, LocalId),
+    UVectorRef(UVectorKind, LocalId, LocalId),
+    UVectorSet(UVectorKind, LocalId, LocalId, LocalId),
     EqObj(LocalId, LocalId),
     Not(LocalId),
     And(LocalId, LocalId),
@@ -617,6 +620,16 @@ macro_rules! impl_Expr_local_usages {
                         }
                         Expr::VectorSet(vec_id, index_id, value_id) => {
                             yield (vec_id, LocalUsedFlag::NonPhi);
+                            yield (index_id, LocalUsedFlag::NonPhi);
+                            yield (value_id, LocalUsedFlag::NonPhi);
+                        }
+                        Expr::UVectorLength(_, id) => yield (id, LocalUsedFlag::NonPhi),
+                        Expr::UVectorRef(_, uvec_id, index_id) => {
+                            yield (uvec_id, LocalUsedFlag::NonPhi);
+                            yield (index_id, LocalUsedFlag::NonPhi);
+                        }
+                        Expr::UVectorSet(_, uvec_id, index_id, value_id) => {
+                            yield (uvec_id, LocalUsedFlag::NonPhi);
                             yield (index_id, LocalUsedFlag::NonPhi);
                             yield (value_id, LocalUsedFlag::NonPhi);
                         }
@@ -803,6 +816,8 @@ impl Expr {
             | Expr::DerefRef(..)
             | Expr::VectorLength(..)
             | Expr::VectorRef(..)
+            | Expr::UVectorLength(..)
+            | Expr::UVectorRef(..)
             | Expr::Car(..)
             | Expr::Cdr(..)
             | Expr::GlobalGet(..)
@@ -826,7 +841,8 @@ impl Expr {
             | Expr::GlobalSet(..)
             | Expr::Display(..)
             | Expr::WriteChar(..)
-            | Expr::VectorSet(..) => ExprPurelity::Effectful,
+            | Expr::VectorSet(..)
+            | Expr::UVectorSet(..) => ExprPurelity::Effectful,
         }
     }
 
@@ -1067,6 +1083,28 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                     id.display(self.meta),
                     index.display(self.meta),
                     value.display(self.meta)
+                )
+            }
+            Expr::UVectorLength(kind, id) => {
+                write!(f, "uvector_length<{}>({})", kind, id.display(self.meta))
+            }
+            Expr::UVectorRef(kind, uvec_id, index_id) => {
+                write!(
+                    f,
+                    "uvector_ref<{}>({}, {})",
+                    kind,
+                    uvec_id.display(self.meta),
+                    index_id.display(self.meta)
+                )
+            }
+            Expr::UVectorSet(kind, uvec_id, index_id, value_id) => {
+                write!(
+                    f,
+                    "uvector_set<{}>({}, {}, {})",
+                    kind,
+                    uvec_id.display(self.meta),
+                    index_id.display(self.meta),
+                    value_id.display(self.meta)
                 )
             }
             Expr::EqObj(a, b) => {

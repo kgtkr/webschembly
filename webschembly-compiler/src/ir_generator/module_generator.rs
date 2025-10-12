@@ -1373,6 +1373,132 @@ impl BuiltinConversionRule {
                     });
                 },
             }],
+            Builtin::IsS64Vector => vec![BuiltinConversionRule::Unary {
+                args: [Type::Obj],
+                ret: Type::Val(ValType::Bool),
+                ir_gen: |ctx, arg1| {
+                    ctx.exprs.push(ExprAssign {
+                        local: Some(ctx.dest),
+                        expr: Expr::Is(ValType::UVector(UVectorKind::S64), arg1),
+                    });
+                },
+            }],
+            Builtin::IsF64Vector => vec![BuiltinConversionRule::Unary {
+                args: [Type::Obj],
+                ret: Type::Val(ValType::Bool),
+                ir_gen: |ctx, arg1| {
+                    ctx.exprs.push(ExprAssign {
+                        local: Some(ctx.dest),
+                        expr: Expr::Is(ValType::UVector(UVectorKind::F64), arg1),
+                    });
+                },
+            }],
+            Builtin::IsUVector => vec![BuiltinConversionRule::Unary {
+                args: [Type::Obj],
+                ret: Type::Val(ValType::Bool),
+                ir_gen: |ctx, arg1| {
+                    let is_s64_local = ctx.locals.push_with(|id| Local {
+                        id,
+                        typ: ValType::Bool.into(),
+                    });
+                    let is_f64_local = ctx.locals.push_with(|id| Local {
+                        id,
+                        typ: ValType::Bool.into(),
+                    });
+                    ctx.exprs.push(ExprAssign {
+                        local: Some(is_s64_local),
+                        expr: Expr::Is(ValType::UVector(UVectorKind::S64), arg1),
+                    });
+                    ctx.exprs.push(ExprAssign {
+                        local: Some(is_f64_local),
+                        expr: Expr::Is(ValType::UVector(UVectorKind::F64), arg1),
+                    });
+                    ctx.exprs.push(ExprAssign {
+                        local: Some(ctx.dest),
+                        expr: Expr::Or(is_s64_local, is_f64_local),
+                    });
+                },
+            }],
+            Builtin::UVectorLength => vec![
+                BuiltinConversionRule::Unary {
+                    args: [Type::Val(ValType::UVector(UVectorKind::S64))],
+                    ret: Type::Val(ValType::Int),
+                    ir_gen: |ctx, arg1| {
+                        ctx.exprs.push(ExprAssign {
+                            local: Some(ctx.dest),
+                            expr: Expr::UVectorLength(UVectorKind::S64, arg1),
+                        });
+                    },
+                },
+                BuiltinConversionRule::Unary {
+                    args: [Type::Val(ValType::UVector(UVectorKind::F64))],
+                    ret: Type::Val(ValType::Int),
+                    ir_gen: |ctx, arg1| {
+                        ctx.exprs.push(ExprAssign {
+                            local: Some(ctx.dest),
+                            expr: Expr::UVectorLength(UVectorKind::F64, arg1),
+                        });
+                    },
+                },
+            ],
+            Builtin::UVectorRef => vec![
+                BuiltinConversionRule::Binary {
+                    args: [
+                        Type::Val(ValType::UVector(UVectorKind::S64)),
+                        Type::Val(ValType::Int),
+                    ],
+                    ret: Type::Val(ValType::Int),
+                    ir_gen: |ctx, arg1, arg2| {
+                        ctx.exprs.push(ExprAssign {
+                            local: Some(ctx.dest),
+                            expr: Expr::UVectorRef(UVectorKind::S64, arg1, arg2),
+                        });
+                    },
+                },
+                BuiltinConversionRule::Binary {
+                    args: [
+                        Type::Val(ValType::UVector(UVectorKind::F64)),
+                        Type::Val(ValType::Int),
+                    ],
+                    ret: Type::Val(ValType::Float),
+                    ir_gen: |ctx, arg1, arg2| {
+                        ctx.exprs.push(ExprAssign {
+                            local: Some(ctx.dest),
+                            expr: Expr::UVectorRef(UVectorKind::F64, arg1, arg2),
+                        });
+                    },
+                },
+            ],
+            Builtin::UVectorSet => vec![
+                BuiltinConversionRule::Ternary {
+                    args: [
+                        Type::Val(ValType::UVector(UVectorKind::S64)),
+                        Type::Val(ValType::Int),
+                        Type::Val(ValType::Int),
+                    ],
+                    ret: Type::Val(ValType::Nil),
+                    ir_gen: |ctx, arg1, arg2, arg3| {
+                        ctx.exprs.push(ExprAssign {
+                            local: Some(ctx.dest),
+                            expr: Expr::UVectorSet(UVectorKind::S64, arg1, arg2, arg3),
+                        });
+                    },
+                },
+                BuiltinConversionRule::Ternary {
+                    args: [
+                        Type::Val(ValType::UVector(UVectorKind::F64)),
+                        Type::Val(ValType::Int),
+                        Type::Val(ValType::Float),
+                    ],
+                    ret: Type::Val(ValType::Nil),
+                    ir_gen: |ctx, arg1, arg2, arg3| {
+                        ctx.exprs.push(ExprAssign {
+                            local: Some(ctx.dest),
+                            expr: Expr::UVectorSet(UVectorKind::F64, arg1, arg2, arg3),
+                        });
+                    },
+                },
+            ],
             Builtin::Eq => vec![BuiltinConversionRule::Binary {
                 args: [Type::Obj, Type::Obj],
                 ret: Type::Val(ValType::Bool),
