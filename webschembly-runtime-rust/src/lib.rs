@@ -294,7 +294,12 @@ pub extern "C" fn _int_to_string(i: i64) -> i64 {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn _float_to_string(f: f64) -> i64 {
-    let s = f.to_string();
+    let s = if f.fract() == 0.0 {
+        // 10 を 10.0 のように小数点以下1桁まで表示するための分岐
+        format!("{:.1}", f)
+    } else {
+        f.to_string()
+    };
     let s = s.as_bytes();
     let s_ptr = unsafe { malloc(s.len() as i32) };
     unsafe {
