@@ -81,6 +81,9 @@ impl FamilyX<Defined> for LetX {
 impl FamilyX<Defined> for VectorX {
     type R = ();
 }
+impl FamilyX<Defined> for UVectorX {
+    type R = ();
+}
 impl FamilyX<Defined> for QuoteX {
     type R = ();
 }
@@ -289,6 +292,23 @@ impl Expr<Defined> {
                                 .map(|(_, expr)| expr)
                         })
                         .collect::<Result<Vec<_>>>()?,
+                ),
+            )),
+            Expr::UVector(x, uvec) => Ok((
+                ctx.to_undefinable_if_local(),
+                Expr::UVector(
+                    x.add(type_map::key::<Defined>(), ()),
+                    UVector {
+                        kind: uvec.kind,
+                        elements: uvec
+                            .elements
+                            .into_iter()
+                            .map(|v| {
+                                Self::from_expr(v, ctx.to_undefinable_if_local(), names)
+                                    .map(|(_, expr)| expr)
+                            })
+                            .collect::<Result<Vec<_>>>()?,
+                    },
                 ),
             )),
             Expr::Quote(x, _) => x.get_owned(type_map::key::<Desugared>()),

@@ -2,6 +2,12 @@ use ordered_float::NotNan;
 
 use crate::span::Span;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SUVectorKind {
+    S64,
+    F64,
+}
+
 #[derive(Debug, Clone)]
 pub enum SExprKind {
     Bool(bool),
@@ -13,6 +19,7 @@ pub enum SExprKind {
     Symbol(String),
     Cons(Box<Cons>),
     Vector(Vec<SExpr>),
+    UVector(SUVectorKind, Vec<SExpr>),
     Nil,
 }
 

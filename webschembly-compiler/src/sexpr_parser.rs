@@ -1,4 +1,4 @@
-use crate::sexpr::{Cons, SExprKind};
+use crate::sexpr::{Cons, SExprKind, SUVectorKind};
 use crate::token::TokenKind;
 
 use super::sexpr::SExpr;
@@ -101,6 +101,25 @@ fn vector(input: Tokens) -> IResult<Tokens, SExpr> {
     Ok((input, vector))
 }
 
+fn uvector(input: Tokens) -> IResult<Tokens, SExpr> {
+    let (input, (open_token, kind)) = alt((
+        satisfy(|t: &Token| t.kind == TokenKind::UVectorS64OpenParen)
+            .map(|open_token| (open_token, SUVectorKind::S64)),
+        satisfy(|t: &Token| t.kind == TokenKind::UVectorF64OpenParen)
+            .map(|open_token| (open_token, SUVectorKind::F64)),
+    ))
+    .parse(input)?;
+    let (input, elements) = many0(sexpr)(input)?;
+    let (input, close_token) = satisfy(|t: &Token| t.kind == TokenKind::CloseParen).parse(input)?;
+
+    let uvector = SExpr {
+        kind: SExprKind::UVector(kind, elements),
+        span: open_token.span.merge(close_token.span),
+    };
+
+    Ok((input, uvector))
+}
+
 fn list(input: Tokens) -> IResult<Tokens, SExpr> {
     let (input, open_token) = satisfy(|t: &Token| t.kind == TokenKind::OpenParen).parse(input)?;
     let (input, elements) = many0(sexpr)(input)?;
@@ -164,7 +183,7 @@ fn quote(input: Tokens) -> IResult<Tokens, SExpr> {
 
 fn sexpr(input: Tokens) -> IResult<Tokens, SExpr> {
     alt((
-        bool, int, float, nan, string, symbol, char, list, vector, quote,
+        bool, int, float, nan, string, symbol, char, list, vector, uvector, quote,
     ))
     .parse(input)
 }

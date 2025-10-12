@@ -53,6 +53,10 @@ impl FamilyX<Desugared> for VectorX {
     type R = ();
 }
 
+impl FamilyX<Desugared> for UVectorX {
+    type R = ();
+}
+
 impl FamilyX<Desugared> for QuoteX {
     type R = !;
 }
@@ -90,6 +94,14 @@ impl ElementInto<parsed::ParsedVectorR> for parsed::ParsedQuoteR {
 
     fn element_into(self, _: Self::Param) -> parsed::ParsedVectorR {
         parsed::ParsedVectorR { span: self.span }
+    }
+}
+
+impl ElementInto<parsed::ParsedUVectorR> for parsed::ParsedQuoteR {
+    type Param = ();
+
+    fn element_into(self, _: Self::Param) -> parsed::ParsedUVectorR {
+        parsed::ParsedUVectorR { span: self.span }
     }
 }
 
@@ -168,6 +180,13 @@ impl Expr<Desugared> {
                 x.add(type_map::key::<Desugared>(), ()),
                 vec.into_iter().map(Self::from_expr).collect(),
             ),
+            Expr::UVector(x, uvec) => Expr::UVector(
+                x.add(type_map::key::<Desugared>(), ()),
+                UVector {
+                    kind: uvec.kind,
+                    elements: uvec.elements.into_iter().map(Self::from_expr).collect(),
+                },
+            ),
             Expr::Quote(x, sexpr) => Self::from_quoted_sexpr(x, sexpr),
             Expr::Cons(x, cons) => Expr::Cons(
                 x.add(type_map::key::<Desugared>(), ()),
@@ -227,6 +246,22 @@ impl Expr<Desugared> {
                 vec.into_iter()
                     .map(|s| Self::from_quoted_sexpr(x.clone(), s))
                     .collect(),
+            ),
+            // TODO: span情報の保持
+            sexpr::SExprKind::UVector(kind, elements) => Expr::UVector(
+                x.clone()
+                    .into_type_map(())
+                    .add(type_map::key::<Desugared>(), ()),
+                UVector {
+                    kind: match kind {
+                        sexpr::SUVectorKind::S64 => UVectorKind::S64,
+                        sexpr::SUVectorKind::F64 => UVectorKind::F64,
+                    },
+                    elements: elements
+                        .into_iter()
+                        .map(|s| Self::from_quoted_sexpr(x.clone(), s))
+                        .collect(),
+                },
             ),
             sexpr::SExprKind::Nil => Expr::Const(
                 x.into_type_map(()).add(type_map::key::<Desugared>(), ()),

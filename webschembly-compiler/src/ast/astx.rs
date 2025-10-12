@@ -5,6 +5,12 @@ use ordered_float::NotNan;
 use crate::sexpr::SExpr;
 use crate::x::{FamilyRunX, Phase, RunX};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum UVectorKind {
+    S64,
+    F64,
+}
+
 #[derive(Debug, Clone)]
 pub enum AstX {}
 #[derive(Debug, Clone)]
@@ -38,6 +44,9 @@ pub enum LetX {}
 pub enum VectorX {}
 
 #[derive(Debug, Clone)]
+pub enum UVectorX {}
+
+#[derive(Debug, Clone)]
 
 pub enum QuoteX {}
 
@@ -57,6 +66,7 @@ where
     SetX: FamilyRunX<Self>,
     LetX: FamilyRunX<Self>,
     VectorX: FamilyRunX<Self>,
+    UVectorX: FamilyRunX<Self>,
     QuoteX: FamilyRunX<Self>,
     ConsX: FamilyRunX<Self>;
 
@@ -84,6 +94,7 @@ where
     Set(RunX<SetX, X>, Set<X>),
     Let(RunX<LetX, X>, Let<X>),
     Vector(RunX<VectorX, X>, Vec<Expr<X>>),
+    UVector(RunX<UVectorX, X>, UVector<X>),
     Quote(RunX<QuoteX, X>, SExpr),
     Cons(RunX<ConsX, X>, Cons<X>),
 }
@@ -161,6 +172,15 @@ where
 {
     pub bindings: Vec<(String, Expr<X>)>,
     pub body: Vec<Expr<X>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct UVector<X>
+where
+    X: XBound,
+{
+    pub kind: UVectorKind,
+    pub elements: Vec<Expr<X>>,
 }
 
 #[derive(Debug, Clone)]

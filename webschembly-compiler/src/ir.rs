@@ -3,7 +3,6 @@ use std::{fmt, iter::from_coroutine};
 use derive_more::{From, Into};
 use ordered_float::NotNan;
 use rustc_hash::FxHashMap;
-use strum_macros::EnumIter;
 use typed_index_collections::TiVec;
 
 use crate::{HasId, vec_map::VecMap};
@@ -105,7 +104,7 @@ impl From<ValType> for Type {
 
 // Objにアップキャスト可能な型
 // 基本的にSchemeの型に対応するがFuncRefなど例外もある
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, derive_more::Display, EnumIter)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, derive_more::Display)]
 pub enum ValType {
     #[display("nil")]
     Nil,
@@ -125,8 +124,27 @@ pub enum ValType {
     Cons,
     #[display("vector")]
     Vector,
+    #[display("uvector<{0}>", _0)]
+    UVector(UVectorKind),
     #[display("closure")]
     Closure,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, derive_more::Display)]
+pub enum UVectorKind {
+    #[display("s64")]
+    S64,
+    #[display("f64")]
+    F64,
+}
+
+impl UVectorKind {
+    pub fn element_type(&self) -> ValType {
+        match self {
+            UVectorKind::S64 => ValType::Int,
+            UVectorKind::F64 => ValType::Float,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, From, Into, Hash, PartialEq, Eq, Ord, PartialOrd)]
@@ -415,6 +433,7 @@ pub enum Expr {
     Nil,
     Char(char),
     Vector(Vec<LocalId>),
+    UVector(UVectorKind, Vec<LocalId>),
     Cons(LocalId, LocalId),
     CreateRef(Type),
     DerefRef(Type, LocalId),
@@ -525,6 +544,11 @@ macro_rules! impl_Expr_local_usages {
                         }
                         Expr::StringToSymbol(id) => yield (id, LocalUsedFlag::NonPhi),
                         Expr::Vector(ids) => {
+                            for id in ids {
+                                yield (id, LocalUsedFlag::NonPhi);
+                            }
+                        }
+                        Expr::UVector(_, ids) => {
                             for id in ids {
                                 yield (id, LocalUsedFlag::NonPhi);
                             }
@@ -773,6 +797,7 @@ impl Expr {
             Expr::String(..)
             | Expr::StringToSymbol(..)
             | Expr::Vector(..)
+            | Expr::UVector(..)
             | Expr::Cons(..)
             | Expr::CreateRef(..)
             | Expr::DerefRef(..)
@@ -869,6 +894,16 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
             Expr::Char(c) => write!(f, "{:?}", c),
             Expr::Vector(v) => {
                 write!(f, "[")?;
+                for (i, id) in v.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ",")?;
+                    }
+                    write!(f, "{}", id.display(self.meta))?;
+                }
+                write!(f, "]")
+            }
+            Expr::UVector(kind, v) => {
+                write!(f, "uvector<{}>[", kind)?;
                 for (i, id) in v.iter().enumerate() {
                     if i > 0 {
                         write!(f, ",")?;

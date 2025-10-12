@@ -105,9 +105,11 @@ fn token_kind<'a, E: ErrorBound<'a>>(
     alt((
         tag("(").map(|_| TokenKind::OpenParen),
         tag(")").map(|_| TokenKind::CloseParen),
+        tag("#(").map(|_| TokenKind::VectorOpenParen),
+        tag("#s64(").map(|_| TokenKind::UVectorS64OpenParen),
+        tag("#f64(").map(|_| TokenKind::UVectorF64OpenParen),
         tag("#t").map(|_| TokenKind::Bool(true)),
         tag("#f").map(|_| TokenKind::Bool(false)),
-        tag("#(").map(|_| TokenKind::VectorOpenParen),
         tag("'").map(|_| TokenKind::Quote),
         string,
         char,

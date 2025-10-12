@@ -139,6 +139,9 @@ impl FamilyX<Used> for LetX {
 impl FamilyX<Used> for VectorX {
     type R = ();
 }
+impl FamilyX<Used> for UVectorX {
+    type R = ();
+}
 impl FamilyX<Used> for QuoteX {
     type R = ();
 }
@@ -543,6 +546,17 @@ impl Expr<Used> {
                     .collect();
                 Expr::Vector(x.add(type_map::key::<Used>(), ()), new_vec)
             }
+            Expr::UVector(x, uvec) => Expr::UVector(
+                x.add(type_map::key::<Used>(), ()),
+                UVector {
+                    kind: uvec.kind,
+                    elements: uvec
+                        .elements
+                        .into_iter()
+                        .map(|expr| Self::from_expr(expr, ctx, var_id_gen, state))
+                        .collect(),
+                },
+            ),
             Expr::Quote(x, _) => x.get_owned(type_map::key::<Desugared>()),
             Expr::Cons(x, cons) => {
                 let new_car = Box::new(Self::from_expr(*cons.car, ctx, var_id_gen, state));

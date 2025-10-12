@@ -65,6 +65,8 @@ struct ModuleGenerator<'a> {
     string_type: u32,
     symbol_type: u32,
     vector_type: u32,
+    uvector_s64_type: u32,
+    uvector_f64_type: u32,
     closure_type: u32,
     closure_types: FxHashMap<Vec<ValType>, u32>, // env types -> type index
     func_types: FxHashMap<WasmFuncType, u32>,
@@ -117,6 +119,8 @@ impl<'a> ModuleGenerator<'a> {
             string_type: 0,
             symbol_type: 0,
             vector_type: 0,
+            uvector_s64_type: 0,
+            uvector_f64_type: 0,
             closure_type: 0,
             closure_types: FxHashMap::default(),
             func_types: FxHashMap::default(),
@@ -421,6 +425,14 @@ impl<'a> ModuleGenerator<'a> {
         self.types
             .ty()
             .array(&StorageType::Val(ValType::Ref(RefType::EQREF)), true);
+
+        self.uvector_s64_type = self.type_count;
+        self.type_count += 1;
+        self.types.ty().array(&StorageType::Val(ValType::I64), true);
+
+        self.uvector_f64_type = self.type_count;
+        self.type_count += 1;
+        self.types.ty().array(&StorageType::Val(ValType::F64), true);
 
         self.args_type = self.type_count;
         self.type_count += 1;
@@ -798,6 +810,10 @@ impl<'a> ModuleGenerator<'a> {
                     nullable: true,
                     heap_type: HeapType::Concrete(self.vector_type),
                 }),
+                ir::ValType::UVector(kind) => ValType::Ref(RefType {
+                    nullable: true,
+                    heap_type: HeapType::Concrete(self.uvector_kind_to_type_idx(kind)),
+                }),
             },
         }
     }
@@ -840,6 +856,16 @@ impl<'a> ModuleGenerator<'a> {
             ir::LocalType::Type(ir::Type::Val(ir::ValType::Vector)) => {
                 ConstExpr::ref_null(HeapType::Concrete(self.vector_type))
             }
+            ir::LocalType::Type(ir::Type::Val(ir::ValType::UVector(kind))) => {
+                ConstExpr::ref_null(HeapType::Concrete(self.uvector_kind_to_type_idx(kind)))
+            }
+        }
+    }
+
+    fn uvector_kind_to_type_idx(&self, kind: ir::UVectorKind) -> u32 {
+        match kind {
+            ir::UVectorKind::S64 => self.uvector_s64_type,
+            ir::UVectorKind::F64 => self.uvector_f64_type,
         }
     }
 }
@@ -1111,6 +1137,15 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     array_size: vec.len() as u32,
                 });
             }
+            ir::Expr::UVector(kind, vec) => {
+                for elem in vec.iter() {
+                    function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*elem)));
+                }
+                function.instruction(&Instruction::ArrayNewFixed {
+                    array_type_index: self.module_generator.uvector_kind_to_type_idx(*kind),
+                    array_size: vec.len() as u32,
+                });
+            }
             ir::Expr::CreateRef(typ) => {
                 function.instruction(&Instruction::RefNull(HeapType::Abstract {
                     shared: false,
@@ -1268,6 +1303,12 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                         self.module_generator.vector_type,
                     )));
                 }
+                ir::ValType::UVector(kind) => {
+                    function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
+                    function.instruction(&Instruction::RefCastNonNull(HeapType::Concrete(
+                        self.module_generator.uvector_kind_to_type_idx(*kind),
+                    )));
+                }
             },
             ir::Expr::ToObj(typ, val) => match typ {
                 ir::ValType::Bool => {
@@ -1317,6 +1358,9 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
                 }
                 ir::ValType::Vector => {
+                    function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
+                }
+                ir::ValType::UVector(_) => {
                     function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
                 }
             },
@@ -1408,6 +1452,9 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                         ir::ValType::Cons => self.module_generator.cons_type,
                         ir::ValType::Closure => self.module_generator.closure_type,
                         ir::ValType::Vector => self.module_generator.vector_type,
+                        ir::ValType::UVector(kind) => {
+                            self.module_generator.uvector_kind_to_type_idx(*kind)
+                        }
                     },
                 )));
             }

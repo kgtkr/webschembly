@@ -108,6 +108,16 @@ pub struct ParsedVectorR {
 impl FamilyX<Parsed> for VectorX {
     type R = ParsedVectorR;
 }
+
+#[derive(Debug, Clone)]
+pub struct ParsedUVectorR {
+    pub span: Span,
+}
+
+impl FamilyX<Parsed> for UVectorX {
+    type R = ParsedUVectorR;
+}
+
 #[derive(Debug, Clone)]
 pub struct ParsedQuoteR {
     pub span: Span,
@@ -216,6 +226,15 @@ impl Expr<Parsed> {
                     sexpr,
                 ))
             }
+            // TODO: uvectorも同様
+            sexpr @ SExpr {
+                kind: SExprKind::UVector(_, _),
+                span,
+                ..
+            } => Ok(Expr::Quote(
+                type_map::singleton(type_map::key::<Parsed>(), ParsedQuoteR { span }),
+                sexpr,
+            )),
             list_pattern![
                 SExpr {
                     kind: SExprKind::Symbol("quote"),

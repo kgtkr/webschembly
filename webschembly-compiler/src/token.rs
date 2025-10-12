@@ -14,6 +14,8 @@ pub enum TokenKind {
     Bool(bool),
     Quote,
     VectorOpenParen,
+    UVectorS64OpenParen,
+    UVectorF64OpenParen,
     Dot,
     Eof,
     Char(char),

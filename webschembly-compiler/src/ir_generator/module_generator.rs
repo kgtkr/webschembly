@@ -956,6 +956,75 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     expr: Expr::ToObj(ValType::Vector, val_type_local),
                 });
             }
+            ast::Expr::UVector(_, uvec) => {
+                let kind = match uvec.kind {
+                    ast::UVectorKind::S64 => UVectorKind::S64,
+                    ast::UVectorKind::F64 => UVectorKind::F64,
+                };
+
+                let mut element_obj_locals = Vec::new();
+                for sexpr in &uvec.elements {
+                    let obj_local = self.local(Type::Obj);
+                    self.gen_expr(Some(obj_local), sexpr);
+                    element_obj_locals.push(obj_local);
+                }
+                let mut type_check_all_success_local = self.local(Type::Val(ValType::Bool));
+                self.exprs.push(ExprAssign {
+                    local: Some(type_check_all_success_local),
+                    expr: Expr::Bool(true),
+                });
+                for obj_local in &element_obj_locals {
+                    let type_check_success_local = self.local(Type::Val(ValType::Bool));
+                    self.exprs.push(ExprAssign {
+                        local: Some(type_check_success_local),
+                        expr: Expr::Is(kind.element_type(), *obj_local),
+                    });
+                    let new_type_check_all_success_local = self.local(Type::Val(ValType::Bool));
+                    self.exprs.push(ExprAssign {
+                        local: Some(new_type_check_all_success_local),
+                        expr: Expr::And(type_check_all_success_local, type_check_success_local),
+                    });
+                    type_check_all_success_local = new_type_check_all_success_local;
+                }
+                let then_bb_id = self.bbs.allocate_key();
+                let else_bb_id = self.bbs.allocate_key();
+
+                self.close_bb(BasicBlockNext::If(
+                    type_check_all_success_local,
+                    then_bb_id,
+                    else_bb_id,
+                ));
+
+                self.current_bb_id = Some(else_bb_id);
+                let msg = self.local(Type::Val(ValType::String));
+                self.exprs.push(ExprAssign {
+                    local: Some(msg),
+                    expr: Expr::String(format!(
+                        "uvector element type mismatch: expected {:?}\n",
+                        kind.element_type()
+                    )),
+                });
+                self.close_bb(BasicBlockNext::Terminator(BasicBlockTerminator::Error(msg)));
+                self.current_bb_id = Some(then_bb_id);
+                let mut element_locals = Vec::new();
+                for obj_local in element_obj_locals {
+                    let elem_local = self.local(kind.element_type());
+                    self.exprs.push(ExprAssign {
+                        local: Some(elem_local),
+                        expr: Expr::FromObj(kind.element_type(), obj_local),
+                    });
+                    element_locals.push(elem_local);
+                }
+                let uvector_local = self.local(Type::Val(ValType::UVector(kind)));
+                self.exprs.push(ExprAssign {
+                    local: Some(uvector_local),
+                    expr: Expr::UVector(kind, element_locals),
+                });
+                self.exprs.push(ExprAssign {
+                    local: result,
+                    expr: Expr::ToObj(ValType::UVector(kind), uvector_local),
+                });
+            }
             ast::Expr::Cons(_, cons) => {
                 let car_local = self.local(Type::Obj);
                 self.gen_expr(Some(car_local), &cons.car);

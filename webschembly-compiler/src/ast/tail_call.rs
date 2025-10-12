@@ -53,6 +53,9 @@ impl FamilyX<TailCall> for LetX {
 impl FamilyX<TailCall> for VectorX {
     type R = ();
 }
+impl FamilyX<TailCall> for UVectorX {
+    type R = ();
+}
 impl FamilyX<TailCall> for QuoteX {
     type R = ();
 }
@@ -131,6 +134,17 @@ impl Expr<TailCall> {
                     .map(|expr| Self::from_expr(expr, false))
                     .collect()
             }),
+            Expr::UVector(x, uvec) => Expr::UVector(
+                x.add(type_map::key::<TailCall>(), ()),
+                UVector {
+                    kind: uvec.kind,
+                    elements: uvec
+                        .elements
+                        .into_iter()
+                        .map(|expr| Self::from_expr(expr, false))
+                        .collect(),
+                },
+            ),
             Expr::Quote(x, _) => x.get_owned(type_map::key::<Desugared>()),
             Expr::Cons(x, cons) => Expr::Cons(
                 x.add(type_map::key::<TailCall>(), ()),
