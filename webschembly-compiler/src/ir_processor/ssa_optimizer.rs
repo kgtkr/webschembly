@@ -225,7 +225,7 @@ pub fn constant_folding(
                 {
                     func.bbs[*bb_id].exprs[expr_idx].expr = Expr::Int(a / b);
                 }
-                Expr::EqNum(local1, local2)
+                Expr::EqInt(local1, local2)
                     if let Some(&Expr::Int(a)) =
                         def_use.get_def_non_move_expr(&func.bbs, local1)
                         && let Some(&Expr::Int(b)) =
@@ -308,14 +308,6 @@ pub fn constant_folding(
                         }
                         _ => {}
                     }
-                }
-                Expr::EqNum(local1, local2)
-                    if let Some(&Expr::Bool(a)) =
-                        def_use.get_def_non_move_expr(&func.bbs, local1)
-                        && let Some(&Expr::Bool(b)) =
-                            def_use.get_def_non_move_expr(&func.bbs, local2) =>
-                {
-                    func.bbs[*bb_id].exprs[expr_idx].expr = Expr::Bool(a == b);
                 }
                 Expr::VariadicArgsRef(local, index)
                     if let Some(Expr::VariadicArgs(args)) =

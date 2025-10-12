@@ -240,7 +240,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         });
         self.exprs.push(ExprAssign {
             local: Some(args_len_check_success_local),
-            expr: Expr::EqNum(args_len_local, expected_args_len_local),
+            expr: Expr::EqInt(args_len_local, expected_args_len_local),
         });
 
         let error_bb_id = self.bbs.allocate_key();
@@ -1077,33 +1077,79 @@ impl BuiltinConversionRule {
                     });
                 },
             }],
-            Builtin::Add => vec![BuiltinConversionRule::Binary {
-                args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
-                ret: Type::Val(ValType::Int),
-                ir_gen: |ctx, arg1, arg2| {
-                    ctx.exprs.push(ExprAssign {
-                        local: Some(ctx.dest),
-                        expr: Expr::AddInt(arg1, arg2),
-                    });
+            Builtin::Add => vec![
+                BuiltinConversionRule::Binary {
+                    args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
+                    ret: Type::Val(ValType::Int),
+                    ir_gen: |ctx, arg1, arg2| {
+                        ctx.exprs.push(ExprAssign {
+                            local: Some(ctx.dest),
+                            expr: Expr::AddInt(arg1, arg2),
+                        });
+                    },
                 },
-            }],
-            Builtin::Sub => vec![BuiltinConversionRule::Binary {
-                args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
-                ret: Type::Val(ValType::Int),
-                ir_gen: |ctx, arg1, arg2| {
-                    ctx.exprs.push(ExprAssign {
-                        local: Some(ctx.dest),
-                        expr: Expr::SubInt(arg1, arg2),
-                    });
+                BuiltinConversionRule::Binary {
+                    args: [Type::Val(ValType::Float), Type::Val(ValType::Float)],
+                    ret: Type::Val(ValType::Float),
+                    ir_gen: |ctx, arg1, arg2| {
+                        ctx.exprs.push(ExprAssign {
+                            local: Some(ctx.dest),
+                            expr: Expr::AddFloat(arg1, arg2),
+                        });
+                    },
                 },
-            }],
-            Builtin::Mul => vec![BuiltinConversionRule::Binary {
-                args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
-                ret: Type::Val(ValType::Int),
+            ],
+            Builtin::Sub => vec![
+                BuiltinConversionRule::Binary {
+                    args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
+                    ret: Type::Val(ValType::Int),
+                    ir_gen: |ctx, arg1, arg2| {
+                        ctx.exprs.push(ExprAssign {
+                            local: Some(ctx.dest),
+                            expr: Expr::SubInt(arg1, arg2),
+                        });
+                    },
+                },
+                BuiltinConversionRule::Binary {
+                    args: [Type::Val(ValType::Float), Type::Val(ValType::Float)],
+                    ret: Type::Val(ValType::Float),
+                    ir_gen: |ctx, arg1, arg2| {
+                        ctx.exprs.push(ExprAssign {
+                            local: Some(ctx.dest),
+                            expr: Expr::SubFloat(arg1, arg2),
+                        });
+                    },
+                },
+            ],
+            Builtin::Mul => vec![
+                BuiltinConversionRule::Binary {
+                    args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
+                    ret: Type::Val(ValType::Int),
+                    ir_gen: |ctx, arg1, arg2| {
+                        ctx.exprs.push(ExprAssign {
+                            local: Some(ctx.dest),
+                            expr: Expr::MulInt(arg1, arg2),
+                        });
+                    },
+                },
+                BuiltinConversionRule::Binary {
+                    args: [Type::Val(ValType::Float), Type::Val(ValType::Float)],
+                    ret: Type::Val(ValType::Float),
+                    ir_gen: |ctx, arg1, arg2| {
+                        ctx.exprs.push(ExprAssign {
+                            local: Some(ctx.dest),
+                            expr: Expr::MulFloat(arg1, arg2),
+                        });
+                    },
+                },
+            ],
+            Builtin::Div => vec![BuiltinConversionRule::Binary {
+                args: [Type::Val(ValType::Float), Type::Val(ValType::Float)],
+                ret: Type::Val(ValType::Float),
                 ir_gen: |ctx, arg1, arg2| {
                     ctx.exprs.push(ExprAssign {
                         local: Some(ctx.dest),
-                        expr: Expr::MulInt(arg1, arg2),
+                        expr: Expr::DivFloat(arg1, arg2),
                     });
                 },
             }],
@@ -1117,6 +1163,7 @@ impl BuiltinConversionRule {
                     });
                 },
             }],
+
             Builtin::WriteChar => vec![BuiltinConversionRule::Unary {
                 args: [Type::Val(ValType::Char)],
                 ret: Type::Val(ValType::Nil),
@@ -1329,56 +1376,116 @@ impl BuiltinConversionRule {
                     },
                 },
             ],
-            Builtin::EqNum => vec![BuiltinConversionRule::Binary {
-                args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
-                ret: Type::Val(ValType::Bool),
-                ir_gen: |ctx, arg1, arg2| {
-                    ctx.exprs.push(ExprAssign {
-                        local: Some(ctx.dest),
-                        expr: Expr::EqNum(arg1, arg2),
-                    });
+            Builtin::EqNum => vec![
+                BuiltinConversionRule::Binary {
+                    args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
+                    ret: Type::Val(ValType::Bool),
+                    ir_gen: |ctx, arg1, arg2| {
+                        ctx.exprs.push(ExprAssign {
+                            local: Some(ctx.dest),
+                            expr: Expr::EqInt(arg1, arg2),
+                        });
+                    },
                 },
-            }],
-            Builtin::Lt => vec![BuiltinConversionRule::Binary {
-                args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
-                ret: Type::Val(ValType::Bool),
-                ir_gen: |ctx, arg1, arg2| {
-                    ctx.exprs.push(ExprAssign {
-                        local: Some(ctx.dest),
-                        expr: Expr::LtInt(arg1, arg2),
-                    });
+                BuiltinConversionRule::Binary {
+                    args: [Type::Val(ValType::Float), Type::Val(ValType::Float)],
+                    ret: Type::Val(ValType::Bool),
+                    ir_gen: |ctx, arg1, arg2| {
+                        ctx.exprs.push(ExprAssign {
+                            local: Some(ctx.dest),
+                            expr: Expr::EqFloat(arg1, arg2),
+                        });
+                    },
                 },
-            }],
-            Builtin::Gt => vec![BuiltinConversionRule::Binary {
-                args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
-                ret: Type::Val(ValType::Bool),
-                ir_gen: |ctx, arg1, arg2| {
-                    ctx.exprs.push(ExprAssign {
-                        local: Some(ctx.dest),
-                        expr: Expr::GtInt(arg1, arg2),
-                    });
+            ],
+            Builtin::Lt => vec![
+                BuiltinConversionRule::Binary {
+                    args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
+                    ret: Type::Val(ValType::Bool),
+                    ir_gen: |ctx, arg1, arg2| {
+                        ctx.exprs.push(ExprAssign {
+                            local: Some(ctx.dest),
+                            expr: Expr::LtInt(arg1, arg2),
+                        });
+                    },
                 },
-            }],
-            Builtin::Le => vec![BuiltinConversionRule::Binary {
-                args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
-                ret: Type::Val(ValType::Bool),
-                ir_gen: |ctx, arg1, arg2| {
-                    ctx.exprs.push(ExprAssign {
-                        local: Some(ctx.dest),
-                        expr: Expr::LeInt(arg1, arg2),
-                    });
+                BuiltinConversionRule::Binary {
+                    args: [Type::Val(ValType::Float), Type::Val(ValType::Float)],
+                    ret: Type::Val(ValType::Bool),
+                    ir_gen: |ctx, arg1, arg2| {
+                        ctx.exprs.push(ExprAssign {
+                            local: Some(ctx.dest),
+                            expr: Expr::LtFloat(arg1, arg2),
+                        });
+                    },
                 },
-            }],
-            Builtin::Ge => vec![BuiltinConversionRule::Binary {
-                args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
-                ret: Type::Val(ValType::Bool),
-                ir_gen: |ctx, arg1, arg2| {
-                    ctx.exprs.push(ExprAssign {
-                        local: Some(ctx.dest),
-                        expr: Expr::GeInt(arg1, arg2),
-                    });
+            ],
+            Builtin::Gt => vec![
+                BuiltinConversionRule::Binary {
+                    args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
+                    ret: Type::Val(ValType::Bool),
+                    ir_gen: |ctx, arg1, arg2| {
+                        ctx.exprs.push(ExprAssign {
+                            local: Some(ctx.dest),
+                            expr: Expr::GtInt(arg1, arg2),
+                        });
+                    },
                 },
-            }],
+                BuiltinConversionRule::Binary {
+                    args: [Type::Val(ValType::Float), Type::Val(ValType::Float)],
+                    ret: Type::Val(ValType::Bool),
+                    ir_gen: |ctx, arg1, arg2| {
+                        ctx.exprs.push(ExprAssign {
+                            local: Some(ctx.dest),
+                            expr: Expr::GtFloat(arg1, arg2),
+                        });
+                    },
+                },
+            ],
+            Builtin::Le => vec![
+                BuiltinConversionRule::Binary {
+                    args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
+                    ret: Type::Val(ValType::Bool),
+                    ir_gen: |ctx, arg1, arg2| {
+                        ctx.exprs.push(ExprAssign {
+                            local: Some(ctx.dest),
+                            expr: Expr::LeInt(arg1, arg2),
+                        });
+                    },
+                },
+                BuiltinConversionRule::Binary {
+                    args: [Type::Val(ValType::Float), Type::Val(ValType::Float)],
+                    ret: Type::Val(ValType::Bool),
+                    ir_gen: |ctx, arg1, arg2| {
+                        ctx.exprs.push(ExprAssign {
+                            local: Some(ctx.dest),
+                            expr: Expr::LeFloat(arg1, arg2),
+                        });
+                    },
+                },
+            ],
+            Builtin::Ge => vec![
+                BuiltinConversionRule::Binary {
+                    args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
+                    ret: Type::Val(ValType::Bool),
+                    ir_gen: |ctx, arg1, arg2| {
+                        ctx.exprs.push(ExprAssign {
+                            local: Some(ctx.dest),
+                            expr: Expr::GeInt(arg1, arg2),
+                        });
+                    },
+                },
+                BuiltinConversionRule::Binary {
+                    args: [Type::Val(ValType::Float), Type::Val(ValType::Float)],
+                    ret: Type::Val(ValType::Bool),
+                    ir_gen: |ctx, arg1, arg2| {
+                        ctx.exprs.push(ExprAssign {
+                            local: Some(ctx.dest),
+                            expr: Expr::GeFloat(arg1, arg2),
+                        });
+                    },
+                },
+            ],
         }
     }
 }

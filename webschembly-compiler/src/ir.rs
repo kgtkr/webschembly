@@ -444,9 +444,13 @@ pub enum Expr {
     // builtins
     Display(LocalId),
     AddInt(LocalId, LocalId),
+    AddFloat(LocalId, LocalId),
     SubInt(LocalId, LocalId),
+    SubFloat(LocalId, LocalId),
     MulInt(LocalId, LocalId),
+    MulFloat(LocalId, LocalId),
     DivInt(LocalId, LocalId),
+    DivFloat(LocalId, LocalId),
     WriteChar(LocalId),
     Is(ValType, LocalId),
     VectorLength(LocalId),
@@ -461,11 +465,16 @@ pub enum Expr {
     SymbolToString(LocalId),
     IntToString(LocalId),
     FloatToString(LocalId),
-    EqNum(LocalId, LocalId),
+    EqInt(LocalId, LocalId),
+    EqFloat(LocalId, LocalId),
     LtInt(LocalId, LocalId),
+    LtFloat(LocalId, LocalId),
     GtInt(LocalId, LocalId),
+    GtFloat(LocalId, LocalId),
     LeInt(LocalId, LocalId),
+    LeFloat(LocalId, LocalId),
     GeInt(LocalId, LocalId),
+    GeFloat(LocalId, LocalId),
     VariadicArgs(Vec<LocalId>),
     VariadicArgsRef(LocalId, usize),
     VariadicArgsLength(LocalId),
@@ -564,19 +573,14 @@ macro_rules! impl_Expr_local_usages {
                         Expr::ClosureEntrypointTable(id) => yield (id, LocalUsedFlag::NonPhi),
                         Expr::GlobalSet(_, value) => yield (value, LocalUsedFlag::NonPhi),
                         Expr::Display(id) => yield (id, LocalUsedFlag::NonPhi),
-                        Expr::AddInt(a, b) => {
-                            yield (a, LocalUsedFlag::NonPhi);
-                            yield (b, LocalUsedFlag::NonPhi);
-                        }
-                        Expr::SubInt(a, b) => {
-                            yield (a, LocalUsedFlag::NonPhi);
-                            yield (b, LocalUsedFlag::NonPhi);
-                        }
-                        Expr::MulInt(a, b) => {
-                            yield (a, LocalUsedFlag::NonPhi);
-                            yield (b, LocalUsedFlag::NonPhi);
-                        }
-                        Expr::DivInt(a, b) => {
+                        Expr::AddInt(a, b)
+                        | Expr::AddFloat(a, b)
+                        | Expr::SubInt(a, b)
+                        | Expr::SubFloat(a, b)
+                        | Expr::MulInt(a, b)
+                        | Expr::MulFloat(a, b)
+                        | Expr::DivInt(a, b)
+                        | Expr::DivFloat(a, b) => {
                             yield (a, LocalUsedFlag::NonPhi);
                             yield (b, LocalUsedFlag::NonPhi);
                         }
@@ -610,23 +614,16 @@ macro_rules! impl_Expr_local_usages {
                         Expr::SymbolToString(id) => yield (id, LocalUsedFlag::NonPhi),
                         Expr::IntToString(id) => yield (id, LocalUsedFlag::NonPhi),
                         Expr::FloatToString(id) => yield (id, LocalUsedFlag::NonPhi),
-                        Expr::EqNum(a, b) => {
-                            yield (a, LocalUsedFlag::NonPhi);
-                            yield (b, LocalUsedFlag::NonPhi);
-                        }
-                        Expr::LtInt(a, b) => {
-                            yield (a, LocalUsedFlag::NonPhi);
-                            yield (b, LocalUsedFlag::NonPhi);
-                        }
-                        Expr::GtInt(a, b) => {
-                            yield (a, LocalUsedFlag::NonPhi);
-                            yield (b, LocalUsedFlag::NonPhi);
-                        }
-                        Expr::LeInt(a, b) => {
-                            yield (a, LocalUsedFlag::NonPhi);
-                            yield (b, LocalUsedFlag::NonPhi);
-                        }
-                        Expr::GeInt(a, b) => {
+                        Expr::EqInt(a, b)
+                        | Expr::EqFloat(a, b)
+                        | Expr::LtInt(a, b)
+                        | Expr::LtFloat(a, b)
+                        | Expr::GtInt(a, b)
+                        | Expr::GtFloat(a, b)
+                        | Expr::LeInt(a, b)
+                        | Expr::LeFloat(a, b)
+                        | Expr::GeInt(a, b)
+                        | Expr::GeFloat(a, b) => {
                             yield (a, LocalUsedFlag::NonPhi);
                             yield (b, LocalUsedFlag::NonPhi);
                         }
@@ -751,18 +748,27 @@ impl Expr {
             | Expr::Not(..)
             | Expr::And(..)
             | Expr::Or(..)
-            | Expr::EqNum(..)
+            | Expr::EqInt(..)
+            | Expr::EqFloat(..)
             | Expr::LtInt(..)
+            | Expr::LtFloat(..)
             | Expr::GtInt(..)
+            | Expr::GtFloat(..)
             | Expr::LeInt(..)
+            | Expr::LeFloat(..)
             | Expr::GeInt(..)
+            | Expr::GeFloat(..)
             | Expr::VariadicArgs(..)
             | Expr::VariadicArgsRef(..)
             | Expr::VariadicArgsLength(..)
             | Expr::AddInt(..)
+            | Expr::AddFloat(..)
             | Expr::SubInt(..)
+            | Expr::SubFloat(..)
             | Expr::MulInt(..)
-            | Expr::DivInt(..) => ExprPurelity::Pure,
+            | Expr::MulFloat(..)
+            | Expr::DivInt(..)
+            | Expr::DivFloat(..) => ExprPurelity::Pure,
             // String/Cons/Vectorなどは可変なオブジェクトを生成するので純粋ではない
             Expr::String(..)
             | Expr::StringToSymbol(..)
@@ -952,10 +958,26 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                     b.display(self.meta)
                 )
             }
+            Expr::AddFloat(a, b) => {
+                write!(
+                    f,
+                    "add_float({}, {})",
+                    a.display(self.meta),
+                    b.display(self.meta)
+                )
+            }
             Expr::SubInt(a, b) => {
                 write!(
                     f,
                     "sub_int({}, {})",
+                    a.display(self.meta),
+                    b.display(self.meta)
+                )
+            }
+            Expr::SubFloat(a, b) => {
+                write!(
+                    f,
+                    "sub_float({}, {})",
                     a.display(self.meta),
                     b.display(self.meta)
                 )
@@ -968,10 +990,26 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                     b.display(self.meta)
                 )
             }
+            Expr::MulFloat(a, b) => {
+                write!(
+                    f,
+                    "mul_float({}, {})",
+                    a.display(self.meta),
+                    b.display(self.meta)
+                )
+            }
             Expr::DivInt(a, b) => {
                 write!(
                     f,
                     "div_int({}, {})",
+                    a.display(self.meta),
+                    b.display(self.meta)
+                )
+            }
+            Expr::DivFloat(a, b) => {
+                write!(
+                    f,
+                    "div_float({}, {})",
                     a.display(self.meta),
                     b.display(self.meta)
                 )
@@ -1012,9 +1050,15 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
             Expr::SymbolToString(id) => write!(f, "symbol_to_string({})", id.display(self.meta)),
             Expr::IntToString(id) => write!(f, "int_to_string({})", id.display(self.meta)),
             Expr::FloatToString(id) => write!(f, "float_to_string({})", id.display(self.meta)),
-            Expr::EqNum(a, b) => write!(
+            Expr::EqInt(a, b) => write!(
                 f,
-                "eq_num({}, {})",
+                "eq_int({}, {})",
+                a.display(self.meta),
+                b.display(self.meta)
+            ),
+            Expr::EqFloat(a, b) => write!(
+                f,
+                "eq_float({}, {})",
                 a.display(self.meta),
                 b.display(self.meta)
             ),
@@ -1022,6 +1066,14 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                 write!(
                     f,
                     "lt_int({}, {})",
+                    a.display(self.meta),
+                    b.display(self.meta)
+                )
+            }
+            Expr::LtFloat(a, b) => {
+                write!(
+                    f,
+                    "lt_float({}, {})",
                     a.display(self.meta),
                     b.display(self.meta)
                 )
@@ -1034,6 +1086,14 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                     b.display(self.meta)
                 )
             }
+            Expr::GtFloat(a, b) => {
+                write!(
+                    f,
+                    "gt_float({}, {})",
+                    a.display(self.meta),
+                    b.display(self.meta)
+                )
+            }
             Expr::LeInt(a, b) => {
                 write!(
                     f,
@@ -1042,10 +1102,26 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                     b.display(self.meta)
                 )
             }
+            Expr::LeFloat(a, b) => {
+                write!(
+                    f,
+                    "le_float({}, {})",
+                    a.display(self.meta),
+                    b.display(self.meta)
+                )
+            }
             Expr::GeInt(a, b) => {
                 write!(
                     f,
                     "ge_int({}, {})",
+                    a.display(self.meta),
+                    b.display(self.meta)
+                )
+            }
+            Expr::GeFloat(a, b) => {
+                write!(
+                    f,
+                    "ge_float({}, {})",
                     a.display(self.meta),
                     b.display(self.meta)
                 )

@@ -9,6 +9,8 @@ pub enum Builtin {
     Sub,
     #[strum(serialize = "*")]
     Mul,
+    #[strum(serialize = "/")]
+    Div,
     #[strum(serialize = "quotient")]
     Quotient,
     #[strum(serialize = "write-char")]
