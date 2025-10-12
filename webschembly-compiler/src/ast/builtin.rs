@@ -49,6 +49,10 @@ pub enum Builtin {
     IsS64Vector,
     #[strum(serialize = "f64vector?")]
     IsF64Vector,
+    #[strum(serialize = "make-s64vector")]
+    MakeS64Vector,
+    #[strum(serialize = "make-f64vector")]
+    MakeF64Vector,
     #[strum(serialize = "eq?")]
     Eq,
     #[strum(serialize = "cons")]

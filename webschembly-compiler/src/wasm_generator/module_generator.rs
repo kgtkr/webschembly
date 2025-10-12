@@ -1146,6 +1146,13 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     array_size: vec.len() as u32,
                 });
             }
+            ir::Expr::MakeUVector(kind, len) => {
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*len)));
+                function.instruction(&Instruction::I32WrapI64);
+                function.instruction(&Instruction::ArrayNewDefault(
+                    self.module_generator.uvector_kind_to_type_idx(*kind),
+                ));
+            }
             ir::Expr::CreateRef(typ) => {
                 function.instruction(&Instruction::RefNull(HeapType::Abstract {
                     shared: false,

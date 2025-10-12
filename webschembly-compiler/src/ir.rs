@@ -434,6 +434,7 @@ pub enum Expr {
     Char(char),
     Vector(Vec<LocalId>),
     UVector(UVectorKind, Vec<LocalId>),
+    MakeUVector(UVectorKind, LocalId),
     Cons(LocalId, LocalId),
     CreateRef(Type),
     DerefRef(Type, LocalId),
@@ -556,6 +557,7 @@ macro_rules! impl_Expr_local_usages {
                                 yield (id, LocalUsedFlag::NonPhi);
                             }
                         }
+                        Expr::MakeUVector(_, id) => yield (id, LocalUsedFlag::NonPhi),
                         Expr::Cons(a, b) => {
                             yield (a, LocalUsedFlag::NonPhi);
                             yield (b, LocalUsedFlag::NonPhi);
@@ -811,6 +813,7 @@ impl Expr {
             | Expr::StringToSymbol(..)
             | Expr::Vector(..)
             | Expr::UVector(..)
+            | Expr::MakeUVector(..)
             | Expr::Cons(..)
             | Expr::CreateRef(..)
             | Expr::DerefRef(..)
@@ -927,6 +930,9 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                     write!(f, "{}", id.display(self.meta))?;
                 }
                 write!(f, "]")
+            }
+            Expr::MakeUVector(kind, id) => {
+                write!(f, "make_uvector<{}>({})", kind, id.display(self.meta))
             }
             Expr::Cons(a, b) => {
                 write!(f, "({} . {})", a.display(self.meta), b.display(self.meta))

@@ -8,3 +8,5 @@
 (write v1)(newline)
 (write v2)(newline)
 (write #f64(1.0 2.5 3.2))(newline)
+(write (make-s64vector 5))(newline)
+(write (make-f64vector 5))(newline)

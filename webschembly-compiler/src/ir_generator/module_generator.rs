@@ -1419,6 +1419,26 @@ impl BuiltinConversionRule {
                     });
                 },
             }],
+            Builtin::MakeS64Vector => vec![BuiltinConversionRule::Unary {
+                args: [Type::Val(ValType::Int)],
+                ret: Type::Val(ValType::UVector(UVectorKind::S64)),
+                ir_gen: |ctx, arg1| {
+                    ctx.exprs.push(ExprAssign {
+                        local: Some(ctx.dest),
+                        expr: Expr::MakeUVector(UVectorKind::S64, arg1),
+                    });
+                },
+            }],
+            Builtin::MakeF64Vector => vec![BuiltinConversionRule::Unary {
+                args: [Type::Val(ValType::Int)],
+                ret: Type::Val(ValType::UVector(UVectorKind::F64)),
+                ir_gen: |ctx, arg1| {
+                    ctx.exprs.push(ExprAssign {
+                        local: Some(ctx.dest),
+                        expr: Expr::MakeUVector(UVectorKind::F64, arg1),
+                    });
+                },
+            }],
             Builtin::UVectorLength => vec![
                 BuiltinConversionRule::Unary {
                     args: [Type::Val(ValType::UVector(UVectorKind::S64))],
