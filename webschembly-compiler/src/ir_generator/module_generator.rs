@@ -758,19 +758,22 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                                 Type::Obj => self.local(Type::Obj),
                                 Type::Val(val_type) => self.local(Type::Val(val_type)),
                             };
-                            let expr = match rule {
-                                BuiltinConversionRule::Unary { to_ir, .. } => to_ir(arg_locals[0]),
-                                BuiltinConversionRule::Binary { to_ir, .. } => {
-                                    to_ir(arg_locals[0], arg_locals[1])
+                            let builtin_ctx = BuiltinIrGenCtx {
+                                exprs: &mut self.exprs,
+                                locals: &mut self.locals,
+                                dest: ret_local,
+                            };
+                            match rule {
+                                BuiltinConversionRule::Unary { ir_gen, .. } => {
+                                    ir_gen(builtin_ctx, arg_locals[0])
                                 }
-                                BuiltinConversionRule::Ternary { to_ir, .. } => {
-                                    to_ir(arg_locals[0], arg_locals[1], arg_locals[2])
+                                BuiltinConversionRule::Binary { ir_gen, .. } => {
+                                    ir_gen(builtin_ctx, arg_locals[0], arg_locals[1])
+                                }
+                                BuiltinConversionRule::Ternary { ir_gen, .. } => {
+                                    ir_gen(builtin_ctx, arg_locals[0], arg_locals[1], arg_locals[2])
                                 }
                             };
-                            self.exprs.push(ExprAssign {
-                                local: Some(ret_local),
-                                expr,
-                            });
 
                             let ret_obj_local = self.local(Type::Obj);
                             self.exprs.push(ExprAssign {
@@ -1010,22 +1013,29 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
     }
 }
 
+#[derive(Debug)]
+pub struct BuiltinIrGenCtx<'a> {
+    exprs: &'a mut Vec<ExprAssign>,
+    locals: &'a mut VecMap<LocalId, Local>,
+    dest: LocalId,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub enum BuiltinConversionRule {
     Unary {
         args: [Type; 1],
         ret: Type,
-        to_ir: fn(LocalId) -> Expr,
+        ir_gen: fn(BuiltinIrGenCtx, LocalId),
     },
     Binary {
         args: [Type; 2],
         ret: Type,
-        to_ir: fn(LocalId, LocalId) -> Expr,
+        ir_gen: fn(BuiltinIrGenCtx, LocalId, LocalId),
     },
     Ternary {
         args: [Type; 3],
         ret: Type,
-        to_ir: fn(LocalId, LocalId, LocalId) -> Expr,
+        ir_gen: fn(BuiltinIrGenCtx, LocalId, LocalId, LocalId),
     },
     // TODO: 可変長
 }
@@ -1060,82 +1070,178 @@ impl BuiltinConversionRule {
                 // TODO: 一旦Stringのみ
                 args: [Type::Val(ValType::String)],
                 ret: Type::Val(ValType::Nil),
-                to_ir: Expr::Display,
+                ir_gen: |ctx, arg1| {
+                    ctx.exprs.push(ExprAssign {
+                        local: Some(ctx.dest),
+                        expr: Expr::Display(arg1),
+                    });
+                },
             }],
             Builtin::Add => vec![BuiltinConversionRule::Binary {
                 args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
                 ret: Type::Val(ValType::Int),
-                to_ir: Expr::AddInt,
+                ir_gen: |ctx, arg1, arg2| {
+                    ctx.exprs.push(ExprAssign {
+                        local: Some(ctx.dest),
+                        expr: Expr::AddInt(arg1, arg2),
+                    });
+                },
             }],
             Builtin::Sub => vec![BuiltinConversionRule::Binary {
                 args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
                 ret: Type::Val(ValType::Int),
-                to_ir: Expr::SubInt,
+                ir_gen: |ctx, arg1, arg2| {
+                    ctx.exprs.push(ExprAssign {
+                        local: Some(ctx.dest),
+                        expr: Expr::SubInt(arg1, arg2),
+                    });
+                },
             }],
             Builtin::Mul => vec![BuiltinConversionRule::Binary {
                 args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
                 ret: Type::Val(ValType::Int),
-                to_ir: Expr::MulInt,
+                ir_gen: |ctx, arg1, arg2| {
+                    ctx.exprs.push(ExprAssign {
+                        local: Some(ctx.dest),
+                        expr: Expr::MulInt(arg1, arg2),
+                    });
+                },
             }],
             Builtin::Quotient => vec![BuiltinConversionRule::Binary {
                 args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
                 ret: Type::Val(ValType::Int),
-                to_ir: Expr::DivInt,
+                ir_gen: |ctx, arg1, arg2| {
+                    ctx.exprs.push(ExprAssign {
+                        local: Some(ctx.dest),
+                        expr: Expr::DivInt(arg1, arg2),
+                    });
+                },
             }],
             Builtin::WriteChar => vec![BuiltinConversionRule::Unary {
                 args: [Type::Val(ValType::Char)],
                 ret: Type::Val(ValType::Nil),
-                to_ir: Expr::WriteChar,
+                ir_gen: |ctx, arg1| {
+                    ctx.exprs.push(ExprAssign {
+                        local: Some(ctx.dest),
+                        expr: Expr::WriteChar(arg1),
+                    });
+                },
             }],
             Builtin::IsPair => vec![BuiltinConversionRule::Unary {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
-                to_ir: |local| Expr::Is(ValType::Cons, local),
+                ir_gen: |ctx, arg1| {
+                    ctx.exprs.push(ExprAssign {
+                        local: Some(ctx.dest),
+                        expr: Expr::Is(ValType::Cons, arg1),
+                    });
+                },
             }],
             Builtin::IsSymbol => vec![BuiltinConversionRule::Unary {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
-                to_ir: |local| Expr::Is(ValType::Symbol, local),
+                ir_gen: |ctx, arg1| {
+                    ctx.exprs.push(ExprAssign {
+                        local: Some(ctx.dest),
+                        expr: Expr::Is(ValType::Symbol, arg1),
+                    });
+                },
             }],
             Builtin::IsString => vec![BuiltinConversionRule::Unary {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
-                to_ir: |local| Expr::Is(ValType::String, local),
+                ir_gen: |ctx, arg1| {
+                    ctx.exprs.push(ExprAssign {
+                        local: Some(ctx.dest),
+                        expr: Expr::Is(ValType::String, arg1),
+                    });
+                },
             }],
             Builtin::IsNumber => vec![BuiltinConversionRule::Unary {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
-                to_ir: |local| Expr::Is(ValType::Int, local), // TODO: 一般のnumberかを判定
+                ir_gen: |ctx, arg1| {
+                    let is_int_local = ctx.locals.push_with(|id| Local {
+                        id,
+                        typ: ValType::Bool.into(),
+                    });
+                    let is_float_local = ctx.locals.push_with(|id| Local {
+                        id,
+                        typ: ValType::Bool.into(),
+                    });
+                    ctx.exprs.push(ExprAssign {
+                        local: Some(is_int_local),
+                        expr: Expr::Is(ValType::Int, arg1),
+                    });
+                    ctx.exprs.push(ExprAssign {
+                        local: Some(is_float_local),
+                        expr: Expr::Is(ValType::Float, arg1),
+                    });
+                    ctx.exprs.push(ExprAssign {
+                        local: Some(ctx.dest),
+                        expr: Expr::Or(is_int_local, is_float_local),
+                    });
+                },
             }],
             Builtin::IsBoolean => vec![BuiltinConversionRule::Unary {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
-                to_ir: |local| Expr::Is(ValType::Bool, local),
+                ir_gen: |ctx, arg1| {
+                    ctx.exprs.push(ExprAssign {
+                        local: Some(ctx.dest),
+                        expr: Expr::Is(ValType::Bool, arg1),
+                    });
+                },
             }],
             Builtin::IsProcedure => vec![BuiltinConversionRule::Unary {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
-                to_ir: |local| Expr::Is(ValType::Closure, local),
+                ir_gen: |ctx, arg1| {
+                    ctx.exprs.push(ExprAssign {
+                        local: Some(ctx.dest),
+                        expr: Expr::Is(ValType::Closure, arg1),
+                    });
+                },
             }],
             Builtin::IsChar => vec![BuiltinConversionRule::Unary {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
-                to_ir: |local| Expr::Is(ValType::Char, local),
+                ir_gen: |ctx, arg1| {
+                    ctx.exprs.push(ExprAssign {
+                        local: Some(ctx.dest),
+                        expr: Expr::Is(ValType::Char, arg1),
+                    });
+                },
             }],
             Builtin::IsVector => vec![BuiltinConversionRule::Unary {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
-                to_ir: |local| Expr::Is(ValType::Vector, local),
+                ir_gen: |ctx, arg1| {
+                    ctx.exprs.push(ExprAssign {
+                        local: Some(ctx.dest),
+                        expr: Expr::Is(ValType::Vector, arg1),
+                    });
+                },
             }],
             Builtin::VectorLength => vec![BuiltinConversionRule::Unary {
                 args: [Type::Val(ValType::Vector)],
                 ret: Type::Val(ValType::Int),
-                to_ir: Expr::VectorLength,
+                ir_gen: |ctx, arg1| {
+                    ctx.exprs.push(ExprAssign {
+                        local: Some(ctx.dest),
+                        expr: Expr::VectorLength(arg1),
+                    });
+                },
             }],
             Builtin::VectorRef => vec![BuiltinConversionRule::Binary {
                 args: [Type::Val(ValType::Vector), Type::Val(ValType::Int)],
                 ret: Type::Obj,
-                to_ir: Expr::VectorRef,
+                ir_gen: |ctx, arg1, arg2| {
+                    ctx.exprs.push(ExprAssign {
+                        local: Some(ctx.dest),
+                        expr: Expr::VectorRef(arg1, arg2),
+                    });
+                },
             }],
             Builtin::VectorSet => vec![BuiltinConversionRule::Ternary {
                 args: [
@@ -1144,69 +1250,134 @@ impl BuiltinConversionRule {
                     Type::Obj,
                 ],
                 ret: Type::Val(ValType::Nil),
-                to_ir: Expr::VectorSet,
+                ir_gen: |ctx, arg1, arg2, arg3| {
+                    ctx.exprs.push(ExprAssign {
+                        local: Some(ctx.dest),
+                        expr: Expr::VectorSet(arg1, arg2, arg3),
+                    });
+                },
             }],
             Builtin::Eq => vec![BuiltinConversionRule::Binary {
                 args: [Type::Obj, Type::Obj],
                 ret: Type::Val(ValType::Bool),
-                to_ir: Expr::EqObj,
+                ir_gen: |ctx, arg1, arg2| {
+                    ctx.exprs.push(ExprAssign {
+                        local: Some(ctx.dest),
+                        expr: Expr::EqObj(arg1, arg2),
+                    });
+                },
             }],
             Builtin::Cons => vec![BuiltinConversionRule::Binary {
                 args: [Type::Obj, Type::Obj],
                 ret: Type::Val(ValType::Cons),
-                to_ir: Expr::Cons,
+                ir_gen: |ctx, arg1, arg2| {
+                    ctx.exprs.push(ExprAssign {
+                        local: Some(ctx.dest),
+                        expr: Expr::Cons(arg1, arg2),
+                    });
+                },
             }],
             Builtin::Car => vec![BuiltinConversionRule::Unary {
                 args: [Type::Val(ValType::Cons)],
                 ret: Type::Obj,
-                to_ir: Expr::Car,
+                ir_gen: |ctx, arg1| {
+                    ctx.exprs.push(ExprAssign {
+                        local: Some(ctx.dest),
+                        expr: Expr::Car(arg1),
+                    });
+                },
             }],
             Builtin::Cdr => vec![BuiltinConversionRule::Unary {
                 args: [Type::Val(ValType::Cons)],
                 ret: Type::Obj,
-                to_ir: Expr::Cdr,
+                ir_gen: |ctx, arg1| {
+                    ctx.exprs.push(ExprAssign {
+                        local: Some(ctx.dest),
+                        expr: Expr::Cdr(arg1),
+                    });
+                },
             }],
             Builtin::SymbolToString => vec![BuiltinConversionRule::Unary {
                 args: [Type::Val(ValType::Symbol)],
                 ret: Type::Val(ValType::String),
-                to_ir: Expr::SymbolToString,
+                ir_gen: |ctx, arg1| {
+                    ctx.exprs.push(ExprAssign {
+                        local: Some(ctx.dest),
+                        expr: Expr::SymbolToString(arg1),
+                    });
+                },
             }],
             Builtin::NumberToString => vec![
                 BuiltinConversionRule::Unary {
                     args: [Type::Val(ValType::Int)],
                     ret: Type::Val(ValType::String),
-                    to_ir: Expr::IntToString,
+                    ir_gen: |ctx, arg1| {
+                        ctx.exprs.push(ExprAssign {
+                            local: Some(ctx.dest),
+                            expr: Expr::IntToString(arg1),
+                        });
+                    },
                 },
                 BuiltinConversionRule::Unary {
                     args: [Type::Val(ValType::Float)],
                     ret: Type::Val(ValType::String),
-                    to_ir: Expr::FloatToString,
+                    ir_gen: |ctx, arg1| {
+                        ctx.exprs.push(ExprAssign {
+                            local: Some(ctx.dest),
+                            expr: Expr::FloatToString(arg1),
+                        });
+                    },
                 },
             ],
             Builtin::EqNum => vec![BuiltinConversionRule::Binary {
                 args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
                 ret: Type::Val(ValType::Bool),
-                to_ir: Expr::EqNum,
+                ir_gen: |ctx, arg1, arg2| {
+                    ctx.exprs.push(ExprAssign {
+                        local: Some(ctx.dest),
+                        expr: Expr::EqNum(arg1, arg2),
+                    });
+                },
             }],
             Builtin::Lt => vec![BuiltinConversionRule::Binary {
                 args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
                 ret: Type::Val(ValType::Bool),
-                to_ir: Expr::LtInt,
+                ir_gen: |ctx, arg1, arg2| {
+                    ctx.exprs.push(ExprAssign {
+                        local: Some(ctx.dest),
+                        expr: Expr::LtInt(arg1, arg2),
+                    });
+                },
             }],
             Builtin::Gt => vec![BuiltinConversionRule::Binary {
                 args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
                 ret: Type::Val(ValType::Bool),
-                to_ir: Expr::GtInt,
+                ir_gen: |ctx, arg1, arg2| {
+                    ctx.exprs.push(ExprAssign {
+                        local: Some(ctx.dest),
+                        expr: Expr::GtInt(arg1, arg2),
+                    });
+                },
             }],
             Builtin::Le => vec![BuiltinConversionRule::Binary {
                 args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
                 ret: Type::Val(ValType::Bool),
-                to_ir: Expr::LeInt,
+                ir_gen: |ctx, arg1, arg2| {
+                    ctx.exprs.push(ExprAssign {
+                        local: Some(ctx.dest),
+                        expr: Expr::LeInt(arg1, arg2),
+                    });
+                },
             }],
             Builtin::Ge => vec![BuiltinConversionRule::Binary {
                 args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
                 ret: Type::Val(ValType::Bool),
-                to_ir: Expr::GeInt,
+                ir_gen: |ctx, arg1, arg2| {
+                    ctx.exprs.push(ExprAssign {
+                        local: Some(ctx.dest),
+                        expr: Expr::GeInt(arg1, arg2),
+                    });
+                },
             }],
         }
     }
