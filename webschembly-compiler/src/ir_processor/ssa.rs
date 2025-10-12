@@ -124,10 +124,8 @@ fn assert_ssa(func: &Func) {
                 } else {
                     phi_area = false;
                 }
-            } else {
-                if let Expr::Phi(_) = expr.expr {
-                    panic!("phi instruction must be at the beginning of a basic block");
-                }
+            } else if let Expr::Phi(_) = expr.expr {
+                panic!("phi instruction must be at the beginning of a basic block");
             }
         }
     }
