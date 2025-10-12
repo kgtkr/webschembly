@@ -40,7 +40,7 @@
           vec))
     (loop 0 start)))
 
-(define size 128)
+(define size 64)
 (define mat-a (f64vector-iota (* size size) 1000.0 0.2))
 (define mat-b (f64vector-iota (* size size) 2000.0 0.1))
 (write (matrix-multiply mat-a mat-b size))(newline)
