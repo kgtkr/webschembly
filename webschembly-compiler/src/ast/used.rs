@@ -1,8 +1,6 @@
 use super::Desugared;
 use super::TailCall;
 use super::astx::*;
-use super::defined::*;
-use crate::ast::defined;
 use crate::ast::parsed;
 use crate::x::FamilyX;
 use crate::x::Phase;
@@ -96,7 +94,6 @@ impl FamilyX<Used> for SetX {
 #[derive(Debug, Clone)]
 pub struct LetXXRIndex {
     index: usize,
-    reassign: bool,
 }
 
 impl From<LetXXRIndex> for () {
@@ -145,16 +142,6 @@ impl FamilyX<Used> for QuoteX {
 
 impl FamilyX<Used> for ConsX {
     type R = ();
-}
-
-impl ElementInto<defined::DefinedSetR> for () {
-    type Param = LetXXRIndex;
-
-    fn element_into(self, param: Self::Param) -> defined::DefinedSetR {
-        defined::DefinedSetR {
-            reassign: param.reassign,
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -452,9 +439,7 @@ impl Expr<Used> {
                     if local_var.is_captured {
                         state.captures.insert(local_var.id);
                     }
-                    if x.get_ref(type_map::key::<Defined>()).reassign {
-                        var_id_gen.flag_mutate(local_var.id);
-                    }
+                    var_id_gen.flag_mutate(local_var.id);
                     VarId::Local(local_var.id)
                 } else {
                     VarId::Global(var_id_gen.global_var_id(&set.name))
@@ -484,17 +469,12 @@ impl Expr<Used> {
 
                     let expr = Self::from_exprs(expr.clone(), ctx, var_id_gen, state);
                     let set_expr = Expr::Set(
-                        x.clone()
-                            .into_type_map(LetXXRIndex {
-                                index: i,
-                                reassign: false,
-                            })
-                            .add(
-                                type_map::key::<Used>(),
-                                UsedSetR {
-                                    var_id: VarId::Local(id),
-                                },
-                            ),
+                        x.clone().into_type_map(LetXXRIndex { index: i }).add(
+                            type_map::key::<Used>(),
+                            UsedSetR {
+                                var_id: VarId::Local(id),
+                            },
+                        ),
                         Set {
                             name: name.clone(),
                             expr,
@@ -535,17 +515,12 @@ impl Expr<Used> {
                 for (i, ((name, expr), &id)) in letrec.bindings.iter().zip(&ids).enumerate() {
                     let expr = Self::from_exprs(expr.clone(), &ctx, var_id_gen, state);
                     let set_expr = Expr::Set(
-                        x.clone()
-                            .into_type_map(LetXXRIndex {
-                                index: i,
-                                reassign: true,
-                            })
-                            .add(
-                                type_map::key::<Used>(),
-                                UsedSetR {
-                                    var_id: VarId::Local(id),
-                                },
-                            ),
+                        x.clone().into_type_map(LetXXRIndex { index: i }).add(
+                            type_map::key::<Used>(),
+                            UsedSetR {
+                                var_id: VarId::Local(id),
+                            },
+                        ),
                         Set {
                             name: name.clone(),
                             expr,

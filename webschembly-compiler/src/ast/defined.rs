@@ -47,12 +47,7 @@ impl FamilyX<Defined> for BeginX {
     type R = ();
 }
 impl FamilyX<Defined> for SetX {
-    type R = DefinedSetR;
-}
-
-#[derive(Debug, Clone)]
-pub struct DefinedSetR {
-    pub reassign: bool,
+    type R = ();
 }
 
 impl ElementInto<parsed::ParsedSetR> for parsed::ParsedDefineR {
@@ -137,8 +132,7 @@ impl Expr<Defined> {
                     DefineContext::Global => {
                         result.push(Expr::Set(
                             // global contextではdefineはset!に変換される
-                            x.into_type_map(())
-                                .add(type_map::key::<Defined>(), DefinedSetR { reassign: true }),
+                            x.into_type_map(()).add(type_map::key::<Defined>(), ()),
                             Set {
                                 name: def.name,
                                 expr: Self::from_exprs(
@@ -160,12 +154,10 @@ impl Expr<Defined> {
                         ));
                         Ok(())
                     }
-                    DefineContext::LocalUndefinable => {
-                        Err(compiler_error!(
-                            "Define is not allowed in this context: {}",
-                            def.name
-                        ))
-                    }
+                    DefineContext::LocalUndefinable => Err(compiler_error!(
+                        "Define is not allowed in this context: {}",
+                        def.name
+                    )),
                 }
             }
             Expr::Lambda(x, lambda) => {
@@ -213,7 +205,7 @@ impl Expr<Defined> {
             Expr::Set(x, set) => {
                 let new_expr = Self::from_exprs(set.expr, ctx.to_undefinable_if_local(), defines)?;
                 result.push(Expr::Set(
-                    x.add(type_map::key::<Defined>(), DefinedSetR { reassign: true }),
+                    x.add(type_map::key::<Defined>(), ()),
                     Set {
                         name: set.name,
                         expr: new_expr,
