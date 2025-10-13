@@ -121,7 +121,7 @@ where
     X: XBound,
 {
     pub name: String,
-    pub expr: Box<Expr<X>>,
+    pub expr: Vec<Expr<X>>,
 }
 
 #[derive(Debug, Clone)]
@@ -138,9 +138,9 @@ pub struct If<X>
 where
     X: XBound,
 {
-    pub cond: Box<Expr<X>>,
-    pub then: Box<Expr<X>>,
-    pub els: Box<Expr<X>>,
+    pub cond: Vec<Expr<X>>,
+    pub then: Vec<Expr<X>>,
+    pub els: Vec<Expr<X>>,
 }
 
 #[derive(Debug, Clone)]
@@ -148,8 +148,8 @@ pub struct Call<X>
 where
     X: XBound,
 {
-    pub func: Box<Expr<X>>,
-    pub args: Vec<Expr<X>>,
+    pub func: Vec<Expr<X>>,
+    pub args: Vec<Vec<Expr<X>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -166,7 +166,7 @@ where
     X: XBound,
 {
     pub name: String,
-    pub expr: Box<Expr<X>>,
+    pub expr: Vec<Expr<X>>,
 }
 
 #[derive(Debug, Clone)]
@@ -174,7 +174,7 @@ pub struct Let<X>
 where
     X: XBound,
 {
-    pub bindings: Vec<(String, Expr<X>)>,
+    pub bindings: Vec<(String, Vec<Expr<X>>)>,
     pub body: Vec<Expr<X>>,
 }
 
@@ -183,7 +183,7 @@ pub struct LetRec<X>
 where
     X: XBound,
 {
-    pub bindings: Vec<(String, Expr<X>)>,
+    pub bindings: Vec<(String, Vec<Expr<X>>)>,
     pub body: Vec<Expr<X>>,
 }
 
@@ -201,6 +201,6 @@ pub struct Cons<X>
 where
     X: XBound,
 {
-    pub car: Box<Expr<X>>,
-    pub cdr: Box<Expr<X>>,
+    pub car: Vec<Expr<X>>,
+    pub cdr: Vec<Expr<X>>,
 }

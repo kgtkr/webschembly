@@ -572,7 +572,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             }
             ast::Expr::If(_, ast::If { cond, then, els }) => {
                 let obj_cond_local = self.local(Type::Obj);
-                self.gen_expr(Some(obj_cond_local), cond);
+                self.gen_exprs(Some(obj_cond_local), cond);
 
                 let false_local = self.local(Type::Val(ValType::Bool));
                 self.exprs.push(ExprAssign {
@@ -600,14 +600,14 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
 
                 self.current_bb_id = Some(then_bb_id);
                 let then_result = self.local(Type::Obj);
-                self.gen_expr(Some(then_result), then);
+                self.gen_exprs(Some(then_result), then);
                 let then_locals = self.local_ids.clone();
                 let then_ended_bb_id = self.current_bb_id;
                 self.close_bb(BasicBlockNext::Jump(merge_bb_id));
 
                 self.current_bb_id = Some(else_bb_id);
                 let els_result = self.local(Type::Obj);
-                self.gen_expr(Some(els_result), els);
+                self.gen_exprs(Some(els_result), els);
                 let els_locals = self.local_ids.clone();
                 let els_ended_bb_id = self.current_bb_id;
                 self.close_bb(BasicBlockNext::Jump(merge_bb_id));
@@ -668,7 +668,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 }
             }
             ast::Expr::Call(x, ast::Call { func, args }) => {
-                if let ast::Expr::Var(x, name) = func.as_ref()
+                if let [ast::Expr::Var(x, name)] = func.as_slice()
                     && let ast::UsedVarR {
                         var_id: ast::VarId::Global(_),
                     } = x.get_ref(type_map::key::<Used>())
@@ -694,7 +694,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                             let mut type_check_success_locals = Vec::new();
                             for (typ, arg) in rule.arg_types().iter().zip(args) {
                                 let obj_arg_local = self.local(Type::Obj);
-                                self.gen_expr(Some(obj_arg_local), arg);
+                                self.gen_exprs(Some(obj_arg_local), arg);
                                 obj_arg_locals.push(obj_arg_local);
                                 if let Type::Val(val_type) = typ {
                                     let type_check_success_local =
@@ -806,7 +806,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     }
                 } else {
                     let obj_func_local = self.local(Type::Obj);
-                    self.gen_expr(Some(obj_func_local), func);
+                    self.gen_exprs(Some(obj_func_local), func);
 
                     // TODO: funcがクロージャかのチェック
                     let closure_local = self.local(ValType::Closure);
@@ -819,7 +819,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     let mut args_locals = Vec::new();
                     for arg in args {
                         let arg_local = self.local(Type::Obj);
-                        self.gen_expr(Some(arg_local), arg);
+                        self.gen_exprs(Some(arg_local), arg);
                         args_locals.push(arg_local);
                     }
                     self.exprs.push(ExprAssign {
@@ -890,7 +890,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                             .contains(id)
                         {
                             let obj_local = self.local(Type::Obj);
-                            self.gen_expr(Some(obj_local), expr);
+                            self.gen_exprs(Some(obj_local), expr);
                             let local = self.local_ids.get(id).unwrap();
                             self.exprs.push(ExprAssign {
                                 local: None,
@@ -903,7 +903,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                         } else {
                             // SSA形式のため、新しいローカルを定義して代入する
                             let local = self.new_version_ast_local(*id);
-                            self.gen_expr(Some(local), expr);
+                            self.gen_exprs(Some(local), expr);
                             self.exprs.push(ExprAssign {
                                 local: result,
                                 expr: Expr::Move(local),
@@ -924,7 +924,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                             )));
                         } else {
                             let local = self.local(Type::Obj);
-                            self.gen_expr(Some(local), expr);
+                            self.gen_exprs(Some(local), expr);
                             let global = self.module_generator.global(*id);
                             self.exprs.push(ExprAssign {
                                 local: None,
@@ -1028,9 +1028,9 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             }
             ast::Expr::Cons(_, cons) => {
                 let car_local = self.local(Type::Obj);
-                self.gen_expr(Some(car_local), &cons.car);
+                self.gen_exprs(Some(car_local), &cons.car);
                 let cdr_local = self.local(Type::Obj);
-                self.gen_expr(Some(cdr_local), &cons.cdr);
+                self.gen_exprs(Some(cdr_local), &cons.cdr);
 
                 let val_type_local = self.local(Type::Val(ValType::Cons));
                 self.exprs.push(ExprAssign {

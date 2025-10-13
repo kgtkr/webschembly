@@ -104,7 +104,7 @@ impl FamilyX<Defined> for ConsX {
 impl Ast<Defined> {
     pub fn from_ast(ast: Ast<<Defined as Phase>::Prev>) -> Result<Self> {
         let new_exprs: Vec<Expr<Defined>> =
-            Expr::<Defined>::from_block(ast.exprs, DefineContext::Global, &mut Vec::new())?;
+            Expr::<Defined>::from_exprs(ast.exprs, DefineContext::Global, &mut Vec::new())?;
         Ok(Ast {
             x: ast.x.add(type_map::key::<Defined>(), ()),
             exprs: new_exprs,
@@ -174,10 +174,7 @@ impl Expr<Defined> {
                             .add(type_map::key::<Defined>(), DefinedSetR { reassign: true }),
                         Set {
                             name: def.name,
-                            expr: Box::new(
-                                Self::from_expr(*def.expr, ctx.to_undefinable_if_local(), names)
-                                    .map(|(_, expr)| expr)?,
-                            ),
+                            expr: Self::from_exprs(def.expr, ctx.to_undefinable_if_local(), names)?,
                         },
                     ),
                 ))
@@ -185,7 +182,7 @@ impl Expr<Defined> {
             Expr::Lambda(x, lambda) => {
                 let mut names = Vec::new();
                 let new_body =
-                    Self::from_block(lambda.body, DefineContext::LocalDefinable, &mut names)?;
+                    Self::from_exprs(lambda.body, DefineContext::LocalDefinable, &mut names)?;
                 Ok((
                     ctx,
                     Expr::Lambda(
@@ -205,45 +202,32 @@ impl Expr<Defined> {
                 Expr::If(
                     x.add(type_map::key::<Defined>(), ()),
                     If {
-                        cond: Box::new(
-                            Self::from_expr(*if_.cond, ctx.to_undefinable_if_local(), names)
-                                .map(|(_, expr)| expr)?,
-                        ),
-                        then: Box::new(
-                            Self::from_expr(*if_.then, ctx.to_undefinable_if_local(), names)
-                                .map(|(_, expr)| expr)?,
-                        ),
-                        els: Box::new(
-                            Self::from_expr(*if_.els, ctx.to_undefinable_if_local(), names)
-                                .map(|(_, expr)| expr)?,
-                        ),
+                        cond: Self::from_exprs(if_.cond, ctx.to_undefinable_if_local(), names)?,
+                        then: Self::from_exprs(if_.then, ctx.to_undefinable_if_local(), names)?,
+                        els: Self::from_exprs(if_.els, ctx.to_undefinable_if_local(), names)?,
                     },
                 ),
             )),
             Expr::Call(x, call) => {
-                let new_func = Self::from_expr(*call.func, ctx.to_undefinable_if_local(), names)
-                    .map(|(_, expr)| expr)?;
+                let new_func = Self::from_exprs(call.func, ctx.to_undefinable_if_local(), names)?;
                 let new_args = call
                     .args
                     .into_iter()
-                    .map(|arg| {
-                        Self::from_expr(arg, ctx.to_undefinable_if_local(), names)
-                            .map(|(_, expr)| expr)
-                    })
+                    .map(|arg| Self::from_exprs(arg, ctx.to_undefinable_if_local(), names))
                     .collect::<Result<Vec<_>>>()?;
                 Ok((
                     ctx.to_undefinable_if_local(),
                     Expr::Call(
                         x.add(type_map::key::<Defined>(), ()),
                         Call {
-                            func: Box::new(new_func),
+                            func: new_func,
                             args: new_args,
                         },
                     ),
                 ))
             }
             Expr::Begin(x, begin) => {
-                let new_exprs = Self::from_block(begin.exprs, ctx, names)?;
+                let new_exprs = Self::from_exprs(begin.exprs, ctx, names)?;
                 Ok((
                     ctx.to_undefinable_if_local(),
                     Expr::Begin(
@@ -253,15 +237,14 @@ impl Expr<Defined> {
                 ))
             }
             Expr::Set(x, set) => {
-                let new_expr = Self::from_expr(*set.expr, ctx.to_undefinable_if_local(), names)
-                    .map(|(_, expr)| expr)?;
+                let new_expr = Self::from_exprs(set.expr, ctx.to_undefinable_if_local(), names)?;
                 Ok((
                     ctx.to_undefinable_if_local(),
                     Expr::Set(
                         x.add(type_map::key::<Defined>(), DefinedSetR { reassign: true }),
                         Set {
                             name: set.name,
-                            expr: Box::new(new_expr),
+                            expr: new_expr,
                         },
                     ),
                 ))
@@ -269,7 +252,7 @@ impl Expr<Defined> {
             Expr::Let(x, let_) => {
                 let mut new_names = Vec::new();
                 let new_body =
-                    Self::from_block(let_.body, DefineContext::LocalDefinable, &mut new_names)?;
+                    Self::from_exprs(let_.body, DefineContext::LocalDefinable, &mut new_names)?;
                 Ok((
                     ctx.to_undefinable_if_local(),
                     Expr::Let(
@@ -282,8 +265,8 @@ impl Expr<Defined> {
                                 .bindings
                                 .into_iter()
                                 .map(|(name, expr)| {
-                                    Self::from_expr(expr, ctx.to_undefinable_if_local(), names)
-                                        .map(|(_, expr)| (name, expr))
+                                    Self::from_exprs(expr, ctx.to_undefinable_if_local(), names)
+                                        .map(|expr| (name, expr))
                                 })
                                 .collect::<Result<Vec<_>>>()?,
                             body: new_body,
@@ -294,7 +277,7 @@ impl Expr<Defined> {
             Expr::LetRec(x, letrec) => {
                 let mut new_names = Vec::new();
                 let new_body =
-                    Self::from_block(letrec.body, DefineContext::LocalDefinable, &mut new_names)?;
+                    Self::from_exprs(letrec.body, DefineContext::LocalDefinable, &mut new_names)?;
                 Ok((
                     ctx.to_undefinable_if_local(),
                     Expr::LetRec(
@@ -307,8 +290,8 @@ impl Expr<Defined> {
                                 .bindings
                                 .into_iter()
                                 .map(|(name, expr)| {
-                                    Self::from_expr(expr, ctx.to_undefinable_if_local(), names)
-                                        .map(|(_, expr)| (name, expr))
+                                    Self::from_exprs(expr, ctx.to_undefinable_if_local(), names)
+                                        .map(|expr| (name, expr))
                                 })
                                 .collect::<Result<Vec<_>>>()?,
                             body: new_body,
@@ -351,21 +334,15 @@ impl Expr<Defined> {
                 Expr::Cons(
                     x.add(type_map::key::<Defined>(), ()),
                     Cons {
-                        car: Box::new(
-                            Self::from_expr(*cons.car, ctx.to_undefinable_if_local(), names)
-                                .map(|(_, expr)| expr)?,
-                        ),
-                        cdr: Box::new(
-                            Self::from_expr(*cons.cdr, ctx.to_undefinable_if_local(), names)
-                                .map(|(_, expr)| expr)?,
-                        ),
+                        car: Self::from_exprs(cons.car, ctx.to_undefinable_if_local(), names)?,
+                        cdr: Self::from_exprs(cons.cdr, ctx.to_undefinable_if_local(), names)?,
                     },
                 ),
             )),
         }
     }
 
-    fn from_block(
+    fn from_exprs(
         exprs: Vec<Expr<<Defined as Phase>::Prev>>,
         mut ctx: DefineContext,
         names: &mut Vec<String>,

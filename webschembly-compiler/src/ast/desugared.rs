@@ -127,7 +127,7 @@ impl Expr<Desugared> {
                 x.add(type_map::key::<Desugared>(), ()),
                 Define {
                     name: def.name,
-                    expr: Box::new(Self::from_expr(*def.expr)),
+                    expr: Self::from_exprs(def.expr),
                 },
             ),
             Expr::Lambda(x, lambda) => Expr::Lambda(
@@ -140,16 +140,16 @@ impl Expr<Desugared> {
             Expr::If(x, if_) => Expr::If(
                 x.add(type_map::key::<Desugared>(), ()),
                 If {
-                    cond: Box::new(Self::from_expr(*if_.cond)),
-                    then: Box::new(Self::from_expr(*if_.then)),
-                    els: Box::new(Self::from_expr(*if_.els)),
+                    cond: Self::from_exprs(if_.cond),
+                    then: Self::from_exprs(if_.then),
+                    els: Self::from_exprs(if_.els),
                 },
             ),
             Expr::Call(x, call) => Expr::Call(
                 x.add(type_map::key::<Desugared>(), ()),
                 Call {
-                    func: Box::new(Self::from_expr(*call.func)),
-                    args: call.args.into_iter().map(Self::from_expr).collect(),
+                    func: Self::from_exprs(call.func),
+                    args: call.args.into_iter().map(Self::from_exprs).collect(),
                 },
             ),
             Expr::Begin(x, begin) => Expr::Begin(
@@ -162,7 +162,7 @@ impl Expr<Desugared> {
                 x.add(type_map::key::<Desugared>(), ()),
                 Set {
                     name: set.name,
-                    expr: Box::new(Self::from_expr(*set.expr)),
+                    expr: Self::from_exprs(set.expr),
                 },
             ),
             Expr::Let(x, let_) => Expr::Let(
@@ -171,7 +171,7 @@ impl Expr<Desugared> {
                     bindings: let_
                         .bindings
                         .into_iter()
-                        .map(|(name, expr)| (name, Self::from_expr(expr)))
+                        .map(|(name, expr)| (name, Self::from_exprs(expr)))
                         .collect(),
                     body: let_
                         .body
@@ -186,7 +186,7 @@ impl Expr<Desugared> {
                     bindings: letrec
                         .bindings
                         .into_iter()
-                        .map(|(name, expr)| (name, Self::from_expr(expr)))
+                        .map(|(name, expr)| (name, Self::from_exprs(expr)))
                         .collect(),
                     body: letrec
                         .body
@@ -210,8 +210,8 @@ impl Expr<Desugared> {
             Expr::Cons(x, cons) => Expr::Cons(
                 x.add(type_map::key::<Desugared>(), ()),
                 Cons {
-                    car: Box::new(Self::from_expr(*cons.car)),
-                    cdr: Box::new(Self::from_expr(*cons.cdr)),
+                    car: Self::from_exprs(cons.car),
+                    cdr: Self::from_exprs(cons.cdr),
                 },
             ),
         }
@@ -253,8 +253,8 @@ impl Expr<Desugared> {
                     .into_type_map(())
                     .add(type_map::key::<Desugared>(), ()),
                 Cons {
-                    car: Box::new(Self::from_quoted_sexpr(x.clone(), cons.car)),
-                    cdr: Box::new(Self::from_quoted_sexpr(x.clone(), cons.cdr)),
+                    car: vec![Self::from_quoted_sexpr(x.clone(), cons.car)],
+                    cdr: vec![Self::from_quoted_sexpr(x.clone(), cons.cdr)],
                 },
             ),
             // TODO: span情報の保持
@@ -287,5 +287,9 @@ impl Expr<Desugared> {
                 Const::Nil,
             ),
         }
+    }
+
+    fn from_exprs(exprs: Vec<Expr<<Desugared as Phase>::Prev>>) -> Vec<Self> {
+        exprs.into_iter().map(Self::from_expr).collect()
     }
 }

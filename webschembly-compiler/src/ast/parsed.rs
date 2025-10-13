@@ -279,7 +279,7 @@ impl Expr<Parsed> {
                     ),
                     Define {
                         name,
-                        expr: Box::new(Expr::from_sexpr(expr)?),
+                        expr: vec![Expr::from_sexpr(expr)?],
                     },
                 )),
                 list_pattern![
@@ -298,7 +298,7 @@ impl Expr<Parsed> {
                     ),
                     Define {
                         name,
-                        expr: Box::new(Self::parse_lambda(lambda_span, args, exprs)?),
+                        expr: vec![Self::parse_lambda(lambda_span, args, exprs)?],
                     },
                 )),
                 _ => Err(compiler_error!("Invalid define expression")),
@@ -327,9 +327,9 @@ impl Expr<Parsed> {
                     Ok(Expr::If(
                         type_map::singleton(type_map::key::<Parsed>(), ParsedIfR { span }),
                         If {
-                            cond: Box::new(cond),
-                            then: Box::new(then),
-                            els: Box::new(els),
+                            cond: vec![cond],
+                            then: vec![then],
+                            els: vec![els],
                         },
                     ))
                 }
@@ -354,7 +354,7 @@ impl Expr<Parsed> {
                                     ..
                                 } => name_span,
                                 expr,
-                            ] => Ok(((name, Expr::from_sexpr(expr)?), name_span)),
+                            ] => Ok(((name, vec![Expr::from_sexpr(expr)?]), name_span)),
                             _ => Err(compiler_error!("Invalid binding")),
                         })
                         .collect::<Result<(Vec<_>, Vec<_>)>>()?;
@@ -397,7 +397,7 @@ impl Expr<Parsed> {
                                     ..
                                 } => name_span,
                                 expr,
-                            ] => Ok(((name, Expr::from_sexpr(expr)?), name_span)),
+                            ] => Ok(((name, vec![Expr::from_sexpr(expr)?]), name_span)),
                             _ => Err(compiler_error!("Invalid binding")),
                         })
                         .collect::<Result<(Vec<_>, Vec<_>)>>()?;
@@ -461,7 +461,7 @@ impl Expr<Parsed> {
                         ),
                         Set {
                             name,
-                            expr: Box::new(expr),
+                            expr: vec![expr],
                         },
                     ))
                 }
@@ -473,12 +473,12 @@ impl Expr<Parsed> {
                     .to_vec()
                     .ok_or_else(|| compiler_error!("Expected a list of arguments"))?
                     .into_iter()
-                    .map(Expr::from_sexpr)
+                    .map(|expr| Expr::from_sexpr(expr).map(|e| vec![e]))
                     .collect::<Result<Vec<_>>>()?;
                 Ok(Expr::Call(
                     type_map::singleton(type_map::key::<Parsed>(), ParsedCallR { span }),
                     Call {
-                        func: Box::new(func),
+                        func: vec![func],
                         args,
                     },
                 ))

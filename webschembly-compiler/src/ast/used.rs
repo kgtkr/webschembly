@@ -465,9 +465,9 @@ impl Expr<Used> {
                 )
             }
             Expr::If(x, if_) => {
-                let new_cond = Box::new(Self::from_expr(*if_.cond, ctx, var_id_gen, state));
-                let new_then = Box::new(Self::from_expr(*if_.then, ctx, var_id_gen, state));
-                let new_els = Box::new(Self::from_expr(*if_.els, ctx, var_id_gen, state));
+                let new_cond = Self::from_exprs(if_.cond, ctx, var_id_gen, state);
+                let new_then = Self::from_exprs(if_.then, ctx, var_id_gen, state);
+                let new_els = Self::from_exprs(if_.els, ctx, var_id_gen, state);
                 Expr::If(
                     x.add(type_map::key::<Used>(), ()),
                     If {
@@ -478,11 +478,11 @@ impl Expr<Used> {
                 )
             }
             Expr::Call(x, call) => {
-                let new_func = Box::new(Self::from_expr(*call.func, ctx, var_id_gen, state));
+                let new_func = Self::from_exprs(call.func, ctx, var_id_gen, state);
                 let new_args = call
                     .args
                     .into_iter()
-                    .map(|arg| Self::from_expr(arg, ctx, var_id_gen, state))
+                    .map(|arg| Self::from_exprs(arg, ctx, var_id_gen, state))
                     .collect();
                 Expr::Call(
                     x.add(type_map::key::<Used>(), ()),
@@ -515,12 +515,12 @@ impl Expr<Used> {
                 } else {
                     VarId::Global(var_id_gen.global_var_id(&set.name))
                 };
-                let new_expr = Self::from_expr(*set.expr, ctx, var_id_gen, state);
+                let new_expr = Self::from_exprs(set.expr, ctx, var_id_gen, state);
                 Expr::Set(
                     x.add(type_map::key::<Used>(), UsedSetR { var_id }),
                     Set {
                         name: set.name,
-                        expr: Box::new(new_expr),
+                        expr: new_expr,
                     },
                 )
             }
@@ -539,7 +539,7 @@ impl Expr<Used> {
                     );
                     state.defines.push(id);
 
-                    let expr = Self::from_expr(expr.clone(), ctx, var_id_gen, state);
+                    let expr = Self::from_exprs(expr.clone(), ctx, var_id_gen, state);
                     let set_expr = Expr::Set(
                         x.clone().into_type_map(LetRIndex { index: i }).add(
                             type_map::key::<Used>(),
@@ -549,7 +549,7 @@ impl Expr<Used> {
                         ),
                         Set {
                             name: name.clone(),
-                            expr: Box::new(expr),
+                            expr,
                         },
                     );
                     set_exprs.push(set_expr);
@@ -608,7 +608,7 @@ impl Expr<Used> {
                 let mut set_exprs = Vec::new();
                 let ctx = ctx.clone().extend_some_lambda(new_env);
                 for (i, ((name, expr), &id)) in letrec.bindings.iter().zip(&ids).enumerate() {
-                    let expr = Self::from_expr(expr.clone(), &ctx, var_id_gen, state);
+                    let expr = Self::from_exprs(expr.clone(), &ctx, var_id_gen, state);
                     let set_expr = Expr::Set(
                         x.clone().into_type_map(LetRecRIndex { index: i }).add(
                             type_map::key::<Used>(),
@@ -618,7 +618,7 @@ impl Expr<Used> {
                         ),
                         Set {
                             name: name.clone(),
-                            expr: Box::new(expr),
+                            expr,
                         },
                     );
                     set_exprs.push(set_expr);
@@ -675,8 +675,8 @@ impl Expr<Used> {
             ),
             Expr::Quote(x, _) => x.get_owned(type_map::key::<Desugared>()),
             Expr::Cons(x, cons) => {
-                let new_car = Box::new(Self::from_expr(*cons.car, ctx, var_id_gen, state));
-                let new_cdr = Box::new(Self::from_expr(*cons.cdr, ctx, var_id_gen, state));
+                let new_car = Self::from_exprs(cons.car, ctx, var_id_gen, state);
+                let new_cdr = Self::from_exprs(cons.cdr, ctx, var_id_gen, state);
                 Expr::Cons(
                     x.add(type_map::key::<Used>(), ()),
                     Cons {
@@ -686,5 +686,17 @@ impl Expr<Used> {
                 )
             }
         }
+    }
+
+    fn from_exprs(
+        exprs: Vec<Expr<<Used as Phase>::Prev>>,
+        ctx: &Context,
+        var_id_gen: &mut VarIdGen,
+        state: &mut LambdaState,
+    ) -> Vec<Expr<Used>> {
+        exprs
+            .into_iter()
+            .map(|expr| Self::from_expr(expr, ctx, var_id_gen, state))
+            .collect()
     }
 }

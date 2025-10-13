@@ -95,16 +95,20 @@ impl Expr<TailCall> {
             Expr::If(x, if_) => Expr::If(
                 x.add(type_map::key::<TailCall>(), ()),
                 If {
-                    cond: Box::new(Self::from_expr(*if_.cond, false)),
-                    then: Box::new(Self::from_expr(*if_.then, is_tail)),
-                    els: Box::new(Self::from_expr(*if_.els, is_tail)),
+                    cond: Self::from_exprs(if_.cond, false),
+                    then: Self::from_exprs(if_.then, is_tail),
+                    els: Self::from_exprs(if_.els, is_tail),
                 },
             ),
             Expr::Call(x, call) => Expr::Call(
                 x.add(type_map::key::<TailCall>(), TailCallCallR { is_tail }),
                 Call {
-                    func: Box::new(Self::from_expr(*call.func, false)),
-                    args: Self::from_exprs(call.args, false),
+                    func: Self::from_exprs(call.func, false),
+                    args: call
+                        .args
+                        .into_iter()
+                        .map(|arg| Self::from_exprs(arg, false))
+                        .collect(),
                 },
             ),
             Expr::Begin(x, begin) => Expr::Begin(
@@ -117,7 +121,7 @@ impl Expr<TailCall> {
                 x.add(type_map::key::<TailCall>(), ()),
                 Set {
                     name: set.name,
-                    expr: Box::new(Self::from_expr(*set.expr, false)),
+                    expr: Self::from_exprs(set.expr, false),
                 },
             ),
             Expr::Let(x, let_) => Expr::Let(
@@ -126,7 +130,7 @@ impl Expr<TailCall> {
                     bindings: let_
                         .bindings
                         .into_iter()
-                        .map(|(name, expr)| (name, Self::from_expr(expr, false)))
+                        .map(|(name, expr)| (name, Self::from_exprs(expr, false)))
                         .collect(),
                     body: Self::from_exprs(let_.body, is_tail),
                 },
@@ -137,7 +141,7 @@ impl Expr<TailCall> {
                     bindings: letrec
                         .bindings
                         .into_iter()
-                        .map(|(name, expr)| (name, Self::from_expr(expr, false)))
+                        .map(|(name, expr)| (name, Self::from_exprs(expr, false)))
                         .collect(),
                     body: Self::from_exprs(letrec.body, is_tail),
                 },
@@ -162,8 +166,8 @@ impl Expr<TailCall> {
             Expr::Cons(x, cons) => Expr::Cons(
                 x.add(type_map::key::<TailCall>(), ()),
                 Cons {
-                    car: Box::new(Self::from_expr(*cons.car, false)),
-                    cdr: Box::new(Self::from_expr(*cons.cdr, false)),
+                    car: Self::from_exprs(cons.car, false),
+                    cdr: Self::from_exprs(cons.cdr, false),
                 },
             ),
         }
