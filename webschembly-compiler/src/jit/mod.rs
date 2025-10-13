@@ -1,4 +1,3 @@
-use rustc_hash::FxHashMap;
 use typed_index_collections::TiVec;
 
 use crate::ir::*;
@@ -7,33 +6,26 @@ use crate::ir_processor::bb_optimizer;
 mod jit_config;
 mod jit_module;
 pub use jit_config::JitConfig;
-use jit_module::{ClosureGlobalLayout, JitModule};
+use jit_module::JitModule;
+mod jit_ctx;
+use jit_ctx::JitCtx;
 
 #[derive(Debug)]
 pub struct Jit {
-    config: JitConfig,
     jit_module: TiVec<ModuleId, JitModule>,
-    closure_global_layout: ClosureGlobalLayout,
-    // 0..GLOBAL_LAYOUT_MAX_SIZEまでのindexに対応する関数のスタブが入ったMutFuncRef
-    // func_indexがインスタンス化されるときにMutFuncRefにFuncRefがセットされる
-    stub_globals: FxHashMap<usize, Global>,
-    // instantiate_funcの結果を保存するグローバル
-    instantiate_func_global: Option<Global>,
+    ctx: JitCtx,
 }
 
 impl Jit {
     pub fn new(config: JitConfig) -> Self {
         Self {
-            config,
             jit_module: TiVec::new(),
-            closure_global_layout: ClosureGlobalLayout::new(),
-            stub_globals: FxHashMap::default(),
-            instantiate_func_global: None,
+            ctx: JitCtx::new(config),
         }
     }
 
     pub fn config(&self) -> JitConfig {
-        self.config
+        self.ctx.config()
     }
 
     pub fn register_module(
@@ -44,11 +36,7 @@ impl Jit {
         let module_id = self.jit_module.next_key();
         self.jit_module
             .push(JitModule::new(global_manager, module_id, module));
-        self.jit_module[module_id].generate_stub_module(
-            global_manager,
-            &mut self.stub_globals,
-            &mut self.instantiate_func_global,
-        )
+        self.jit_module[module_id].generate_stub_module(global_manager, &mut self.ctx)
     }
 
     pub fn instantiate_func(
@@ -62,8 +50,7 @@ impl Jit {
             global_manager,
             func_id,
             func_index,
-            self.instantiate_func_global.unwrap(),
-            &mut self.closure_global_layout,
+            &mut self.ctx,
         )
     }
 
@@ -77,16 +64,13 @@ impl Jit {
         global_manager: &mut GlobalManager,
     ) -> Module {
         self.jit_module[module_id].instantiate_bb(
-            self.config,
             module_id,
             func_id,
             func_index,
             bb_id,
             index,
             global_manager,
-            self.instantiate_func_global.unwrap(),
-            &mut self.closure_global_layout,
-            &self.stub_globals,
+            &mut self.ctx,
         )
     }
 }

@@ -3,7 +3,7 @@ use typed_index_collections::{TiVec, ti_vec};
 
 use super::bb_optimizer;
 use super::bb_optimizer::TypedObj;
-use super::jit_config::JitConfig;
+use super::jit_ctx::JitCtx;
 use crate::fxbihashmap::FxBiHashMap;
 use crate::ir_generator::GlobalManager;
 use crate::ir_processor::cfg_analyzer::{calc_doms, calc_predecessors, calculate_rpo};
@@ -53,8 +53,7 @@ impl JitModule {
     pub fn generate_stub_module(
         &self,
         global_manager: &mut GlobalManager,
-        stub_globals: &mut FxHashMap<usize, Global>,
-        instantiate_func_global: &mut Option<Global>,
+        jit_ctx: &mut JitCtx,
     ) -> Module {
         // entry関数もあるので+1してる
         let stub_func_ids = self
@@ -95,8 +94,9 @@ impl JitModule {
                 });
             }
 
-            // stub_globalsがempty(=最初にJITされるモジュール)なら、初期化を行う
-            if stub_globals.is_empty() {
+            // 最初にインスタンス化されるモジュールなら初期化処理
+            if !jit_ctx.is_instantiated() {
+                let mut stub_globals = FxHashMap::default();
                 for func_index in 0..GLOBAL_LAYOUT_MAX_SIZE {
                     let stub_global = global_manager.gen_global(LocalType::MutFuncRef);
                     stub_globals.insert(func_index, stub_global);
@@ -113,12 +113,10 @@ impl JitModule {
                         expr: Expr::GlobalSet(stub_global.id, stub_local),
                     });
                 }
+
+                let instantiate_func_global = global_manager.gen_global(LocalType::FuncRef);
+                jit_ctx.init_instantiated(stub_globals, instantiate_func_global);
             };
-            // instantiate_func_globalがNoneの場合も同様に初期化を行う
-            if instantiate_func_global.is_none() {
-                let g = global_manager.gen_global(LocalType::FuncRef);
-                *instantiate_func_global = Some(g);
-            }
 
             let func = Func {
                 id: funcs.next_key(),
@@ -203,47 +201,39 @@ impl JitModule {
         global_manager: &mut GlobalManager,
         func_id: FuncId,
         func_index: usize,
-        instantiate_func_global: Global,
-        closure_global_layout: &mut ClosureGlobalLayout,
+        jit_ctx: &mut JitCtx,
     ) -> Module {
         let jit_func = JitFunc::new(
             self.module_id,
             global_manager,
             &self.module.funcs[func_id],
             func_index,
-            closure_global_layout,
+            jit_ctx,
         );
         self.jit_funcs.insert((func_id, func_index), jit_func);
 
-        self.jit_funcs[&(func_id, func_index)]
-            .generate_func_module(&self.func_to_globals, instantiate_func_global)
+        self.jit_funcs[&(func_id, func_index)].generate_func_module(&self.func_to_globals, jit_ctx)
     }
 
     pub fn instantiate_bb(
         &mut self,
-        config: JitConfig,
         module_id: ModuleId,
         func_id: FuncId,
         func_index: usize,
         bb_id: BasicBlockId,
         index: usize,
         global_manager: &mut GlobalManager,
-        instantiate_func_global: Global,
-        closure_global_layout: &mut ClosureGlobalLayout,
-        stub_globals: &FxHashMap<usize, Global>,
+        jit_ctx: &mut JitCtx,
     ) -> Module {
         let jit_func = self.jit_funcs.get_mut(&(func_id, func_index)).unwrap();
         jit_func.generate_bb_module(
-            &config,
             &self.func_to_globals,
             module_id,
             &self.func_types,
             bb_id,
             index,
-            &stub_globals,
-            closure_global_layout,
-            instantiate_func_global,
             global_manager,
+            jit_ctx,
         )
     }
 }
@@ -262,10 +252,10 @@ impl JitFunc {
         global_manager: &mut GlobalManager,
         func: &Func,
         func_index: usize,
-        closure_global_layout: &mut ClosureGlobalLayout,
+        jit_ctx: &mut JitCtx,
     ) -> Self {
         let mut func = func.clone();
-        closure_func_assign_types(&mut func, func_index, closure_global_layout);
+        closure_func_assign_types(&mut func, func_index, jit_ctx.closure_global_layout());
         // 共通部分式除去を行うと変数の生存期間が伸びてしまい、JITでのパフォーマンスが落ちるのでここでは行わない
         ssa_optimize(&mut func, false);
         let bb_to_globals = func
@@ -350,7 +340,7 @@ impl JitFunc {
     pub fn generate_func_module(
         &self,
         func_to_globals: &TiVec<FuncId, GlobalId>,
-        instantiate_func_global: Global,
+        jit_ctx: &JitCtx,
     ) -> Module {
         let mut funcs = TiVec::<FuncId, _>::new();
         /*
@@ -382,7 +372,7 @@ impl JitFunc {
                 },
                 ExprAssign {
                     local: None,
-                    expr: Expr::GlobalSet(instantiate_func_global.id, func_ref_local),
+                    expr: Expr::GlobalSet(jit_ctx.instantiate_func_global().id, func_ref_local),
                 },
             ]);
             if self.func_index == GLOBAL_LAYOUT_DEFAULT_INDEX {
@@ -569,27 +559,23 @@ impl JitFunc {
         }
     }
 
-    // TODO: JitBBに移動する
-    #[allow(clippy::too_many_arguments)]
     pub fn generate_bb_module(
         &mut self,
-        _config: &JitConfig,
         func_to_globals: &TiVec<FuncId, GlobalId>,
         module_id: ModuleId,
         func_types: &VecMap<FuncId, FuncType>,
         orig_entry_bb_id: BasicBlockId,
         index: usize,
-        stub_globals: &FxHashMap<usize, Global>,
-        closure_global_layout: &mut ClosureGlobalLayout,
-        instantiate_func_global: Global,
         global_manager: &mut GlobalManager,
+        jit_ctx: &mut JitCtx,
     ) -> Module {
         let mut required_closure_idx = Vec::new();
 
         {
             // entrypoint_table[0]のスタブはJS APIからも使われるので未初期化の場合作成しておく
             // TODO: generate_stub_moduleで行うべき
-            let (closure_idx, flag) = closure_global_layout
+            let (closure_idx, flag) = jit_ctx
+                .closure_global_layout()
                 .to_idx(&ClosureArgs::Variadic)
                 .unwrap();
             if flag == IndexFlag::NewInstance {
@@ -738,7 +724,7 @@ impl JitFunc {
                             });
                             exprs.push(ExprAssign {
                                 local: Some(stub),
-                                expr: Expr::GlobalGet(stub_globals[&index].id),
+                                expr: Expr::GlobalGet(jit_ctx.stub_global(index).id),
                             });
                             locals.push(stub);
                         }
@@ -754,7 +740,7 @@ impl JitFunc {
                         let call_closure = Self::specialize_call_closure(
                             call_closure,
                             &exprs,
-                            closure_global_layout,
+                            jit_ctx.closure_global_layout(),
                             &local_to_args_expr_idx,
                             &mut required_closure_idx,
                             &typed_objs,
@@ -881,7 +867,7 @@ impl JitFunc {
                     let call_closure = Self::specialize_call_closure(
                         call_closure,
                         &bbs[new_bb_id].exprs,
-                        closure_global_layout,
+                        jit_ctx.closure_global_layout(),
                         &local_to_args_expr_idx,
                         &mut required_closure_idx,
                         &typed_objs,
@@ -1049,7 +1035,7 @@ impl JitFunc {
                 let mut arg_locals = Vec::new();
                 args.push(closure_local);
 
-                match closure_global_layout.from_idx(closure_idx) {
+                match jit_ctx.closure_global_layout().from_idx(closure_idx) {
                     ClosureArgs::Specified(arg_types) => {
                         for &typ in arg_types.iter() {
                             let local = locals.push_with(|id| Local {
@@ -1107,7 +1093,7 @@ impl JitFunc {
                 });
                 exprs.push(ExprAssign {
                     local: Some(func_ref_local),
-                    expr: Expr::GlobalGet(instantiate_func_global.id),
+                    expr: Expr::GlobalGet(jit_ctx.instantiate_func_global().id),
                 });
                 exprs.push(ExprAssign {
                     local: Some(mut_func_ref_local),
@@ -1191,7 +1177,7 @@ impl JitFunc {
                     });
                     exprs.push(ExprAssign {
                         local: Some(stub_mut_func_ref_local),
-                        expr: Expr::GlobalGet(stub_globals[&closure_idx].id),
+                        expr: Expr::GlobalGet(jit_ctx.stub_global(closure_idx).id),
                     });
                     exprs.push(ExprAssign {
                         local: None,
