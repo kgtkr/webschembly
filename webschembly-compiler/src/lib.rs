@@ -33,4 +33,5 @@ pub mod tokens;
 mod vec_map;
 pub use vec_map::VecMap;
 pub mod ir_processor;
+pub mod jit;
 pub mod x;

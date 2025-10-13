@@ -6,11 +6,11 @@ use crate::ir;
 use crate::ir_generator;
 use crate::ir_generator::GlobalManager;
 use crate::ir_processor::desugar::desugar;
-use crate::ir_processor::jit::{Jit, JitConfig};
 use crate::ir_processor::optimizer::remove_unreachable_bb;
 use crate::ir_processor::optimizer::remove_unused_local;
 use crate::ir_processor::ssa::{debug_assert_ssa, remove_phi};
 use crate::ir_processor::ssa_optimizer::ssa_optimize;
+use crate::jit::{Jit, JitConfig};
 use crate::lexer;
 use crate::sexpr_parser;
 

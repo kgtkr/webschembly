@@ -3,138 +3,26 @@ use typed_index_collections::{TiVec, ti_vec};
 
 use super::bb_optimizer;
 use super::bb_optimizer::TypedObj;
-use super::cfg_analyzer::{calc_doms, calc_predecessors, calculate_rpo};
-use super::dataflow::{analyze_liveness, calc_def_use};
+use super::jit_config::JitConfig;
 use crate::fxbihashmap::FxBiHashMap;
 use crate::ir_generator::GlobalManager;
+use crate::ir_processor::cfg_analyzer::{calc_doms, calc_predecessors, calculate_rpo};
+use crate::ir_processor::dataflow::{analyze_liveness, calc_def_use};
 use crate::ir_processor::ssa::{DefUseChain, collect_defs};
 use crate::ir_processor::ssa_optimizer::ssa_optimize;
 use crate::vec_map::VecMap;
 use crate::{HasId, ir::*};
 
-#[derive(Debug, Clone, Copy)]
-pub struct JitConfig {
-    pub enable_optimization: bool,
-}
-
-impl Default for JitConfig {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl JitConfig {
-    pub const fn new() -> Self {
-        Self {
-            enable_optimization: true,
-        }
-    }
-}
 #[derive(Debug)]
-pub struct Jit {
-    config: JitConfig,
-    jit_module: TiVec<ModuleId, JitModule>,
-    closure_global_layout: ClosureGlobalLayout,
-    // 0..GLOBAL_LAYOUT_MAX_SIZEまでのindexに対応する関数のスタブが入ったMutFuncRef
-    // func_indexがインスタンス化されるときにMutFuncRefにFuncRefがセットされる
-    stub_globals: FxHashMap<usize, Global>,
-    // instantiate_funcの結果を保存するグローバル
-    instantiate_func_global: Option<Global>,
-}
-
-impl Jit {
-    pub fn new(config: JitConfig) -> Self {
-        Self {
-            config,
-            jit_module: TiVec::new(),
-            closure_global_layout: ClosureGlobalLayout::new(),
-            stub_globals: FxHashMap::default(),
-            instantiate_func_global: None,
-        }
-    }
-
-    pub fn config(&self) -> JitConfig {
-        self.config
-    }
-
-    pub fn register_module(
-        &mut self,
-        global_manager: &mut GlobalManager,
-        module: Module,
-    ) -> Module {
-        let module_id = self.jit_module.next_key();
-        self.jit_module
-            .push(JitModule::new(global_manager, module_id, module));
-        self.jit_module[module_id].generate_stub_module(
-            global_manager,
-            &mut self.stub_globals,
-            &mut self.instantiate_func_global,
-        )
-    }
-
-    pub fn instantiate_func(
-        &mut self,
-        global_manager: &mut GlobalManager,
-        module_id: ModuleId,
-        func_id: FuncId,
-        func_index: usize,
-    ) -> Module {
-        let jit_func = JitFunc::new(
-            global_manager,
-            &self.jit_module[module_id],
-            func_id,
-            func_index,
-            &mut self.closure_global_layout,
-        );
-        self.jit_module[module_id]
-            .jit_funcs
-            .insert((func_id, func_index), jit_func);
-
-        self.jit_module[module_id].jit_funcs[&(func_id, func_index)].generate_func_module(
-            &self.jit_module[module_id],
-            self.instantiate_func_global.as_ref().unwrap(),
-        )
-    }
-
-    pub fn instantiate_bb(
-        &mut self,
-        module_id: ModuleId,
-        func_id: FuncId,
-        func_index: usize,
-        bb_id: BasicBlockId,
-        index: usize,
-        global_manager: &mut GlobalManager,
-    ) -> Module {
-        let jit_module = &mut self.jit_module[module_id];
-        let jit_func = jit_module
-            .jit_funcs
-            .get_mut(&(func_id, func_index))
-            .unwrap();
-        jit_func.generate_bb_module(
-            &self.config,
-            &jit_module.func_to_globals,
-            module_id,
-            &jit_module.module,
-            bb_id,
-            index,
-            &self.stub_globals,
-            &mut self.closure_global_layout,
-            self.instantiate_func_global.as_ref().unwrap(),
-            global_manager,
-        )
-    }
-}
-
-#[derive(Debug)]
-struct JitModule {
+pub struct JitModule {
     module_id: ModuleId,
-    module: Module,
-    jit_funcs: FxHashMap<(FuncId, usize), JitFunc>,
-    func_to_globals: TiVec<FuncId, GlobalId>,
+    pub module: Module,
+    pub jit_funcs: FxHashMap<(FuncId, usize), JitFunc>,
+    pub func_to_globals: TiVec<FuncId, GlobalId>,
 }
 
 impl JitModule {
-    fn new(global_manager: &mut GlobalManager, module_id: ModuleId, module: Module) -> Self {
+    pub fn new(global_manager: &mut GlobalManager, module_id: ModuleId, module: Module) -> Self {
         let func_to_globals = module
             .funcs
             .iter()
@@ -154,7 +42,7 @@ impl JitModule {
         }
     }
 
-    fn generate_stub_module(
+    pub fn generate_stub_module(
         &self,
         global_manager: &mut GlobalManager,
         stub_globals: &mut FxHashMap<usize, Global>,
@@ -304,7 +192,7 @@ impl JitModule {
 }
 
 #[derive(Debug)]
-struct JitFunc {
+pub struct JitFunc {
     #[allow(dead_code)]
     func_id: FuncId,
     func_index: usize,
@@ -313,7 +201,7 @@ struct JitFunc {
 }
 
 impl JitFunc {
-    fn new(
+    pub fn new(
         global_manager: &mut GlobalManager,
         jit_module: &JitModule,
         func_id: FuncId,
@@ -404,7 +292,7 @@ impl JitFunc {
         }
     }
 
-    fn generate_func_module(
+    pub fn generate_func_module(
         &self,
         jit_module: &JitModule,
         instantiate_func_global: &Global,
@@ -628,7 +516,7 @@ impl JitFunc {
 
     // TODO: JitBBに移動する
     #[allow(clippy::too_many_arguments)]
-    fn generate_bb_module(
+    pub fn generate_bb_module(
         &mut self,
         _config: &JitConfig,
         func_to_globals: &TiVec<FuncId, GlobalId>,
