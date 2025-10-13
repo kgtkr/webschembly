@@ -92,35 +92,25 @@ impl FamilyX<Used> for SetX {
     type R = UsedSetR;
 }
 
-impl ElementInto<()> for defined::DefinedLetR {
-    type Param = ();
-
-    fn element_into(self, _: Self::Param) {}
-}
-
+// let系関数の変換パラメータ
 #[derive(Debug, Clone)]
-pub struct LetRIndex {
+pub struct LetXXRIndex {
     index: usize,
+    reassign: bool,
 }
 
-impl From<LetRIndex> for () {
-    fn from(_: LetRIndex) -> Self {}
+impl From<LetXXRIndex> for () {
+    fn from(_: LetXXRIndex) -> Self {}
 }
 
 impl ElementInto<parsed::ParsedSetR> for parsed::ParsedLetR {
-    type Param = LetRIndex;
+    type Param = LetXXRIndex;
 
     fn element_into(self, param: Self::Param) -> parsed::ParsedSetR {
         parsed::ParsedSetR {
             span: self.span,
             name_span: self.binding_name_spans[param.index],
         }
-    }
-}
-
-impl From<defined::DefinedLetR> for defined::DefinedSetR {
-    fn from(_: defined::DefinedLetR) -> Self {
-        defined::DefinedSetR { reassign: false }
     }
 }
 
@@ -128,35 +118,14 @@ impl FamilyX<Used> for LetX {
     type R = !;
 }
 
-impl ElementInto<()> for defined::DefinedLetRecR {
-    type Param = ();
-
-    fn element_into(self, _: Self::Param) {}
-}
-
-#[derive(Debug, Clone)]
-pub struct LetRecRIndex {
-    index: usize,
-}
-
-impl From<LetRecRIndex> for () {
-    fn from(_: LetRecRIndex) -> Self {}
-}
-
 impl ElementInto<parsed::ParsedSetR> for parsed::ParsedLetRecR {
-    type Param = LetRecRIndex;
+    type Param = LetXXRIndex;
 
     fn element_into(self, param: Self::Param) -> parsed::ParsedSetR {
         parsed::ParsedSetR {
             span: self.span,
             name_span: self.binding_name_spans[param.index],
         }
-    }
-}
-
-impl From<defined::DefinedLetRecR> for defined::DefinedSetR {
-    fn from(_: defined::DefinedLetRecR) -> Self {
-        defined::DefinedSetR { reassign: true }
     }
 }
 
@@ -176,6 +145,16 @@ impl FamilyX<Used> for QuoteX {
 
 impl FamilyX<Used> for ConsX {
     type R = ();
+}
+
+impl ElementInto<defined::DefinedSetR> for () {
+    type Param = LetXXRIndex;
+
+    fn element_into(self, param: Self::Param) -> defined::DefinedSetR {
+        defined::DefinedSetR {
+            reassign: param.reassign,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -404,19 +383,6 @@ impl Expr<Used> {
                     .collect::<Vec<_>>();
 
                 let mut new_state = LambdaState::new();
-
-                for def in x.get_ref(type_map::key::<Defined>()).defines.iter() {
-                    let id = var_id_gen.gen_local(VarMeta { name: def.clone() });
-                    new_env.insert(
-                        def.clone(),
-                        EnvLocalVar {
-                            id,
-                            is_captured: false,
-                        },
-                    );
-                    new_state.defines.push(id);
-                }
-
                 let new_ctx = ctx.clone().extend_new_lambda(new_env);
                 let new_body = Self::from_exprs(lambda.body, &new_ctx, var_id_gen, &mut new_state);
 
@@ -518,30 +484,23 @@ impl Expr<Used> {
 
                     let expr = Self::from_exprs(expr.clone(), ctx, var_id_gen, state);
                     let set_expr = Expr::Set(
-                        x.clone().into_type_map(LetRIndex { index: i }).add(
-                            type_map::key::<Used>(),
-                            UsedSetR {
-                                var_id: VarId::Local(id),
-                            },
-                        ),
+                        x.clone()
+                            .into_type_map(LetXXRIndex {
+                                index: i,
+                                reassign: false,
+                            })
+                            .add(
+                                type_map::key::<Used>(),
+                                UsedSetR {
+                                    var_id: VarId::Local(id),
+                                },
+                            ),
                         Set {
                             name: name.clone(),
                             expr,
                         },
                     );
                     result.push(set_expr);
-                }
-
-                for def in x.get_ref(type_map::key::<Defined>()).defines.iter() {
-                    let id = var_id_gen.gen_local(VarMeta { name: def.clone() });
-                    new_env.insert(
-                        def.clone(),
-                        EnvLocalVar {
-                            id,
-                            is_captured: false,
-                        },
-                    );
-                    state.defines.push(id);
                 }
 
                 let new_ctx = ctx.clone().extend_some_lambda(new_env);
@@ -576,12 +535,17 @@ impl Expr<Used> {
                 for (i, ((name, expr), &id)) in letrec.bindings.iter().zip(&ids).enumerate() {
                     let expr = Self::from_exprs(expr.clone(), &ctx, var_id_gen, state);
                     let set_expr = Expr::Set(
-                        x.clone().into_type_map(LetRecRIndex { index: i }).add(
-                            type_map::key::<Used>(),
-                            UsedSetR {
-                                var_id: VarId::Local(id),
-                            },
-                        ),
+                        x.clone()
+                            .into_type_map(LetXXRIndex {
+                                index: i,
+                                reassign: true,
+                            })
+                            .add(
+                                type_map::key::<Used>(),
+                                UsedSetR {
+                                    var_id: VarId::Local(id),
+                                },
+                            ),
                         Set {
                             name: name.clone(),
                             expr,
@@ -589,21 +553,6 @@ impl Expr<Used> {
                     );
                     result.push(set_expr);
                 }
-
-                let mut new_env = FxHashMap::default();
-                for def in x.get_ref(type_map::key::<Defined>()).defines.iter() {
-                    let id = var_id_gen.gen_local(VarMeta { name: def.clone() });
-                    new_env.insert(
-                        def.clone(),
-                        EnvLocalVar {
-                            id,
-                            is_captured: false,
-                        },
-                    );
-                    state.defines.push(id);
-                }
-
-                let ctx = ctx.clone().extend_some_lambda(new_env);
 
                 for expr in letrec.body.into_iter() {
                     // stateは親のものを引き継ぐ
