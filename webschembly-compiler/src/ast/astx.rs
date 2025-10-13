@@ -38,6 +38,8 @@ pub enum SetX {}
 #[derive(Debug, Clone)]
 
 pub enum LetX {}
+#[derive(Debug, Clone)]
+pub enum LetRecX {}
 
 #[derive(Debug, Clone)]
 
@@ -65,6 +67,7 @@ where
     BeginX: FamilyRunX<Self>,
     SetX: FamilyRunX<Self>,
     LetX: FamilyRunX<Self>,
+    LetRecX: FamilyRunX<Self>,
     VectorX: FamilyRunX<Self>,
     UVectorX: FamilyRunX<Self>,
     QuoteX: FamilyRunX<Self>,
@@ -93,6 +96,7 @@ where
     Begin(RunX<BeginX, X>, Begin<X>),
     Set(RunX<SetX, X>, Set<X>),
     Let(RunX<LetX, X>, Let<X>),
+    LetRec(RunX<LetRecX, X>, LetRec<X>),
     Vector(RunX<VectorX, X>, Vec<Expr<X>>),
     UVector(RunX<UVectorX, X>, UVector<X>),
     Quote(RunX<QuoteX, X>, SExpr),
@@ -167,6 +171,15 @@ where
 
 #[derive(Debug, Clone)]
 pub struct Let<X>
+where
+    X: XBound,
+{
+    pub bindings: Vec<(String, Expr<X>)>,
+    pub body: Vec<Expr<X>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct LetRec<X>
 where
     X: XBound,
 {

@@ -136,6 +136,50 @@ impl FamilyX<Used> for LetX {
     type R = !;
 }
 
+impl ElementInto<parsed::ParsedBeginR> for parsed::ParsedLetRecR {
+    type Param = ();
+
+    fn element_into(self, _: Self::Param) -> parsed::ParsedBeginR {
+        parsed::ParsedBeginR { span: self.span }
+    }
+}
+
+impl ElementInto<()> for defined::DefinedLetRecR {
+    type Param = ();
+
+    fn element_into(self, _: Self::Param) {}
+}
+
+#[derive(Debug, Clone)]
+pub struct LetRecRIndex {
+    index: usize,
+}
+
+impl From<LetRecRIndex> for () {
+    fn from(_: LetRecRIndex) -> Self {}
+}
+
+impl ElementInto<parsed::ParsedSetR> for parsed::ParsedLetRecR {
+    type Param = LetRecRIndex;
+
+    fn element_into(self, param: Self::Param) -> parsed::ParsedSetR {
+        parsed::ParsedSetR {
+            span: self.span,
+            name_span: self.binding_name_spans[param.index],
+        }
+    }
+}
+
+impl From<defined::DefinedLetRecR> for defined::DefinedSetR {
+    fn from(_: defined::DefinedLetRecR) -> Self {
+        defined::DefinedSetR { reassign: true }
+    }
+}
+
+impl FamilyX<Used> for LetRecX {
+    type R = !;
+}
+
 impl FamilyX<Used> for VectorX {
     type R = ();
 }
@@ -388,16 +432,19 @@ impl Expr<Used> {
                     .map(|expr| Self::from_expr(expr, &new_ctx, var_id_gen, &mut new_state))
                     .collect::<Vec<_>>();
 
-                // free_vars = new_captures - args - defines
-                for arg in &args {
-                    new_state.captures.remove(arg);
-                }
-                for def in &new_state.defines {
-                    new_state.captures.remove(def);
+                {
+                    // キャプチャリストを親ラムダが継承する
+                    // ただし、親ラムダで定義されている変数を除く
+                    let mut exnted_captures = new_state.captures.clone();
+                    for var in ctx.env.values() {
+                        if !var.is_captured {
+                            exnted_captures.remove(&var.id);
+                        }
+                    }
+                    state.captures.extend(exnted_captures);
                 }
 
-                state.captures.extend(new_state.captures.iter().copied());
-
+                // 一度でもキャプチャされた変数はref化の必要がある可能性があるのでフラグをつける
                 for free_var in new_state.captures.iter() {
                     var_id_gen.flag_capture(*free_var);
                 }
@@ -483,8 +530,6 @@ impl Expr<Used> {
                 let mut set_exprs = Vec::new();
                 for (i, (name, expr)) in let_.bindings.iter().enumerate() {
                     let id = var_id_gen.gen_local(VarMeta { name: name.clone() });
-                    // TODO: let recは必要な場合もあるが、letならflag_mutateは不要では
-                    var_id_gen.flag_mutate(id);
                     new_env.insert(
                         name.clone(),
                         EnvLocalVar {
@@ -531,6 +576,77 @@ impl Expr<Used> {
                         .into_iter()
                         // stateは親のものを引き継ぐ
                         .map(|expr| Self::from_expr(expr, &new_ctx, var_id_gen, state))
+                        .collect::<Vec<_>>(),
+                );
+
+                Expr::Begin(
+                    x.into_type_map(()).add(type_map::key::<Used>(), ()),
+                    Begin { exprs },
+                )
+            }
+            Expr::LetRec(x, letrec) => {
+                // TODO: letrecの定義式で同じletrecの変数を参照する場合、ラムダで囲わないとエラーにする必要がある
+                // (letrec ((a 1) (b (+ a 1))) b) のようなものは許されない。let*を使うべき
+
+                let mut new_env = FxHashMap::default();
+                let mut ids = Vec::new();
+                for (name, _) in letrec.bindings.iter() {
+                    let id = var_id_gen.gen_local(VarMeta { name: name.clone() });
+                    // letrecはflag_mutateが必要だが、1度しか代入されない場合特殊化したい
+                    var_id_gen.flag_mutate(id);
+                    new_env.insert(
+                        name.clone(),
+                        EnvLocalVar {
+                            id,
+                            is_captured: false,
+                        },
+                    );
+                    state.defines.push(id);
+                    ids.push(id);
+                }
+
+                let mut set_exprs = Vec::new();
+                let ctx = ctx.clone().extend_some_lambda(new_env);
+                for (i, ((name, expr), &id)) in letrec.bindings.iter().zip(&ids).enumerate() {
+                    let expr = Self::from_expr(expr.clone(), &ctx, var_id_gen, state);
+                    let set_expr = Expr::Set(
+                        x.clone().into_type_map(LetRecRIndex { index: i }).add(
+                            type_map::key::<Used>(),
+                            UsedSetR {
+                                var_id: VarId::Local(id),
+                            },
+                        ),
+                        Set {
+                            name: name.clone(),
+                            expr: Box::new(expr),
+                        },
+                    );
+                    set_exprs.push(set_expr);
+                }
+
+                let mut new_env = FxHashMap::default();
+                for def in x.get_ref(type_map::key::<Defined>()).defines.iter() {
+                    let id = var_id_gen.gen_local(VarMeta { name: def.clone() });
+                    new_env.insert(
+                        def.clone(),
+                        EnvLocalVar {
+                            id,
+                            is_captured: false,
+                        },
+                    );
+                    state.defines.push(id);
+                }
+
+                let ctx = ctx.clone().extend_some_lambda(new_env);
+
+                let mut exprs = vec![];
+                exprs.extend(set_exprs);
+                exprs.extend(
+                    letrec
+                        .body
+                        .into_iter()
+                        // stateは親のものを引き継ぐ
+                        .map(|expr| Self::from_expr(expr, &ctx, var_id_gen, state))
                         .collect::<Vec<_>>(),
                 );
 

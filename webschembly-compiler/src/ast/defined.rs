@@ -78,6 +78,15 @@ impl FamilyX<Defined> for LetX {
     type R = DefinedLetR;
 }
 
+#[derive(Debug, Clone)]
+pub struct DefinedLetRecR {
+    pub defines: Vec<String>,
+}
+
+impl FamilyX<Defined> for LetRecX {
+    type R = DefinedLetRecR;
+}
+
 impl FamilyX<Defined> for VectorX {
     type R = ();
 }
@@ -270,6 +279,31 @@ impl Expr<Defined> {
                         ),
                         Let {
                             bindings: let_
+                                .bindings
+                                .into_iter()
+                                .map(|(name, expr)| {
+                                    Self::from_expr(expr, ctx.to_undefinable_if_local(), names)
+                                        .map(|(_, expr)| (name, expr))
+                                })
+                                .collect::<Result<Vec<_>>>()?,
+                            body: new_body,
+                        },
+                    ),
+                ))
+            }
+            Expr::LetRec(x, letrec) => {
+                let mut new_names = Vec::new();
+                let new_body =
+                    Self::from_block(letrec.body, DefineContext::LocalDefinable, &mut new_names)?;
+                Ok((
+                    ctx.to_undefinable_if_local(),
+                    Expr::LetRec(
+                        x.add(
+                            type_map::key::<Defined>(),
+                            DefinedLetRecR { defines: new_names },
+                        ),
+                        LetRec {
+                            bindings: letrec
                                 .bindings
                                 .into_iter()
                                 .map(|(name, expr)| {

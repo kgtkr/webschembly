@@ -939,6 +939,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 }
             }
             ast::Expr::Let(x, _) => *x.get_ref(type_map::key::<Desugared>()),
+            ast::Expr::LetRec(x, _) => *x.get_ref(type_map::key::<Desugared>()),
             ast::Expr::Vector(_, vec) => {
                 let mut vec_locals = Vec::new();
                 for sexpr in vec {

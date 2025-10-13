@@ -49,7 +49,9 @@ impl FamilyX<TailCall> for SetX {
 impl FamilyX<TailCall> for LetX {
     type R = ();
 }
-
+impl FamilyX<TailCall> for LetRecX {
+    type R = ();
+}
 impl FamilyX<TailCall> for VectorX {
     type R = ();
 }
@@ -127,6 +129,17 @@ impl Expr<TailCall> {
                         .map(|(name, expr)| (name, Self::from_expr(expr, false)))
                         .collect(),
                     body: Self::from_exprs(let_.body, is_tail),
+                },
+            ),
+            Expr::LetRec(x, letrec) => Expr::LetRec(
+                x.add(type_map::key::<TailCall>(), ()),
+                LetRec {
+                    bindings: letrec
+                        .bindings
+                        .into_iter()
+                        .map(|(name, expr)| (name, Self::from_expr(expr, false)))
+                        .collect(),
+                    body: Self::from_exprs(letrec.body, is_tail),
                 },
             ),
             Expr::Vector(x, vec) => Expr::Vector(x.add(type_map::key::<TailCall>(), ()), {

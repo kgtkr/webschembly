@@ -102,6 +102,16 @@ impl FamilyX<Parsed> for LetX {
 }
 
 #[derive(Debug, Clone)]
+pub struct ParsedLetRecR {
+    pub span: Span,
+    pub binding_name_spans: Vec<Span>,
+}
+
+impl FamilyX<Parsed> for LetRecX {
+    type R = ParsedLetRecR;
+}
+
+#[derive(Debug, Clone)]
 pub struct ParsedVectorR {
     pub span: Span,
 }
@@ -364,6 +374,49 @@ impl Expr<Parsed> {
                             },
                         ),
                         Let { bindings, body },
+                    ))
+                }
+                _ => Err(compiler_error!("Invalid let expression")),
+            },
+            list_pattern![
+                SExpr {
+                    kind: SExprKind::Symbol("letrec"),
+                    ..
+                } => span,
+                ..cdr
+            ] => match cdr {
+                list_pattern![bindings, ..body] => {
+                    let (bindings, binding_name_spans) = bindings
+                        .to_vec()
+                        .ok_or_else(|| compiler_error!("Expected a list of bindings"))?
+                        .into_iter()
+                        .map(|binding| match binding {
+                            list_pattern![
+                                SExpr {
+                                    kind: SExprKind::Symbol(name),
+                                    ..
+                                } => name_span,
+                                expr,
+                            ] => Ok(((name, Expr::from_sexpr(expr)?), name_span)),
+                            _ => Err(compiler_error!("Invalid binding")),
+                        })
+                        .collect::<Result<(Vec<_>, Vec<_>)>>()?;
+                    let body = body
+                        .to_vec()
+                        .ok_or_else(|| compiler_error!("Expected a list of expressions"))?
+                        .into_iter()
+                        .map(Expr::from_sexpr)
+                        .collect::<Result<Vec<_>>>()?;
+
+                    Ok(Expr::LetRec(
+                        type_map::singleton(
+                            type_map::key::<Parsed>(),
+                            ParsedLetRecR {
+                                span,
+                                binding_name_spans,
+                            },
+                        ),
+                        LetRec { bindings, body },
                     ))
                 }
                 _ => Err(compiler_error!("Invalid let expression")),

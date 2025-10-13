@@ -49,6 +49,10 @@ impl FamilyX<Desugared> for LetX {
     type R = ();
 }
 
+impl FamilyX<Desugared> for LetRecX {
+    type R = ();
+}
+
 impl FamilyX<Desugared> for VectorX {
     type R = ();
 }
@@ -170,6 +174,21 @@ impl Expr<Desugared> {
                         .map(|(name, expr)| (name, Self::from_expr(expr)))
                         .collect(),
                     body: let_
+                        .body
+                        .into_iter()
+                        .map(Self::from_expr)
+                        .collect::<Vec<_>>(),
+                },
+            ),
+            Expr::LetRec(x, letrec) => Expr::LetRec(
+                x.add(type_map::key::<Desugared>(), ()),
+                LetRec {
+                    bindings: letrec
+                        .bindings
+                        .into_iter()
+                        .map(|(name, expr)| (name, Self::from_expr(expr)))
+                        .collect(),
+                    body: letrec
                         .body
                         .into_iter()
                         .map(Self::from_expr)
