@@ -64,7 +64,6 @@ impl Jit {
         global_manager: &mut GlobalManager,
     ) -> Module {
         self.jit_module[module_id].instantiate_bb(
-            module_id,
             func_id,
             func_index,
             bb_id,
