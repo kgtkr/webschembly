@@ -16,9 +16,10 @@ use crate::{HasId, ir::*};
 #[derive(Debug)]
 pub struct JitModule {
     module_id: ModuleId,
-    pub module: Module,
-    pub jit_funcs: FxHashMap<(FuncId, usize), JitFunc>,
-    pub func_to_globals: TiVec<FuncId, GlobalId>,
+    module: Module,
+    jit_funcs: FxHashMap<(FuncId, usize), JitFunc>,
+    func_to_globals: TiVec<FuncId, GlobalId>,
+    func_types: VecMap<FuncId, FuncType>,
 }
 
 impl JitModule {
@@ -34,11 +35,18 @@ impl JitModule {
             .map(|g| g.id)
             .collect::<TiVec<FuncId, _>>();
 
+        let func_types = module
+            .funcs
+            .iter()
+            .map(|f| (f.id, f.func_type()))
+            .collect::<VecMap<FuncId, _>>();
+
         Self {
             module_id,
             module,
             jit_funcs: FxHashMap::default(),
             func_to_globals,
+            func_types,
         }
     }
 
@@ -189,12 +197,60 @@ impl JitModule {
             },
         }
     }
+
+    pub fn instantiate_func(
+        &mut self,
+        global_manager: &mut GlobalManager,
+        func_id: FuncId,
+        func_index: usize,
+        instantiate_func_global: Global,
+        closure_global_layout: &mut ClosureGlobalLayout,
+    ) -> Module {
+        let jit_func = JitFunc::new(
+            self.module_id,
+            global_manager,
+            &self.module.funcs[func_id],
+            func_index,
+            closure_global_layout,
+        );
+        self.jit_funcs.insert((func_id, func_index), jit_func);
+
+        self.jit_funcs[&(func_id, func_index)]
+            .generate_func_module(&self.func_to_globals, instantiate_func_global)
+    }
+
+    pub fn instantiate_bb(
+        &mut self,
+        config: JitConfig,
+        module_id: ModuleId,
+        func_id: FuncId,
+        func_index: usize,
+        bb_id: BasicBlockId,
+        index: usize,
+        global_manager: &mut GlobalManager,
+        instantiate_func_global: Global,
+        closure_global_layout: &mut ClosureGlobalLayout,
+        stub_globals: &FxHashMap<usize, Global>,
+    ) -> Module {
+        let jit_func = self.jit_funcs.get_mut(&(func_id, func_index)).unwrap();
+        jit_func.generate_bb_module(
+            &config,
+            &self.func_to_globals,
+            module_id,
+            &self.func_types,
+            bb_id,
+            index,
+            &stub_globals,
+            closure_global_layout,
+            instantiate_func_global,
+            global_manager,
+        )
+    }
 }
 
 #[derive(Debug)]
 pub struct JitFunc {
-    #[allow(dead_code)]
-    func_id: FuncId,
+    module_id: ModuleId,
     func_index: usize,
     func: Func,
     jit_bbs: VecMap<BasicBlockId, JitBB>,
@@ -202,14 +258,13 @@ pub struct JitFunc {
 
 impl JitFunc {
     pub fn new(
+        module_id: ModuleId,
         global_manager: &mut GlobalManager,
-        jit_module: &JitModule,
-        func_id: FuncId,
+        func: &Func,
         func_index: usize,
         closure_global_layout: &mut ClosureGlobalLayout,
     ) -> Self {
-        let module = &jit_module.module;
-        let mut func = module.funcs[func_id].clone();
+        let mut func = func.clone();
         closure_func_assign_types(&mut func, func_index, closure_global_layout);
         // 共通部分式除去を行うと変数の生存期間が伸びてしまい、JITでのパフォーマンスが落ちるのでここでは行わない
         ssa_optimize(&mut func, false);
@@ -285,7 +340,7 @@ impl JitFunc {
             .collect::<VecMap<BasicBlockId, _>>();
 
         Self {
-            func_id,
+            module_id,
             func_index,
             func,
             jit_bbs,
@@ -294,8 +349,8 @@ impl JitFunc {
 
     pub fn generate_func_module(
         &self,
-        jit_module: &JitModule,
-        instantiate_func_global: &Global,
+        func_to_globals: &TiVec<FuncId, GlobalId>,
+        instantiate_func_global: Global,
     ) -> Module {
         let mut funcs = TiVec::<FuncId, _>::new();
         /*
@@ -334,7 +389,7 @@ impl JitFunc {
                 // func_to_globalsはindex=0のためのもの
                 exprs.push(ExprAssign {
                     local: None,
-                    expr: Expr::GlobalSet(jit_module.func_to_globals[self.func.id], func_ref_local),
+                    expr: Expr::GlobalSet(func_to_globals[self.func.id], func_ref_local),
                 });
             }
             for jit_bb in self.jit_bbs.values() {
@@ -428,7 +483,7 @@ impl JitFunc {
 
         for jit_bb in self.jit_bbs.values() {
             let func = self.generate_bb_stub_func(
-                jit_module.module_id,
+                self.module_id,
                 jit_bb,
                 bb_stub_func_ids[jit_bb.bb_id],
                 GLOBAL_LAYOUT_DEFAULT_INDEX,
@@ -521,12 +576,12 @@ impl JitFunc {
         _config: &JitConfig,
         func_to_globals: &TiVec<FuncId, GlobalId>,
         module_id: ModuleId,
-        module: &Module,
+        func_types: &VecMap<FuncId, FuncType>,
         orig_entry_bb_id: BasicBlockId,
         index: usize,
         stub_globals: &FxHashMap<usize, Global>,
         closure_global_layout: &mut ClosureGlobalLayout,
-        instantiate_func_global: &Global,
+        instantiate_func_global: Global,
         global_manager: &mut GlobalManager,
     ) -> Module {
         let mut required_closure_idx = Vec::new();
@@ -667,7 +722,7 @@ impl JitFunc {
                             expr: Expr::CallRef(ExprCallRef {
                                 func: func_ref_local,
                                 args: args.clone(),
-                                func_type: module.funcs[func_id].func_type(),
+                                func_type: func_types[func_id].clone(),
                             }),
                         });
                     }
@@ -817,7 +872,7 @@ impl JitFunc {
                     BasicBlockNext::Terminator(BasicBlockTerminator::TailCallRef(ExprCallRef {
                         func: func_ref_local,
                         args: args.clone(),
-                        func_type: module.funcs[func_id].func_type(),
+                        func_type: func_types[func_id].clone(),
                     }))
                 }
                 BasicBlockNext::Terminator(BasicBlockTerminator::TailCallClosure(

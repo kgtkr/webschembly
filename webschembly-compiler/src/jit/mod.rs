@@ -7,7 +7,7 @@ use crate::ir_processor::bb_optimizer;
 mod jit_config;
 mod jit_module;
 pub use jit_config::JitConfig;
-use jit_module::{ClosureGlobalLayout, JitFunc, JitModule};
+use jit_module::{ClosureGlobalLayout, JitModule};
 
 #[derive(Debug)]
 pub struct Jit {
@@ -58,20 +58,12 @@ impl Jit {
         func_id: FuncId,
         func_index: usize,
     ) -> Module {
-        let jit_func = JitFunc::new(
+        self.jit_module[module_id].instantiate_func(
             global_manager,
-            &self.jit_module[module_id],
             func_id,
             func_index,
+            self.instantiate_func_global.unwrap(),
             &mut self.closure_global_layout,
-        );
-        self.jit_module[module_id]
-            .jit_funcs
-            .insert((func_id, func_index), jit_func);
-
-        self.jit_module[module_id].jit_funcs[&(func_id, func_index)].generate_func_module(
-            &self.jit_module[module_id],
-            self.instantiate_func_global.as_ref().unwrap(),
         )
     }
 
@@ -84,22 +76,17 @@ impl Jit {
         index: usize,
         global_manager: &mut GlobalManager,
     ) -> Module {
-        let jit_module = &mut self.jit_module[module_id];
-        let jit_func = jit_module
-            .jit_funcs
-            .get_mut(&(func_id, func_index))
-            .unwrap();
-        jit_func.generate_bb_module(
-            &self.config,
-            &jit_module.func_to_globals,
+        self.jit_module[module_id].instantiate_bb(
+            self.config,
             module_id,
-            &jit_module.module,
+            func_id,
+            func_index,
             bb_id,
             index,
-            &self.stub_globals,
-            &mut self.closure_global_layout,
-            self.instantiate_func_global.as_ref().unwrap(),
             global_manager,
+            self.instantiate_func_global.unwrap(),
+            &mut self.closure_global_layout,
+            &self.stub_globals,
         )
     }
 }
