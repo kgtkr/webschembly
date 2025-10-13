@@ -97,7 +97,7 @@ where
     Set(RunX<SetX, X>, Set<X>),
     Let(RunX<LetX, X>, Let<X>),
     LetRec(RunX<LetRecX, X>, LetRec<X>),
-    Vector(RunX<VectorX, X>, Vec<Expr<X>>),
+    Vector(RunX<VectorX, X>, Vec<Vec<Expr<X>>>),
     UVector(RunX<UVectorX, X>, UVector<X>),
     Quote(RunX<QuoteX, X>, SExpr),
     Cons(RunX<ConsX, X>, Cons<X>),
@@ -193,7 +193,7 @@ where
     X: XBound,
 {
     pub kind: UVectorKind,
-    pub elements: Vec<Expr<X>>,
+    pub elements: Vec<Vec<Expr<X>>>,
 }
 
 #[derive(Debug, Clone)]

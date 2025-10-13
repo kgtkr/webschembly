@@ -658,7 +658,7 @@ impl Expr<Used> {
             Expr::Vector(x, vec) => {
                 let new_vec = vec
                     .into_iter()
-                    .map(|expr| Self::from_expr(expr, ctx, var_id_gen, state))
+                    .map(|expr| Self::from_exprs(expr, ctx, var_id_gen, state))
                     .collect();
                 Expr::Vector(x.add(type_map::key::<Used>(), ()), new_vec)
             }
@@ -669,7 +669,7 @@ impl Expr<Used> {
                     elements: uvec
                         .elements
                         .into_iter()
-                        .map(|expr| Self::from_expr(expr, ctx, var_id_gen, state))
+                        .map(|expr| Self::from_exprs(expr, ctx, var_id_gen, state))
                         .collect(),
                 },
             ),

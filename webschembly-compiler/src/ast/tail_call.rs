@@ -148,7 +148,7 @@ impl Expr<TailCall> {
             ),
             Expr::Vector(x, vec) => Expr::Vector(x.add(type_map::key::<TailCall>(), ()), {
                 vec.into_iter()
-                    .map(|expr| Self::from_expr(expr, false))
+                    .map(|expr| Self::from_exprs(expr, false))
                     .collect()
             }),
             Expr::UVector(x, uvec) => Expr::UVector(
@@ -158,7 +158,7 @@ impl Expr<TailCall> {
                     elements: uvec
                         .elements
                         .into_iter()
-                        .map(|expr| Self::from_expr(expr, false))
+                        .map(|expr| Self::from_exprs(expr, false))
                         .collect(),
                 },
             ),

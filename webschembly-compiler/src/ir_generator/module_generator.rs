@@ -944,7 +944,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 let mut vec_locals = Vec::new();
                 for sexpr in vec {
                     let obj_local = self.local(Type::Obj);
-                    self.gen_expr(Some(obj_local), sexpr);
+                    self.gen_exprs(Some(obj_local), sexpr);
                     vec_locals.push(obj_local);
                 }
                 let val_type_local = self.local(Type::Val(ValType::Vector));
@@ -966,7 +966,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 let mut element_obj_locals = Vec::new();
                 for sexpr in &uvec.elements {
                     let obj_local = self.local(Type::Obj);
-                    self.gen_expr(Some(obj_local), sexpr);
+                    self.gen_exprs(Some(obj_local), sexpr);
                     element_obj_locals.push(obj_local);
                 }
                 let mut type_check_all_success_local = self.local(Type::Val(ValType::Bool));

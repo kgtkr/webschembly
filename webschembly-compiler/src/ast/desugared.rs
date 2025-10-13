@@ -113,59 +113,62 @@ impl Ast<Desugared> {
     pub fn from_ast(ast: Ast<<Desugared as Phase>::Prev>) -> Self {
         Ast {
             x: ast.x.add(type_map::key::<Desugared>(), ()),
-            exprs: ast.exprs.into_iter().map(Expr::from_expr).collect(),
+            exprs: Expr::from_exprs(ast.exprs),
         }
     }
 }
 
 impl Expr<Desugared> {
-    fn from_expr(expr: Expr<<Desugared as Phase>::Prev>) -> Self {
+    fn from_expr(expr: Expr<<Desugared as Phase>::Prev>, exprs: &mut Vec<Expr<Desugared>>) {
         match expr {
-            Expr::Const(x, lit) => Expr::Const(x.add(type_map::key::<Desugared>(), ()), lit),
-            Expr::Var(x, var) => Expr::Var(x.add(type_map::key::<Desugared>(), ()), var),
-            Expr::Define(x, def) => Expr::Define(
+            Expr::Const(x, lit) => {
+                exprs.push(Expr::Const(x.add(type_map::key::<Desugared>(), ()), lit))
+            }
+            Expr::Var(x, var) => {
+                exprs.push(Expr::Var(x.add(type_map::key::<Desugared>(), ()), var))
+            }
+            Expr::Define(x, def) => exprs.push(Expr::Define(
                 x.add(type_map::key::<Desugared>(), ()),
                 Define {
                     name: def.name,
                     expr: Self::from_exprs(def.expr),
                 },
-            ),
-            Expr::Lambda(x, lambda) => Expr::Lambda(
+            )),
+            Expr::Lambda(x, lambda) => exprs.push(Expr::Lambda(
                 x.add(type_map::key::<Desugared>(), ()),
                 Lambda {
                     args: lambda.args,
-                    body: lambda.body.into_iter().map(Self::from_expr).collect(),
+                    body: Self::from_exprs(lambda.body),
                 },
-            ),
-            Expr::If(x, if_) => Expr::If(
+            )),
+            Expr::If(x, if_) => exprs.push(Expr::If(
                 x.add(type_map::key::<Desugared>(), ()),
                 If {
                     cond: Self::from_exprs(if_.cond),
                     then: Self::from_exprs(if_.then),
                     els: Self::from_exprs(if_.els),
                 },
-            ),
-            Expr::Call(x, call) => Expr::Call(
+            )),
+            Expr::Call(x, call) => exprs.push(Expr::Call(
                 x.add(type_map::key::<Desugared>(), ()),
                 Call {
                     func: Self::from_exprs(call.func),
                     args: call.args.into_iter().map(Self::from_exprs).collect(),
                 },
-            ),
-            Expr::Begin(x, begin) => Expr::Begin(
-                x.add(type_map::key::<Desugared>(), ()),
-                Begin {
-                    exprs: begin.exprs.into_iter().map(Self::from_expr).collect(),
-                },
-            ),
-            Expr::Set(x, set) => Expr::Set(
+            )),
+            Expr::Begin(x, begin) => {
+                for expr in begin.exprs {
+                    Self::from_expr(expr, exprs);
+                }
+            }
+            Expr::Set(x, set) => exprs.push(Expr::Set(
                 x.add(type_map::key::<Desugared>(), ()),
                 Set {
                     name: set.name,
                     expr: Self::from_exprs(set.expr),
                 },
-            ),
-            Expr::Let(x, let_) => Expr::Let(
+            )),
+            Expr::Let(x, let_) => exprs.push(Expr::Let(
                 x.add(type_map::key::<Desugared>(), ()),
                 Let {
                     bindings: let_
@@ -173,14 +176,10 @@ impl Expr<Desugared> {
                         .into_iter()
                         .map(|(name, expr)| (name, Self::from_exprs(expr)))
                         .collect(),
-                    body: let_
-                        .body
-                        .into_iter()
-                        .map(Self::from_expr)
-                        .collect::<Vec<_>>(),
+                    body: Self::from_exprs(let_.body),
                 },
-            ),
-            Expr::LetRec(x, letrec) => Expr::LetRec(
+            )),
+            Expr::LetRec(x, letrec) => exprs.push(Expr::LetRec(
                 x.add(type_map::key::<Desugared>(), ()),
                 LetRec {
                     bindings: letrec
@@ -188,32 +187,28 @@ impl Expr<Desugared> {
                         .into_iter()
                         .map(|(name, expr)| (name, Self::from_exprs(expr)))
                         .collect(),
-                    body: letrec
-                        .body
-                        .into_iter()
-                        .map(Self::from_expr)
-                        .collect::<Vec<_>>(),
+                    body: Self::from_exprs(letrec.body),
                 },
-            ),
-            Expr::Vector(x, vec) => Expr::Vector(
+            )),
+            Expr::Vector(x, vec) => exprs.push(Expr::Vector(
                 x.add(type_map::key::<Desugared>(), ()),
-                vec.into_iter().map(Self::from_expr).collect(),
-            ),
-            Expr::UVector(x, uvec) => Expr::UVector(
+                vec.into_iter().map(Self::from_exprs).collect(),
+            )),
+            Expr::UVector(x, uvec) => exprs.push(Expr::UVector(
                 x.add(type_map::key::<Desugared>(), ()),
                 UVector {
                     kind: uvec.kind,
-                    elements: uvec.elements.into_iter().map(Self::from_expr).collect(),
+                    elements: uvec.elements.into_iter().map(Self::from_exprs).collect(),
                 },
-            ),
-            Expr::Quote(x, sexpr) => Self::from_quoted_sexpr(x, sexpr),
-            Expr::Cons(x, cons) => Expr::Cons(
+            )),
+            Expr::Quote(x, sexpr) => exprs.push(Self::from_quoted_sexpr(x, sexpr)),
+            Expr::Cons(x, cons) => exprs.push(Expr::Cons(
                 x.add(type_map::key::<Desugared>(), ()),
                 Cons {
                     car: Self::from_exprs(cons.car),
                     cdr: Self::from_exprs(cons.cdr),
                 },
-            ),
+            )),
         }
     }
 
@@ -263,7 +258,7 @@ impl Expr<Desugared> {
                     .into_type_map(())
                     .add(type_map::key::<Desugared>(), ()),
                 vec.into_iter()
-                    .map(|s| Self::from_quoted_sexpr(x.clone(), s))
+                    .map(|s| vec![Self::from_quoted_sexpr(x.clone(), s)])
                     .collect(),
             ),
             // TODO: span情報の保持
@@ -278,7 +273,7 @@ impl Expr<Desugared> {
                     },
                     elements: elements
                         .into_iter()
-                        .map(|s| Self::from_quoted_sexpr(x.clone(), s))
+                        .map(|s| vec![Self::from_quoted_sexpr(x.clone(), s)])
                         .collect(),
                 },
             ),
@@ -290,6 +285,10 @@ impl Expr<Desugared> {
     }
 
     fn from_exprs(exprs: Vec<Expr<<Desugared as Phase>::Prev>>) -> Vec<Self> {
-        exprs.into_iter().map(Self::from_expr).collect()
+        let mut result = Vec::new();
+        for expr in exprs {
+            Self::from_expr(expr, &mut result);
+        }
+        result
     }
 }

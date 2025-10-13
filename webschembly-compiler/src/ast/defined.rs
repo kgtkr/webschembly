@@ -304,10 +304,7 @@ impl Expr<Defined> {
                 Expr::Vector(
                     x.add(type_map::key::<Defined>(), ()),
                     vec.into_iter()
-                        .map(|v| {
-                            Self::from_expr(v, ctx.to_undefinable_if_local(), names)
-                                .map(|(_, expr)| expr)
-                        })
+                        .map(|v| Self::from_exprs(v, ctx.to_undefinable_if_local(), names))
                         .collect::<Result<Vec<_>>>()?,
                 ),
             )),
@@ -320,10 +317,7 @@ impl Expr<Defined> {
                         elements: uvec
                             .elements
                             .into_iter()
-                            .map(|v| {
-                                Self::from_expr(v, ctx.to_undefinable_if_local(), names)
-                                    .map(|(_, expr)| expr)
-                            })
+                            .map(|v| Self::from_exprs(v, ctx.to_undefinable_if_local(), names))
                             .collect::<Result<Vec<_>>>()?,
                     },
                 ),
