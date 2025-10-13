@@ -92,14 +92,6 @@ impl FamilyX<Used> for SetX {
     type R = UsedSetR;
 }
 
-impl ElementInto<parsed::ParsedBeginR> for parsed::ParsedLetR {
-    type Param = ();
-
-    fn element_into(self, _: Self::Param) -> parsed::ParsedBeginR {
-        parsed::ParsedBeginR { span: self.span }
-    }
-}
-
 impl ElementInto<()> for defined::DefinedLetR {
     type Param = ();
 
@@ -134,14 +126,6 @@ impl From<defined::DefinedLetR> for defined::DefinedSetR {
 
 impl FamilyX<Used> for LetX {
     type R = !;
-}
-
-impl ElementInto<parsed::ParsedBeginR> for parsed::ParsedLetRecR {
-    type Param = ();
-
-    fn element_into(self, _: Self::Param) -> parsed::ParsedBeginR {
-        parsed::ParsedBeginR { span: self.span }
-    }
 }
 
 impl ElementInto<()> for defined::DefinedLetRecR {
@@ -339,17 +323,19 @@ impl Ast<Used> {
     pub fn from_ast(ast: Ast<<Used as Phase>::Prev>, var_id_gen: &mut VarIdGen) -> Self {
         var_id_gen.reset_for_module();
         let mut defines = Vec::new();
-        let new_exprs = ast
-            .exprs
-            .into_iter()
-            .map(|expr| {
-                let mut state = LambdaState::new();
-                let expr = Expr::from_expr(expr, &Context::new_empty(), var_id_gen, &mut state);
-                debug_assert!(state.captures.is_empty());
-                defines.extend(state.defines);
-                expr
-            })
-            .collect();
+        let mut result = Vec::new();
+        for expr in ast.exprs {
+            let mut state = LambdaState::new();
+            Expr::from_expr(
+                expr,
+                &Context::new_empty(),
+                var_id_gen,
+                &mut state,
+                &mut result,
+            );
+            debug_assert!(state.captures.is_empty());
+            defines.extend(state.defines);
+        }
 
         Ast {
             x: ast.x.add(
@@ -366,7 +352,7 @@ impl Ast<Used> {
                     defines,
                 },
             ),
-            exprs: new_exprs,
+            exprs: result,
         }
     }
 }
@@ -377,9 +363,12 @@ impl Expr<Used> {
         ctx: &Context,
         var_id_gen: &mut VarIdGen,
         state: &mut LambdaState,
-    ) -> Self {
+        result: &mut Vec<Expr<Used>>,
+    ) {
         match expr {
-            Expr::Const(x, lit) => Expr::Const(x.add(type_map::key::<Used>(), ()), lit),
+            Expr::Const(x, lit) => {
+                result.push(Expr::Const(x.add(type_map::key::<Used>(), ()), lit))
+            }
             Expr::Var(x, var) => {
                 let var_id = if let Some(local_var) = ctx.env.get(&var) {
                     if local_var.is_captured {
@@ -389,9 +378,12 @@ impl Expr<Used> {
                 } else {
                     VarId::Global(var_id_gen.global_var_id(&var))
                 };
-                Expr::Var(x.add(type_map::key::<Used>(), UsedVarR { var_id }), var)
+                result.push(Expr::Var(
+                    x.add(type_map::key::<Used>(), UsedVarR { var_id }),
+                    var,
+                ))
             }
-            Expr::Define(x, _) => x.get_owned(type_map::key::<Defined>()),
+            Expr::Define(x, _) => x.get_owned(type_map::key::<Desugared>()),
             Expr::Lambda(x, lambda) => {
                 let mut new_env = FxHashMap::default();
 
@@ -426,11 +418,7 @@ impl Expr<Used> {
                 }
 
                 let new_ctx = ctx.clone().extend_new_lambda(new_env);
-                let new_body = lambda
-                    .body
-                    .into_iter()
-                    .map(|expr| Self::from_expr(expr, &new_ctx, var_id_gen, &mut new_state))
-                    .collect::<Vec<_>>();
+                let new_body = Self::from_exprs(lambda.body, &new_ctx, var_id_gen, &mut new_state);
 
                 {
                     // キャプチャリストを親ラムダが継承する
@@ -449,7 +437,7 @@ impl Expr<Used> {
                     var_id_gen.flag_capture(*free_var);
                 }
 
-                Expr::Lambda(
+                result.push(Expr::Lambda(
                     x.add(
                         type_map::key::<Used>(),
                         UsedLambdaR {
@@ -462,20 +450,20 @@ impl Expr<Used> {
                         args: lambda.args,
                         body: new_body,
                     },
-                )
+                ))
             }
             Expr::If(x, if_) => {
                 let new_cond = Self::from_exprs(if_.cond, ctx, var_id_gen, state);
                 let new_then = Self::from_exprs(if_.then, ctx, var_id_gen, state);
                 let new_els = Self::from_exprs(if_.els, ctx, var_id_gen, state);
-                Expr::If(
+                result.push(Expr::If(
                     x.add(type_map::key::<Used>(), ()),
                     If {
                         cond: new_cond,
                         then: new_then,
                         els: new_els,
                     },
-                )
+                ))
             }
             Expr::Call(x, call) => {
                 let new_func = Self::from_exprs(call.func, ctx, var_id_gen, state);
@@ -484,25 +472,15 @@ impl Expr<Used> {
                     .into_iter()
                     .map(|arg| Self::from_exprs(arg, ctx, var_id_gen, state))
                     .collect();
-                Expr::Call(
+                result.push(Expr::Call(
                     x.add(type_map::key::<Used>(), ()),
                     Call {
                         func: new_func,
                         args: new_args,
                     },
-                )
+                ))
             }
-            Expr::Begin(x, begin) => {
-                let new_exprs = begin
-                    .exprs
-                    .into_iter()
-                    .map(|expr| Self::from_expr(expr, ctx, var_id_gen, state))
-                    .collect();
-                Expr::Begin(
-                    x.add(type_map::key::<Used>(), ()),
-                    Begin { exprs: new_exprs },
-                )
-            }
+            Expr::Begin(x, _) => x.get_owned(type_map::key::<Desugared>()),
             Expr::Set(x, set) => {
                 let var_id = if let Some(local_var) = ctx.env.get(&set.name) {
                     if local_var.is_captured {
@@ -516,18 +494,17 @@ impl Expr<Used> {
                     VarId::Global(var_id_gen.global_var_id(&set.name))
                 };
                 let new_expr = Self::from_exprs(set.expr, ctx, var_id_gen, state);
-                Expr::Set(
+                result.push(Expr::Set(
                     x.add(type_map::key::<Used>(), UsedSetR { var_id }),
                     Set {
                         name: set.name,
                         expr: new_expr,
                     },
-                )
+                ))
             }
             Expr::Let(x, let_) => {
                 let mut new_env = FxHashMap::default();
 
-                let mut set_exprs = Vec::new();
                 for (i, (name, expr)) in let_.bindings.iter().enumerate() {
                     let id = var_id_gen.gen_local(VarMeta { name: name.clone() });
                     new_env.insert(
@@ -552,7 +529,7 @@ impl Expr<Used> {
                             expr,
                         },
                     );
-                    set_exprs.push(set_expr);
+                    result.push(set_expr);
                 }
 
                 for def in x.get_ref(type_map::key::<Defined>()).defines.iter() {
@@ -569,20 +546,10 @@ impl Expr<Used> {
 
                 let new_ctx = ctx.clone().extend_some_lambda(new_env);
 
-                let mut exprs = vec![];
-                exprs.extend(set_exprs);
-                exprs.extend(
-                    let_.body
-                        .into_iter()
-                        // stateは親のものを引き継ぐ
-                        .map(|expr| Self::from_expr(expr, &new_ctx, var_id_gen, state))
-                        .collect::<Vec<_>>(),
-                );
-
-                Expr::Begin(
-                    x.into_type_map(()).add(type_map::key::<Used>(), ()),
-                    Begin { exprs },
-                )
+                for expr in let_.body {
+                    // stateは親のものを引き継ぐ
+                    Self::from_expr(expr, &new_ctx, var_id_gen, state, result);
+                }
             }
             Expr::LetRec(x, letrec) => {
                 // TODO: letrecの定義式で同じletrecの変数を参照する場合、ラムダで囲わないとエラーにする必要がある
@@ -605,7 +572,6 @@ impl Expr<Used> {
                     ids.push(id);
                 }
 
-                let mut set_exprs = Vec::new();
                 let ctx = ctx.clone().extend_some_lambda(new_env);
                 for (i, ((name, expr), &id)) in letrec.bindings.iter().zip(&ids).enumerate() {
                     let expr = Self::from_exprs(expr.clone(), &ctx, var_id_gen, state);
@@ -621,7 +587,7 @@ impl Expr<Used> {
                             expr,
                         },
                     );
-                    set_exprs.push(set_expr);
+                    result.push(set_expr);
                 }
 
                 let mut new_env = FxHashMap::default();
@@ -639,30 +605,19 @@ impl Expr<Used> {
 
                 let ctx = ctx.clone().extend_some_lambda(new_env);
 
-                let mut exprs = vec![];
-                exprs.extend(set_exprs);
-                exprs.extend(
-                    letrec
-                        .body
-                        .into_iter()
-                        // stateは親のものを引き継ぐ
-                        .map(|expr| Self::from_expr(expr, &ctx, var_id_gen, state))
-                        .collect::<Vec<_>>(),
-                );
-
-                Expr::Begin(
-                    x.into_type_map(()).add(type_map::key::<Used>(), ()),
-                    Begin { exprs },
-                )
+                for expr in letrec.body.into_iter() {
+                    // stateは親のものを引き継ぐ
+                    Self::from_expr(expr, &ctx, var_id_gen, state, result);
+                }
             }
             Expr::Vector(x, vec) => {
                 let new_vec = vec
                     .into_iter()
                     .map(|expr| Self::from_exprs(expr, ctx, var_id_gen, state))
                     .collect();
-                Expr::Vector(x.add(type_map::key::<Used>(), ()), new_vec)
+                result.push(Expr::Vector(x.add(type_map::key::<Used>(), ()), new_vec))
             }
-            Expr::UVector(x, uvec) => Expr::UVector(
+            Expr::UVector(x, uvec) => result.push(Expr::UVector(
                 x.add(type_map::key::<Used>(), ()),
                 UVector {
                     kind: uvec.kind,
@@ -672,18 +627,18 @@ impl Expr<Used> {
                         .map(|expr| Self::from_exprs(expr, ctx, var_id_gen, state))
                         .collect(),
                 },
-            ),
+            )),
             Expr::Quote(x, _) => x.get_owned(type_map::key::<Desugared>()),
             Expr::Cons(x, cons) => {
                 let new_car = Self::from_exprs(cons.car, ctx, var_id_gen, state);
                 let new_cdr = Self::from_exprs(cons.cdr, ctx, var_id_gen, state);
-                Expr::Cons(
+                result.push(Expr::Cons(
                     x.add(type_map::key::<Used>(), ()),
                     Cons {
                         car: new_car,
                         cdr: new_cdr,
                     },
-                )
+                ))
             }
         }
     }
@@ -694,9 +649,10 @@ impl Expr<Used> {
         var_id_gen: &mut VarIdGen,
         state: &mut LambdaState,
     ) -> Vec<Expr<Used>> {
-        exprs
-            .into_iter()
-            .map(|expr| Self::from_expr(expr, ctx, var_id_gen, state))
-            .collect()
+        let mut result = Vec::new();
+        for expr in exprs {
+            Self::from_expr(expr, ctx, var_id_gen, state, &mut result);
+        }
+        result
     }
 }

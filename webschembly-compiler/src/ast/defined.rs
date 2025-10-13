@@ -226,16 +226,7 @@ impl Expr<Defined> {
                     ),
                 ))
             }
-            Expr::Begin(x, begin) => {
-                let new_exprs = Self::from_exprs(begin.exprs, ctx, names)?;
-                Ok((
-                    ctx.to_undefinable_if_local(),
-                    Expr::Begin(
-                        x.add(type_map::key::<Defined>(), ()),
-                        Begin { exprs: new_exprs },
-                    ),
-                ))
-            }
+            Expr::Begin(x, _) => x.get_owned(type_map::key::<Desugared>()),
             Expr::Set(x, set) => {
                 let new_expr = Self::from_exprs(set.expr, ctx.to_undefinable_if_local(), names)?;
                 Ok((

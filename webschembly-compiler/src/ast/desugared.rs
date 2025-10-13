@@ -39,7 +39,7 @@ impl FamilyX<Desugared> for VarX {
     type R = ();
 }
 impl FamilyX<Desugared> for BeginX {
-    type R = ();
+    type R = !;
 }
 impl FamilyX<Desugared> for SetX {
     type R = ();
@@ -156,7 +156,7 @@ impl Expr<Desugared> {
                     args: call.args.into_iter().map(Self::from_exprs).collect(),
                 },
             )),
-            Expr::Begin(x, begin) => {
+            Expr::Begin(_, begin) => {
                 for expr in begin.exprs {
                     Self::from_expr(expr, exprs);
                 }

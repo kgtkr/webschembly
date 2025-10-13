@@ -111,12 +111,7 @@ impl Expr<TailCall> {
                         .collect(),
                 },
             ),
-            Expr::Begin(x, begin) => Expr::Begin(
-                x.add(type_map::key::<TailCall>(), ()),
-                Begin {
-                    exprs: Self::from_exprs(begin.exprs, is_tail),
-                },
-            ),
+            Expr::Begin(x, _) => x.get_owned(type_map::key::<Desugared>()),
             Expr::Set(x, set) => Expr::Set(
                 x.add(type_map::key::<TailCall>(), ()),
                 Set {
