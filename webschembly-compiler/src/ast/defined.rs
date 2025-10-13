@@ -158,13 +158,13 @@ impl Expr<Defined> {
                             x.get_ref(type_map::key::<Parsed>()).name_span,
                             def_expr,
                         ));
-                        return Ok(());
+                        Ok(())
                     }
                     DefineContext::LocalUndefinable => {
-                        return Err(compiler_error!(
+                        Err(compiler_error!(
                             "Define is not allowed in this context: {}",
                             def.name
-                        ));
+                        ))
                     }
                 }
             }
