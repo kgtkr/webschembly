@@ -51,12 +51,7 @@ impl JitModule {
         jit_ctx: &mut JitCtx,
     ) -> Module {
         // entry関数もあるので+1してる
-        let stub_func_ids = self
-            .module
-            .funcs
-            .values()
-            .map(|func| (func.id, FuncId::from(usize::from(func.id) + 1)))
-            .collect::<VecMap<FuncId, _>>();
+        let mut stub_func_ids = FxHashMap::default();
         let mut funcs = VecMap::new();
 
         /*
@@ -69,7 +64,54 @@ impl JitModule {
         }
         */
 
-        {
+        for func in self.module.funcs.values() {
+            /*
+            以下のようなスタブを生成
+            func f0_stub(x1, x2) {
+                instantiate_module(f0_module);
+                f0 <- get_global f0_ref
+                f0(x1, x2)
+            }
+            */
+            let mut new_locals = func.locals.clone();
+            let f0_ref_local = new_locals.push_with(|id| Local {
+                id,
+                typ: LocalType::FuncRef,
+            });
+
+            let id = funcs.push_with(|id| Func {
+                id,
+                args: func.args.clone(),
+                ret_type: func.ret_type,
+                locals: new_locals,
+                bb_entry: BasicBlockId::from(0),
+                bbs: [BasicBlock {
+                    id: BasicBlockId::from(0),
+                    exprs: vec![
+                        ExprAssign {
+                            local: None,
+                            expr: Expr::InstantiateFunc(self.module_id, func.id, 0),
+                        },
+                        ExprAssign {
+                            local: Some(f0_ref_local),
+                            expr: Expr::GlobalGet(self.func_to_globals[func.id]),
+                        },
+                    ],
+                    next: BasicBlockNext::Terminator(BasicBlockTerminator::TailCallRef(
+                        ExprCallRef {
+                            func: f0_ref_local,
+                            args: func.args.clone(),
+                            func_type: func.func_type(),
+                        },
+                    )),
+                }]
+                .into_iter()
+                .collect(),
+            });
+            stub_func_ids.insert(func.id, id);
+        }
+
+        let entry_func_id = {
             // entry
             let mut locals = VecMap::new();
             let mut exprs = Vec::new();
@@ -81,7 +123,7 @@ impl JitModule {
 
                 exprs.push(ExprAssign {
                     local: Some(func_ref_local),
-                    expr: Expr::FuncRef(stub_func_ids[func.id]),
+                    expr: Expr::FuncRef(stub_func_ids[&func.id]),
                 });
                 exprs.push(ExprAssign {
                     local: None,
@@ -113,8 +155,8 @@ impl JitModule {
                 jit_ctx.init_instantiated(stub_globals, instantiate_func_global);
             };
 
-            let func = Func {
-                id: funcs.next_key(),
+            funcs.push_with(|id| Func {
+                id,
                 args: vec![],
                 ret_type: LocalType::Type(Type::Obj),
                 locals,
@@ -123,66 +165,18 @@ impl JitModule {
                     id: BasicBlockId::from(0),
                     exprs,
                     next: BasicBlockNext::Terminator(BasicBlockTerminator::TailCall(ExprCall {
-                        func_id: stub_func_ids[self.module.entry],
+                        func_id: stub_func_ids[&self.module.entry],
                         args: vec![],
                     })),
                 }]
                 .into_iter()
                 .collect(),
-            };
-            funcs.push(func);
-        }
-        for func in self.module.funcs.values() {
-            /*
-            以下のようなスタブを生成
-            func f0_stub(x1, x2) {
-                instantiate_module(f0_module);
-                f0 <- get_global f0_ref
-                f0(x1, x2)
-            }
-            */
-            let mut new_locals = func.locals.clone();
-            let f0_ref_local = new_locals.push_with(|id| Local {
-                id,
-                typ: LocalType::FuncRef,
-            });
-
-            let func = Func {
-                id: funcs.next_key(),
-                args: func.args.clone(),
-                ret_type: func.ret_type,
-                locals: new_locals,
-                bb_entry: BasicBlockId::from(0),
-                bbs: [BasicBlock {
-                    id: BasicBlockId::from(0),
-                    exprs: vec![
-                        ExprAssign {
-                            local: None,
-                            expr: Expr::InstantiateFunc(self.module_id, func.id, 0),
-                        },
-                        ExprAssign {
-                            local: Some(f0_ref_local),
-                            expr: Expr::GlobalGet(self.func_to_globals[func.id]),
-                        },
-                    ],
-                    next: BasicBlockNext::Terminator(BasicBlockTerminator::TailCallRef(
-                        ExprCallRef {
-                            func: f0_ref_local,
-                            args: func.args.clone(),
-                            func_type: func.func_type(),
-                        },
-                    )),
-                }]
-                .into_iter()
-                .collect(),
-            };
-            funcs.push(func);
-        }
-
+            })
+        };
         Module {
             globals: FxHashMap::default(),
             funcs,
-            entry: FuncId::from(0),
+            entry: entry_func_id,
             meta: Meta {
                 // TODO:
                 local_metas: FxHashMap::default(),
@@ -335,82 +329,7 @@ impl JitFunc {
         func_to_globals: &VecMap<FuncId, GlobalId>,
         jit_ctx: &JitCtx,
     ) -> Module {
-        let mut funcs = TiVec::<FuncId, _>::new();
-        /*
-        func entry() {
-            set_global f0_ref f0
-            set_global bb0_ref [bb0_stub, nil, ..., nil]
-            set_global bb1_ref [bb1_stub, nil, ..., nil]
-        }
-        */
-        let entry_func_id = funcs.push_and_get_key(None);
-        let body_func_id = funcs.push_and_get_key(None);
-        let bb_stub_func_ids = self
-            .jit_bbs
-            .values()
-            .map(|jit_bb| (jit_bb.bb_id, funcs.push_and_get_key(None)))
-            .collect::<VecMap<BasicBlockId, _>>();
-        let entry_func = {
-            let mut locals = VecMap::new();
-            let func_ref_local = locals.push_with(|id| Local {
-                id,
-                typ: LocalType::FuncRef,
-            });
-
-            let mut exprs = Vec::new();
-            exprs.extend([
-                ExprAssign {
-                    local: Some(func_ref_local),
-                    expr: Expr::FuncRef(FuncId::from(1)),
-                },
-                ExprAssign {
-                    local: None,
-                    expr: Expr::GlobalSet(jit_ctx.instantiate_func_global().id, func_ref_local),
-                },
-            ]);
-            if self.func_index == GLOBAL_LAYOUT_DEFAULT_INDEX {
-                // func_to_globalsはindex=0のためのもの
-                exprs.push(ExprAssign {
-                    local: None,
-                    expr: Expr::GlobalSet(func_to_globals[self.func.id], func_ref_local),
-                });
-            }
-            for jit_bb in self.jit_bbs.values() {
-                let func_ref_local = locals.push_with(|id| Local {
-                    id,
-                    typ: LocalType::FuncRef,
-                });
-                let (_, index_global) = jit_bb
-                    .bb_index_manager
-                    .type_args(GLOBAL_LAYOUT_DEFAULT_INDEX);
-
-                exprs.push(ExprAssign {
-                    local: Some(func_ref_local),
-                    expr: Expr::FuncRef(bb_stub_func_ids[jit_bb.bb_id]),
-                });
-
-                exprs.push(ExprAssign {
-                    local: None,
-                    expr: Expr::GlobalSet(index_global.id, func_ref_local),
-                });
-            }
-
-            Func {
-                id: entry_func_id,
-                args: vec![],
-                ret_type: LocalType::FuncRef, // TODO: Nilでも返したほうがよさそう
-                locals,
-                bb_entry: BasicBlockId::from(0),
-                bbs: [BasicBlock {
-                    id: BasicBlockId::from(0),
-                    exprs,
-                    next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(func_ref_local)),
-                }]
-                .into_iter()
-                .collect(),
-            }
-        };
-        funcs[entry_func_id] = Some(entry_func);
+        let mut funcs = VecMap::new();
 
         /*
         func f0(...) {
@@ -418,8 +337,9 @@ impl JitFunc {
             bb0[index](...)
         }
         */
-        let entry_bb_info = &self.jit_bbs[self.func.bb_entry].info;
-        let body_func = {
+        let body_func_id = {
+            let entry_bb_info = &self.jit_bbs[self.func.bb_entry].info;
+
             let mut locals = self.func.locals.clone();
 
             let func_ref_local = locals.push_with(|id| Local {
@@ -431,8 +351,8 @@ impl JitFunc {
                 .bb_index_manager
                 .type_args(GLOBAL_LAYOUT_DEFAULT_INDEX);
 
-            Func {
-                id: body_func_id,
+            funcs.push_with(|id| Func {
+                id,
                 args: self.func.args.clone(),
                 ret_type: self.func.ret_type,
                 locals,
@@ -459,25 +379,89 @@ impl JitFunc {
                 }]
                 .into_iter()
                 .collect(),
-            }
+            })
         };
 
-        funcs[body_func_id] = Some(body_func);
-
+        let mut bb_stub_func_ids = FxHashMap::default();
         for jit_bb in self.jit_bbs.values() {
-            let func = self.generate_bb_stub_func(
-                self.module_id,
-                jit_bb,
-                bb_stub_func_ids[jit_bb.bb_id],
-                GLOBAL_LAYOUT_DEFAULT_INDEX,
-            );
-            funcs[bb_stub_func_ids[jit_bb.bb_id]] = Some(func);
+            let id = funcs.push_with(|id| {
+                self.generate_bb_stub_func(self.module_id, jit_bb, id, GLOBAL_LAYOUT_DEFAULT_INDEX)
+            });
+            bb_stub_func_ids.insert(jit_bb.bb_id, id);
         }
+
+        /*
+        func entry() {
+            set_global f0_ref f0
+            set_global bb0_ref [bb0_stub, nil, ..., nil]
+            set_global bb1_ref [bb1_stub, nil, ..., nil]
+        }
+        */
+        let entry_func_id = {
+            let mut locals = VecMap::new();
+            let func_ref_local = locals.push_with(|id| Local {
+                id,
+                typ: LocalType::FuncRef,
+            });
+
+            let mut exprs = Vec::new();
+            exprs.extend([
+                ExprAssign {
+                    local: Some(func_ref_local),
+                    expr: Expr::FuncRef(body_func_id),
+                },
+                ExprAssign {
+                    local: None,
+                    expr: Expr::GlobalSet(jit_ctx.instantiate_func_global().id, func_ref_local),
+                },
+            ]);
+            if self.func_index == GLOBAL_LAYOUT_DEFAULT_INDEX {
+                // func_to_globalsはindex=0のためのもの
+                exprs.push(ExprAssign {
+                    local: None,
+                    expr: Expr::GlobalSet(func_to_globals[self.func.id], func_ref_local),
+                });
+            }
+            for jit_bb in self.jit_bbs.values() {
+                let func_ref_local = locals.push_with(|id| Local {
+                    id,
+                    typ: LocalType::FuncRef,
+                });
+                let (_, index_global) = jit_bb
+                    .bb_index_manager
+                    .type_args(GLOBAL_LAYOUT_DEFAULT_INDEX);
+
+                exprs.push(ExprAssign {
+                    local: Some(func_ref_local),
+                    expr: Expr::FuncRef(bb_stub_func_ids[&jit_bb.bb_id]),
+                });
+
+                exprs.push(ExprAssign {
+                    local: None,
+                    expr: Expr::GlobalSet(index_global.id, func_ref_local),
+                });
+            }
+
+            funcs.push_with(|id| Func {
+                id,
+                args: vec![],
+                ret_type: LocalType::FuncRef, // TODO: Nilでも返したほうがよさそう
+                locals,
+                bb_entry: BasicBlockId::from(0),
+                bbs: [BasicBlock {
+                    id: BasicBlockId::from(0),
+                    exprs,
+                    next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(func_ref_local)),
+                }]
+                .into_iter()
+                .collect(),
+            })
+        };
 
         Module {
             globals: FxHashMap::default(),
-            funcs: funcs.into_iter().map(|f| f.unwrap()).collect(),
-            entry: FuncId::from(0),
+            funcs,
+            entry: entry_func_id,
             meta: Meta {
                 // TODO:
                 local_metas: FxHashMap::default(),
