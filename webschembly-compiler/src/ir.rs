@@ -3,7 +3,6 @@ use std::{fmt, iter::from_coroutine};
 use derive_more::{From, Into};
 use ordered_float::NotNan;
 use rustc_hash::FxHashMap;
-use typed_index_collections::TiVec;
 
 use crate::{HasId, vec_map::VecMap};
 
@@ -1656,6 +1655,14 @@ pub struct Func {
     pub bbs: VecMap<BasicBlockId, BasicBlock>,
 }
 
+impl HasId for Func {
+    type Id = FuncId;
+
+    fn id(&self) -> Self::Id {
+        self.id
+    }
+}
+
 impl Func {
     pub fn display<'a>(&self, meta: &'a Meta) -> Display<'a, &'_ Func> {
         Display { value: self, meta }
@@ -1809,7 +1816,7 @@ impl fmt::Display for Display<'_, ModuleId> {
 #[derive(Debug, Clone)]
 pub struct Module {
     pub globals: FxHashMap<GlobalId, Global>,
-    pub funcs: TiVec<FuncId, Func>,
+    pub funcs: VecMap<FuncId, Func>,
     pub entry: FuncId,
     pub meta: Meta,
 }
@@ -1829,7 +1836,7 @@ impl fmt::Display for Display<'_, &'_ Module> {
         }
 
         writeln!(f, "entry: {}", self.value.entry.display(self.meta))?;
-        for func in self.value.funcs.iter() {
+        for func in self.value.funcs.values() {
             write!(f, "{}", func.display(self.meta))?;
         }
         Ok(())

@@ -18,7 +18,7 @@ pub struct JitModule {
     module_id: ModuleId,
     module: Module,
     jit_funcs: FxHashMap<(FuncId, usize), JitFunc>,
-    func_to_globals: TiVec<FuncId, GlobalId>,
+    func_to_globals: VecMap<FuncId, GlobalId>,
     func_types: VecMap<FuncId, FuncType>,
 }
 
@@ -26,19 +26,14 @@ impl JitModule {
     pub fn new(global_manager: &mut GlobalManager, module_id: ModuleId, module: Module) -> Self {
         let func_to_globals = module
             .funcs
-            .iter()
-            .map(|_| global_manager.gen_global(LocalType::FuncRef))
-            .collect::<TiVec<FuncId, _>>();
-
-        let func_to_globals = func_to_globals
-            .iter()
-            .map(|g| g.id)
-            .collect::<TiVec<FuncId, _>>();
+            .keys()
+            .map(|id| (id, global_manager.gen_global(LocalType::FuncRef).id))
+            .collect::<VecMap<FuncId, _>>();
 
         let func_types = module
             .funcs
             .iter()
-            .map(|f| (f.id, f.func_type()))
+            .map(|(id, f)| (id, f.func_type()))
             .collect::<VecMap<FuncId, _>>();
 
         Self {
@@ -59,10 +54,10 @@ impl JitModule {
         let stub_func_ids = self
             .module
             .funcs
-            .iter()
-            .map(|func| FuncId::from(usize::from(func.id) + 1))
-            .collect::<TiVec<FuncId, _>>();
-        let mut funcs = TiVec::<FuncId, _>::new();
+            .values()
+            .map(|func| (func.id, FuncId::from(usize::from(func.id) + 1)))
+            .collect::<VecMap<FuncId, _>>();
+        let mut funcs = VecMap::new();
 
         /*
         以下のようなentryを生成
@@ -78,7 +73,7 @@ impl JitModule {
             // entry
             let mut locals = VecMap::new();
             let mut exprs = Vec::new();
-            for func in self.module.funcs.iter() {
+            for func in self.module.funcs.values() {
                 let func_ref_local = locals.push_with(|id| Local {
                     id,
                     typ: LocalType::FuncRef,
@@ -137,7 +132,7 @@ impl JitModule {
             };
             funcs.push(func);
         }
-        for func in self.module.funcs.iter() {
+        for func in self.module.funcs.values() {
             /*
             以下のようなスタブを生成
             func f0_stub(x1, x2) {
@@ -337,7 +332,7 @@ impl JitFunc {
 
     pub fn generate_func_module(
         &self,
-        func_to_globals: &TiVec<FuncId, GlobalId>,
+        func_to_globals: &VecMap<FuncId, GlobalId>,
         jit_ctx: &JitCtx,
     ) -> Module {
         let mut funcs = TiVec::<FuncId, _>::new();
@@ -559,7 +554,7 @@ impl JitFunc {
 
     pub fn generate_bb_module(
         &mut self,
-        func_to_globals: &TiVec<FuncId, GlobalId>,
+        func_to_globals: &VecMap<FuncId, GlobalId>,
         func_types: &VecMap<FuncId, FuncType>,
         orig_entry_bb_id: BasicBlockId,
         index: usize,
@@ -591,7 +586,7 @@ impl JitFunc {
         let mut required_bbs = Vec::new();
 
         let mut bbs = VecMap::new();
-        let mut funcs = TiVec::new();
+        let mut funcs = VecMap::new();
         let mut new_locals = func.locals.clone();
 
         let mut orig_bb_to_new_bb = VecMap::new();

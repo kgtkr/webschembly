@@ -699,7 +699,7 @@ impl<'a> ModuleGenerator<'a> {
             },
         );
 
-        for func in self.module.funcs.iter() {
+        for func in self.module.funcs.values() {
             let func_idx = self.func_count;
             self.func_count += 1;
 
@@ -707,7 +707,7 @@ impl<'a> ModuleGenerator<'a> {
             self.elements
                 .declared(Elements::Functions(Cow::Borrowed(&[func_idx])));
         }
-        for func in self.module.funcs.iter() {
+        for func in self.module.funcs.values() {
             FuncGenerator::new(&mut self, func).gen_func();
         }
 

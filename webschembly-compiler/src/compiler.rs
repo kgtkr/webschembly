@@ -144,20 +144,20 @@ impl Compiler {
 }
 
 fn preprocess_module(module: &mut ir::Module) {
-    for func in module.funcs.iter_mut() {
+    for func in module.funcs.values_mut() {
         debug_assert_ssa(func);
         remove_unreachable_bb(func);
     }
 }
 
 fn optimize_module(module: &mut ir::Module) {
-    for func in module.funcs.iter_mut() {
+    for func in module.funcs.values_mut() {
         ssa_optimize(func, true);
     }
 }
 
 fn postprocess(module: &mut ir::Module, global_manager: &mut GlobalManager) {
-    for func in module.funcs.iter_mut() {
+    for func in module.funcs.values_mut() {
         debug_assert_ssa(func);
 
         desugar(func);
@@ -171,7 +171,7 @@ fn postprocess(module: &mut ir::Module, global_manager: &mut GlobalManager) {
 
     // モジュールごとにグローバルを真面目に管理するのは大変なのでここで計算
     let mut global_ids = FxHashSet::default();
-    for func in module.funcs.iter() {
+    for func in module.funcs.values() {
         for bbs in func.bbs.values() {
             for expr_assign in bbs.exprs.iter() {
                 if let ir::Expr::GlobalGet(global_id) | ir::Expr::GlobalSet(global_id, _) =

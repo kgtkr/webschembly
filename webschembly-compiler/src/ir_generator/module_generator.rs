@@ -6,7 +6,6 @@ use crate::{
     ast::{self, Desugared, TailCall, Used},
     x::{RunX, TypeMap, type_map},
 };
-use typed_index_collections::TiVec;
 
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -29,7 +28,7 @@ struct ModuleGenerator<'a> {
     id: ModuleId,
     global_manager: &'a mut GlobalManager,
     ast: &'a ast::Ast<ast::Final>,
-    funcs: TiVec<FuncId, Option<Func>>,
+    funcs: VecMap<FuncId, Func>,
     config: Config,
     func_to_entrypoint_table: FxHashMap<FuncId, GlobalId>,
     globals: FxHashMap<GlobalId, Global>,
@@ -49,7 +48,7 @@ impl<'a> ModuleGenerator<'a> {
             id,
             ast,
             global_manager: ir_generator,
-            funcs: TiVec::new(),
+            funcs: VecMap::new(),
             config,
             local_metas: FxHashMap::default(),
             global_metas: FxHashMap::default(),
@@ -73,7 +72,7 @@ impl<'a> ModuleGenerator<'a> {
             .collect::<FxHashMap<_, _>>();
         self.globals.extend(ast_globals);
 
-        let entry_func_id = self.funcs.push_and_get_key(None);
+        let entry_func_id = self.funcs.allocate_key();
         let mut entry_func = FuncGenerator::new(&mut self, entry_func_id).entry_gen();
 
         // エントリーポイントにモジュール初期化ロジックを追加
@@ -117,7 +116,7 @@ impl<'a> ModuleGenerator<'a> {
         });
         entry_func.bb_entry = new_bb_entry;
 
-        self.funcs[entry_func_id] = Some(entry_func);
+        self.funcs.insert_node(entry_func);
 
         let meta = Meta {
             local_metas: self.local_metas,
@@ -126,7 +125,7 @@ impl<'a> ModuleGenerator<'a> {
 
         Module {
             globals: self.globals,
-            funcs: self.funcs.into_iter().map(|f| f.unwrap()).collect(),
+            funcs: self.funcs,
             entry: entry_func_id,
             meta,
         }
@@ -155,9 +154,9 @@ impl<'a> ModuleGenerator<'a> {
         x: &RunX<ast::LambdaX, ast::Final>,
         lambda: &ast::Lambda<ast::Final>,
     ) -> FuncId {
-        let id = self.funcs.push_and_get_key(None);
+        let id = self.funcs.allocate_key();
         let func = FuncGenerator::new(self, id).lambda_gen(x, lambda);
-        self.funcs[id] = Some(func);
+        self.funcs.insert_node(func);
 
         id
     }
