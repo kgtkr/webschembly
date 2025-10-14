@@ -1,5 +1,4 @@
 use rustc_hash::{FxHashMap, FxHashSet};
-use typed_index_collections::{TiVec, ti_vec};
 
 use super::bb_optimizer;
 use super::bb_optimizer::TypedObj;
@@ -20,6 +19,13 @@ pub struct JitModule {
     jit_funcs: FxHashMap<(FuncId, usize), JitFunc>,
     func_to_globals: VecMap<FuncId, GlobalId>,
     func_types: VecMap<FuncId, FuncType>,
+}
+
+impl HasId for JitModule {
+    type Id = ModuleId;
+    fn id(&self) -> Self::Id {
+        self.module_id
+    }
 }
 
 impl JitModule {
@@ -308,10 +314,7 @@ impl JitFunc {
                     bb_id: bb.id,
                     info: bb_infos[bb.id].clone(),
                     typed_objs: all_typed_objs[bb.id].clone(), // TODO: cloneしないようにする
-                    bb_index_manager: BBIndexManager::new(
-                        bb_infos[bb.id].type_params.len(),
-                        bb_to_globals[bb.id],
-                    ),
+                    bb_index_manager: BBIndexManager::new(bb_to_globals[bb.id]),
                 }
             })
             .collect::<VecMap<BasicBlockId, _>>();
@@ -368,10 +371,7 @@ impl JitFunc {
                             func: func_ref_local,
                             args: entry_bb_info.args.to_vec(),
                             func_type: FuncType {
-                                args: entry_bb_info.arg_types(
-                                    &self.func,
-                                    &ti_vec![None; entry_bb_info.type_params.len()],
-                                ),
+                                args: entry_bb_info.arg_types(&self.func, &VecMap::new()),
                                 ret: self.func.ret_type,
                             },
                         },
@@ -486,11 +486,9 @@ impl JitFunc {
         */
         let (type_args, index_global) = jit_bb.bb_index_manager.type_args(index);
         let mut locals = self.func.locals.clone();
-        for (type_param_id, type_arg) in type_args.iter_enumerated() {
-            if let Some(typ) = type_arg {
-                let local = *jit_bb.info.type_params.get_by_left(&type_param_id).unwrap();
-                locals[local].typ = LocalType::Type(Type::Val(*typ));
-            }
+        for (type_param_id, type_arg) in type_args.iter() {
+            let local = *jit_bb.info.type_params.get_by_left(&type_param_id).unwrap();
+            locals[local].typ = LocalType::Type(Type::Val(*type_arg));
         }
 
         let func_ref_local = locals.push_with(|id| Local {
@@ -1292,16 +1290,12 @@ struct BBInfo {
 }
 
 impl BBInfo {
-    fn arg_types(
-        &self,
-        func: &Func,
-        type_args: &TiVec<TypeParamId, Option<ValType>>,
-    ) -> Vec<LocalType> {
+    fn arg_types(&self, func: &Func, type_args: &VecMap<TypeParamId, ValType>) -> Vec<LocalType> {
         self.args
             .iter()
             .map(|&arg| {
                 if let Some(&type_param_id) = self.type_params.get_by_right(&arg)
-                    && let Some(typ) = type_args.get(type_param_id).copied().flatten()
+                    && let Some(typ) = type_args.get(type_param_id).copied()
                 {
                     LocalType::Type(Type::Val(typ))
                 } else {
@@ -1336,7 +1330,7 @@ fn calculate_bb_info(func: &Func) -> VecMap<BasicBlockId, BBInfo> {
             .collect::<Vec<_>>();
         args.sort();
 
-        let mut type_params = TiVec::new();
+        let mut type_params = VecMap::new();
         for &arg in &args {
             if let LocalType::Type(Type::Obj) = func.locals[arg].typ {
                 type_params.push(arg);
@@ -1346,7 +1340,7 @@ fn calculate_bb_info(func: &Func) -> VecMap<BasicBlockId, BBInfo> {
         let info = BBInfo {
             bb_id,
             args,
-            type_params: type_params.into_iter_enumerated().collect(),
+            type_params: type_params.into_iter().collect::<FxBiHashMap<_, _>>(),
         };
 
         bb_info.insert_node(info);
@@ -1361,8 +1355,8 @@ fn calculate_args_to_pass(
     bb_index_manager: &mut BBIndexManager,
     required_stubs: &mut Vec<(BasicBlockId, Global, usize)>,
     global_manager: &mut GlobalManager,
-) -> (Vec<LocalId>, TiVec<TypeParamId, Option<ValType>>, Global) {
-    let mut type_args = ti_vec![None; callee.type_params.len()];
+) -> (Vec<LocalId>, VecMap<TypeParamId, ValType>, Global) {
+    let mut type_args = VecMap::new();
     let mut args_to_pass = Vec::new();
 
     for &arg in &callee.args {
@@ -1374,7 +1368,7 @@ fn calculate_args_to_pass(
         let caller_args = if let Some(&type_param_id) = callee.type_params.get_by_right(&arg)
             && let Some(caller_typed_obj) = caller_typed_objs(obj_arg)
         {
-            type_args[type_param_id] = Some(caller_typed_obj.typ);
+            type_args.insert(type_param_id, caller_typed_obj.typ);
             caller_typed_obj.val_type
         } else {
             obj_arg
@@ -1412,15 +1406,15 @@ pub const GLOBAL_LAYOUT_DEFAULT_INDEX: usize = 0;
 
 #[derive(Debug)]
 pub struct BBIndexManager {
-    type_params_to_index: FxBiHashMap<TiVec<TypeParamId, Option<ValType>>, usize>,
+    type_params_to_index: FxBiHashMap<VecMap<TypeParamId, ValType>, usize>,
     index_to_global: FxHashMap<usize, Global>,
 }
 
 impl BBIndexManager {
-    pub fn new(params_len: usize, global: Global) -> Self {
+    pub fn new(global: Global) -> Self {
         let mut type_params_to_index = FxBiHashMap::default();
         let mut index_to_global = FxHashMap::default();
-        type_params_to_index.insert(ti_vec![None; params_len], GLOBAL_LAYOUT_DEFAULT_INDEX);
+        type_params_to_index.insert(VecMap::new(), GLOBAL_LAYOUT_DEFAULT_INDEX);
         index_to_global.insert(GLOBAL_LAYOUT_DEFAULT_INDEX, global);
         Self {
             type_params_to_index,
@@ -1430,7 +1424,7 @@ impl BBIndexManager {
 
     pub fn idx(
         &mut self,
-        type_params: &TiVec<TypeParamId, Option<ValType>>,
+        type_params: &VecMap<TypeParamId, ValType>,
         global_manager: &mut GlobalManager,
     ) -> Option<(Global, usize, IndexFlag)> {
         if let Some(&index) = self.type_params_to_index.get_by_left(type_params) {
@@ -1447,7 +1441,7 @@ impl BBIndexManager {
         }
     }
 
-    pub fn type_args(&self, index: usize) -> (&TiVec<TypeParamId, Option<ValType>>, Global) {
+    pub fn type_args(&self, index: usize) -> (&VecMap<TypeParamId, ValType>, Global) {
         (
             self.type_params_to_index.get_by_right(&index).unwrap(),
             self.index_to_global.get(&index).unwrap().to_import(),

@@ -1,5 +1,3 @@
-use typed_index_collections::TiVec;
-
 use crate::{VecMap, fxbihashmap::FxBiHashMap, ir::*};
 
 /*
@@ -40,32 +38,30 @@ pub fn assign_type_args(
     locals: &mut VecMap<LocalId, Local>,
     bb: &mut BasicBlock,
     type_params: &FxBiHashMap<TypeParamId, LocalId>,
-    type_args: &TiVec<TypeParamId, Option<ValType>>,
+    type_args: &VecMap<TypeParamId, ValType>,
 ) -> FxBiHashMap<LocalId, LocalId> {
     let mut additional_expr_assigns = Vec::new();
 
     // 型代入されている変数のobj版を用意(l1_objに対応)
     let mut assigned_local_to_obj = FxBiHashMap::default();
 
-    for (type_param_id, typ) in type_args.iter_enumerated() {
-        if let Some(typ) = typ {
-            let local = *type_params.get_by_left(&type_param_id).unwrap();
+    for (type_param_id, typ) in type_args.iter() {
+        let local = *type_params.get_by_left(&type_param_id).unwrap();
 
-            // ローカル変数の型に代入
-            debug_assert_eq!(locals[local].typ, LocalType::Type(Type::Obj));
-            locals[local].typ = LocalType::Type(Type::Val(*typ));
+        // ローカル変数の型に代入
+        debug_assert_eq!(locals[local].typ, LocalType::Type(Type::Obj));
+        locals[local].typ = LocalType::Type(Type::Val(*typ));
 
-            // obj版のローカル変数を用意
-            let obj_local = locals.push_with(|id| Local {
-                id,
-                typ: LocalType::Type(Type::Obj),
-            });
-            assigned_local_to_obj.insert(local, obj_local);
-            additional_expr_assigns.push(ExprAssign {
-                local: Some(obj_local),
-                expr: Expr::ToObj(*typ, *type_params.get_by_left(&type_param_id).unwrap()),
-            });
-        }
+        // obj版のローカル変数を用意
+        let obj_local = locals.push_with(|id| Local {
+            id,
+            typ: LocalType::Type(Type::Obj),
+        });
+        assigned_local_to_obj.insert(local, obj_local);
+        additional_expr_assigns.push(ExprAssign {
+            local: Some(obj_local),
+            expr: Expr::ToObj(*typ, *type_params.get_by_left(&type_param_id).unwrap()),
+        });
     }
 
     for (local, _) in bb.local_usages_mut() {
@@ -343,7 +339,6 @@ pub fn dead_code_elimination(
 mod tests {
     use super::*;
     use crate::{fxbihashmap::FxBiHashMap, ir_processor::ssa::collect_defs};
-    use typed_index_collections::ti_vec;
 
     // TODO: assign_type_argsとanalyze_typed_objのテストは分割したほうがいいかも？
     #[test]
@@ -389,7 +384,8 @@ mod tests {
         };
 
         let type_params = FxBiHashMap::from_iter(vec![(TypeParamId::from(0), LocalId::from(0))]);
-        let type_args = ti_vec![Some(ValType::Int)];
+        let mut type_args = VecMap::new();
+        type_args.push(ValType::Int);
 
         let assigned_local_to_obj =
             assign_type_args(&mut locals, &mut bb, &type_params, &type_args);

@@ -1,8 +1,6 @@
-use typed_index_collections::TiVec;
-
-use crate::ir::*;
 use crate::ir_generator::GlobalManager;
 use crate::ir_processor::bb_optimizer;
+use crate::{VecMap, ir::*};
 mod jit_config;
 mod jit_module;
 pub use jit_config::JitConfig;
@@ -12,14 +10,14 @@ use jit_ctx::JitCtx;
 
 #[derive(Debug)]
 pub struct Jit {
-    jit_module: TiVec<ModuleId, JitModule>,
+    jit_module: VecMap<ModuleId, JitModule>,
     ctx: JitCtx,
 }
 
 impl Jit {
     pub fn new(config: JitConfig) -> Self {
         Self {
-            jit_module: TiVec::new(),
+            jit_module: VecMap::new(),
             ctx: JitCtx::new(config),
         }
     }
@@ -33,9 +31,9 @@ impl Jit {
         global_manager: &mut GlobalManager,
         module: Module,
     ) -> Module {
-        let module_id = self.jit_module.next_key();
-        self.jit_module
-            .push(JitModule::new(global_manager, module_id, module));
+        let module_id = self
+            .jit_module
+            .push_with(|id| JitModule::new(global_manager, id, module));
         self.jit_module[module_id].generate_stub_module(global_manager, &mut self.ctx)
     }
 

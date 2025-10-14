@@ -1,7 +1,5 @@
 use std::marker::PhantomData;
 
-use typed_index_collections::TiVec;
-
 use crate::HasId;
 
 // 削除可能なTiVec likeな構造
@@ -38,13 +36,6 @@ where
             Entry::Occupied(OccupiedEntry { key, map: self })
         } else {
             Entry::Vacant(VacantEntry { key, map: self })
-        }
-    }
-
-    pub fn from_ti_vec(vec: TiVec<K, Option<V>>) -> Self {
-        Self {
-            vec: vec.raw,
-            _marker: PhantomData,
         }
     }
 
