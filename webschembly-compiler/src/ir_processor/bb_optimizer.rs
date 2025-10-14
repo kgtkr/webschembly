@@ -1,4 +1,5 @@
-use crate::{VecMap, fxbihashmap::FxBiHashMap, ir::*};
+use crate::{fxbihashmap::FxBiHashMap, ir::*};
+use vec_map::VecMap;
 
 /*
 BBに型代入を行う

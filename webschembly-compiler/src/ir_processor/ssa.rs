@@ -1,8 +1,6 @@
-use crate::{
-    HasId, VecMap,
-    ir::{BasicBlock, BasicBlockId, Expr, ExprAssign, Func, Local, LocalId},
-};
+use crate::ir::{BasicBlock, BasicBlockId, Expr, ExprAssign, Func, Local, LocalId};
 use rustc_hash::{FxHashMap, FxHashSet};
+use vec_map::{HasId, VecMap};
 
 // 前提条件: クリティカルエッジが存在しない
 pub fn remove_phi(func: &mut Func) {

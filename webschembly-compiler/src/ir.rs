@@ -3,8 +3,7 @@ use std::{fmt, iter::from_coroutine};
 use derive_more::{From, Into};
 use ordered_float::NotNan;
 use rustc_hash::FxHashMap;
-
-use crate::{HasId, vec_map::VecMap};
+use vec_map::{HasId, VecMap};
 
 const DISPLAY_INDENT: &str = "  ";
 

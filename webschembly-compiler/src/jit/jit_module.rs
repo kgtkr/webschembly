@@ -4,13 +4,13 @@ use super::bb_optimizer;
 use super::bb_optimizer::TypedObj;
 use super::jit_ctx::JitCtx;
 use crate::fxbihashmap::FxBiHashMap;
+use crate::ir::*;
 use crate::ir_generator::GlobalManager;
 use crate::ir_processor::cfg_analyzer::{calc_doms, calc_predecessors, calculate_rpo};
 use crate::ir_processor::dataflow::{analyze_liveness, calc_def_use};
 use crate::ir_processor::ssa::{DefUseChain, collect_defs};
 use crate::ir_processor::ssa_optimizer::ssa_optimize;
-use crate::vec_map::{VecMap, VecMapEq};
-use crate::{HasId, ir::*};
+use vec_map::{HasId, VecMap, VecMapEq};
 
 #[derive(Debug)]
 pub struct JitModule {
