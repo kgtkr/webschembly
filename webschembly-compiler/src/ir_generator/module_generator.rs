@@ -3,8 +3,8 @@ use rustc_hash::FxHashMap;
 use crate::ir_generator::GlobalManager;
 use crate::{VecMap, ir::*};
 use crate::{
-    ast::{self, Desugared, TailCall, Used},
-    x::{RunX, TypeMap, type_map},
+    ast::{self},
+    x::RunX,
 };
 
 #[derive(Debug, Clone)]
@@ -61,7 +61,6 @@ impl<'a> ModuleGenerator<'a> {
         let ast_globals = self
             .ast
             .x
-            .get_ref(type_map::key::<Used>())
             .global_vars
             .clone()
             .into_iter()
@@ -133,12 +132,7 @@ impl<'a> ModuleGenerator<'a> {
 
     fn global(&mut self, id: ast::GlobalVarId) -> Global {
         let global = self.global_manager.global(id);
-        let ast_meta = self
-            .ast
-            .x
-            .get_ref(type_map::key::<Used>())
-            .global_metas
-            .get(&id);
+        let ast_meta = self.ast.x.global_metas.get(&id);
         if let Some(ast_meta) = ast_meta {
             self.global_metas
                 .entry(global.id)
@@ -189,14 +183,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
     fn entry_gen(mut self) -> Func {
         let obj_local = self.local(Type::Obj);
 
-        self.define_all_ast_local_and_create_ref(
-            &self
-                .module_generator
-                .ast
-                .x
-                .get_ref(type_map::key::<Used>())
-                .defines,
-        );
+        self.define_all_ast_local_and_create_ref(&self.module_generator.ast.x.defines);
 
         let bb_entry = self.bbs.allocate_key();
         self.current_bb_id = Some(bb_entry);
@@ -258,15 +245,8 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         self.close_bb(BasicBlockNext::Terminator(BasicBlockTerminator::Error(msg)));
         self.current_bb_id = Some(merge_bb_id);
 
-        for (arg_idx, arg) in x.get_ref(type_map::key::<Used>()).args.iter().enumerate() {
-            if self
-                .module_generator
-                .ast
-                .x
-                .get_ref(type_map::key::<Used>())
-                .box_vars
-                .contains(arg)
-            {
+        for (arg_idx, arg) in x.args.iter().enumerate() {
+            if self.module_generator.ast.x.box_vars.contains(arg) {
                 let local = self.local(LocalType::Type(Type::Obj));
                 self.exprs.push(ExprAssign {
                     local: Some(local),
@@ -292,23 +272,17 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         }
 
         // 環境を復元するためのローカル変数を定義
-        for var_id in x.get_ref(type_map::key::<Used>()).captures.iter() {
+        for var_id in x.captures.iter() {
             self.define_ast_local(*var_id);
         }
         // 環境の型を収集
         let env_types = x
-            .get_ref(type_map::key::<Used>())
             .captures
             .iter()
             .map(|id| self.locals[*self.local_ids.get(id).unwrap()].typ)
             .collect::<Vec<_>>();
         // 環境を復元する処理を追加
-        for (i, var_id) in x
-            .get_ref(type_map::key::<Used>())
-            .captures
-            .iter()
-            .enumerate()
-        {
+        for (i, var_id) in x.captures.iter().enumerate() {
             let env_local = *self.local_ids.get(var_id).unwrap();
             self.exprs.push(ExprAssign {
                 local: Some(env_local),
@@ -317,7 +291,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             });
         }
 
-        self.define_all_ast_local_and_create_ref(&x.get_ref(type_map::key::<Used>()).defines);
+        self.define_all_ast_local_and_create_ref(&x.defines);
 
         let ret = self.local(Type::Obj);
         self.gen_exprs(Some(ret), &lambda.body);
@@ -344,14 +318,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
     fn define_all_ast_local_and_create_ref(&mut self, locals: &[ast::LocalVarId]) {
         for id in locals {
             let local = self.define_ast_local(*id);
-            if self
-                .module_generator
-                .ast
-                .x
-                .get_ref(type_map::key::<Used>())
-                .box_vars
-                .contains(id)
-            {
+            if self.module_generator.ast.x.box_vars.contains(id) {
                 self.exprs.push(ExprAssign {
                     local: Some(local),
                     expr: Expr::CreateRef(Type::Obj),
@@ -361,27 +328,12 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
     }
 
     fn define_ast_local(&mut self, id: ast::LocalVarId) -> LocalId {
-        let ast_meta = self
-            .module_generator
-            .ast
-            .x
-            .get_ref(type_map::key::<Used>())
-            .local_metas
-            .get(&id);
-        let local = self.local(
-            if self
-                .module_generator
-                .ast
-                .x
-                .get_ref(type_map::key::<Used>())
-                .box_vars
-                .contains(&id)
-            {
-                LocalType::Ref(Type::Obj)
-            } else {
-                LocalType::Type(Type::Obj)
-            },
-        );
+        let ast_meta = self.module_generator.ast.x.local_metas.get(&id);
+        let local = self.local(if self.module_generator.ast.x.box_vars.contains(&id) {
+            LocalType::Ref(Type::Obj)
+        } else {
+            LocalType::Type(Type::Obj)
+        });
         let prev = self.local_ids.insert(id, local);
         debug_assert!(prev.is_none());
         if let Some(ast_meta) = ast_meta {
@@ -396,22 +348,8 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
     }
 
     fn new_version_ast_local(&mut self, id: ast::LocalVarId) -> LocalId {
-        let ast_meta = self
-            .module_generator
-            .ast
-            .x
-            .get_ref(type_map::key::<Used>())
-            .local_metas
-            .get(&id);
-        debug_assert!(
-            !self
-                .module_generator
-                .ast
-                .x
-                .get_ref(type_map::key::<Used>())
-                .box_vars
-                .contains(&id)
-        );
+        let ast_meta = self.module_generator.ast.x.local_metas.get(&id);
+        debug_assert!(!self.module_generator.ast.x.box_vars.contains(&id));
         let local = self.local(LocalType::Type(Type::Obj));
         self.local_ids.insert(id, local);
         if let Some(ast_meta) = ast_meta {
@@ -425,8 +363,8 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         local
     }
 
-    fn gen_expr(&mut self, result: Option<LocalId>, ast: &ast::Expr<ast::Final>) {
-        match ast {
+    fn gen_expr(&mut self, result: Option<LocalId>, ast: &ast::LExpr<ast::Final>) {
+        match &ast.value {
             ast::Expr::Const(_, lit) => match lit {
                 ast::Const::Bool(b) => {
                     let val_type_local = self.local(Type::Val(ValType::Bool));
@@ -522,10 +460,9 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     });
                 }
             },
-            ast::Expr::Define(x, _) => *x.get_ref(type_map::key::<Used>()),
+            ast::Expr::Define(x, _) => *x,
             ast::Expr::Lambda(x, lambda) => {
                 let captures = x
-                    .get_ref(type_map::key::<Used>())
                     .captures
                     .iter()
                     .map(|id| *self.local_ids.get(id).unwrap())
@@ -667,10 +604,15 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 }
             }
             ast::Expr::Call(x, ast::Call { func, args }) => {
-                if let [ast::Expr::Var(x, name)] = func.as_slice()
+                if let [
+                    ast::Located {
+                        value: ast::Expr::Var(x, name),
+                        ..
+                    },
+                ] = func.as_slice()
                     && let ast::UsedVarR {
                         var_id: ast::VarId::Global(_),
-                    } = x.get_ref(type_map::key::<Used>())
+                    } = x
                     && let Some(builtin) = ast::Builtin::from_name(name)
                 {
                     let rules = BuiltinConversionRule::from_builtin(builtin)
@@ -826,7 +768,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                         expr: Expr::VariadicArgs(args_locals),
                     });
 
-                    let is_tail = x.get_ref(type_map::key::<TailCall>()).is_tail;
+                    let is_tail = x.is_tail;
                     let call_closure = ExprCallClosure {
                         closure: closure_local,
                         args: vec![args_local],
@@ -845,16 +787,9 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     }
                 }
             }
-            ast::Expr::Var(x, _) => match &x.get_ref(type_map::key::<Used>()).var_id {
+            ast::Expr::Var(x, _) => match &x.var_id {
                 ast::VarId::Local(id) => {
-                    if self
-                        .module_generator
-                        .ast
-                        .x
-                        .get_ref(type_map::key::<Used>())
-                        .box_vars
-                        .contains(id)
-                    {
+                    if self.module_generator.ast.x.box_vars.contains(id) {
                         self.exprs.push(ExprAssign {
                             local: result,
                             expr: Expr::DerefRef(Type::Obj, *self.local_ids.get(id).unwrap()),
@@ -878,16 +813,9 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 self.gen_exprs(result, exprs);
             }
             ast::Expr::Set(x, ast::Set { name, expr, .. }) => {
-                match &x.get_ref(type_map::key::<Used>()).var_id {
+                match &x.var_id {
                     ast::VarId::Local(id) => {
-                        if self
-                            .module_generator
-                            .ast
-                            .x
-                            .get_ref(type_map::key::<Used>())
-                            .box_vars
-                            .contains(id)
-                        {
+                        if self.module_generator.ast.x.box_vars.contains(id) {
                             let obj_local = self.local(Type::Obj);
                             self.gen_exprs(Some(obj_local), expr);
                             let local = self.local_ids.get(id).unwrap();
@@ -910,7 +838,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                         }
                     }
                     ast::VarId::Global(id) => {
-                        if let Some(_) = ast::Builtin::from_name(name)
+                        if let Some(_) = ast::Builtin::from_name(&name.value)
                             && !self.module_generator.config.allow_set_builtin
                         {
                             let msg = self.local(Type::Val(ValType::String));
@@ -937,8 +865,8 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     }
                 }
             }
-            ast::Expr::Let(x, _) => *x.get_ref(type_map::key::<Desugared>()),
-            ast::Expr::LetRec(x, _) => *x.get_ref(type_map::key::<Desugared>()),
+            ast::Expr::Let(x, _) => *x,
+            ast::Expr::LetRec(x, _) => *x,
             ast::Expr::Vector(_, vec) => {
                 let mut vec_locals = Vec::new();
                 for sexpr in vec {
@@ -1041,11 +969,11 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     expr: Expr::ToObj(ValType::Cons, val_type_local),
                 });
             }
-            ast::Expr::Quote(x, _) => *x.get_ref(type_map::key::<Desugared>()),
+            ast::Expr::Quote(x, _) => *x,
         }
     }
 
-    fn gen_exprs(&mut self, result: Option<LocalId>, exprs: &[ast::Expr<ast::Final>]) {
+    fn gen_exprs(&mut self, result: Option<LocalId>, exprs: &[ast::LExpr<ast::Final>]) {
         if let Some((last, rest)) = exprs.split_last() {
             for expr in rest {
                 self.gen_expr(None, expr);

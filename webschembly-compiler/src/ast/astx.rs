@@ -3,7 +3,25 @@ use std::fmt::Debug;
 use ordered_float::NotNan;
 
 use crate::sexpr::SExpr;
-use crate::x::{FamilyRunX, Phase, RunX};
+use crate::span::Span;
+use crate::x::{FamilyX, Phase, RunX};
+
+#[derive(Debug, Clone)]
+pub struct Located<T> {
+    pub value: T,
+    pub span: Span,
+}
+
+pub type L<T> = Located<T>;
+pub type LExpr<X> = L<Expr<X>>;
+
+pub trait LocatedValue: Sized {
+    fn with_span(self, span: Span) -> L<Self> {
+        L { value: self, span }
+    }
+}
+
+impl<T> LocatedValue for T {}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum UVectorKind {
@@ -57,21 +75,21 @@ pub enum ConsX {}
 
 pub trait XBound = Sized + Phase + Clone + Debug
 where
-    AstX: FamilyRunX<Self>,
-    ConstX: FamilyRunX<Self>,
-    DefineX: FamilyRunX<Self>,
-    LambdaX: FamilyRunX<Self>,
-    IfX: FamilyRunX<Self>,
-    CallX: FamilyRunX<Self>,
-    VarX: FamilyRunX<Self>,
-    BeginX: FamilyRunX<Self>,
-    SetX: FamilyRunX<Self>,
-    LetX: FamilyRunX<Self>,
-    LetRecX: FamilyRunX<Self>,
-    VectorX: FamilyRunX<Self>,
-    UVectorX: FamilyRunX<Self>,
-    QuoteX: FamilyRunX<Self>,
-    ConsX: FamilyRunX<Self>;
+    AstX: FamilyX<Self>,
+    ConstX: FamilyX<Self>,
+    DefineX: FamilyX<Self>,
+    LambdaX: FamilyX<Self>,
+    IfX: FamilyX<Self>,
+    CallX: FamilyX<Self>,
+    VarX: FamilyX<Self>,
+    BeginX: FamilyX<Self>,
+    SetX: FamilyX<Self>,
+    LetX: FamilyX<Self>,
+    LetRecX: FamilyX<Self>,
+    VectorX: FamilyX<Self>,
+    UVectorX: FamilyX<Self>,
+    QuoteX: FamilyX<Self>,
+    ConsX: FamilyX<Self>;
 
 #[derive(Debug, Clone)]
 pub struct Ast<X>
@@ -79,7 +97,7 @@ where
     X: XBound,
 {
     pub x: RunX<AstX, X>,
-    pub exprs: Vec<Expr<X>>,
+    pub exprs: Vec<LExpr<X>>,
 }
 
 #[derive(Debug, Clone)]
@@ -97,7 +115,7 @@ where
     Set(RunX<SetX, X>, Set<X>),
     Let(RunX<LetX, X>, Let<X>),
     LetRec(RunX<LetRecX, X>, LetRec<X>),
-    Vector(RunX<VectorX, X>, Vec<Vec<Expr<X>>>),
+    Vector(RunX<VectorX, X>, Vec<Vec<LExpr<X>>>),
     UVector(RunX<UVectorX, X>, UVector<X>),
     Quote(RunX<QuoteX, X>, SExpr),
     Cons(RunX<ConsX, X>, Cons<X>),
@@ -120,8 +138,8 @@ pub struct Define<X>
 where
     X: XBound,
 {
-    pub name: String,
-    pub expr: Vec<Expr<X>>,
+    pub name: L<String>,
+    pub expr: Vec<LExpr<X>>,
 }
 
 #[derive(Debug, Clone)]
@@ -129,8 +147,8 @@ pub struct Lambda<X>
 where
     X: XBound,
 {
-    pub args: Vec<String>,
-    pub body: Vec<Expr<X>>,
+    pub args: Vec<L<String>>,
+    pub body: Vec<LExpr<X>>,
 }
 
 #[derive(Debug, Clone)]
@@ -138,9 +156,9 @@ pub struct If<X>
 where
     X: XBound,
 {
-    pub cond: Vec<Expr<X>>,
-    pub then: Vec<Expr<X>>,
-    pub els: Vec<Expr<X>>,
+    pub cond: Vec<LExpr<X>>,
+    pub then: Vec<LExpr<X>>,
+    pub els: Vec<LExpr<X>>,
 }
 
 #[derive(Debug, Clone)]
@@ -148,8 +166,8 @@ pub struct Call<X>
 where
     X: XBound,
 {
-    pub func: Vec<Expr<X>>,
-    pub args: Vec<Vec<Expr<X>>>,
+    pub func: Vec<LExpr<X>>,
+    pub args: Vec<Vec<LExpr<X>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -157,7 +175,7 @@ pub struct Begin<X>
 where
     X: XBound,
 {
-    pub exprs: Vec<Expr<X>>,
+    pub exprs: Vec<LExpr<X>>,
 }
 
 #[derive(Debug, Clone)]
@@ -165,8 +183,8 @@ pub struct Set<X>
 where
     X: XBound,
 {
-    pub name: String,
-    pub expr: Vec<Expr<X>>,
+    pub name: L<String>,
+    pub expr: Vec<LExpr<X>>,
 }
 
 #[derive(Debug, Clone)]
@@ -174,8 +192,8 @@ pub struct Let<X>
 where
     X: XBound,
 {
-    pub bindings: Vec<(String, Vec<Expr<X>>)>,
-    pub body: Vec<Expr<X>>,
+    pub bindings: Vec<L<Binding<X>>>,
+    pub body: Vec<LExpr<X>>,
 }
 
 #[derive(Debug, Clone)]
@@ -183,8 +201,17 @@ pub struct LetRec<X>
 where
     X: XBound,
 {
-    pub bindings: Vec<(String, Vec<Expr<X>>)>,
-    pub body: Vec<Expr<X>>,
+    pub bindings: Vec<L<Binding<X>>>,
+    pub body: Vec<LExpr<X>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Binding<X>
+where
+    X: XBound,
+{
+    pub name: L<String>,
+    pub expr: Vec<LExpr<X>>,
 }
 
 #[derive(Debug, Clone)]
@@ -193,7 +220,7 @@ where
     X: XBound,
 {
     pub kind: UVectorKind,
-    pub elements: Vec<Vec<Expr<X>>>,
+    pub elements: Vec<Vec<LExpr<X>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -201,6 +228,6 @@ pub struct Cons<X>
 where
     X: XBound,
 {
-    pub car: Vec<Expr<X>>,
-    pub cdr: Vec<Expr<X>>,
+    pub car: Vec<LExpr<X>>,
+    pub cdr: Vec<LExpr<X>>,
 }
