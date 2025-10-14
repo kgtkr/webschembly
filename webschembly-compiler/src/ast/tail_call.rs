@@ -16,7 +16,6 @@ pub struct TailCallCallR {
 }
 
 pub trait TailCallPrevPhase = AstPhase<XBegin = !, XQuote = !, XDefine = !>;
-type SelfExpr = Expr<TailCall>;
 
 impl Ast<TailCall> {
     pub fn from_ast<P: TailCallPrevPhase>(ast: Ast<P>) -> Self {
@@ -34,10 +33,10 @@ impl Ast<TailCall> {
 impl LExpr<TailCall> {
     fn from_expr<P: TailCallPrevPhase>(expr: LExpr<P>, is_tail: bool) -> Self {
         match expr.value {
-            Expr::Const(_, lit) => SelfExpr::Const((), lit).with_span(expr.span),
-            Expr::Var(_, var) => SelfExpr::Var((), var).with_span(expr.span),
+            Expr::Const(_, lit) => Expr::Const((), lit).with_span(expr.span),
+            Expr::Var(_, var) => Expr::Var((), var).with_span(expr.span),
             Expr::Define(x, _) => x,
-            Expr::Lambda(_, lambda) => SelfExpr::Lambda(
+            Expr::Lambda(_, lambda) => Expr::Lambda(
                 (),
                 Lambda {
                     args: lambda.args,
@@ -45,7 +44,7 @@ impl LExpr<TailCall> {
                 },
             )
             .with_span(expr.span),
-            Expr::If(_, if_) => SelfExpr::If(
+            Expr::If(_, if_) => Expr::If(
                 (),
                 If {
                     cond: Self::from_exprs(if_.cond, false),
@@ -54,7 +53,7 @@ impl LExpr<TailCall> {
                 },
             )
             .with_span(expr.span),
-            Expr::Call(_, call) => SelfExpr::Call(
+            Expr::Call(_, call) => Expr::Call(
                 TailCallCallR { is_tail },
                 Call {
                     func: Self::from_exprs(call.func, false),
@@ -67,7 +66,7 @@ impl LExpr<TailCall> {
             )
             .with_span(expr.span),
             Expr::Begin(x, _) => x,
-            Expr::Set(_, set) => SelfExpr::Set(
+            Expr::Set(_, set) => Expr::Set(
                 (),
                 Set {
                     name: set.name,
@@ -75,7 +74,7 @@ impl LExpr<TailCall> {
                 },
             )
             .with_span(expr.span),
-            Expr::Let(_, let_) => SelfExpr::Let(
+            Expr::Let(_, let_) => Expr::Let(
                 (),
                 Let {
                     bindings: let_
@@ -93,7 +92,7 @@ impl LExpr<TailCall> {
                 },
             )
             .with_span(expr.span),
-            Expr::LetRec(_, letrec) => SelfExpr::LetRec(
+            Expr::LetRec(_, letrec) => Expr::LetRec(
                 (),
                 LetRec {
                     bindings: letrec
@@ -111,13 +110,13 @@ impl LExpr<TailCall> {
                 },
             )
             .with_span(expr.span),
-            Expr::Vector(_, vec) => SelfExpr::Vector((), {
+            Expr::Vector(_, vec) => Expr::Vector((), {
                 vec.into_iter()
                     .map(|expr| Self::from_exprs(expr, false))
                     .collect()
             })
             .with_span(expr.span),
-            Expr::UVector(_, uvec) => SelfExpr::UVector(
+            Expr::UVector(_, uvec) => Expr::UVector(
                 (),
                 UVector {
                     kind: uvec.kind,
@@ -130,7 +129,7 @@ impl LExpr<TailCall> {
             )
             .with_span(expr.span),
             Expr::Quote(x, _) => x,
-            Expr::Cons(_, cons) => SelfExpr::Cons(
+            Expr::Cons(_, cons) => Expr::Cons(
                 (),
                 Cons {
                     car: Self::from_exprs(cons.car, false),

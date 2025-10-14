@@ -62,8 +62,6 @@ pub struct UsedCallR {
 
 pub trait UsedPrevPhase = AstPhase<XBegin = !, XQuote = !, XDefine = !, XCall = TailCallCallR>;
 
-type SelfExpr = Expr<Used>;
-
 #[derive(Debug, Clone)]
 struct Context {
     env: FxHashMap<String, EnvLocalVar>,
@@ -249,7 +247,7 @@ impl LExpr<Used> {
         result: &mut Vec<LExpr<Used>>,
     ) {
         match expr.value {
-            Expr::Const(_, lit) => result.push(SelfExpr::Const((), lit).with_span(expr.span)),
+            Expr::Const(_, lit) => result.push(Expr::Const((), lit).with_span(expr.span)),
             Expr::Var(_, var) => {
                 let var_id = if let Some(local_var) = ctx.env.get(&var) {
                     if local_var.is_captured {
@@ -259,7 +257,7 @@ impl LExpr<Used> {
                 } else {
                     VarId::Global(var_id_gen.global_var_id(&var))
                 };
-                result.push(SelfExpr::Var(UsedVarR { var_id }, var).with_span(expr.span))
+                result.push(Expr::Var(UsedVarR { var_id }, var).with_span(expr.span))
             }
             Expr::Define(x, _) => x,
             Expr::Lambda(_, lambda) => {
@@ -303,7 +301,7 @@ impl LExpr<Used> {
                 }
 
                 result.push(
-                    SelfExpr::Lambda(
+                    Expr::Lambda(
                         UsedLambdaR {
                             args,
                             defines: new_state.defines,
@@ -322,7 +320,7 @@ impl LExpr<Used> {
                 let new_then = Self::from_exprs(if_.then, ctx, var_id_gen, state);
                 let new_els = Self::from_exprs(if_.els, ctx, var_id_gen, state);
                 result.push(
-                    SelfExpr::If(
+                    Expr::If(
                         (),
                         If {
                             cond: new_cond,
@@ -341,7 +339,7 @@ impl LExpr<Used> {
                     .map(|arg| Self::from_exprs(arg, ctx, var_id_gen, state))
                     .collect();
                 result.push(
-                    SelfExpr::Call(
+                    Expr::Call(
                         UsedCallR { is_tail: x.is_tail },
                         Call {
                             func: new_func,
@@ -364,7 +362,7 @@ impl LExpr<Used> {
                 };
                 let new_expr = Self::from_exprs(set.expr, ctx, var_id_gen, state);
                 result.push(
-                    SelfExpr::Set(
+                    Expr::Set(
                         UsedSetR { var_id },
                         Set {
                             name: set.name,
@@ -395,7 +393,7 @@ impl LExpr<Used> {
                     state.defines.push(id);
 
                     let expr = Self::from_exprs(expr.clone(), ctx, var_id_gen, state);
-                    let set_expr = SelfExpr::Set(
+                    let set_expr = Expr::Set(
                         UsedSetR {
                             var_id: VarId::Local(id),
                         },
@@ -452,7 +450,7 @@ impl LExpr<Used> {
                 ) in letrec.bindings.iter().zip(&ids)
                 {
                     let expr = Self::from_exprs(expr.clone(), &ctx, var_id_gen, state);
-                    let set_expr = SelfExpr::Set(
+                    let set_expr = Expr::Set(
                         UsedSetR {
                             var_id: VarId::Local(id),
                         },
@@ -475,10 +473,10 @@ impl LExpr<Used> {
                     .into_iter()
                     .map(|expr| Self::from_exprs(expr, ctx, var_id_gen, state))
                     .collect();
-                result.push(SelfExpr::Vector((), new_vec).with_span(expr.span))
+                result.push(Expr::Vector((), new_vec).with_span(expr.span))
             }
             Expr::UVector(_, uvec) => result.push(
-                SelfExpr::UVector(
+                Expr::UVector(
                     (),
                     UVector {
                         kind: uvec.kind,
@@ -496,7 +494,7 @@ impl LExpr<Used> {
                 let new_car = Self::from_exprs(cons.car, ctx, var_id_gen, state);
                 let new_cdr = Self::from_exprs(cons.cdr, ctx, var_id_gen, state);
                 result.push(
-                    SelfExpr::Cons(
+                    Expr::Cons(
                         (),
                         Cons {
                             car: new_car,

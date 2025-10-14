@@ -14,7 +14,6 @@ impl AstPhase for Defined {
 }
 
 pub trait DefinedPrevPhase = AstPhase<XBegin = !, XQuote = !>;
-type SelfExpr = Expr<Defined>;
 impl Ast<Defined> {
     pub fn from_ast<P: DefinedPrevPhase>(ast: Ast<P>) -> Result<Self> {
         let new_exprs = LExpr::from_exprs(ast.exprs, DefineContext::Global, &mut Vec::new())?;
@@ -51,18 +50,18 @@ impl LExpr<Defined> {
     ) -> Result<()> {
         match expr.value {
             Expr::Const(_, lit) => {
-                result.push(SelfExpr::Const((), lit).with_span(expr.span));
+                result.push(Expr::Const((), lit).with_span(expr.span));
                 Ok(())
             }
             Expr::Var(_, var) => {
-                result.push(SelfExpr::Var((), var).with_span(expr.span));
+                result.push(Expr::Var((), var).with_span(expr.span));
                 Ok(())
             }
             Expr::Define(_, def) => {
                 match ctx {
                     DefineContext::Global => {
                         result.push(
-                            SelfExpr::Set(
+                            Expr::Set(
                                 // global contextではdefineはset!に変換される
                                 (),
                                 Set {
@@ -99,7 +98,7 @@ impl LExpr<Defined> {
             Expr::Lambda(_, lambda) => {
                 let new_body = Self::from_exprs_new_scope(expr.span, lambda.body)?;
                 result.push(
-                    SelfExpr::Lambda(
+                    Expr::Lambda(
                         (),
                         Lambda {
                             args: lambda.args,
@@ -112,7 +111,7 @@ impl LExpr<Defined> {
             }
             Expr::If(_, if_) => {
                 result.push(
-                    SelfExpr::If(
+                    Expr::If(
                         (),
                         If {
                             cond: Self::from_exprs(
@@ -140,7 +139,7 @@ impl LExpr<Defined> {
                     .map(|arg| Self::from_exprs(arg, ctx.to_undefinable_if_local(), defines))
                     .collect::<Result<Vec<_>>>()?;
                 result.push(
-                    SelfExpr::Call(
+                    Expr::Call(
                         (),
                         Call {
                             func: new_func,
@@ -155,7 +154,7 @@ impl LExpr<Defined> {
             Expr::Set(_, set) => {
                 let new_expr = Self::from_exprs(set.expr, ctx.to_undefinable_if_local(), defines)?;
                 result.push(
-                    SelfExpr::Set(
+                    Expr::Set(
                         (),
                         Set {
                             name: set.name,
@@ -169,7 +168,7 @@ impl LExpr<Defined> {
             Expr::Let(_, let_) => {
                 let new_body = Self::from_exprs_new_scope(expr.span, let_.body)?;
                 result.push(
-                    SelfExpr::Let(
+                    Expr::Let(
                         (),
                         Let {
                             bindings: let_
@@ -197,7 +196,7 @@ impl LExpr<Defined> {
             Expr::LetRec(_, letrec) => {
                 let new_body = Self::from_exprs_new_scope(expr.span, letrec.body)?;
                 result.push(
-                    SelfExpr::LetRec(
+                    Expr::LetRec(
                         (),
                         LetRec {
                             bindings: letrec
@@ -224,7 +223,7 @@ impl LExpr<Defined> {
             }
             Expr::Vector(_, vec) => {
                 result.push(
-                    SelfExpr::Vector(
+                    Expr::Vector(
                         (),
                         vec.into_iter()
                             .map(|v| Self::from_exprs(v, ctx.to_undefinable_if_local(), defines))
@@ -236,7 +235,7 @@ impl LExpr<Defined> {
             }
             Expr::UVector(_, uvec) => {
                 result.push(
-                    SelfExpr::UVector(
+                    Expr::UVector(
                         (),
                         UVector {
                             kind: uvec.kind,
@@ -256,7 +255,7 @@ impl LExpr<Defined> {
             Expr::Quote(x, _) => x,
             Expr::Cons(_, cons) => {
                 result.push(
-                    SelfExpr::Cons(
+                    Expr::Cons(
                         (),
                         Cons {
                             car: Self::from_exprs(
@@ -308,7 +307,7 @@ impl LExpr<Defined> {
             Ok(exprs)
         } else {
             Ok(vec![
-                SelfExpr::LetRec(
+                Expr::LetRec(
                     (),
                     LetRec {
                         bindings: defines,

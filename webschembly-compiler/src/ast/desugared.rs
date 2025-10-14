@@ -10,7 +10,6 @@ impl AstPhase for Desugared {
 }
 
 pub trait DesugaredPrevPhase = AstPhase;
-type SelfExpr = Expr<Desugared>;
 
 impl Ast<Desugared> {
     pub fn from_ast<P: DesugaredPrevPhase>(ast: Ast<P>) -> Self {
@@ -24,10 +23,10 @@ impl Ast<Desugared> {
 impl LExpr<Desugared> {
     fn from_expr<P: DesugaredPrevPhase>(expr: LExpr<P>, exprs: &mut Vec<Self>) {
         match expr.value {
-            Expr::Const(_, lit) => exprs.push(SelfExpr::Const((), lit).with_span(expr.span)),
-            Expr::Var(_, var) => exprs.push(SelfExpr::Var((), var).with_span(expr.span)),
+            Expr::Const(_, lit) => exprs.push(Expr::Const((), lit).with_span(expr.span)),
+            Expr::Var(_, var) => exprs.push(Expr::Var((), var).with_span(expr.span)),
             Expr::Define(_, def) => exprs.push(
-                SelfExpr::Define(
+                Expr::Define(
                     (),
                     Define {
                         name: def.name,
@@ -37,7 +36,7 @@ impl LExpr<Desugared> {
                 .with_span(expr.span),
             ),
             Expr::Lambda(_, lambda) => exprs.push(
-                SelfExpr::Lambda(
+                Expr::Lambda(
                     (),
                     Lambda {
                         args: lambda.args,
@@ -47,7 +46,7 @@ impl LExpr<Desugared> {
                 .with_span(expr.span),
             ),
             Expr::If(_, if_) => exprs.push(
-                SelfExpr::If(
+                Expr::If(
                     (),
                     If {
                         cond: Self::from_exprs(if_.cond),
@@ -58,7 +57,7 @@ impl LExpr<Desugared> {
                 .with_span(expr.span),
             ),
             Expr::Call(_, call) => exprs.push(
-                SelfExpr::Call(
+                Expr::Call(
                     (),
                     Call {
                         func: Self::from_exprs(call.func),
@@ -73,7 +72,7 @@ impl LExpr<Desugared> {
                 }
             }
             Expr::Set(_, set) => exprs.push(
-                SelfExpr::Set(
+                Expr::Set(
                     (),
                     Set {
                         name: set.name,
@@ -83,7 +82,7 @@ impl LExpr<Desugared> {
                 .with_span(expr.span),
             ),
             Expr::Let(_, let_) => exprs.push(
-                SelfExpr::Let(
+                Expr::Let(
                     (),
                     Let {
                         bindings: let_
@@ -103,7 +102,7 @@ impl LExpr<Desugared> {
                 .with_span(expr.span),
             ),
             Expr::LetRec(_, letrec) => exprs.push(
-                SelfExpr::LetRec(
+                Expr::LetRec(
                     (),
                     LetRec {
                         bindings: letrec
@@ -123,11 +122,11 @@ impl LExpr<Desugared> {
                 .with_span(expr.span),
             ),
             Expr::Vector(_, vec) => exprs.push(
-                SelfExpr::Vector((), vec.into_iter().map(Self::from_exprs).collect())
+                Expr::Vector((), vec.into_iter().map(Self::from_exprs).collect())
                     .with_span(expr.span),
             ),
             Expr::UVector(_, uvec) => exprs.push(
-                SelfExpr::UVector(
+                Expr::UVector(
                     (),
                     UVector {
                         kind: uvec.kind,
@@ -138,7 +137,7 @@ impl LExpr<Desugared> {
             ),
             Expr::Quote(_, sexpr) => exprs.push(Self::from_quoted_sexpr(sexpr)),
             Expr::Cons(_, cons) => exprs.push(
-                SelfExpr::Cons(
+                Expr::Cons(
                     (),
                     Cons {
                         car: Self::from_exprs(cons.car),
@@ -152,21 +151,15 @@ impl LExpr<Desugared> {
 
     fn from_quoted_sexpr(sexpr: sexpr::SExpr) -> Self {
         match sexpr.kind {
-            sexpr::SExprKind::Bool(b) => SelfExpr::Const((), Const::Bool(b)).with_span(sexpr.span),
-            sexpr::SExprKind::Int(i) => SelfExpr::Const((), Const::Int(i)).with_span(sexpr.span),
-            sexpr::SExprKind::Float(f) => {
-                SelfExpr::Const((), Const::Float(f)).with_span(sexpr.span)
-            }
-            sexpr::SExprKind::NaN => SelfExpr::Const((), Const::NaN).with_span(sexpr.span),
-            sexpr::SExprKind::String(s) => {
-                SelfExpr::Const((), Const::String(s)).with_span(sexpr.span)
-            }
-            sexpr::SExprKind::Char(c) => SelfExpr::Const((), Const::Char(c)).with_span(sexpr.span),
-            sexpr::SExprKind::Symbol(s) => {
-                SelfExpr::Const((), Const::Symbol(s)).with_span(sexpr.span)
-            }
+            sexpr::SExprKind::Bool(b) => Expr::Const((), Const::Bool(b)).with_span(sexpr.span),
+            sexpr::SExprKind::Int(i) => Expr::Const((), Const::Int(i)).with_span(sexpr.span),
+            sexpr::SExprKind::Float(f) => Expr::Const((), Const::Float(f)).with_span(sexpr.span),
+            sexpr::SExprKind::NaN => Expr::Const((), Const::NaN).with_span(sexpr.span),
+            sexpr::SExprKind::String(s) => Expr::Const((), Const::String(s)).with_span(sexpr.span),
+            sexpr::SExprKind::Char(c) => Expr::Const((), Const::Char(c)).with_span(sexpr.span),
+            sexpr::SExprKind::Symbol(s) => Expr::Const((), Const::Symbol(s)).with_span(sexpr.span),
             // TODO: span情報の保持
-            sexpr::SExprKind::Cons(cons) => SelfExpr::Cons(
+            sexpr::SExprKind::Cons(cons) => Expr::Cons(
                 (),
                 Cons {
                     car: vec![Self::from_quoted_sexpr(cons.car)],
@@ -175,7 +168,7 @@ impl LExpr<Desugared> {
             )
             .with_span(sexpr.span),
             // TODO: span情報の保持
-            sexpr::SExprKind::Vector(vec) => SelfExpr::Vector(
+            sexpr::SExprKind::Vector(vec) => Expr::Vector(
                 (),
                 vec.into_iter()
                     .map(|s| vec![Self::from_quoted_sexpr(s)])
@@ -183,7 +176,7 @@ impl LExpr<Desugared> {
             )
             .with_span(sexpr.span),
             // TODO: span情報の保持
-            sexpr::SExprKind::UVector(kind, elements) => SelfExpr::UVector(
+            sexpr::SExprKind::UVector(kind, elements) => Expr::UVector(
                 (),
                 UVector {
                     kind: match kind {
@@ -197,7 +190,7 @@ impl LExpr<Desugared> {
                 },
             )
             .with_span(sexpr.span),
-            sexpr::SExprKind::Nil => SelfExpr::Const((), Const::Nil).with_span(sexpr.span),
+            sexpr::SExprKind::Nil => Expr::Const((), Const::Nil).with_span(sexpr.span),
         }
     }
 
