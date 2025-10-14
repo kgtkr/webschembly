@@ -1,13 +1,20 @@
 use super::astx::*;
 use crate::ast::TailCallCallR;
-use crate::x::FamilyX;
-use crate::x::Phase;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 #[derive(Debug, Clone)]
 pub enum Used {}
 
-impl Phase for Used {}
+impl AstPhase for Used {
+    type XAst = UsedAstR;
+    type XBegin = !;
+    type XQuote = !;
+    type XDefine = !;
+    type XCall = UsedCallR;
+    type XLambda = UsedLambdaR;
+    type XVar = UsedVarR;
+    type XSet = UsedSetR;
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct LocalVarId(pub usize);
@@ -47,75 +54,13 @@ pub struct UsedSetR {
     pub var_id: VarId,
 }
 
-impl FamilyX<Used> for AstX {
-    type R = UsedAstR;
-}
-impl FamilyX<Used> for ConstX {
-    type R = ();
-}
-
-impl FamilyX<Used> for DefineX {
-    type R = ();
-}
-
-impl FamilyX<Used> for LambdaX {
-    type R = UsedLambdaR;
-}
-
-impl FamilyX<Used> for IfX {
-    type R = ();
-}
-
 // tail_callから引き継ぐためのものだが、もう少し綺麗なやり方を考えたい
 #[derive(Debug, Clone)]
 pub struct UsedCallR {
     pub is_tail: bool,
 }
 
-impl FamilyX<Used> for CallX {
-    type R = UsedCallR;
-}
-
-impl FamilyX<Used> for VarX {
-    type R = UsedVarR;
-}
-
-impl FamilyX<Used> for BeginX {
-    type R = ();
-}
-
-impl FamilyX<Used> for SetX {
-    type R = UsedSetR;
-}
-
-impl FamilyX<Used> for LetX {
-    type R = !;
-}
-
-impl FamilyX<Used> for LetRecX {
-    type R = !;
-}
-
-impl FamilyX<Used> for VectorX {
-    type R = ();
-}
-impl FamilyX<Used> for UVectorX {
-    type R = ();
-}
-impl FamilyX<Used> for QuoteX {
-    type R = ();
-}
-
-impl FamilyX<Used> for ConsX {
-    type R = ();
-}
-
-pub trait UsedPrevPhase = XBound
-where
-    DefineX: FamilyX<Self, R = !>,
-    BeginX: FamilyX<Self, R = !>,
-    QuoteX: FamilyX<Self, R = !>,
-    CallX: FamilyX<Self, R = TailCallCallR>;
+pub trait UsedPrevPhase = AstPhase<XBegin = !, XQuote = !, XDefine = !, XCall = TailCallCallR>;
 
 type SelfExpr = Expr<Used>;
 

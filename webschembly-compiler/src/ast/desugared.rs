@@ -1,67 +1,15 @@
 use super::astx::*;
 use crate::sexpr;
-use crate::x::FamilyX;
-use crate::x::Phase;
-use crate::x::RunX;
 
 #[derive(Debug, Clone)]
 pub enum Desugared {}
 
-impl Phase for Desugared {}
-
-impl FamilyX<Desugared> for AstX {
-    type R = ();
-}
-impl FamilyX<Desugared> for ConstX {
-    type R = ();
-}
-impl FamilyX<Desugared> for DefineX {
-    type R = ();
-}
-impl FamilyX<Desugared> for LambdaX {
-    type R = ();
-}
-impl FamilyX<Desugared> for IfX {
-    type R = ();
-}
-impl FamilyX<Desugared> for CallX {
-    type R = ();
-}
-impl FamilyX<Desugared> for VarX {
-    type R = ();
-}
-impl FamilyX<Desugared> for BeginX {
-    type R = !;
-}
-impl FamilyX<Desugared> for SetX {
-    type R = ();
+impl AstPhase for Desugared {
+    type XBegin = !;
+    type XQuote = !;
 }
 
-impl FamilyX<Desugared> for LetX {
-    type R = ();
-}
-
-impl FamilyX<Desugared> for LetRecX {
-    type R = ();
-}
-
-impl FamilyX<Desugared> for VectorX {
-    type R = ();
-}
-
-impl FamilyX<Desugared> for UVectorX {
-    type R = ();
-}
-
-impl FamilyX<Desugared> for QuoteX {
-    type R = !;
-}
-
-impl FamilyX<Desugared> for ConsX {
-    type R = ();
-}
-
-pub trait DesugaredPrevPhase = XBound;
+pub trait DesugaredPrevPhase = AstPhase;
 type SelfExpr = Expr<Desugared>;
 
 impl Ast<Desugared> {
@@ -188,7 +136,7 @@ impl LExpr<Desugared> {
                 )
                 .with_span(expr.span),
             ),
-            Expr::Quote(x, sexpr) => exprs.push(Self::from_quoted_sexpr(x, sexpr)),
+            Expr::Quote(_, sexpr) => exprs.push(Self::from_quoted_sexpr(sexpr)),
             Expr::Cons(_, cons) => exprs.push(
                 SelfExpr::Cons(
                     (),
@@ -202,7 +150,7 @@ impl LExpr<Desugared> {
         }
     }
 
-    fn from_quoted_sexpr<P: DesugaredPrevPhase>(x: RunX<QuoteX, P>, sexpr: sexpr::SExpr) -> Self {
+    fn from_quoted_sexpr(sexpr: sexpr::SExpr) -> Self {
         match sexpr.kind {
             sexpr::SExprKind::Bool(b) => SelfExpr::Const((), Const::Bool(b)).with_span(sexpr.span),
             sexpr::SExprKind::Int(i) => SelfExpr::Const((), Const::Int(i)).with_span(sexpr.span),
@@ -221,8 +169,8 @@ impl LExpr<Desugared> {
             sexpr::SExprKind::Cons(cons) => SelfExpr::Cons(
                 (),
                 Cons {
-                    car: vec![Self::from_quoted_sexpr(x.clone(), cons.car)],
-                    cdr: vec![Self::from_quoted_sexpr(x.clone(), cons.cdr)],
+                    car: vec![Self::from_quoted_sexpr(cons.car)],
+                    cdr: vec![Self::from_quoted_sexpr(cons.cdr)],
                 },
             )
             .with_span(sexpr.span),
@@ -230,7 +178,7 @@ impl LExpr<Desugared> {
             sexpr::SExprKind::Vector(vec) => SelfExpr::Vector(
                 (),
                 vec.into_iter()
-                    .map(|s| vec![Self::from_quoted_sexpr(x.clone(), s)])
+                    .map(|s| vec![Self::from_quoted_sexpr(s)])
                     .collect(),
             )
             .with_span(sexpr.span),
@@ -244,7 +192,7 @@ impl LExpr<Desugared> {
                     },
                     elements: elements
                         .into_iter()
-                        .map(|s| vec![Self::from_quoted_sexpr(x.clone(), s)])
+                        .map(|s| vec![Self::from_quoted_sexpr(s)])
                         .collect(),
                 },
             )

@@ -3,72 +3,11 @@ use crate::compiler_error;
 use crate::error::Result;
 use crate::sexpr::{SExpr, SExprKind};
 use crate::span::Span;
-use crate::x::{FamilyX, Phase};
 
 #[derive(Debug, Clone)]
 pub enum Parsed {}
 
-impl Phase for Parsed {}
-
-impl FamilyX<Parsed> for AstX {
-    type R = ();
-}
-
-impl FamilyX<Parsed> for ConstX {
-    type R = ();
-}
-
-impl FamilyX<Parsed> for DefineX {
-    type R = ();
-}
-
-impl FamilyX<Parsed> for LambdaX {
-    type R = ();
-}
-
-impl FamilyX<Parsed> for IfX {
-    type R = ();
-}
-
-impl FamilyX<Parsed> for CallX {
-    type R = ();
-}
-
-impl FamilyX<Parsed> for VarX {
-    type R = ();
-}
-
-impl FamilyX<Parsed> for BeginX {
-    type R = ();
-}
-
-impl FamilyX<Parsed> for SetX {
-    type R = ();
-}
-
-impl FamilyX<Parsed> for LetX {
-    type R = ();
-}
-
-impl FamilyX<Parsed> for LetRecX {
-    type R = ();
-}
-
-impl FamilyX<Parsed> for VectorX {
-    type R = ();
-}
-
-impl FamilyX<Parsed> for UVectorX {
-    type R = ();
-}
-
-impl FamilyX<Parsed> for QuoteX {
-    type R = ();
-}
-
-impl FamilyX<Parsed> for ConsX {
-    type R = ();
-}
+impl AstPhase for Parsed {}
 
 impl Ast<Parsed> {
     pub fn from_sexprs(exprs: Vec<SExpr>) -> Result<Self> {

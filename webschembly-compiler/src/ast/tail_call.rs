@@ -1,26 +1,13 @@
 use super::astx::*;
-use crate::x::FamilyX;
-use crate::x::Phase;
 
 #[derive(Debug, Clone)]
 pub enum TailCall {}
 
-impl Phase for TailCall {}
-
-impl FamilyX<TailCall> for AstX {
-    type R = ();
-}
-impl FamilyX<TailCall> for ConstX {
-    type R = ();
-}
-impl FamilyX<TailCall> for DefineX {
-    type R = !;
-}
-impl FamilyX<TailCall> for LambdaX {
-    type R = ();
-}
-impl FamilyX<TailCall> for IfX {
-    type R = ();
+impl AstPhase for TailCall {
+    type XBegin = !;
+    type XQuote = !;
+    type XDefine = !;
+    type XCall = TailCallCallR;
 }
 
 #[derive(Debug, Clone)]
@@ -28,43 +15,7 @@ pub struct TailCallCallR {
     pub is_tail: bool,
 }
 
-impl FamilyX<TailCall> for CallX {
-    type R = TailCallCallR;
-}
-impl FamilyX<TailCall> for VarX {
-    type R = ();
-}
-impl FamilyX<TailCall> for BeginX {
-    type R = !;
-}
-impl FamilyX<TailCall> for SetX {
-    type R = ();
-}
-impl FamilyX<TailCall> for LetX {
-    type R = ();
-}
-impl FamilyX<TailCall> for LetRecX {
-    type R = ();
-}
-impl FamilyX<TailCall> for VectorX {
-    type R = ();
-}
-impl FamilyX<TailCall> for UVectorX {
-    type R = ();
-}
-impl FamilyX<TailCall> for QuoteX {
-    type R = !;
-}
-
-impl FamilyX<TailCall> for ConsX {
-    type R = ();
-}
-
-pub trait TailCallPrevPhase = XBound
-where
-    DefineX: FamilyX<Self, R = !>,
-    BeginX: FamilyX<Self, R = !>,
-    QuoteX: FamilyX<Self, R = !>;
+pub trait TailCallPrevPhase = AstPhase<XBegin = !, XQuote = !, XDefine = !>;
 type SelfExpr = Expr<TailCall>;
 
 impl Ast<TailCall> {

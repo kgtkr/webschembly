@@ -1,11 +1,8 @@
 use rustc_hash::FxHashMap;
 
+use crate::ast::{self, AstPhase};
 use crate::ir_generator::GlobalManager;
 use crate::{VecMap, ir::*};
-use crate::{
-    ast::{self},
-    x::RunX,
-};
 
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -145,7 +142,7 @@ impl<'a> ModuleGenerator<'a> {
 
     fn gen_func(
         &mut self,
-        x: &RunX<ast::LambdaX, ast::Final>,
+        x: &<ast::Final as AstPhase>::XLambda,
         lambda: &ast::Lambda<ast::Final>,
     ) -> FuncId {
         let id = self.funcs.allocate_key();
@@ -204,7 +201,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
 
     fn lambda_gen(
         mut self,
-        x: &RunX<ast::LambdaX, ast::Final>,
+        x: &<ast::Final as AstPhase>::XLambda,
         lambda: &ast::Lambda<ast::Final>,
     ) -> Func {
         let bb_entry = self.bbs.allocate_key();

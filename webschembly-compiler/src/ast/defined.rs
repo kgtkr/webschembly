@@ -2,70 +2,18 @@ use super::astx::*;
 use crate::compiler_error;
 use crate::error::Result;
 use crate::span::Span;
-use crate::x::FamilyX;
-use crate::x::Phase;
-
 // defineをletrec or set!に変換
 
 #[derive(Debug, Clone)]
 pub enum Defined {}
 
-impl Phase for Defined {}
-
-impl FamilyX<Defined> for AstX {
-    type R = ();
-}
-impl FamilyX<Defined> for ConstX {
-    type R = ();
-}
-impl FamilyX<Defined> for DefineX {
-    type R = !;
-}
-impl FamilyX<Defined> for LambdaX {
-    type R = ();
-}
-impl FamilyX<Defined> for IfX {
-    type R = ();
-}
-impl FamilyX<Defined> for CallX {
-    type R = ();
-}
-impl FamilyX<Defined> for VarX {
-    type R = ();
-}
-impl FamilyX<Defined> for BeginX {
-    type R = !;
-}
-impl FamilyX<Defined> for SetX {
-    type R = ();
+impl AstPhase for Defined {
+    type XDefine = !;
+    type XBegin = !;
+    type XQuote = !;
 }
 
-impl FamilyX<Defined> for LetX {
-    type R = ();
-}
-
-impl FamilyX<Defined> for LetRecX {
-    type R = ();
-}
-
-impl FamilyX<Defined> for VectorX {
-    type R = ();
-}
-impl FamilyX<Defined> for UVectorX {
-    type R = ();
-}
-impl FamilyX<Defined> for QuoteX {
-    type R = !;
-}
-
-impl FamilyX<Defined> for ConsX {
-    type R = ();
-}
-
-pub trait DefinedPrevPhase = XBound
-where
-    BeginX: FamilyX<Self, R = !>,
-    QuoteX: FamilyX<Self, R = !>;
+pub trait DefinedPrevPhase = AstPhase<XBegin = !, XQuote = !>;
 type SelfExpr = Expr<Defined>;
 impl Ast<Defined> {
     pub fn from_ast<P: DefinedPrevPhase>(ast: Ast<P>) -> Result<Self> {
