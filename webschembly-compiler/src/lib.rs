@@ -31,6 +31,6 @@ pub mod stdlib;
 pub mod token;
 pub mod tokens;
 mod vec_map;
-pub use vec_map::VecMap;
+pub use vec_map::{VecMap, VecMapEq};
 pub mod ir_processor;
 pub mod jit;

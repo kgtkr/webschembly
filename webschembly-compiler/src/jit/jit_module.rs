@@ -9,7 +9,7 @@ use crate::ir_processor::cfg_analyzer::{calc_doms, calc_predecessors, calculate_
 use crate::ir_processor::dataflow::{analyze_liveness, calc_def_use};
 use crate::ir_processor::ssa::{DefUseChain, collect_defs};
 use crate::ir_processor::ssa_optimizer::ssa_optimize;
-use crate::vec_map::VecMap;
+use crate::vec_map::{VecMap, VecMapEq};
 use crate::{HasId, ir::*};
 
 #[derive(Debug)]
@@ -967,30 +967,23 @@ impl JitFunc {
             });
         }
 
-        let body_func = Func {
-            id: funcs.next_key(),
+        let body_func_id = funcs.push_with(|id| Func {
+            id,
             args: self.jit_bbs[orig_entry_bb_id].info.args.clone(),
             ret_type: func.ret_type,
             locals: new_locals,
             bb_entry,
             bbs,
-        };
-
-        let body_func_id = body_func.id;
-        funcs.push(body_func);
+        });
 
         let required_stubs = required_stubs
             .iter()
             .filter(|(_, _, index)| *index != GLOBAL_LAYOUT_DEFAULT_INDEX)
             .map(|&(bb_id, index_global, index)| {
-                let bb_stub_func_id = funcs.next_key();
-                let func = self.generate_bb_stub_func(
-                    self.module_id,
-                    &self.jit_bbs[bb_id],
-                    bb_stub_func_id,
-                    index,
-                );
-                funcs.push(func);
+                let bb_stub_func_id = funcs.push_with(|id| {
+                    self.generate_bb_stub_func(self.module_id, &self.jit_bbs[bb_id], id, index)
+                });
+
                 (bb_id, index_global, bb_stub_func_id)
             })
             .collect::<Vec<_>>();
@@ -998,8 +991,6 @@ impl JitFunc {
         let required_closure_idx = required_closure_idx
             .iter()
             .map(|&closure_idx| {
-                let stub_func_id = funcs.next_key();
-
                 let mut locals = VecMap::new();
                 let mut args = Vec::new();
                 let closure_local = locals.push_with(|id| Local {
@@ -1087,9 +1078,8 @@ impl JitFunc {
                 });
 
                 let arg_types = arg_locals.iter().map(|&local| locals[local].typ).collect();
-
-                funcs.push(Func {
-                    id: stub_func_id,
+                let stub_func_id = funcs.push_with(|id| Func {
+                    id,
                     args,
                     ret_type: LocalType::Type(Type::Obj),
                     locals,
@@ -1114,7 +1104,7 @@ impl JitFunc {
             })
             .collect::<Vec<_>>();
 
-        let entry_func = {
+        let entry_func_id = {
             let mut locals = VecMap::new();
 
             let mut bbs = VecMap::new();
@@ -1188,17 +1178,15 @@ impl JitFunc {
                 }
             });
 
-            Func {
-                id: funcs.next_key(),
+            funcs.push_with(|id| Func {
+                id,
                 args: vec![],
                 ret_type: LocalType::FuncRef, // TODO: Nilでも返したほうがよさそう
                 locals,
                 bb_entry: BasicBlockId::from(0),
                 bbs,
-            }
+            })
         };
-        let entry_func_id = entry_func.id;
-        funcs.push(entry_func);
 
         Module {
             globals: FxHashMap::default(),
@@ -1406,7 +1394,7 @@ pub const GLOBAL_LAYOUT_DEFAULT_INDEX: usize = 0;
 
 #[derive(Debug)]
 pub struct BBIndexManager {
-    type_params_to_index: FxBiHashMap<VecMap<TypeParamId, ValType>, usize>,
+    type_params_to_index: FxBiHashMap<VecMapEq<TypeParamId, ValType>, usize>,
     index_to_global: FxHashMap<usize, Global>,
 }
 
@@ -1414,7 +1402,10 @@ impl BBIndexManager {
     pub fn new(global: Global) -> Self {
         let mut type_params_to_index = FxBiHashMap::default();
         let mut index_to_global = FxHashMap::default();
-        type_params_to_index.insert(VecMap::new(), GLOBAL_LAYOUT_DEFAULT_INDEX);
+        type_params_to_index.insert(
+            VecMapEq::from(VecMap::default()),
+            GLOBAL_LAYOUT_DEFAULT_INDEX,
+        );
         index_to_global.insert(GLOBAL_LAYOUT_DEFAULT_INDEX, global);
         Self {
             type_params_to_index,
@@ -1427,12 +1418,16 @@ impl BBIndexManager {
         type_params: &VecMap<TypeParamId, ValType>,
         global_manager: &mut GlobalManager,
     ) -> Option<(Global, usize, IndexFlag)> {
-        if let Some(&index) = self.type_params_to_index.get_by_left(type_params) {
+        if let Some(&index) = self
+            .type_params_to_index
+            .get_by_left(VecMapEq::from_ref(type_params))
+        {
             let global = *self.index_to_global.get(&index).unwrap();
             Some((global.to_import(), index, IndexFlag::ExistingInstance))
         } else if self.type_params_to_index.len() < GLOBAL_LAYOUT_MAX_SIZE {
             let index = self.type_params_to_index.len();
-            self.type_params_to_index.insert(type_params.clone(), index);
+            self.type_params_to_index
+                .insert(VecMapEq::from(type_params.clone()), index);
             let global = global_manager.gen_global(LocalType::FuncRef);
             self.index_to_global.insert(index, global);
             Some((global, index, IndexFlag::NewInstance))
