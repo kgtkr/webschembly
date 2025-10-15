@@ -1,5 +1,5 @@
 [workspace]
-members = ["webschembly-compiler", "webschembly-compiler-cli", "webschembly-runtime-rust", "vec-map"]
+members = ["webschembly-compiler", "webschembly-compiler-cli", "webschembly-runtime-rust", "webschembly-compiler-crates/vec-map"]
 resolver = "2"
 
 [workspace.package]

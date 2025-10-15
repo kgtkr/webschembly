@@ -14,9 +14,9 @@ paste = "1.0.15"
 rustc-hash = "2.1.1"
 strum = "0.27"
 strum_macros = "0.27"
-vec-map = {path = "../vec-map"}
+vec-map = {path = "../webschembly-compiler-crates/vec-map"}
 wasm-encoder = "0.221.2"
 
 [dev-dependencies]
 insta = {version = "1.42.2"}
-vec-map = {path = "../vec-map", features = ["test-util"]}
+vec-map = {path = "../webschembly-compiler-crates/vec-map", features = ["test-util"]}
