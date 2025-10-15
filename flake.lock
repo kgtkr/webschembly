@@ -164,6 +164,26 @@
         "type": "github"
       }
     },
+    "globset": {
+      "inputs": {
+        "nixpkgs-lib": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1756146523,
+        "narHash": "sha256-dn8WNgwVQe0xBJ/d4CiRRcEVSgNclG6WSbqFEf6V024=",
+        "owner": "pdtpartners",
+        "repo": "globset",
+        "rev": "62da8904981f01dc7c97f56c3ea4f131a8393411",
+        "type": "github"
+      },
+      "original": {
+        "owner": "pdtpartners",
+        "repo": "globset",
+        "type": "github"
+      }
+    },
     "make-shell": {
       "inputs": {
         "flake-compat": "flake-compat_2"
@@ -285,6 +305,7 @@
         "cargo2nix": "cargo2nix",
         "cargo2nix-ifd": "cargo2nix-ifd",
         "flake-parts": "flake-parts",
+        "globset": "globset",
         "make-shell": "make-shell",
         "napalm": "napalm",
         "nixpkgs": "nixpkgs_3",

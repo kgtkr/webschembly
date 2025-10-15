@@ -13,6 +13,10 @@
       inputs.cargo2nix.follows = "cargo2nix";
     };
     napalm.url = "github:nix-community/napalm";
+    globset = {
+      url = "github:pdtpartners/globset";
+      inputs.nixpkgs-lib.follows = "nixpkgs";
+    };
   };
 
   outputs = inputs@{ flake-parts, ... }:
@@ -33,6 +37,7 @@
               overlays = [ inputs.cargo2nix.overlays.default inputs.napalm.overlays.default ];
             };
             cargo2nix-ifd-lib = inputs.cargo2nix-ifd.mkLib pkgs;
+            globset-lib = inputs.globset.lib;
           };
           packages = {
             default = self'.packages.webschembly-compiler-cli;
