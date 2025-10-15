@@ -17,19 +17,13 @@ where
     pub fn from_mut(map: &mut VecMap<K, V>) -> &mut Self {
         unsafe { &mut *(map as *mut VecMap<K, V> as *mut VecMapEq<K, V>) }
     }
-}
 
-impl<K, V> std::ops::Deref for VecMapEq<K, V> {
-    type Target = VecMap<K, V>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
+    pub fn into_inner(self) -> VecMap<K, V> {
+        self.0
     }
-}
 
-impl<K, V> std::ops::DerefMut for VecMapEq<K, V> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
+    pub fn as_inner(&self) -> &VecMap<K, V> {
+        &self.0
     }
 }
 
@@ -50,7 +44,7 @@ where
     usize: From<K>,
 {
     fn eq(&self, other: &Self) -> bool {
-        self.iter().eq(other.iter())
+        self.as_inner().iter().eq(other.as_inner().iter())
     }
 }
 
@@ -61,7 +55,7 @@ where
     usize: From<K>,
 {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        for (k, v) in self.iter() {
+        for (k, v) in self.as_inner().iter() {
             k.hash(state);
             v.hash(state);
         }
@@ -73,6 +67,8 @@ where
     usize: From<K>,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("VecMapEq").field("map", &self.0).finish()
+        f.debug_struct("VecMapEq")
+            .field("map", self.as_inner())
+            .finish()
     }
 }

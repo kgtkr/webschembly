@@ -1438,7 +1438,10 @@ impl BBIndexManager {
 
     pub fn type_args(&self, index: usize) -> (&VecMap<TypeParamId, ValType>, Global) {
         (
-            self.type_params_to_index.get_by_right(&index).unwrap(),
+            self.type_params_to_index
+                .get_by_right(&index)
+                .unwrap()
+                .as_inner(),
             self.index_to_global.get(&index).unwrap().to_import(),
         )
     }
