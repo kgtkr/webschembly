@@ -33,9 +33,9 @@ impl<K, V> From<VecMap<K, V>> for VecMapEq<K, V> {
     }
 }
 
-impl<K, V> Into<VecMap<K, V>> for VecMapEq<K, V> {
-    fn into(self) -> VecMap<K, V> {
-        self.0
+impl<K, V> From<VecMapEq<K, V>> for VecMap<K, V> {
+    fn from(val: VecMapEq<K, V>) -> Self {
+        val.0
     }
 }
 
