@@ -1,7 +1,7 @@
 use webschembly_compiler_locate::LocatedValue;
 
 use super::astx::*;
-use crate::sexpr;
+use webschembly_compiler_sexpr as sexpr;
 
 pub trait DesugaredPrevPhase = AstPhase;
 

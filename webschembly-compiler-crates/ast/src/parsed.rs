@@ -1,8 +1,7 @@
 use super::astx::*;
-use crate::compiler_error;
-use crate::error::Result;
-use crate::sexpr::{SExpr, SExprKind};
+use webschembly_compiler_error::{Result, compiler_error};
 use webschembly_compiler_locate::{LocatedValue, Span};
+use webschembly_compiler_sexpr::{SExpr, SExprKind, list_pattern};
 
 #[derive(Debug, Clone)]
 pub struct Parsed;

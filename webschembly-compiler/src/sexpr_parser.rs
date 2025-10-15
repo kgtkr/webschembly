@@ -1,8 +1,7 @@
-use crate::sexpr::{Cons, SExprKind, SUVectorKind};
 use crate::token::TokenKind;
 
-use super::sexpr::SExpr;
 use super::token::Token;
+use webschembly_compiler_sexpr::{Cons, SExpr, SExprKind, SUVectorKind, list};
 
 use super::parser_combinator::{satisfy, satisfy_map_opt};
 use crate::tokens::Tokens;

@@ -2,8 +2,8 @@ use std::fmt::Debug;
 
 use ordered_float::NotNan;
 
-use crate::sexpr::SExpr;
 use webschembly_compiler_locate::L;
+use webschembly_compiler_sexpr::SExpr;
 
 pub type LExpr<X> = L<Expr<X>>;
 

@@ -1,7 +1,7 @@
 use strum::IntoEnumIterator;
 
-use crate::ast::Builtin;
 use crate::ir_generator::BuiltinConversionRule;
+use webschembly_compiler_ast::Builtin;
 
 pub fn generate_stdlib() -> String {
     let mut result = String::new();

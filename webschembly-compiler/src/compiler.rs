@@ -1,7 +1,5 @@
 use rustc_hash::FxHashSet;
 
-use crate::ast;
-use crate::compiler_error;
 use crate::ir;
 use crate::ir_generator;
 use crate::ir_generator::GlobalManager;
@@ -13,11 +11,13 @@ use crate::ir_processor::ssa_optimizer::ssa_optimize;
 use crate::jit::{Jit, JitConfig};
 use crate::lexer;
 use crate::sexpr_parser;
+use webschembly_compiler_ast::ASTGenerator;
+use webschembly_compiler_error::compiler_error;
 
 #[derive(Debug)]
 pub struct Compiler {
     module_count: usize,
-    ast_generator: ast::ASTGenerator,
+    ast_generator: ASTGenerator,
     global_manager: ir_generator::GlobalManager,
     jit: Option<Jit>,
 }
@@ -51,7 +51,7 @@ impl Compiler {
     pub fn new(config: Config) -> Self {
         Self {
             module_count: 0,
-            ast_generator: ast::ASTGenerator::new(),
+            ast_generator: ASTGenerator::new(),
             global_manager: ir_generator::GlobalManager::new(),
             jit: config.jit.map(Jit::new),
         }
@@ -67,7 +67,7 @@ impl Compiler {
         &mut self,
         input: &str,
         is_stdlib: bool,
-    ) -> crate::error::Result<ir::Module> {
+    ) -> webschembly_compiler_error::Result<ir::Module> {
         let tokens = lexer::lex(input)?;
         let sexprs =
             sexpr_parser::parse(tokens.as_slice()).map_err(|e| compiler_error!("{}", e))?;

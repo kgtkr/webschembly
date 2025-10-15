@@ -1,4 +1,4 @@
-use crate::{error::CompilerError, token::TokenKind};
+use crate::token::TokenKind;
 
 use super::token::Token;
 use located::{to_pos, to_span};
@@ -12,6 +12,7 @@ use nom::{
 };
 use ordered_float::NotNan;
 use std::fmt::Write;
+use webschembly_compiler_error::CompilerError;
 mod error;
 mod located;
 pub use located::LocatedStr;

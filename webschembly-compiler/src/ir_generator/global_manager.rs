@@ -1,12 +1,13 @@
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::{ast, ir::*};
+use crate::ir::*;
+use webschembly_compiler_ast::GlobalVarId;
 
 #[derive(Debug)]
 pub struct GlobalManager {
     // GlobalIdのうち、ast::GlobalVarIdに対応するもの
     // 全てのGlobalIdがast::GlobalVarIdに対応するわけではない
-    global_ids: FxHashMap<ast::GlobalVarId, GlobalId>,
+    global_ids: FxHashMap<GlobalVarId, GlobalId>,
     globals: FxHashMap<GlobalId, Global>,
     instantiated_globals: FxHashSet<GlobalId>,
 }
@@ -37,11 +38,11 @@ impl GlobalManager {
         global
     }
 
-    pub fn get_global_id(&self, id: ast::GlobalVarId) -> Option<GlobalId> {
+    pub fn get_global_id(&self, id: GlobalVarId) -> Option<GlobalId> {
         self.global_ids.get(&id).copied()
     }
 
-    pub fn global(&mut self, id: ast::GlobalVarId) -> Global {
+    pub fn global(&mut self, id: GlobalVarId) -> Global {
         let typ = LocalType::Type(Type::Obj);
         if let Some(&global_id) = self.global_ids.get(&id) {
             Global {

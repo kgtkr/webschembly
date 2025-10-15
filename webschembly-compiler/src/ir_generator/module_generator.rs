@@ -1,9 +1,10 @@
 use rustc_hash::FxHashMap;
 use webschembly_compiler_locate::Located;
 
-use crate::ast::{self, AstPhase};
 use crate::ir_generator::GlobalManager;
 use crate::{VecMap, ir::*};
+use webschembly_compiler_ast as ast;
+use webschembly_compiler_ast::AstPhase;
 
 #[derive(Debug, Clone)]
 pub struct Config {

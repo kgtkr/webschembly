@@ -1,0 +1,17 @@
+[package]
+authors.workspace = true
+description.workspace = true
+edition.workspace = true
+homepage.workspace = true
+name = "webschembly-compiler-ast"
+repository.workspace = true
+version.workspace = true
+
+[dependencies]
+ordered-float = {workspace = true}
+rustc-hash = {workspace = true}
+strum = {workspace = true}
+strum_macros = {workspace = true}
+webschembly-compiler-error = {path = "../error"}
+webschembly-compiler-locate = {path = "../locate"}
+webschembly-compiler-sexpr = {path = "../sexpr"}

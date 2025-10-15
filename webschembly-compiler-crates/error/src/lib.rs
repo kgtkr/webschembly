@@ -14,7 +14,7 @@ impl std::error::Error for CompilerError {}
 #[macro_export]
 macro_rules! compiler_error {
     ($($arg:tt)*) => {
-        $crate::error::CompilerError(format!($($arg)*))
+        $crate::CompilerError(format!($($arg)*))
     }
 }
 

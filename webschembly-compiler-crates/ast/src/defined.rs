@@ -1,6 +1,5 @@
 use super::astx::*;
-use crate::compiler_error;
-use crate::error::Result;
+use webschembly_compiler_error::{Result, compiler_error};
 use webschembly_compiler_locate::{Located, LocatedValue, Span};
 // defineをletrec or set!に変換
 
