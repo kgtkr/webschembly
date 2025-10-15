@@ -1,17 +1,15 @@
 use super::astx::*;
-use crate::ast::TailCallCallR;
 use rustc_hash::{FxHashMap, FxHashSet};
 use webschembly_compiler_locate::{Located, LocatedValue};
 
-#[derive(Debug, Clone)]
-pub enum Used {}
+pub trait UsedPrevPhase = AstPhase<XBegin = !, XQuote = !, XDefine = !>;
 
-impl AstPhase for Used {
+#[derive(Debug, Clone)]
+pub struct Used<P: UsedPrevPhase>(std::marker::PhantomData<P>);
+
+impl<P: UsedPrevPhase> ExtendAstPhase for Used<P> {
+    type Prev = P;
     type XAst = UsedAstR;
-    type XBegin = !;
-    type XQuote = !;
-    type XDefine = !;
-    type XCall = UsedCallR;
     type XLambda = UsedLambdaR;
     type XVar = UsedVarR;
     type XSet = UsedSetR;
@@ -54,14 +52,6 @@ pub struct UsedVarR {
 pub struct UsedSetR {
     pub var_id: VarId,
 }
-
-// tail_callから引き継ぐためのものだが、もう少し綺麗なやり方を考えたい
-#[derive(Debug, Clone)]
-pub struct UsedCallR {
-    pub is_tail: bool,
-}
-
-pub trait UsedPrevPhase = AstPhase<XBegin = !, XQuote = !, XDefine = !, XCall = TailCallCallR>;
 
 #[derive(Debug, Clone)]
 struct Context {
@@ -204,8 +194,8 @@ impl VarIdGen {
     }
 }
 
-impl Used {
-    pub fn from_ast<P: UsedPrevPhase>(ast: Ast<P>, var_id_gen: &mut VarIdGen) -> Ast<Self> {
+impl<P: UsedPrevPhase> Used<P> {
+    pub fn from_ast(ast: Ast<P>, var_id_gen: &mut VarIdGen) -> Ast<Self> {
         var_id_gen.reset_for_module();
         let mut defines = Vec::new();
         let mut result = Vec::new();
@@ -238,7 +228,7 @@ impl Used {
         }
     }
 
-    fn from_expr<P: UsedPrevPhase>(
+    fn from_expr(
         expr: LExpr<P>,
         ctx: &Context,
         var_id_gen: &mut VarIdGen,
@@ -246,7 +236,7 @@ impl Used {
         result: &mut Vec<LExpr<Self>>,
     ) {
         match expr.value {
-            Expr::Const(_, lit) => result.push(Expr::Const((), lit).with_span(expr.span)),
+            Expr::Const(x, lit) => result.push(Expr::Const(x, lit).with_span(expr.span)),
             Expr::Var(_, var) => {
                 let var_id = if let Some(local_var) = ctx.env.get(&var) {
                     if local_var.is_captured {
@@ -314,13 +304,13 @@ impl Used {
                     .with_span(expr.span),
                 );
             }
-            Expr::If(_, if_) => {
+            Expr::If(x, if_) => {
                 let new_cond = Self::from_exprs(if_.cond, ctx, var_id_gen, state);
                 let new_then = Self::from_exprs(if_.then, ctx, var_id_gen, state);
                 let new_els = Self::from_exprs(if_.els, ctx, var_id_gen, state);
                 result.push(
                     Expr::If(
-                        (),
+                        x,
                         If {
                             cond: new_cond,
                             then: new_then,
@@ -339,7 +329,7 @@ impl Used {
                     .collect();
                 result.push(
                     Expr::Call(
-                        UsedCallR { is_tail: x.is_tail },
+                        x,
                         Call {
                             func: new_func,
                             args: new_args,
@@ -467,16 +457,16 @@ impl Used {
                     Self::from_expr(expr, &ctx, var_id_gen, state, result);
                 }
             }
-            Expr::Vector(_, vec) => {
+            Expr::Vector(x, vec) => {
                 let new_vec = vec
                     .into_iter()
                     .map(|expr| Self::from_exprs(expr, ctx, var_id_gen, state))
                     .collect();
-                result.push(Expr::Vector((), new_vec).with_span(expr.span))
+                result.push(Expr::Vector(x, new_vec).with_span(expr.span))
             }
-            Expr::UVector(_, uvec) => result.push(
+            Expr::UVector(x, uvec) => result.push(
                 Expr::UVector(
-                    (),
+                    x,
                     UVector {
                         kind: uvec.kind,
                         elements: uvec
@@ -489,12 +479,12 @@ impl Used {
                 .with_span(expr.span),
             ),
             Expr::Quote(x, _) => x,
-            Expr::Cons(_, cons) => {
+            Expr::Cons(x, cons) => {
                 let new_car = Self::from_exprs(cons.car, ctx, var_id_gen, state);
                 let new_cdr = Self::from_exprs(cons.cdr, ctx, var_id_gen, state);
                 result.push(
                     Expr::Cons(
-                        (),
+                        x,
                         Cons {
                             car: new_car,
                             cdr: new_cdr,
@@ -506,12 +496,12 @@ impl Used {
         }
     }
 
-    fn from_exprs<P: UsedPrevPhase>(
+    fn from_exprs(
         exprs: Vec<LExpr<P>>,
         ctx: &Context,
         var_id_gen: &mut VarIdGen,
         state: &mut LambdaState,
-    ) -> Vec<LExpr<Used>> {
+    ) -> Vec<LExpr<Self>> {
         let mut result = Vec::new();
         for expr in exprs {
             Self::from_expr(expr, ctx, var_id_gen, state, &mut result);

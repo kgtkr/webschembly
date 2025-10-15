@@ -5,9 +5,25 @@ use crate::sexpr::{SExpr, SExprKind};
 use webschembly_compiler_locate::{LocatedValue, Span};
 
 #[derive(Debug, Clone)]
-pub enum Parsed {}
+pub struct Parsed;
 
-impl AstPhase for Parsed {}
+impl AstPhase for Parsed {
+    type XAst = ();
+    type XConst = ();
+    type XDefine = ();
+    type XLambda = ();
+    type XIf = ();
+    type XCall = ();
+    type XVar = ();
+    type XBegin = ();
+    type XSet = ();
+    type XLet = ();
+    type XLetRec = ();
+    type XVector = ();
+    type XUVector = ();
+    type XQuote = ();
+    type XCons = ();
+}
 
 impl Parsed {
     pub fn from_sexprs(exprs: Vec<SExpr>) -> Result<Ast<Self>> {

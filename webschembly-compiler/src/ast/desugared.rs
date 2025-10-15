@@ -3,31 +3,36 @@ use webschembly_compiler_locate::LocatedValue;
 use super::astx::*;
 use crate::sexpr;
 
-#[derive(Debug, Clone)]
-pub enum Desugared {}
-
-impl AstPhase for Desugared {
-    type XBegin = !;
-    type XQuote = !;
-}
-
 pub trait DesugaredPrevPhase = AstPhase;
 
-impl Desugared {
-    pub fn from_ast<P: DesugaredPrevPhase>(ast: Ast<P>) -> Ast<Self> {
+#[derive(Debug, Clone)]
+pub struct Desugared<P: DesugaredPrevPhase>(std::marker::PhantomData<P>);
+
+impl<P: DesugaredPrevPhase> ExtendAstPhase for Desugared<P> {
+    type Prev = P;
+    type XBegin = !;
+    type XQuote = !;
+    type XConst = ();
+    type XCons = ();
+    type XVector = ();
+    type XUVector = ();
+}
+
+impl<P: DesugaredPrevPhase> Desugared<P> {
+    pub fn from_ast(ast: Ast<P>) -> Ast<Self> {
         Ast {
-            x: (),
+            x: ast.x,
             exprs: Self::from_exprs(ast.exprs),
         }
     }
 
-    fn from_expr<P: DesugaredPrevPhase>(expr: LExpr<P>, exprs: &mut Vec<LExpr<Self>>) {
+    fn from_expr(expr: LExpr<P>, exprs: &mut Vec<LExpr<Self>>) {
         match expr.value {
             Expr::Const(_, lit) => exprs.push(Expr::Const((), lit).with_span(expr.span)),
-            Expr::Var(_, var) => exprs.push(Expr::Var((), var).with_span(expr.span)),
-            Expr::Define(_, def) => exprs.push(
+            Expr::Var(x, var) => exprs.push(Expr::Var(x, var).with_span(expr.span)),
+            Expr::Define(x, def) => exprs.push(
                 Expr::Define(
-                    (),
+                    x,
                     Define {
                         name: def.name,
                         expr: Self::from_exprs(def.expr),
@@ -35,9 +40,9 @@ impl Desugared {
                 )
                 .with_span(expr.span),
             ),
-            Expr::Lambda(_, lambda) => exprs.push(
+            Expr::Lambda(x, lambda) => exprs.push(
                 Expr::Lambda(
-                    (),
+                    x,
                     Lambda {
                         args: lambda.args,
                         body: Self::from_exprs(lambda.body),
@@ -45,9 +50,9 @@ impl Desugared {
                 )
                 .with_span(expr.span),
             ),
-            Expr::If(_, if_) => exprs.push(
+            Expr::If(x, if_) => exprs.push(
                 Expr::If(
-                    (),
+                    x,
                     If {
                         cond: Self::from_exprs(if_.cond),
                         then: Self::from_exprs(if_.then),
@@ -56,9 +61,9 @@ impl Desugared {
                 )
                 .with_span(expr.span),
             ),
-            Expr::Call(_, call) => exprs.push(
+            Expr::Call(x, call) => exprs.push(
                 Expr::Call(
-                    (),
+                    x,
                     Call {
                         func: Self::from_exprs(call.func),
                         args: call.args.into_iter().map(Self::from_exprs).collect(),
@@ -71,9 +76,9 @@ impl Desugared {
                     Self::from_expr(expr, exprs);
                 }
             }
-            Expr::Set(_, set) => exprs.push(
+            Expr::Set(x, set) => exprs.push(
                 Expr::Set(
-                    (),
+                    x,
                     Set {
                         name: set.name,
                         expr: Self::from_exprs(set.expr),
@@ -81,9 +86,9 @@ impl Desugared {
                 )
                 .with_span(expr.span),
             ),
-            Expr::Let(_, let_) => exprs.push(
+            Expr::Let(x, let_) => exprs.push(
                 Expr::Let(
-                    (),
+                    x,
                     Let {
                         bindings: let_
                             .bindings
@@ -101,9 +106,9 @@ impl Desugared {
                 )
                 .with_span(expr.span),
             ),
-            Expr::LetRec(_, letrec) => exprs.push(
+            Expr::LetRec(x, letrec) => exprs.push(
                 Expr::LetRec(
-                    (),
+                    x,
                     LetRec {
                         bindings: letrec
                             .bindings
@@ -194,7 +199,7 @@ impl Desugared {
         }
     }
 
-    fn from_exprs<P: DesugaredPrevPhase>(exprs: Vec<LExpr<P>>) -> Vec<LExpr<Self>> {
+    fn from_exprs(exprs: Vec<LExpr<P>>) -> Vec<LExpr<Self>> {
         let mut result = Vec::new();
         for expr in exprs {
             Self::from_expr(expr, &mut result);

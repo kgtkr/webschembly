@@ -2,12 +2,10 @@ use super::astx::*;
 use webschembly_compiler_locate::LocatedValue;
 
 #[derive(Debug, Clone)]
-pub enum TailCall {}
+pub struct TailCall<P: TailCallPrevPhase>(std::marker::PhantomData<P>);
 
-impl AstPhase for TailCall {
-    type XBegin = !;
-    type XQuote = !;
-    type XDefine = !;
+impl<P: TailCallPrevPhase> ExtendAstPhase for TailCall<P> {
+    type Prev = P;
     type XCall = TailCallCallR;
 }
 
@@ -18,10 +16,10 @@ pub struct TailCallCallR {
 
 pub trait TailCallPrevPhase = AstPhase<XBegin = !, XQuote = !, XDefine = !>;
 
-impl TailCall {
-    pub fn from_ast<P: TailCallPrevPhase>(ast: Ast<P>) -> Ast<Self> {
+impl<P: TailCallPrevPhase> TailCall<P> {
+    pub fn from_ast(ast: Ast<P>) -> Ast<Self> {
         Ast {
-            x: (),
+            x: ast.x,
             exprs: ast
                 .exprs
                 .into_iter()
@@ -30,21 +28,21 @@ impl TailCall {
         }
     }
 
-    fn from_expr<P: TailCallPrevPhase>(expr: LExpr<P>, is_tail: bool) -> LExpr<Self> {
+    fn from_expr(expr: LExpr<P>, is_tail: bool) -> LExpr<Self> {
         match expr.value {
-            Expr::Const(_, lit) => Expr::Const((), lit).with_span(expr.span),
-            Expr::Var(_, var) => Expr::Var((), var).with_span(expr.span),
+            Expr::Const(x, lit) => Expr::Const(x, lit).with_span(expr.span),
+            Expr::Var(x, var) => Expr::Var(x, var).with_span(expr.span),
             Expr::Define(x, _) => x,
-            Expr::Lambda(_, lambda) => Expr::Lambda(
-                (),
+            Expr::Lambda(x, lambda) => Expr::Lambda(
+                x,
                 Lambda {
                     args: lambda.args,
                     body: Self::from_exprs(lambda.body, true),
                 },
             )
             .with_span(expr.span),
-            Expr::If(_, if_) => Expr::If(
-                (),
+            Expr::If(x, if_) => Expr::If(
+                x,
                 If {
                     cond: Self::from_exprs(if_.cond, false),
                     then: Self::from_exprs(if_.then, is_tail),
@@ -65,16 +63,16 @@ impl TailCall {
             )
             .with_span(expr.span),
             Expr::Begin(x, _) => x,
-            Expr::Set(_, set) => Expr::Set(
-                (),
+            Expr::Set(x, set) => Expr::Set(
+                x,
                 Set {
                     name: set.name,
                     expr: Self::from_exprs(set.expr, false),
                 },
             )
             .with_span(expr.span),
-            Expr::Let(_, let_) => Expr::Let(
-                (),
+            Expr::Let(x, let_) => Expr::Let(
+                x,
                 Let {
                     bindings: let_
                         .bindings
@@ -91,8 +89,8 @@ impl TailCall {
                 },
             )
             .with_span(expr.span),
-            Expr::LetRec(_, letrec) => Expr::LetRec(
-                (),
+            Expr::LetRec(x, letrec) => Expr::LetRec(
+                x,
                 LetRec {
                     bindings: letrec
                         .bindings
@@ -109,14 +107,14 @@ impl TailCall {
                 },
             )
             .with_span(expr.span),
-            Expr::Vector(_, vec) => Expr::Vector((), {
+            Expr::Vector(x, vec) => Expr::Vector(x, {
                 vec.into_iter()
                     .map(|expr| Self::from_exprs(expr, false))
                     .collect()
             })
             .with_span(expr.span),
-            Expr::UVector(_, uvec) => Expr::UVector(
-                (),
+            Expr::UVector(x, uvec) => Expr::UVector(
+                x,
                 UVector {
                     kind: uvec.kind,
                     elements: uvec
@@ -128,8 +126,8 @@ impl TailCall {
             )
             .with_span(expr.span),
             Expr::Quote(x, _) => x,
-            Expr::Cons(_, cons) => Expr::Cons(
-                (),
+            Expr::Cons(x, cons) => Expr::Cons(
+                x,
                 Cons {
                     car: Self::from_exprs(cons.car, false),
                     cdr: Self::from_exprs(cons.cdr, false),
@@ -139,7 +137,7 @@ impl TailCall {
         }
     }
 
-    fn from_exprs<P: TailCallPrevPhase>(exprs: Vec<LExpr<P>>, is_tail: bool) -> Vec<LExpr<Self>> {
+    fn from_exprs(exprs: Vec<LExpr<P>>, is_tail: bool) -> Vec<LExpr<Self>> {
         let n = exprs.len();
         exprs
             .into_iter()

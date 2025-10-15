@@ -13,22 +13,61 @@ pub enum UVectorKind {
     F64,
 }
 
+pub trait AstPhaseX = std::fmt::Debug + Clone;
+
 pub trait AstPhase: Sized + Clone + Debug {
-    type XAst: std::fmt::Debug + Clone = ();
-    type XConst: std::fmt::Debug + Clone = ();
-    type XDefine: std::fmt::Debug + Clone = ();
-    type XLambda: std::fmt::Debug + Clone = ();
-    type XIf: std::fmt::Debug + Clone = ();
-    type XCall: std::fmt::Debug + Clone = ();
-    type XVar: std::fmt::Debug + Clone = ();
-    type XBegin: std::fmt::Debug + Clone = ();
-    type XSet: std::fmt::Debug + Clone = ();
-    type XLet: std::fmt::Debug + Clone = ();
-    type XLetRec: std::fmt::Debug + Clone = ();
-    type XVector: std::fmt::Debug + Clone = ();
-    type XUVector: std::fmt::Debug + Clone = ();
-    type XQuote: std::fmt::Debug + Clone = ();
-    type XCons: std::fmt::Debug + Clone = ();
+    type XAst: AstPhaseX;
+    type XConst: AstPhaseX;
+    type XDefine: AstPhaseX;
+    type XLambda: AstPhaseX;
+    type XIf: AstPhaseX;
+    type XCall: AstPhaseX;
+    type XVar: AstPhaseX;
+    type XBegin: AstPhaseX;
+    type XSet: AstPhaseX;
+    type XLet: AstPhaseX;
+    type XLetRec: AstPhaseX;
+    type XVector: AstPhaseX;
+    type XUVector: AstPhaseX;
+    type XQuote: AstPhaseX;
+    type XCons: AstPhaseX;
+}
+
+pub trait ExtendAstPhase: Sized + Clone + Debug {
+    type Prev: AstPhase;
+    type XAst: AstPhaseX = <Self::Prev as AstPhase>::XAst;
+    type XConst: AstPhaseX = <Self::Prev as AstPhase>::XConst;
+    type XDefine: AstPhaseX = <Self::Prev as AstPhase>::XDefine;
+    type XLambda: AstPhaseX = <Self::Prev as AstPhase>::XLambda;
+    type XIf: AstPhaseX = <Self::Prev as AstPhase>::XIf;
+    type XCall: AstPhaseX = <Self::Prev as AstPhase>::XCall;
+    type XVar: AstPhaseX = <Self::Prev as AstPhase>::XVar;
+    type XBegin: AstPhaseX = <Self::Prev as AstPhase>::XBegin;
+    type XSet: AstPhaseX = <Self::Prev as AstPhase>::XSet;
+    type XLet: AstPhaseX = <Self::Prev as AstPhase>::XLet;
+    type XLetRec: AstPhaseX = <Self::Prev as AstPhase>::XLetRec;
+    type XVector: AstPhaseX = <Self::Prev as AstPhase>::XVector;
+    type XUVector: AstPhaseX = <Self::Prev as AstPhase>::XUVector;
+    type XQuote: AstPhaseX = <Self::Prev as AstPhase>::XQuote;
+    type XCons: AstPhaseX = <Self::Prev as AstPhase>::XCons;
+}
+
+impl<T: ExtendAstPhase> AstPhase for T {
+    type XAst = T::XAst;
+    type XConst = T::XConst;
+    type XDefine = T::XDefine;
+    type XLambda = T::XLambda;
+    type XIf = T::XIf;
+    type XCall = T::XCall;
+    type XVar = T::XVar;
+    type XBegin = T::XBegin;
+    type XSet = T::XSet;
+    type XLet = T::XLet;
+    type XLetRec = T::XLetRec;
+    type XVector = T::XVector;
+    type XUVector = T::XUVector;
+    type XQuote = T::XQuote;
+    type XCons = T::XCons;
 }
 
 #[derive(Debug, Clone)]

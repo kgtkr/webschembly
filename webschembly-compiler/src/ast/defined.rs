@@ -4,16 +4,17 @@ use crate::error::Result;
 use webschembly_compiler_locate::{Located, LocatedValue, Span};
 // defineをletrec or set!に変換
 
-#[derive(Debug, Clone)]
-pub enum Defined {}
-
-impl AstPhase for Defined {
-    type XDefine = !;
-    type XBegin = !;
-    type XQuote = !;
-}
-
 pub trait DefinedPrevPhase = AstPhase<XBegin = !, XQuote = !>;
+
+#[derive(Debug, Clone)]
+pub struct Defined<P: DefinedPrevPhase>(std::marker::PhantomData<P>);
+
+impl<P: DefinedPrevPhase> ExtendAstPhase for Defined<P> {
+    type Prev = P;
+    type XDefine = !;
+    type XSet = ();
+    type XLetRec = ();
+}
 
 #[derive(Debug, Clone, Copy)]
 enum DefineContext {
@@ -32,28 +33,28 @@ impl DefineContext {
     }
 }
 
-impl Defined {
-    pub fn from_ast<P: DefinedPrevPhase>(ast: Ast<P>) -> Result<Ast<Self>> {
+impl<P: DefinedPrevPhase> Defined<P> {
+    pub fn from_ast(ast: Ast<P>) -> Result<Ast<Self>> {
         let new_exprs = Self::from_exprs(ast.exprs, DefineContext::Global, &mut Vec::new())?;
         Ok(Ast {
-            x: (),
+            x: ast.x,
             exprs: new_exprs,
         })
     }
 
-    fn from_expr<P: DefinedPrevPhase>(
+    fn from_expr(
         expr: LExpr<P>,
         ctx: DefineContext,
         defines: &mut Vec<Located<Binding<Self>>>,
         result: &mut Vec<LExpr<Self>>,
     ) -> Result<()> {
         match expr.value {
-            Expr::Const(_, lit) => {
-                result.push(Expr::Const((), lit).with_span(expr.span));
+            Expr::Const(x, lit) => {
+                result.push(Expr::Const(x, lit).with_span(expr.span));
                 Ok(())
             }
-            Expr::Var(_, var) => {
-                result.push(Expr::Var((), var).with_span(expr.span));
+            Expr::Var(x, var) => {
+                result.push(Expr::Var(x, var).with_span(expr.span));
                 Ok(())
             }
             Expr::Define(_, def) => {
@@ -94,11 +95,11 @@ impl Defined {
                     )),
                 }
             }
-            Expr::Lambda(_, lambda) => {
+            Expr::Lambda(x, lambda) => {
                 let new_body = Self::from_exprs_new_scope(expr.span, lambda.body)?;
                 result.push(
                     Expr::Lambda(
-                        (),
+                        x,
                         Lambda {
                             args: lambda.args,
                             body: new_body,
@@ -108,10 +109,10 @@ impl Defined {
                 );
                 Ok(())
             }
-            Expr::If(_, if_) => {
+            Expr::If(x, if_) => {
                 result.push(
                     Expr::If(
-                        (),
+                        x,
                         If {
                             cond: Self::from_exprs(
                                 if_.cond,
@@ -130,7 +131,7 @@ impl Defined {
                 );
                 Ok(())
             }
-            Expr::Call(_, call) => {
+            Expr::Call(x, call) => {
                 let new_func = Self::from_exprs(call.func, ctx.to_undefinable_if_local(), defines)?;
                 let new_args = call
                     .args
@@ -139,7 +140,7 @@ impl Defined {
                     .collect::<Result<Vec<_>>>()?;
                 result.push(
                     Expr::Call(
-                        (),
+                        x,
                         Call {
                             func: new_func,
                             args: new_args,
@@ -164,11 +165,11 @@ impl Defined {
                 );
                 Ok(())
             }
-            Expr::Let(_, let_) => {
+            Expr::Let(x, let_) => {
                 let new_body = Self::from_exprs_new_scope(expr.span, let_.body)?;
                 result.push(
                     Expr::Let(
-                        (),
+                        x,
                         Let {
                             bindings: let_
                                 .bindings
@@ -220,10 +221,10 @@ impl Defined {
                 );
                 Ok(())
             }
-            Expr::Vector(_, vec) => {
+            Expr::Vector(x, vec) => {
                 result.push(
                     Expr::Vector(
-                        (),
+                        x,
                         vec.into_iter()
                             .map(|v| Self::from_exprs(v, ctx.to_undefinable_if_local(), defines))
                             .collect::<Result<Vec<_>>>()?,
@@ -232,10 +233,10 @@ impl Defined {
                 );
                 Ok(())
             }
-            Expr::UVector(_, uvec) => {
+            Expr::UVector(x, uvec) => {
                 result.push(
                     Expr::UVector(
-                        (),
+                        x,
                         UVector {
                             kind: uvec.kind,
                             elements: uvec
@@ -252,10 +253,10 @@ impl Defined {
                 Ok(())
             }
             Expr::Quote(x, _) => x,
-            Expr::Cons(_, cons) => {
+            Expr::Cons(x, cons) => {
                 result.push(
                     Expr::Cons(
-                        (),
+                        x,
                         Cons {
                             car: Self::from_exprs(
                                 cons.car,
@@ -276,7 +277,7 @@ impl Defined {
         }
     }
 
-    fn from_exprs<P: DefinedPrevPhase>(
+    fn from_exprs(
         exprs: Vec<LExpr<P>>,
         mut ctx: DefineContext,
         defines: &mut Vec<Located<Binding<Self>>>,
@@ -296,10 +297,7 @@ impl Defined {
 
     // スコープを作る命令
     // 一つでもdefineがあれば全体をletrecで囲む
-    fn from_exprs_new_scope<P: DefinedPrevPhase>(
-        span: Span,
-        exprs: Vec<LExpr<P>>,
-    ) -> Result<Vec<LExpr<Self>>> {
+    fn from_exprs_new_scope(span: Span, exprs: Vec<LExpr<P>>) -> Result<Vec<LExpr<Self>>> {
         let mut defines = Vec::new();
         let exprs = Self::from_exprs(exprs, DefineContext::LocalDefinable, &mut defines)?;
         if defines.is_empty() {

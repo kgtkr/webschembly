@@ -16,7 +16,7 @@ pub use used::*;
 use crate::error::Result;
 use crate::sexpr::SExpr;
 
-pub type Final = Used;
+pub type Final = Used<TailCall<Defined<Desugared<Parsed>>>>;
 
 #[derive(Debug)]
 pub struct ASTGenerator {
