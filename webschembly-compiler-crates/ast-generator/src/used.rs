@@ -1,5 +1,5 @@
-use super::astx::*;
 use rustc_hash::{FxHashMap, FxHashSet};
+use webschembly_compiler_ast::*;
 use webschembly_compiler_locate::{Located, LocatedValue};
 
 pub trait UsedPrevPhase = AstPhase<XBegin = !, XQuote = !, XDefine = !>;

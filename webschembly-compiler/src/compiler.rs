@@ -11,7 +11,7 @@ use crate::ir_processor::ssa_optimizer::ssa_optimize;
 use crate::jit::{Jit, JitConfig};
 use crate::lexer;
 use crate::sexpr_parser;
-use webschembly_compiler_ast::ASTGenerator;
+use webschembly_compiler_ast_generator::ASTGenerator;
 use webschembly_compiler_error::compiler_error;
 
 #[derive(Debug)]

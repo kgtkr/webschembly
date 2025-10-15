@@ -1,11 +1,11 @@
 use crate::{
-    astx::Ast,
     defined::Defined,
     desugared::Desugared,
     parsed::Parsed,
     tail_call::TailCall,
     used::{GlobalVarId, Used, VarIdGen},
 };
+use webschembly_compiler_ast::Ast;
 use webschembly_compiler_error::Result;
 use webschembly_compiler_sexpr::LSExpr;
 

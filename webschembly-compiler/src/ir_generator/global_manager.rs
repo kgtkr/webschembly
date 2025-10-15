@@ -1,7 +1,7 @@
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::ir::*;
-use webschembly_compiler_ast::GlobalVarId;
+use webschembly_compiler_ast_generator::GlobalVarId;
 
 #[derive(Debug)]
 pub struct GlobalManager {

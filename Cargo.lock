@@ -468,6 +468,7 @@ dependencies = [
  "vec-map",
  "wasm-encoder",
  "webschembly-compiler-ast",
+ "webschembly-compiler-ast-generator",
  "webschembly-compiler-error",
  "webschembly-compiler-locate",
  "webschembly-compiler-sexpr",
@@ -481,6 +482,17 @@ dependencies = [
  "rustc-hash",
  "strum",
  "strum_macros",
+ "webschembly-compiler-error",
+ "webschembly-compiler-locate",
+ "webschembly-compiler-sexpr",
+]
+
+[[package]]
+name = "webschembly-compiler-ast-generator"
+version = "0.1.0"
+dependencies = [
+ "rustc-hash",
+ "webschembly-compiler-ast",
  "webschembly-compiler-error",
  "webschembly-compiler-locate",
  "webschembly-compiler-sexpr",

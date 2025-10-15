@@ -16,6 +16,7 @@ strum = {workspace = true}
 vec-map = {path = "../webschembly-compiler-crates/vec-map"}
 wasm-encoder = "0.221.2"
 webschembly-compiler-ast = {path = "../webschembly-compiler-crates/ast"}
+webschembly-compiler-ast-generator = {path = "../webschembly-compiler-crates/ast-generator"}
 webschembly-compiler-error = {path = "../webschembly-compiler-crates/error"}
 webschembly-compiler-locate = {path = "../webschembly-compiler-crates/locate"}
 webschembly-compiler-sexpr = {path = "../webschembly-compiler-crates/sexpr"}

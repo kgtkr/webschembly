@@ -1,4 +1,5 @@
 use rustc_hash::FxHashMap;
+use webschembly_compiler_ast_generator::{Final, GlobalVarId, LocalVarId, VarId};
 use webschembly_compiler_locate::Located;
 
 use crate::ir_generator::GlobalManager;
@@ -14,7 +15,7 @@ pub struct Config {
 pub fn generate_module(
     id: ModuleId,
     global_manager: &mut GlobalManager,
-    ast: &ast::Ast<ast::Final>,
+    ast: &ast::Ast<Final>,
     config: Config,
 ) -> Module {
     let module_gen = ModuleGenerator::new(id, config, global_manager, ast);
@@ -26,7 +27,7 @@ pub fn generate_module(
 struct ModuleGenerator<'a> {
     id: ModuleId,
     global_manager: &'a mut GlobalManager,
-    ast: &'a ast::Ast<ast::Final>,
+    ast: &'a ast::Ast<Final>,
     funcs: VecMap<FuncId, Func>,
     config: Config,
     func_to_entrypoint_table: FxHashMap<FuncId, GlobalId>,
@@ -41,7 +42,7 @@ impl<'a> ModuleGenerator<'a> {
         id: ModuleId,
         config: Config,
         ir_generator: &'a mut GlobalManager,
-        ast: &'a ast::Ast<ast::Final>,
+        ast: &'a ast::Ast<Final>,
     ) -> Self {
         Self {
             id,
@@ -129,7 +130,7 @@ impl<'a> ModuleGenerator<'a> {
         }
     }
 
-    fn global(&mut self, id: ast::GlobalVarId) -> Global {
+    fn global(&mut self, id: GlobalVarId) -> Global {
         let global = self.global_manager.global(id);
         let ast_meta = self.ast.x.global_metas.get(&id);
         if let Some(ast_meta) = ast_meta {
@@ -144,8 +145,8 @@ impl<'a> ModuleGenerator<'a> {
 
     fn gen_func(
         &mut self,
-        x: &<ast::Final as AstPhase>::XLambda,
-        lambda: &ast::Lambda<ast::Final>,
+        x: &<Final as AstPhase>::XLambda,
+        lambda: &ast::Lambda<Final>,
     ) -> FuncId {
         let id = self.funcs.allocate_key();
         let func = FuncGenerator::new(self, id).lambda_gen(x, lambda);
@@ -159,7 +160,7 @@ impl<'a> ModuleGenerator<'a> {
 struct FuncGenerator<'a, 'b> {
     id: FuncId,
     locals: VecMap<LocalId, Local>,
-    local_ids: FxHashMap<ast::LocalVarId, LocalId>,
+    local_ids: FxHashMap<LocalVarId, LocalId>,
     bbs: VecMap<BasicBlockId, BasicBlock>,
     module_generator: &'a mut ModuleGenerator<'b>,
     exprs: Vec<ExprAssign>,
@@ -201,11 +202,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         }
     }
 
-    fn lambda_gen(
-        mut self,
-        x: &<ast::Final as AstPhase>::XLambda,
-        lambda: &ast::Lambda<ast::Final>,
-    ) -> Func {
+    fn lambda_gen(mut self, x: &<Final as AstPhase>::XLambda, lambda: &ast::Lambda<Final>) -> Func {
         let bb_entry = self.bbs.allocate_key();
         self.current_bb_id = Some(bb_entry);
 
@@ -314,7 +311,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         })
     }
 
-    fn define_all_ast_local_and_create_ref(&mut self, locals: &[ast::LocalVarId]) {
+    fn define_all_ast_local_and_create_ref(&mut self, locals: &[LocalVarId]) {
         for id in locals {
             let local = self.define_ast_local(*id);
             if self.module_generator.ast.x.box_vars.contains(id) {
@@ -326,7 +323,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         }
     }
 
-    fn define_ast_local(&mut self, id: ast::LocalVarId) -> LocalId {
+    fn define_ast_local(&mut self, id: LocalVarId) -> LocalId {
         let ast_meta = self.module_generator.ast.x.local_metas.get(&id);
         let local = self.local(if self.module_generator.ast.x.box_vars.contains(&id) {
             LocalType::Ref(Type::Obj)
@@ -346,7 +343,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         local
     }
 
-    fn new_version_ast_local(&mut self, id: ast::LocalVarId) -> LocalId {
+    fn new_version_ast_local(&mut self, id: LocalVarId) -> LocalId {
         let ast_meta = self.module_generator.ast.x.local_metas.get(&id);
         debug_assert!(!self.module_generator.ast.x.box_vars.contains(&id));
         let local = self.local(LocalType::Type(Type::Obj));
@@ -362,7 +359,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         local
     }
 
-    fn gen_expr(&mut self, result: Option<LocalId>, ast: &ast::LExpr<ast::Final>) {
+    fn gen_expr(&mut self, result: Option<LocalId>, ast: &ast::LExpr<Final>) {
         match &ast.value {
             ast::Expr::Const(_, lit) => match lit {
                 ast::Const::Bool(b) => {
@@ -609,9 +606,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                         ..
                     },
                 ] = func.as_slice()
-                    && let ast::UsedVarR {
-                        var_id: ast::VarId::Global(_),
-                    } = x
+                    && let VarId::Global(_) = x.var_id
                     && let Some(builtin) = ast::Builtin::from_name(name)
                 {
                     let rules = BuiltinConversionRule::from_builtin(builtin)
@@ -787,7 +782,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 }
             }
             ast::Expr::Var(x, _) => match &x.var_id {
-                ast::VarId::Local(id) => {
+                VarId::Local(id) => {
                     if self.module_generator.ast.x.box_vars.contains(id) {
                         self.exprs.push(ExprAssign {
                             local: result,
@@ -800,7 +795,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                         });
                     }
                 }
-                ast::VarId::Global(id) => {
+                VarId::Global(id) => {
                     let global = self.module_generator.global(*id);
                     self.exprs.push(ExprAssign {
                         local: result,
@@ -813,7 +808,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             }
             ast::Expr::Set(x, ast::Set { name, expr, .. }) => {
                 match &x.var_id {
-                    ast::VarId::Local(id) => {
+                    VarId::Local(id) => {
                         if self.module_generator.ast.x.box_vars.contains(id) {
                             let obj_local = self.local(Type::Obj);
                             self.gen_exprs(Some(obj_local), expr);
@@ -836,7 +831,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                             });
                         }
                     }
-                    ast::VarId::Global(id) => {
+                    VarId::Global(id) => {
                         if let Some(_) = ast::Builtin::from_name(&name.value)
                             && !self.module_generator.config.allow_set_builtin
                         {
@@ -972,7 +967,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         }
     }
 
-    fn gen_exprs(&mut self, result: Option<LocalId>, exprs: &[ast::LExpr<ast::Final>]) {
+    fn gen_exprs(&mut self, result: Option<LocalId>, exprs: &[ast::LExpr<Final>]) {
         if let Some((last, rest)) = exprs.split_last() {
             for expr in rest {
                 self.gen_expr(None, expr);

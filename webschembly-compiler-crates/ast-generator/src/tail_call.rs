@@ -1,4 +1,4 @@
-use super::astx::*;
+use webschembly_compiler_ast::*;
 use webschembly_compiler_locate::LocatedValue;
 
 #[derive(Debug, Clone)]

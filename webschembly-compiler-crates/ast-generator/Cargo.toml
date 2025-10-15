@@ -1,0 +1,15 @@
+[package]
+authors.workspace = true
+description.workspace = true
+edition.workspace = true
+homepage.workspace = true
+name = "webschembly-compiler-ast-generator"
+repository.workspace = true
+version.workspace = true
+
+[dependencies]
+rustc-hash = {workspace = true}
+webschembly-compiler-ast = {path = "../ast"}
+webschembly-compiler-error = {path = "../error"}
+webschembly-compiler-locate = {path = "../locate"}
+webschembly-compiler-sexpr = {path = "../sexpr"}

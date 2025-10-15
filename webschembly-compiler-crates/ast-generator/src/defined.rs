@@ -1,4 +1,4 @@
-use super::astx::*;
+use webschembly_compiler_ast::*;
 use webschembly_compiler_error::{Result, compiler_error};
 use webschembly_compiler_locate::{Located, LocatedValue, Span};
 // defineをletrec or set!に変換
