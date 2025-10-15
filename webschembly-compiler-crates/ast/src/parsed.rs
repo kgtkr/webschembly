@@ -1,7 +1,7 @@
 use super::astx::*;
 use webschembly_compiler_error::{Result, compiler_error};
 use webschembly_compiler_locate::{LocatedValue, Span};
-use webschembly_compiler_sexpr::{SExpr, SExprKind, list_pattern};
+use webschembly_compiler_sexpr::{LSExpr, SExpr, list_pattern};
 
 #[derive(Debug, Clone)]
 pub struct Parsed;
@@ -25,7 +25,7 @@ impl AstPhase for Parsed {
 }
 
 impl Parsed {
-    pub fn from_sexprs(exprs: Vec<SExpr>) -> Result<Ast<Self>> {
+    pub fn from_sexprs(exprs: Vec<LSExpr>) -> Result<Ast<Self>> {
         let exprs = exprs
             .into_iter()
             .map(Self::from_sexpr)
@@ -33,49 +33,49 @@ impl Parsed {
         Ok(Ast { x: (), exprs })
     }
 
-    fn from_sexpr(sexpr: SExpr) -> Result<LExpr<Self>> {
+    fn from_sexpr(sexpr: LSExpr) -> Result<LExpr<Self>> {
         match sexpr {
-            SExpr {
-                kind: SExprKind::Bool(b),
+            LSExpr {
+                value: SExpr::Bool(b),
                 span,
                 ..
             } => Ok(Expr::Const((), Const::Bool(b)).with_span(span)),
-            SExpr {
-                kind: SExprKind::Int(i),
+            LSExpr {
+                value: SExpr::Int(i),
                 span,
                 ..
             } => Ok(Expr::Const((), Const::Int(i)).with_span(span)),
-            SExpr {
-                kind: SExprKind::Float(f),
+            LSExpr {
+                value: SExpr::Float(f),
                 span,
                 ..
             } => Ok(Expr::Const((), Const::Float(f)).with_span(span)),
-            SExpr {
-                kind: SExprKind::NaN,
+            LSExpr {
+                value: SExpr::NaN,
                 span,
                 ..
             } => Ok(Expr::Const((), Const::NaN).with_span(span)),
-            SExpr {
-                kind: SExprKind::String(s),
+            LSExpr {
+                value: SExpr::String(s),
                 span,
                 ..
             } => Ok(Expr::Const((), Const::String(s)).with_span(span)),
-            SExpr {
-                kind: SExprKind::Symbol(s),
+            LSExpr {
+                value: SExpr::Symbol(s),
                 span,
             } => Ok(Expr::Var((), s).with_span(span)),
-            SExpr {
-                kind: SExprKind::Nil,
+            LSExpr {
+                value: SExpr::Nil,
                 span,
                 ..
             } => Ok(Expr::Const((), Const::Nil).with_span(span)),
-            SExpr {
-                kind: SExprKind::Char(c),
+            LSExpr {
+                value: SExpr::Char(c),
                 span,
                 ..
             } => Ok(Expr::Const((), Const::Char(c)).with_span(span)),
-            sexpr @ SExpr {
-                kind: SExprKind::Vector(_),
+            sexpr @ LSExpr {
+                value: SExpr::Vector(_),
                 span,
                 ..
             } =>
@@ -85,14 +85,14 @@ impl Parsed {
                 Ok(Expr::Quote((), sexpr).with_span(span))
             }
             // TODO: uvectorも同様
-            sexpr @ SExpr {
-                kind: SExprKind::UVector(_, _),
+            sexpr @ LSExpr {
+                value: SExpr::UVector(_, _),
                 span,
                 ..
             } => Ok(Expr::Quote((), sexpr).with_span(span)),
             list_pattern![
-                SExpr {
-                    kind: SExprKind::Symbol("quote"),
+                LSExpr {
+                    value: SExpr::Symbol("quote"),
                     span,
                     ..
                 },
@@ -102,15 +102,15 @@ impl Parsed {
                 _ => Err(compiler_error!("Invalid quote expression")),
             },
             list_pattern![
-                SExpr {
-                    kind: SExprKind::Symbol("define"),
+                LSExpr {
+                    value: SExpr::Symbol("define"),
                     ..
                 } => span,
                 ..cdr
             ] => match cdr {
                 list_pattern![
-                    SExpr {
-                        kind: SExprKind::Symbol(name),
+                    LSExpr {
+                        value: SExpr::Symbol(name),
                         span: name_span
                     },
                     expr,
@@ -124,8 +124,8 @@ impl Parsed {
                 .with_span(span)),
                 list_pattern![
                     list_pattern![
-                        SExpr {
-                            kind: SExprKind::Symbol(name),
+                        LSExpr {
+                            value: SExpr::Symbol(name),
                             span: name_span
                         },
                         ..args
@@ -142,8 +142,8 @@ impl Parsed {
                 _ => Err(compiler_error!("Invalid define expression")),
             },
             list_pattern![
-                SExpr {
-                    kind: SExprKind::Symbol("lambda"),
+                LSExpr {
+                    value: SExpr::Symbol("lambda"),
                     ..
                 } => span,
                 ..cdr
@@ -152,8 +152,8 @@ impl Parsed {
                 _ => Err(compiler_error!("Invalid lambda expression")),
             },
             list_pattern![
-                SExpr {
-                    kind: SExprKind::Symbol("if"),
+                LSExpr {
+                    value: SExpr::Symbol("if"),
                     ..
                 } => span,
                 ..cdr
@@ -175,21 +175,22 @@ impl Parsed {
                 _ => Err(compiler_error!("Invalid if expression",)),
             },
             list_pattern![
-                SExpr {
-                    kind: SExprKind::Symbol("let"),
+                LSExpr {
+                    value: SExpr::Symbol("let"),
                     ..
                 } => span,
                 ..cdr
             ] => match cdr {
                 list_pattern![bindings, ..body] => {
                     let bindings = bindings
+                        .value
                         .to_vec()
                         .ok_or_else(|| compiler_error!("Expected a list of bindings"))?
                         .into_iter()
                         .map(|binding| match binding {
                             list_pattern![
-                                SExpr {
-                                    kind: SExprKind::Symbol(name),
+                                LSExpr {
+                                    value: SExpr::Symbol(name),
                                     ..
                                 } => name_span,
                                 expr,
@@ -202,6 +203,7 @@ impl Parsed {
                         })
                         .collect::<Result<Vec<_>>>()?;
                     let body = body
+                        .value
                         .to_vec()
                         .ok_or_else(|| compiler_error!("Expected a list of expressions"))?
                         .into_iter()
@@ -213,21 +215,22 @@ impl Parsed {
                 _ => Err(compiler_error!("Invalid let expression")),
             },
             list_pattern![
-                SExpr {
-                    kind: SExprKind::Symbol("letrec"),
+                LSExpr {
+                    value: SExpr::Symbol("letrec"),
                     ..
                 } => span,
                 ..cdr
             ] => match cdr {
                 list_pattern![bindings, ..body] => {
                     let bindings = bindings
+                        .value
                         .to_vec()
                         .ok_or_else(|| compiler_error!("Expected a list of bindings"))?
                         .into_iter()
                         .map(|binding| match binding {
                             list_pattern![
-                                SExpr {
-                                    kind: SExprKind::Symbol(name),
+                                LSExpr {
+                                    value: SExpr::Symbol(name),
                                     ..
                                 } => name_span,
                                 expr,
@@ -240,6 +243,7 @@ impl Parsed {
                         })
                         .collect::<Result<Vec<_>>>()?;
                     let body = body
+                        .value
                         .to_vec()
                         .ok_or_else(|| compiler_error!("Expected a list of expressions"))?
                         .into_iter()
@@ -251,13 +255,14 @@ impl Parsed {
                 _ => Err(compiler_error!("Invalid let expression")),
             },
             list_pattern![
-                SExpr {
-                    kind: SExprKind::Symbol("begin"),
+                LSExpr {
+                    value: SExpr::Symbol("begin"),
                     ..
                 } => span,
                 ..exprs
             ] => {
                 let exprs = exprs
+                    .value
                     .to_vec()
                     .ok_or_else(|| compiler_error!("Invalid begin expression"))?
                     .into_iter()
@@ -266,15 +271,15 @@ impl Parsed {
                 Ok(Expr::Begin((), Begin { exprs }).with_span(span))
             }
             list_pattern![
-                SExpr {
-                    kind: SExprKind::Symbol("set!"),
+                LSExpr {
+                    value: SExpr::Symbol("set!"),
                     ..
                 } => span,
                 ..cdr
             ] => match cdr {
                 list_pattern![
-                    SExpr {
-                        kind: SExprKind::Symbol(name),
+                    LSExpr {
+                        value: SExpr::Symbol(name),
                         span: name_span
                     },
                     expr,
@@ -294,6 +299,7 @@ impl Parsed {
             list_pattern![func => span, ..args] => {
                 let func = Self::from_sexpr(func)?;
                 let args = args
+                    .value
                     .to_vec()
                     .ok_or_else(|| compiler_error!("Expected a list of arguments"))?
                     .into_iter()
@@ -311,17 +317,19 @@ impl Parsed {
         }
     }
 
-    fn parse_lambda(span: Span, args: SExpr, exprs: SExpr) -> Result<LExpr<Self>> {
+    fn parse_lambda(span: Span, args: LSExpr, exprs: LSExpr) -> Result<LExpr<Self>> {
         let args = args
+            .value
             .to_vec()
             .ok_or_else(|| compiler_error!("Expected a list of symbols"))?
             .into_iter()
-            .map(|arg| match arg.kind {
-                SExprKind::Symbol(s) => Ok(s.with_span(arg.span)),
+            .map(|arg| match arg.value {
+                SExpr::Symbol(s) => Ok(s.with_span(arg.span)),
                 _ => Err(compiler_error!("Expected a symbol")),
             })
             .collect::<Result<Vec<_>>>()?;
         let exprs = exprs
+            .value
             .to_vec()
             .ok_or_else(|| compiler_error!("Expected a list of expressions"))?
             .into_iter()

@@ -7,7 +7,7 @@ use crate::{
     used::{GlobalVarId, Used, VarIdGen},
 };
 use webschembly_compiler_error::Result;
-use webschembly_compiler_sexpr::SExpr;
+use webschembly_compiler_sexpr::LSExpr;
 
 pub type Final = Used<TailCall<Defined<Desugared<Parsed>>>>;
 
@@ -29,7 +29,7 @@ impl ASTGenerator {
         }
     }
 
-    pub fn gen_ast(&mut self, sexprs: Vec<SExpr>) -> Result<Ast<Final>> {
+    pub fn gen_ast(&mut self, sexprs: Vec<LSExpr>) -> Result<Ast<Final>> {
         let parsed = Parsed::from_sexprs(sexprs)?;
         let desugared = Desugared::from_ast(parsed);
         let defined = Defined::from_ast(desugared)?;

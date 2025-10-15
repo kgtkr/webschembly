@@ -154,17 +154,17 @@ impl<P: DesugaredPrevPhase> Desugared<P> {
         }
     }
 
-    fn from_quoted_sexpr(sexpr: sexpr::SExpr) -> LExpr<Self> {
-        match sexpr.kind {
-            sexpr::SExprKind::Bool(b) => Expr::Const((), Const::Bool(b)).with_span(sexpr.span),
-            sexpr::SExprKind::Int(i) => Expr::Const((), Const::Int(i)).with_span(sexpr.span),
-            sexpr::SExprKind::Float(f) => Expr::Const((), Const::Float(f)).with_span(sexpr.span),
-            sexpr::SExprKind::NaN => Expr::Const((), Const::NaN).with_span(sexpr.span),
-            sexpr::SExprKind::String(s) => Expr::Const((), Const::String(s)).with_span(sexpr.span),
-            sexpr::SExprKind::Char(c) => Expr::Const((), Const::Char(c)).with_span(sexpr.span),
-            sexpr::SExprKind::Symbol(s) => Expr::Const((), Const::Symbol(s)).with_span(sexpr.span),
+    fn from_quoted_sexpr(sexpr: sexpr::LSExpr) -> LExpr<Self> {
+        match sexpr.value {
+            sexpr::SExpr::Bool(b) => Expr::Const((), Const::Bool(b)).with_span(sexpr.span),
+            sexpr::SExpr::Int(i) => Expr::Const((), Const::Int(i)).with_span(sexpr.span),
+            sexpr::SExpr::Float(f) => Expr::Const((), Const::Float(f)).with_span(sexpr.span),
+            sexpr::SExpr::NaN => Expr::Const((), Const::NaN).with_span(sexpr.span),
+            sexpr::SExpr::String(s) => Expr::Const((), Const::String(s)).with_span(sexpr.span),
+            sexpr::SExpr::Char(c) => Expr::Const((), Const::Char(c)).with_span(sexpr.span),
+            sexpr::SExpr::Symbol(s) => Expr::Const((), Const::Symbol(s)).with_span(sexpr.span),
             // TODO: span情報の保持
-            sexpr::SExprKind::Cons(cons) => Expr::Cons(
+            sexpr::SExpr::Cons(cons) => Expr::Cons(
                 (),
                 Cons {
                     car: vec![Self::from_quoted_sexpr(cons.car)],
@@ -173,7 +173,7 @@ impl<P: DesugaredPrevPhase> Desugared<P> {
             )
             .with_span(sexpr.span),
             // TODO: span情報の保持
-            sexpr::SExprKind::Vector(vec) => Expr::Vector(
+            sexpr::SExpr::Vector(vec) => Expr::Vector(
                 (),
                 vec.into_iter()
                     .map(|s| vec![Self::from_quoted_sexpr(s)])
@@ -181,7 +181,7 @@ impl<P: DesugaredPrevPhase> Desugared<P> {
             )
             .with_span(sexpr.span),
             // TODO: span情報の保持
-            sexpr::SExprKind::UVector(kind, elements) => Expr::UVector(
+            sexpr::SExpr::UVector(kind, elements) => Expr::UVector(
                 (),
                 UVector {
                     kind: match kind {
@@ -195,7 +195,7 @@ impl<P: DesugaredPrevPhase> Desugared<P> {
                 },
             )
             .with_span(sexpr.span),
-            sexpr::SExprKind::Nil => Expr::Const((), Const::Nil).with_span(sexpr.span),
+            sexpr::SExpr::Nil => Expr::Const((), Const::Nil).with_span(sexpr.span),
         }
     }
 

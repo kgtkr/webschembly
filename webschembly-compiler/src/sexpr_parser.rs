@@ -1,7 +1,7 @@
 use crate::token::TokenKind;
 
 use super::token::Token;
-use webschembly_compiler_sexpr::{Cons, SExpr, SExprKind, SUVectorKind, list};
+use webschembly_compiler_sexpr::{Cons, LSExpr, SExpr, SUVectorKind, list};
 
 use super::parser_combinator::{satisfy, satisfy_map_opt};
 use crate::tokens::Tokens;
@@ -9,10 +9,10 @@ use nom::combinator::opt;
 use nom::sequence::preceded;
 use nom::{IResult, Parser, branch::alt, multi::many0};
 
-fn bool(input: Tokens) -> IResult<Tokens, SExpr> {
+fn bool(input: Tokens) -> IResult<Tokens, LSExpr> {
     satisfy_map_opt(|t: &Token| match &t.kind {
-        TokenKind::Bool(b) => Some(SExpr {
-            kind: SExprKind::Bool(*b),
+        TokenKind::Bool(b) => Some(LSExpr {
+            value: SExpr::Bool(*b),
             span: t.span,
         }),
         _ => None,
@@ -20,10 +20,10 @@ fn bool(input: Tokens) -> IResult<Tokens, SExpr> {
     .parse(input)
 }
 
-fn int(input: Tokens) -> IResult<Tokens, SExpr> {
+fn int(input: Tokens) -> IResult<Tokens, LSExpr> {
     satisfy_map_opt(|t: &Token| match &t.kind {
-        TokenKind::Int(i) => Some(SExpr {
-            kind: SExprKind::Int(*i),
+        TokenKind::Int(i) => Some(LSExpr {
+            value: SExpr::Int(*i),
             span: t.span,
         }),
         _ => None,
@@ -31,10 +31,10 @@ fn int(input: Tokens) -> IResult<Tokens, SExpr> {
     .parse(input)
 }
 
-fn float(input: Tokens) -> IResult<Tokens, SExpr> {
+fn float(input: Tokens) -> IResult<Tokens, LSExpr> {
     satisfy_map_opt(|t: &Token| match &t.kind {
-        TokenKind::Float(f) => Some(SExpr {
-            kind: SExprKind::Float(*f),
+        TokenKind::Float(f) => Some(LSExpr {
+            value: SExpr::Float(*f),
             span: t.span,
         }),
         _ => None,
@@ -42,10 +42,10 @@ fn float(input: Tokens) -> IResult<Tokens, SExpr> {
     .parse(input)
 }
 
-fn nan(input: Tokens) -> IResult<Tokens, SExpr> {
+fn nan(input: Tokens) -> IResult<Tokens, LSExpr> {
     satisfy_map_opt(|t: &Token| match &t.kind {
-        TokenKind::NaN => Some(SExpr {
-            kind: SExprKind::NaN,
+        TokenKind::NaN => Some(LSExpr {
+            value: SExpr::NaN,
             span: t.span,
         }),
         _ => None,
@@ -53,10 +53,10 @@ fn nan(input: Tokens) -> IResult<Tokens, SExpr> {
     .parse(input)
 }
 
-fn string(input: Tokens) -> IResult<Tokens, SExpr> {
+fn string(input: Tokens) -> IResult<Tokens, LSExpr> {
     satisfy_map_opt(|t: &Token| match &t.kind {
-        TokenKind::String(s) => Some(SExpr {
-            kind: SExprKind::String(s.clone()),
+        TokenKind::String(s) => Some(LSExpr {
+            value: SExpr::String(s.clone()),
             span: t.span,
         }),
         _ => None,
@@ -64,10 +64,10 @@ fn string(input: Tokens) -> IResult<Tokens, SExpr> {
     .parse(input)
 }
 
-fn symbol(input: Tokens) -> IResult<Tokens, SExpr> {
+fn symbol(input: Tokens) -> IResult<Tokens, LSExpr> {
     satisfy_map_opt(|t: &Token| match &t.kind {
-        TokenKind::Identifier(s) => Some(SExpr {
-            kind: SExprKind::Symbol(s.clone()),
+        TokenKind::Identifier(s) => Some(LSExpr {
+            value: SExpr::Symbol(s.clone()),
             span: t.span,
         }),
         _ => None,
@@ -75,10 +75,10 @@ fn symbol(input: Tokens) -> IResult<Tokens, SExpr> {
     .parse(input)
 }
 
-fn char(input: Tokens) -> IResult<Tokens, SExpr> {
+fn char(input: Tokens) -> IResult<Tokens, LSExpr> {
     satisfy_map_opt(|t: &Token| match &t.kind {
-        TokenKind::Char(c) => Some(SExpr {
-            kind: SExprKind::Char(*c),
+        TokenKind::Char(c) => Some(LSExpr {
+            value: SExpr::Char(*c),
             span: t.span,
         }),
         _ => None,
@@ -86,21 +86,21 @@ fn char(input: Tokens) -> IResult<Tokens, SExpr> {
     .parse(input)
 }
 
-fn vector(input: Tokens) -> IResult<Tokens, SExpr> {
+fn vector(input: Tokens) -> IResult<Tokens, LSExpr> {
     let (input, open_token) =
         satisfy(|t: &Token| t.kind == TokenKind::VectorOpenParen).parse(input)?;
     let (input, elements) = many0(sexpr)(input)?;
     let (input, close_token) = satisfy(|t: &Token| t.kind == TokenKind::CloseParen).parse(input)?;
 
-    let vector = SExpr {
-        kind: SExprKind::Vector(elements),
+    let vector = LSExpr {
+        value: SExpr::Vector(elements),
         span: open_token.span.merge(close_token.span),
     };
 
     Ok((input, vector))
 }
 
-fn uvector(input: Tokens) -> IResult<Tokens, SExpr> {
+fn uvector(input: Tokens) -> IResult<Tokens, LSExpr> {
     let (input, (open_token, kind)) = alt((
         satisfy(|t: &Token| t.kind == TokenKind::UVectorS64OpenParen)
             .map(|open_token| (open_token, SUVectorKind::S64)),
@@ -111,15 +111,15 @@ fn uvector(input: Tokens) -> IResult<Tokens, SExpr> {
     let (input, elements) = many0(sexpr)(input)?;
     let (input, close_token) = satisfy(|t: &Token| t.kind == TokenKind::CloseParen).parse(input)?;
 
-    let uvector = SExpr {
-        kind: SExprKind::UVector(kind, elements),
+    let uvector = LSExpr {
+        value: SExpr::UVector(kind, elements),
         span: open_token.span.merge(close_token.span),
     };
 
     Ok((input, uvector))
 }
 
-fn list(input: Tokens) -> IResult<Tokens, SExpr> {
+fn list(input: Tokens) -> IResult<Tokens, LSExpr> {
     let (input, open_token) = satisfy(|t: &Token| t.kind == TokenKind::OpenParen).parse(input)?;
     let (input, elements) = many0(sexpr)(input)?;
     let (input, tail) = opt(preceded(
@@ -129,15 +129,15 @@ fn list(input: Tokens) -> IResult<Tokens, SExpr> {
     let (input, close_token) = satisfy(|t: &Token| t.kind == TokenKind::CloseParen).parse(input)?;
     let is_dotted = tail.is_some();
     let elements_is_empty = elements.is_empty();
-    let tail = tail.unwrap_or(SExpr {
-        kind: SExprKind::Nil,
+    let tail = tail.unwrap_or(LSExpr {
+        value: SExpr::Nil,
         span: close_token.span,
     });
 
     let list = elements.into_iter().rfold(tail, |cdr, car| {
         let span = car.span.merge(cdr.span);
-        SExpr {
-            kind: SExprKind::Cons(Box::new(Cons::new(car, cdr))),
+        LSExpr {
+            value: SExpr::Cons(Box::new(Cons::new(car, cdr))),
             span,
         }
     });
@@ -162,7 +162,7 @@ fn list(input: Tokens) -> IResult<Tokens, SExpr> {
     ))
 }
 
-fn quote(input: Tokens) -> IResult<Tokens, SExpr> {
+fn quote(input: Tokens) -> IResult<Tokens, LSExpr> {
     let (input, quote) = satisfy(|t: &Token| t.kind == TokenKind::Quote).parse(input)?;
     let (input, expr) = sexpr(input)?;
     let span = quote.span.merge(expr.span);
@@ -170,8 +170,8 @@ fn quote(input: Tokens) -> IResult<Tokens, SExpr> {
     Ok((
         input,
         list![
-            SExpr {
-                kind: SExprKind::Symbol("quote".to_string()),
+            LSExpr {
+                value: SExpr::Symbol("quote".to_string()),
                 span: quote.span,
             } => span,
             expr => span,
@@ -180,21 +180,21 @@ fn quote(input: Tokens) -> IResult<Tokens, SExpr> {
     ))
 }
 
-fn sexpr(input: Tokens) -> IResult<Tokens, SExpr> {
+fn sexpr(input: Tokens) -> IResult<Tokens, LSExpr> {
     alt((
         bool, int, float, nan, string, symbol, char, list, vector, uvector, quote,
     ))
     .parse(input)
 }
 
-fn sexprs(input: Tokens) -> IResult<Tokens, Vec<SExpr>> {
+fn sexprs(input: Tokens) -> IResult<Tokens, Vec<LSExpr>> {
     let (input, sexprs) = many0(sexpr).parse(input)?;
     Ok((input, sexprs))
 }
 
 pub fn parse<'a>(
     input: &'a [Token],
-) -> Result<Vec<SExpr>, nom::Err<nom::error::Error<Tokens<'a>>>> {
+) -> Result<Vec<LSExpr>, nom::Err<nom::error::Error<Tokens<'a>>>> {
     let input = Tokens::new(input);
     let (input, sexprs) = sexprs(input)?;
     let (_, _) = satisfy(|t: &Token| t.kind == TokenKind::Eof).parse(input)?;

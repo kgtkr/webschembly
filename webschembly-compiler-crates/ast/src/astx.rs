@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use ordered_float::NotNan;
 
 use webschembly_compiler_locate::L;
-use webschembly_compiler_sexpr::SExpr;
+use webschembly_compiler_sexpr::LSExpr;
 
 pub type LExpr<X> = L<Expr<X>>;
 
@@ -96,7 +96,7 @@ where
     LetRec(X::XLetRec, LetRec<X>),
     Vector(X::XVector, Vec<Vec<LExpr<X>>>),
     UVector(X::XUVector, UVector<X>),
-    Quote(X::XQuote, SExpr),
+    Quote(X::XQuote, LSExpr),
     Cons(X::XCons, Cons<X>),
 }
 
