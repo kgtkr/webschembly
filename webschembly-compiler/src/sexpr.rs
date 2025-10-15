@@ -1,6 +1,6 @@
 use ordered_float::NotNan;
 
-use crate::span::Span;
+use webschembly_compiler_locate::Span;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SUVectorKind {

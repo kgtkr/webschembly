@@ -3,24 +3,9 @@ use std::fmt::Debug;
 use ordered_float::NotNan;
 
 use crate::sexpr::SExpr;
-use crate::span::Span;
+use webschembly_compiler_locate::L;
 
-#[derive(Debug, Clone)]
-pub struct Located<T> {
-    pub value: T,
-    pub span: Span,
-}
-
-pub type L<T> = Located<T>;
 pub type LExpr<X> = L<Expr<X>>;
-
-pub trait LocatedValue: Sized {
-    fn with_span(self, span: Span) -> L<Self> {
-        L { value: self, span }
-    }
-}
-
-impl<T> LocatedValue for T {}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum UVectorKind {

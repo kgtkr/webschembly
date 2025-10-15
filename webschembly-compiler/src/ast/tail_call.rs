@@ -1,4 +1,5 @@
 use super::astx::*;
+use webschembly_compiler_locate::LocatedValue;
 
 #[derive(Debug, Clone)]
 pub enum TailCall {}
@@ -17,21 +18,19 @@ pub struct TailCallCallR {
 
 pub trait TailCallPrevPhase = AstPhase<XBegin = !, XQuote = !, XDefine = !>;
 
-impl Ast<TailCall> {
-    pub fn from_ast<P: TailCallPrevPhase>(ast: Ast<P>) -> Self {
+impl TailCall {
+    pub fn from_ast<P: TailCallPrevPhase>(ast: Ast<P>) -> Ast<Self> {
         Ast {
             x: (),
             exprs: ast
                 .exprs
                 .into_iter()
-                .map(|expr| LExpr::from_expr(expr, false))
+                .map(|expr| Self::from_expr(expr, false))
                 .collect(),
         }
     }
-}
 
-impl LExpr<TailCall> {
-    fn from_expr<P: TailCallPrevPhase>(expr: LExpr<P>, is_tail: bool) -> Self {
+    fn from_expr<P: TailCallPrevPhase>(expr: LExpr<P>, is_tail: bool) -> LExpr<Self> {
         match expr.value {
             Expr::Const(_, lit) => Expr::Const((), lit).with_span(expr.span),
             Expr::Var(_, var) => Expr::Var((), var).with_span(expr.span),
@@ -140,7 +139,7 @@ impl LExpr<TailCall> {
         }
     }
 
-    fn from_exprs<P: TailCallPrevPhase>(exprs: Vec<LExpr<P>>, is_tail: bool) -> Vec<Self> {
+    fn from_exprs<P: TailCallPrevPhase>(exprs: Vec<LExpr<P>>, is_tail: bool) -> Vec<LExpr<Self>> {
         let n = exprs.len();
         exprs
             .into_iter()

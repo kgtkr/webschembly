@@ -2,25 +2,23 @@ use super::astx::*;
 use crate::compiler_error;
 use crate::error::Result;
 use crate::sexpr::{SExpr, SExprKind};
-use crate::span::Span;
+use webschembly_compiler_locate::{LocatedValue, Span};
 
 #[derive(Debug, Clone)]
 pub enum Parsed {}
 
 impl AstPhase for Parsed {}
 
-impl Ast<Parsed> {
-    pub fn from_sexprs(exprs: Vec<SExpr>) -> Result<Self> {
+impl Parsed {
+    pub fn from_sexprs(exprs: Vec<SExpr>) -> Result<Ast<Self>> {
         let exprs = exprs
             .into_iter()
-            .map(LExpr::from_sexpr)
+            .map(Self::from_sexpr)
             .collect::<Result<Vec<_>>>()?;
         Ok(Ast { x: (), exprs })
     }
-}
 
-impl LExpr<Parsed> {
-    fn from_sexpr(sexpr: SExpr) -> Result<Self> {
+    fn from_sexpr(sexpr: SExpr) -> Result<LExpr<Self>> {
         match sexpr {
             SExpr {
                 kind: SExprKind::Bool(b),
@@ -298,7 +296,7 @@ impl LExpr<Parsed> {
         }
     }
 
-    fn parse_lambda(span: Span, args: SExpr, exprs: SExpr) -> Result<Self> {
+    fn parse_lambda(span: Span, args: SExpr, exprs: SExpr) -> Result<LExpr<Self>> {
         let args = args
             .to_vec()
             .ok_or_else(|| compiler_error!("Expected a list of symbols"))?

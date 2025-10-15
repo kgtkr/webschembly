@@ -24,7 +24,6 @@ pub mod fxbihashmap;
 pub mod ir;
 pub mod ir_generator;
 pub mod sexpr_parser;
-pub mod span;
 pub mod stdlib;
 pub mod token;
 pub mod tokens;

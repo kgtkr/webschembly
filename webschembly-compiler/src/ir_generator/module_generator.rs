@@ -1,4 +1,5 @@
 use rustc_hash::FxHashMap;
+use webschembly_compiler_locate::Located;
 
 use crate::ast::{self, AstPhase};
 use crate::ir_generator::GlobalManager;
@@ -602,7 +603,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             }
             ast::Expr::Call(x, ast::Call { func, args }) => {
                 if let [
-                    ast::Located {
+                    Located {
                         value: ast::Expr::Var(x, name),
                         ..
                     },

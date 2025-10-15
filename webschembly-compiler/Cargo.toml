@@ -16,6 +16,7 @@ strum = "0.27"
 strum_macros = "0.27"
 vec-map = {path = "../webschembly-compiler-crates/vec-map"}
 wasm-encoder = "0.221.2"
+webschembly-compiler-locate = {path = "../webschembly-compiler-crates/locate"}
 
 [dev-dependencies]
 insta = {version = "1.42.2"}

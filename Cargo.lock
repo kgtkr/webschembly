@@ -475,6 +475,7 @@ dependencies = [
  "strum_macros",
  "vec-map",
  "wasm-encoder",
+ "webschembly-compiler-locate",
 ]
 
 [[package]]
@@ -485,6 +486,10 @@ dependencies = [
  "clap",
  "webschembly-compiler",
 ]
+
+[[package]]
+name = "webschembly-compiler-locate"
+version = "0.1.0"
 
 [[package]]
 name = "webschembly-runtime-rust"

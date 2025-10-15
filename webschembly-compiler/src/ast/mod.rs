@@ -37,11 +37,11 @@ impl ASTGenerator {
     }
 
     pub fn gen_ast(&mut self, sexprs: Vec<SExpr>) -> Result<Ast<Final>> {
-        let parsed = Ast::<Parsed>::from_sexprs(sexprs)?;
-        let desugared = Ast::<Desugared>::from_ast(parsed);
-        let defined = Ast::<Defined>::from_ast(desugared)?;
-        let tail_call = Ast::<TailCall>::from_ast(defined);
-        let used = Ast::<Used>::from_ast(tail_call, &mut self.var_id_gen);
+        let parsed = Parsed::from_sexprs(sexprs)?;
+        let desugared = Desugared::from_ast(parsed);
+        let defined = Defined::from_ast(desugared)?;
+        let tail_call = TailCall::from_ast(defined);
+        let used = Used::from_ast(tail_call, &mut self.var_id_gen);
         Ok(used)
     }
 

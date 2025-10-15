@@ -1,6 +1,7 @@
 use super::astx::*;
 use crate::ast::TailCallCallR;
 use rustc_hash::{FxHashMap, FxHashSet};
+use webschembly_compiler_locate::{Located, LocatedValue};
 
 #[derive(Debug, Clone)]
 pub enum Used {}
@@ -203,14 +204,14 @@ impl VarIdGen {
     }
 }
 
-impl Ast<Used> {
-    pub fn from_ast<P: UsedPrevPhase>(ast: Ast<P>, var_id_gen: &mut VarIdGen) -> Self {
+impl Used {
+    pub fn from_ast<P: UsedPrevPhase>(ast: Ast<P>, var_id_gen: &mut VarIdGen) -> Ast<Self> {
         var_id_gen.reset_for_module();
         let mut defines = Vec::new();
         let mut result = Vec::new();
         for expr in ast.exprs {
             let mut state = LambdaState::new();
-            LExpr::from_expr(
+            Self::from_expr(
                 expr,
                 &Context::new_empty(),
                 var_id_gen,
@@ -236,15 +237,13 @@ impl Ast<Used> {
             exprs: result,
         }
     }
-}
 
-impl LExpr<Used> {
     fn from_expr<P: UsedPrevPhase>(
         expr: LExpr<P>,
         ctx: &Context,
         var_id_gen: &mut VarIdGen,
         state: &mut LambdaState,
-        result: &mut Vec<LExpr<Used>>,
+        result: &mut Vec<LExpr<Self>>,
     ) {
         match expr.value {
             Expr::Const(_, lit) => result.push(Expr::Const((), lit).with_span(expr.span)),

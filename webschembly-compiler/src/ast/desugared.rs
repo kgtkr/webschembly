@@ -1,3 +1,5 @@
+use webschembly_compiler_locate::LocatedValue;
+
 use super::astx::*;
 use crate::sexpr;
 
@@ -11,17 +13,15 @@ impl AstPhase for Desugared {
 
 pub trait DesugaredPrevPhase = AstPhase;
 
-impl Ast<Desugared> {
-    pub fn from_ast<P: DesugaredPrevPhase>(ast: Ast<P>) -> Self {
+impl Desugared {
+    pub fn from_ast<P: DesugaredPrevPhase>(ast: Ast<P>) -> Ast<Self> {
         Ast {
             x: (),
-            exprs: LExpr::from_exprs(ast.exprs),
+            exprs: Self::from_exprs(ast.exprs),
         }
     }
-}
 
-impl LExpr<Desugared> {
-    fn from_expr<P: DesugaredPrevPhase>(expr: LExpr<P>, exprs: &mut Vec<Self>) {
+    fn from_expr<P: DesugaredPrevPhase>(expr: LExpr<P>, exprs: &mut Vec<LExpr<Self>>) {
         match expr.value {
             Expr::Const(_, lit) => exprs.push(Expr::Const((), lit).with_span(expr.span)),
             Expr::Var(_, var) => exprs.push(Expr::Var((), var).with_span(expr.span)),
@@ -149,7 +149,7 @@ impl LExpr<Desugared> {
         }
     }
 
-    fn from_quoted_sexpr(sexpr: sexpr::SExpr) -> Self {
+    fn from_quoted_sexpr(sexpr: sexpr::SExpr) -> LExpr<Self> {
         match sexpr.kind {
             sexpr::SExprKind::Bool(b) => Expr::Const((), Const::Bool(b)).with_span(sexpr.span),
             sexpr::SExprKind::Int(i) => Expr::Const((), Const::Int(i)).with_span(sexpr.span),
@@ -194,7 +194,7 @@ impl LExpr<Desugared> {
         }
     }
 
-    fn from_exprs<P: DesugaredPrevPhase>(exprs: Vec<LExpr<P>>) -> Vec<Self> {
+    fn from_exprs<P: DesugaredPrevPhase>(exprs: Vec<LExpr<P>>) -> Vec<LExpr<Self>> {
         let mut result = Vec::new();
         for expr in exprs {
             Self::from_expr(expr, &mut result);

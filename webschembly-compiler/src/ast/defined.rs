@@ -1,7 +1,7 @@
 use super::astx::*;
 use crate::compiler_error;
 use crate::error::Result;
-use crate::span::Span;
+use webschembly_compiler_locate::{Located, LocatedValue, Span};
 // defineをletrec or set!に変換
 
 #[derive(Debug, Clone)]
@@ -14,15 +14,6 @@ impl AstPhase for Defined {
 }
 
 pub trait DefinedPrevPhase = AstPhase<XBegin = !, XQuote = !>;
-impl Ast<Defined> {
-    pub fn from_ast<P: DefinedPrevPhase>(ast: Ast<P>) -> Result<Self> {
-        let new_exprs = LExpr::from_exprs(ast.exprs, DefineContext::Global, &mut Vec::new())?;
-        Ok(Ast {
-            x: (),
-            exprs: new_exprs,
-        })
-    }
-}
 
 #[derive(Debug, Clone, Copy)]
 enum DefineContext {
@@ -41,12 +32,20 @@ impl DefineContext {
     }
 }
 
-impl LExpr<Defined> {
+impl Defined {
+    pub fn from_ast<P: DefinedPrevPhase>(ast: Ast<P>) -> Result<Ast<Self>> {
+        let new_exprs = Self::from_exprs(ast.exprs, DefineContext::Global, &mut Vec::new())?;
+        Ok(Ast {
+            x: (),
+            exprs: new_exprs,
+        })
+    }
+
     fn from_expr<P: DefinedPrevPhase>(
         expr: LExpr<P>,
         ctx: DefineContext,
-        defines: &mut Vec<Located<Binding<Defined>>>,
-        result: &mut Vec<Self>,
+        defines: &mut Vec<Located<Binding<Self>>>,
+        result: &mut Vec<LExpr<Self>>,
     ) -> Result<()> {
         match expr.value {
             Expr::Const(_, lit) => {
@@ -280,8 +279,8 @@ impl LExpr<Defined> {
     fn from_exprs<P: DefinedPrevPhase>(
         exprs: Vec<LExpr<P>>,
         mut ctx: DefineContext,
-        defines: &mut Vec<Located<Binding<Defined>>>,
-    ) -> Result<Vec<Self>> {
+        defines: &mut Vec<Located<Binding<Self>>>,
+    ) -> Result<Vec<LExpr<Self>>> {
         let mut result = Vec::new();
         for expr in exprs {
             let is_define = matches!(expr.value, Expr::Define(_, _));
@@ -300,7 +299,7 @@ impl LExpr<Defined> {
     fn from_exprs_new_scope<P: DefinedPrevPhase>(
         span: Span,
         exprs: Vec<LExpr<P>>,
-    ) -> Result<Vec<Self>> {
+    ) -> Result<Vec<LExpr<Self>>> {
         let mut defines = Vec::new();
         let exprs = Self::from_exprs(exprs, DefineContext::LocalDefinable, &mut defines)?;
         if defines.is_empty() {
