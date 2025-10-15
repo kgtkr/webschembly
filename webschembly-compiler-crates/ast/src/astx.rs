@@ -15,6 +15,10 @@ pub enum UVectorKind {
 
 pub trait AstPhaseX = std::fmt::Debug + Clone;
 
+// 字面上ではBox<T>に相当するが、beginのdesugerによってVec<T>に変換される可能性がある場所を表す
+// 本当はAstPhaseで抽象化したいが、generric関連型を使うのは複雑すぎるので
+pub type ExprBox<T> = Vec<T>;
+
 pub trait AstPhase: Sized + Clone + Debug {
     type XAst: AstPhaseX;
     type XConst: AstPhaseX;
@@ -94,7 +98,7 @@ where
     Set(X::XSet, Set<X>),
     Let(X::XLet, Let<X>),
     LetRec(X::XLetRec, LetRec<X>),
-    Vector(X::XVector, Vec<Vec<LExpr<X>>>),
+    Vector(X::XVector, Vec<ExprBox<LExpr<X>>>),
     UVector(X::XUVector, UVector<X>),
     Quote(X::XQuote, LSExpr),
     Cons(X::XCons, Cons<X>),
@@ -118,7 +122,7 @@ where
     X: AstPhase,
 {
     pub name: L<String>,
-    pub expr: Vec<LExpr<X>>,
+    pub expr: ExprBox<LExpr<X>>,
 }
 
 #[derive(Debug, Clone)]
@@ -135,9 +139,9 @@ pub struct If<X>
 where
     X: AstPhase,
 {
-    pub cond: Vec<LExpr<X>>,
-    pub then: Vec<LExpr<X>>,
-    pub els: Vec<LExpr<X>>,
+    pub cond: ExprBox<LExpr<X>>,
+    pub then: ExprBox<LExpr<X>>,
+    pub els: ExprBox<LExpr<X>>,
 }
 
 #[derive(Debug, Clone)]
@@ -145,8 +149,8 @@ pub struct Call<X>
 where
     X: AstPhase,
 {
-    pub func: Vec<LExpr<X>>,
-    pub args: Vec<Vec<LExpr<X>>>,
+    pub func: ExprBox<LExpr<X>>,
+    pub args: Vec<ExprBox<LExpr<X>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -163,7 +167,7 @@ where
     X: AstPhase,
 {
     pub name: L<String>,
-    pub expr: Vec<LExpr<X>>,
+    pub expr: ExprBox<LExpr<X>>,
 }
 
 #[derive(Debug, Clone)]
@@ -190,7 +194,7 @@ where
     X: AstPhase,
 {
     pub name: L<String>,
-    pub expr: Vec<LExpr<X>>,
+    pub expr: ExprBox<LExpr<X>>,
 }
 
 #[derive(Debug, Clone)]
@@ -199,7 +203,7 @@ where
     X: AstPhase,
 {
     pub kind: UVectorKind,
-    pub elements: Vec<Vec<LExpr<X>>>,
+    pub elements: Vec<ExprBox<LExpr<X>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -207,6 +211,6 @@ pub struct Cons<X>
 where
     X: AstPhase,
 {
-    pub car: Vec<LExpr<X>>,
-    pub cdr: Vec<LExpr<X>>,
+    pub car: ExprBox<LExpr<X>>,
+    pub cdr: ExprBox<LExpr<X>>,
 }
