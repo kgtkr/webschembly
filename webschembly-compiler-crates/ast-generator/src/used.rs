@@ -14,6 +14,7 @@ impl<P: UsedPrevPhase> ExtendAstPhase for Used<P> {
     type XLambda = UsedLambdaR;
     type XVar = UsedVarR;
     type XSet = UsedSetR;
+    type XExt = UsedExtR<P>;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -35,6 +36,19 @@ pub struct UsedAstR {
     pub local_metas: FxHashMap<LocalVarId, VarMeta>,
     pub global_metas: FxHashMap<GlobalVarId, VarMeta>,
     pub defines: Vec<LocalVarId>,
+}
+
+// letrecの束縛を1つにまとめたもの
+// クロージャの環境処理に使われる
+#[derive(Debug, Clone)]
+pub struct SetGroup<P: UsedPrevPhase> {
+    pub var_ids: Vec<LocalVarId>,
+    pub exprs: Vec<LExpr<Used<P>>>,
+}
+
+#[derive(Debug, Clone)]
+pub enum UsedExtR<P: UsedPrevPhase> {
+    SetGroup(SetGroup<P>),
 }
 
 #[derive(Debug, Clone)]
@@ -405,6 +419,7 @@ impl<P: UsedPrevPhase> Used<P> {
                 // (letrec ((a 1) (b (+ a 1))) b) のようなものは許されない。let*を使うべき
 
                 let mut new_ctx = ctx.clone();
+
                 for Located {
                     value: Binding { name, .. },
                     ..
@@ -426,6 +441,11 @@ impl<P: UsedPrevPhase> Used<P> {
                     state.defines.push(id);
                 }
 
+                let mut set_group = SetGroup {
+                    var_ids: Vec::new(),
+                    exprs: Vec::new(),
+                };
+
                 for Located {
                     value: Binding { name, expr },
                     span: binding_span,
@@ -443,8 +463,10 @@ impl<P: UsedPrevPhase> Used<P> {
                         },
                     )
                     .with_span(*binding_span);
-                    result.push(set_expr);
+                    set_group.var_ids.push(var_id);
+                    set_group.exprs.push(set_expr);
                 }
+                result.push(Expr::Ext(UsedExtR::SetGroup(set_group)).with_span(expr.span));
 
                 // body評価時点では初期化される
                 for Located {

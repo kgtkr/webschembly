@@ -1,5 +1,5 @@
 use rustc_hash::FxHashMap;
-use webschembly_compiler_ast_generator::{Final, GlobalVarId, LocalVarId, VarId};
+use webschembly_compiler_ast_generator::{Final, GlobalVarId, LocalVarId, UsedExtR, VarId};
 use webschembly_compiler_locate::Located;
 
 use crate::ir_generator::GlobalManager;
@@ -965,7 +965,11 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 });
             }
             ast::Expr::Quote(x, _) => *x,
-            ast::Expr::Ext(x) => *x,
+            ast::Expr::Ext(x) => match x {
+                UsedExtR::SetGroup(set_group) => {
+                    self.gen_exprs(result, &set_group.exprs);
+                }
+            },
         }
     }
 
