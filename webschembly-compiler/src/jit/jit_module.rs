@@ -207,7 +207,15 @@ impl JitModule {
         );
         self.jit_funcs.insert((func_id, func_index), jit_func);
 
-        self.jit_funcs[&(func_id, func_index)].generate_func_module(&self.func_to_globals, jit_ctx)
+        self.jit_funcs
+            .get_mut(&(func_id, func_index))
+            .unwrap()
+            .generate_func_module(
+                &self.func_to_globals,
+                &self.func_types,
+                global_manager,
+                jit_ctx,
+            )
     }
 
     pub fn instantiate_bb(
@@ -328,19 +336,30 @@ impl JitFunc {
     }
 
     pub fn generate_func_module(
-        &self,
+        &mut self,
         func_to_globals: &VecMap<FuncId, GlobalId>,
-        jit_ctx: &JitCtx,
+        func_types: &VecMap<FuncId, FuncType>,
+        global_manager: &mut GlobalManager,
+        jit_ctx: &mut JitCtx,
     ) -> Module {
-        let mut funcs = VecMap::new();
+        // entry_bbのモジュールをベースに拡張する
+        let mut module = self.generate_bb_module(
+            func_to_globals,
+            func_types,
+            self.func.bb_entry,
+            GLOBAL_LAYOUT_DEFAULT_INDEX,
+            global_manager,
+            jit_ctx,
+        );
 
-        /*
-        func f0(...) {
-            bb0 <- get_global bb0_ref
-            bb0[index](...)
-        }
-        */
         let body_func_id = {
+            /*
+            func f0(...) {
+                bb0 <- get_global bb0_ref
+                bb0[0](...)
+            }
+            */
+
             let entry_bb_info = &self.jit_bbs[self.func.bb_entry].info;
 
             let mut locals = self.func.locals.clone();
@@ -354,7 +373,7 @@ impl JitFunc {
                 .bb_index_manager
                 .type_args(GLOBAL_LAYOUT_DEFAULT_INDEX);
 
-            funcs.push_with(|id| Func {
+            module.funcs.push_with(|id| Func {
                 id,
                 args: self.func.args.clone(),
                 ret_type: self.func.ret_type,
@@ -382,16 +401,18 @@ impl JitFunc {
             })
         };
 
-        /*
-        func entry() {
-            set_global f0_ref f0
-            set_global bb0_ref [bb0_stub, nil, ..., nil]
-            set_global bb1_ref [bb1_stub, nil, ..., nil]
-        }
-        */
-        let entry_func_id = {
-            let mut locals = VecMap::new();
-            let func_ref_local = locals.push_with(|id| Local {
+        let entry_func = &mut module.funcs[module.entry];
+        let prev_entry_bb_id = entry_func.bb_entry;
+        let new_entry_bb_id = entry_func.bbs.push_with(|id| {
+            /*
+            func entry() {
+                set_global f0_ref f0
+                set_global bb0_ref [bb0_stub, nil, ..., nil]
+                set_global bb1_ref [bb1_stub, nil, ..., nil]
+            }
+            */
+
+            let func_ref_local = entry_func.locals.push_with(|id| Local {
                 id,
                 typ: LocalType::FuncRef,
             });
@@ -415,32 +436,13 @@ impl JitFunc {
                 });
             }
 
-            funcs.push_with(|id| Func {
+            BasicBlock {
                 id,
-                args: vec![],
-                ret_type: LocalType::FuncRef, // TODO: Nilでも返したほうがよさそう
-                locals,
-                bb_entry: BasicBlockId::from(0),
-                bbs: [BasicBlock {
-                    id: BasicBlockId::from(0),
-                    exprs,
-                    next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(func_ref_local)),
-                }]
-                .into_iter()
-                .collect(),
-            })
-        };
-
-        let mut module = Module {
-            globals: FxHashMap::default(),
-            funcs,
-            entry: entry_func_id,
-            meta: Meta {
-                // TODO:
-                local_metas: FxHashMap::default(),
-                global_metas: FxHashMap::default(),
-            },
-        };
+                exprs,
+                next: BasicBlockNext::Jump(prev_entry_bb_id),
+            }
+        });
+        entry_func.bb_entry = new_entry_bb_id;
 
         for bb_id in self.jit_bbs.keys() {
             self.add_bb_stub_func(
