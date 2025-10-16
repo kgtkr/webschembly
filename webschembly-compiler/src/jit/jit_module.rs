@@ -228,14 +228,15 @@ impl JitModule {
         jit_ctx: &mut JitCtx,
     ) -> Module {
         let jit_func = self.jit_funcs.get_mut(&(func_id, func_index)).unwrap();
-        jit_func.generate_bb_module(
+        let (module, _) = jit_func.generate_bb_module(
             &self.func_to_globals,
             &self.func_types,
             bb_id,
             index,
             global_manager,
             jit_ctx,
-        )
+        );
+        module
     }
 }
 
@@ -343,7 +344,7 @@ impl JitFunc {
         jit_ctx: &mut JitCtx,
     ) -> Module {
         // entry_bbのモジュールをベースに拡張する
-        let mut module = self.generate_bb_module(
+        let (mut module, bb_func_id) = self.generate_bb_module(
             func_to_globals,
             func_types,
             self.func.bb_entry,
@@ -355,23 +356,13 @@ impl JitFunc {
         let body_func_id = {
             /*
             func f0(...) {
-                bb0 <- get_global bb0_ref
-                bb0[0](...)
+                bb0_func(...)
             }
             */
 
             let entry_bb_info = &self.jit_bbs[self.func.bb_entry].info;
 
-            let mut locals = self.func.locals.clone();
-
-            let func_ref_local = locals.push_with(|id| Local {
-                id,
-                typ: LocalType::FuncRef,
-            });
-
-            let (_, index_global) = self.jit_bbs[self.func.bb_entry]
-                .bb_index_manager
-                .type_args(GLOBAL_LAYOUT_DEFAULT_INDEX);
+            let locals = self.func.locals.clone();
 
             module.funcs.push_with(|id| Func {
                 id,
@@ -381,20 +372,11 @@ impl JitFunc {
                 bb_entry: BasicBlockId::from(0),
                 bbs: [BasicBlock {
                     id: BasicBlockId::from(0),
-                    exprs: vec![ExprAssign {
-                        local: Some(func_ref_local),
-                        expr: Expr::GlobalGet(index_global.id),
-                    }],
-                    next: BasicBlockNext::Terminator(BasicBlockTerminator::TailCallRef(
-                        ExprCallRef {
-                            func: func_ref_local,
-                            args: entry_bb_info.args.to_vec(),
-                            func_type: FuncType {
-                                args: entry_bb_info.arg_types(&self.func, &VecMap::new()),
-                                ret: self.func.ret_type,
-                            },
-                        },
-                    )),
+                    exprs: vec![],
+                    next: BasicBlockNext::Terminator(BasicBlockTerminator::TailCall(ExprCall {
+                        func_id: bb_func_id,
+                        args: entry_bb_info.args.to_vec(),
+                    })),
                 }]
                 .into_iter()
                 .collect(),
@@ -557,7 +539,7 @@ impl JitFunc {
         index: usize,
         global_manager: &mut GlobalManager,
         jit_ctx: &mut JitCtx,
-    ) -> Module {
+    ) -> (Module, FuncId /* BBの実態を表す関数 */) {
         let mut required_closure_idx = Vec::new();
 
         {
@@ -1184,7 +1166,7 @@ impl JitFunc {
             self.add_bb_stub_func(self.module_id, *bb_id, *index, &mut module);
         }
 
-        module
+        (module, body_func_id)
     }
 }
 
