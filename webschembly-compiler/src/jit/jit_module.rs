@@ -383,48 +383,43 @@ impl JitFunc {
             })
         };
 
-        let entry_func = &mut module.funcs[module.entry];
-        let prev_entry_bb_id = entry_func.bb_entry;
-        let new_entry_bb_id = entry_func.bbs.push_with(|id| {
-            /*
-            func entry() {
-                set_global f0_ref f0
-                set_global bb0_ref [bb0_stub, nil, ..., nil]
-                set_global bb1_ref [bb1_stub, nil, ..., nil]
-            }
-            */
+        extend_entry_func(&mut module, |entry_func, next| {
+            entry_func.bbs.push_with(|id| {
+                /*
+                func entry() {
+                    set_global f0_ref f0
+                    set_global bb0_ref [bb0_stub, nil, ..., nil]
+                    set_global bb1_ref [bb1_stub, nil, ..., nil]
+                }
+                */
 
-            let func_ref_local = entry_func.locals.push_with(|id| Local {
-                id,
-                typ: LocalType::FuncRef,
-            });
-
-            let mut exprs = Vec::new();
-            exprs.extend([
-                ExprAssign {
-                    local: Some(func_ref_local),
-                    expr: Expr::FuncRef(body_func_id),
-                },
-                ExprAssign {
-                    local: None,
-                    expr: Expr::GlobalSet(jit_ctx.instantiate_func_global().id, func_ref_local),
-                },
-            ]);
-            if self.func_index == GLOBAL_LAYOUT_DEFAULT_INDEX {
-                // func_to_globalsはindex=0のためのもの
-                exprs.push(ExprAssign {
-                    local: None,
-                    expr: Expr::GlobalSet(func_to_globals[self.func.id], func_ref_local),
+                let func_ref_local = entry_func.locals.push_with(|id| Local {
+                    id,
+                    typ: LocalType::FuncRef,
                 });
-            }
 
-            BasicBlock {
-                id,
-                exprs,
-                next: BasicBlockNext::Jump(prev_entry_bb_id),
-            }
+                let mut exprs = Vec::new();
+                exprs.extend([
+                    ExprAssign {
+                        local: Some(func_ref_local),
+                        expr: Expr::FuncRef(body_func_id),
+                    },
+                    ExprAssign {
+                        local: None,
+                        expr: Expr::GlobalSet(jit_ctx.instantiate_func_global().id, func_ref_local),
+                    },
+                ]);
+                if self.func_index == GLOBAL_LAYOUT_DEFAULT_INDEX {
+                    // func_to_globalsはindex=0のためのもの
+                    exprs.push(ExprAssign {
+                        local: None,
+                        expr: Expr::GlobalSet(func_to_globals[self.func.id], func_ref_local),
+                    });
+                }
+
+                BasicBlock { id, exprs, next }
+            })
         });
-        entry_func.bb_entry = new_entry_bb_id;
 
         for bb_id in self.jit_bbs.keys() {
             self.add_bb_stub_func(
@@ -508,27 +503,26 @@ impl JitFunc {
 
         let (_, index_global) = jit_bb.bb_index_manager.type_args(index);
 
-        let entry_func = &mut module.funcs[module.entry];
-        let func_ref_local = entry_func.locals.push_with(|id| Local {
-            id,
-            typ: LocalType::FuncRef,
+        extend_entry_func(module, |entry_func, next| {
+            let func_ref_local = entry_func.locals.push_with(|id| Local {
+                id,
+                typ: LocalType::FuncRef,
+            });
+            entry_func.bbs.push_with(|id| BasicBlock {
+                id,
+                exprs: vec![
+                    ExprAssign {
+                        local: Some(func_ref_local),
+                        expr: Expr::FuncRef(func_id),
+                    },
+                    ExprAssign {
+                        local: None,
+                        expr: Expr::GlobalSet(index_global.id, func_ref_local),
+                    },
+                ],
+                next,
+            })
         });
-        let prev_entry_bb_id = entry_func.bb_entry;
-        let new_entry_bb_id = entry_func.bbs.push_with(|id| BasicBlock {
-            id,
-            exprs: vec![
-                ExprAssign {
-                    local: Some(func_ref_local),
-                    expr: Expr::FuncRef(func_id),
-                },
-                ExprAssign {
-                    local: None,
-                    expr: Expr::GlobalSet(index_global.id, func_ref_local),
-                },
-            ],
-            next: BasicBlockNext::Jump(prev_entry_bb_id),
-        });
-        entry_func.bb_entry = new_entry_bb_id;
     }
 
     pub fn generate_bb_module(
@@ -1543,4 +1537,17 @@ fn closure_func_assign_types(
 
     func.args = new_args;
     func.bb_entry = new_bb_entry;
+}
+
+// エントリー関数を拡張
+// ir.rsに置くべきかも？
+fn extend_entry_func(
+    module: &mut Module,
+    f: impl FnOnce(&mut Func, BasicBlockNext) -> BasicBlockId,
+) {
+    let entry_func = &mut module.funcs[module.entry];
+
+    let prev_entry_bb_id = entry_func.bb_entry;
+    let new_entry_bb_id = f(entry_func, BasicBlockNext::Jump(prev_entry_bb_id));
+    entry_func.bb_entry = new_entry_bb_id;
 }
