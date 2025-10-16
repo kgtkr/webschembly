@@ -3,7 +3,7 @@ use webschembly_compiler_error::{Result, compiler_error};
 use webschembly_compiler_locate::{Located, LocatedValue, Span};
 // defineをletrec or set!に変換
 
-pub trait DefinedPrevPhase = AstPhase<XBegin = !, XQuote = !, XLetStar = !>;
+pub trait DefinedPrevPhase = AstPhase<XBegin = !, XQuote = !, XLetStar = !, XExt = !>;
 
 #[derive(Debug, Clone)]
 pub struct Defined<P: DefinedPrevPhase>(std::marker::PhantomData<P>);
@@ -232,6 +232,7 @@ impl<P: DefinedPrevPhase> Defined<P> {
                 );
                 Ok(())
             }
+            Expr::Ext(x) => x,
         }
     }
 

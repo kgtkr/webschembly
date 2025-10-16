@@ -14,7 +14,7 @@ pub struct TailCallCallR {
     pub is_tail: bool,
 }
 
-pub trait TailCallPrevPhase = AstPhase<XBegin = !, XQuote = !, XDefine = !, XLetStar = !>;
+pub trait TailCallPrevPhase = AstPhase<XBegin = !, XQuote = !, XDefine = !, XLetStar = !, XExt = !>;
 
 impl<P: TailCallPrevPhase> TailCall<P> {
     pub fn from_ast(ast: Ast<P>) -> Ast<Self> {
@@ -105,6 +105,7 @@ impl<P: TailCallPrevPhase> TailCall<P> {
                 },
             )
             .with_span(expr.span),
+            Expr::Ext(x) => x,
         }
     }
 

@@ -965,6 +965,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 });
             }
             ast::Expr::Quote(x, _) => *x,
+            ast::Expr::Ext(x) => *x,
         }
     }
 

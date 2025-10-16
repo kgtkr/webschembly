@@ -23,6 +23,7 @@ impl AstPhase for Parsed {
     type XUVector = ();
     type XQuote = ();
     type XCons = ();
+    type XExt = !;
 }
 
 impl Parsed {

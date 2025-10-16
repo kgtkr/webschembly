@@ -3,7 +3,7 @@ use webschembly_compiler_locate::{L, LocatedValue};
 use webschembly_compiler_ast::*;
 use webschembly_compiler_sexpr as sexpr;
 
-pub trait DesugaredPrevPhase = AstPhase;
+pub trait DesugaredPrevPhase = AstPhase<XExt = !>;
 
 #[derive(Debug, Clone)]
 pub struct Desugared<P: DesugaredPrevPhase>(std::marker::PhantomData<P>);
@@ -141,6 +141,7 @@ impl<P: DesugaredPrevPhase> Desugared<P> {
                 )
                 .with_span(expr.span),
             ),
+            Expr::Ext(x) => x,
         }
     }
 
