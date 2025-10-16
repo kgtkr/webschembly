@@ -775,8 +775,7 @@ impl Expr {
             | Expr::Move(..)
             | Expr::ToObj(..)
             | Expr::FromObj(..)
-            | Expr::Closure { .. }
-            | Expr::ClosureEnv(..)
+            // Closureのmodule_id/func_id/entrypoint_tableは不変である
             | Expr::ClosureModuleId(..)
             | Expr::ClosureFuncId(..)
             | Expr::ClosureEntrypointTable(..)
@@ -830,7 +829,10 @@ impl Expr {
             | Expr::DerefMutFuncRef(..)
             | Expr::EntrypointTable(..)
             | Expr::EntrypointTableRef(..)
-            | Expr::SetEntrypointTable(..) => ExprPurelity::ImpureRead,
+            | Expr::SetEntrypointTable(..)
+            // closureの環境は可変である
+            | Expr::Closure { .. }
+            | Expr::ClosureEnv(..) => ExprPurelity::ImpureRead,
             Expr::InstantiateFunc(..)
             | Expr::InstantiateClosureFunc(..)
             | Expr::InstantiateBB(..)
