@@ -165,6 +165,15 @@ struct FuncGenerator<'a, 'b> {
     module_generator: &'a mut ModuleGenerator<'b>,
     exprs: Vec<ExprAssign>,
     current_bb_id: Option<BasicBlockId>,
+    uninitialized_vars: FxHashMap<LocalVarId, Vec<UninitializedVarCaptureClosure>>,
+}
+
+// クロージャにキャプチャされているが、まだ初期化されていない変数
+#[derive(Debug, Clone)]
+struct UninitializedVarCaptureClosure {
+    closure: LocalId,
+    env_index: usize,
+    env_types: Vec<LocalType>,
 }
 
 impl<'a, 'b> FuncGenerator<'a, 'b> {
@@ -177,6 +186,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             module_generator,
             exprs: Vec::new(),
             current_bb_id: None,
+            uninitialized_vars: FxHashMap::default(),
         }
     }
 
@@ -458,11 +468,6 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             },
             ast::Expr::Define(x, _) => *x,
             ast::Expr::Lambda(x, lambda) => {
-                let captures = x
-                    .captures
-                    .iter()
-                    .map(|id| *self.local_ids.get(id).unwrap())
-                    .collect::<Vec<_>>();
                 let func_id = self.module_generator.gen_func(x, lambda);
                 let func_local = self.local(LocalType::FuncRef);
                 let val_type_local = self.local(Type::Val(ValType::Closure));
@@ -487,6 +492,32 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     local: Some(entrypoint_table_local),
                     expr: Expr::GlobalGet(entrypoint_table_global.id),
                 });
+
+                let env_types = x
+                    .captures
+                    .iter()
+                    .map(|id| self.locals[*self.local_ids.get(id).unwrap()].typ)
+                    .collect::<Vec<_>>();
+                let mut captures = Vec::new();
+                for (i, capture) in x.captures.iter().enumerate() {
+                    if let Some(uninitialized_var_captures) =
+                        self.uninitialized_vars.get_mut(capture)
+                    {
+                        uninitialized_var_captures.push(UninitializedVarCaptureClosure {
+                            closure: val_type_local,
+                            env_index: i,
+                            env_types: env_types.clone(),
+                        });
+                        let undef_local = self.local(env_types[i]);
+                        self.exprs.push(ExprAssign {
+                            local: Some(undef_local),
+                            expr: Expr::Uninitialized(env_types[i]),
+                        });
+                        captures.push(undef_local);
+                    } else {
+                        captures.push(*self.local_ids.get(capture).unwrap());
+                    }
+                }
 
                 self.exprs.push(ExprAssign {
                     local: Some(val_type_local),
@@ -967,7 +998,25 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             ast::Expr::Quote(x, _) => *x,
             ast::Expr::Ext(x) => match x {
                 UsedExtR::SetGroup(set_group) => {
+                    for var_id in &set_group.var_ids {
+                        let prev = self.uninitialized_vars.insert(*var_id, Vec::new());
+                        debug_assert!(prev.is_none());
+                    }
                     self.gen_exprs(result, &set_group.exprs);
+                    for var_id in &set_group.var_ids {
+                        let captures = self.uninitialized_vars.remove(var_id).unwrap();
+                        for capture in captures {
+                            self.exprs.push(ExprAssign {
+                                local: None,
+                                expr: Expr::ClosureSetEnv(
+                                    capture.env_types.clone(),
+                                    capture.closure,
+                                    capture.env_index,
+                                    *self.local_ids.get(var_id).unwrap(),
+                                ),
+                            });
+                        }
+                    }
                 }
             },
         }

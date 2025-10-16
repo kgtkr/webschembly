@@ -419,6 +419,7 @@ pub struct PhiIncomingValue {
 pub enum Expr {
     Nop,                        // 左辺はNoneでなければならない
     Phi(Vec<PhiIncomingValue>), // BBの先頭にのみ連続して出現可能(Nopが間に入るのは可)
+    Uninitialized(LocalType), // // IR上で未初期化変数にアクセスすることを認めるとデータフロー解析などが複雑になるので、明示的に「未初期値」を表す命令を用意する
     InstantiateFunc(ModuleId, FuncId, usize),
     InstantiateClosureFunc(LocalId, LocalId, usize), // InstantiateFuncのModuleId/FuncIdを動的に指定する版
     InstantiateBB(ModuleId, FuncId, usize, BasicBlockId, usize),
@@ -453,6 +454,12 @@ pub enum Expr {
         Vec<LocalType>, /* env types */
         LocalId,        /* closure */
         usize,          /* env index */
+    ),
+    ClosureSetEnv(
+        Vec<LocalType>, /* env types */
+        LocalId,        /* closure */
+        usize,          /* env index */
+        LocalId,        /* value */
     ),
     ClosureModuleId(LocalId),        // (Closure) -> int
     ClosureFuncId(LocalId),          // (Closure) -> int
@@ -544,6 +551,7 @@ macro_rules! impl_Expr_local_usages {
                                 yield (&$($mutability)? value.local, LocalUsedFlag::Phi(value.bb));
                             }
                         }
+                        Expr::Uninitialized(_) => {}
                         Expr::StringToSymbol(id) => yield (id, LocalUsedFlag::NonPhi),
                         Expr::Vector(ids) => {
                             for id in ids {
@@ -595,6 +603,10 @@ macro_rules! impl_Expr_local_usages {
                         Expr::ToObj(_, id) => yield (id, LocalUsedFlag::NonPhi),
                         Expr::FromObj(_, id) => yield (id, LocalUsedFlag::NonPhi),
                         Expr::ClosureEnv(_, closure, _) => yield (closure, LocalUsedFlag::NonPhi),
+                        Expr::ClosureSetEnv(_, closure, _, value) => {
+                            yield (closure, LocalUsedFlag::NonPhi);
+                            yield (value, LocalUsedFlag::NonPhi);
+                        }
                         Expr::ClosureModuleId(closure) => yield (closure, LocalUsedFlag::NonPhi),
                         Expr::ClosureFuncId(closure) => yield (closure, LocalUsedFlag::NonPhi),
                         Expr::ClosureEntrypointTable(id) => yield (id, LocalUsedFlag::NonPhi),
@@ -765,6 +777,7 @@ impl Expr {
         match self {
             Expr::Phi(..) => ExprPurelity::Phi,
             Expr::Nop
+            | Expr::Uninitialized(_)
             | Expr::Bool(..)
             | Expr::Int(..)
             | Expr::Float(..)
@@ -845,7 +858,8 @@ impl Expr {
             | Expr::Display(..)
             | Expr::WriteChar(..)
             | Expr::VectorSet(..)
-            | Expr::UVectorSet(..) => ExprPurelity::Effectful,
+            | Expr::UVectorSet(..)
+            | Expr::ClosureSetEnv(..) => ExprPurelity::Effectful,
         }
     }
 
@@ -859,6 +873,7 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.value {
             Expr::Nop => write!(f, "nop"),
+            Expr::Uninitialized(typ) => write!(f, "uninitialized<{}>", typ),
             Expr::Phi(values) => {
                 write!(f, "phi(")?;
                 for (i, value) in values.iter().enumerate() {
@@ -990,6 +1005,23 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                     write!(f, "{}", typ)?;
                 }
                 write!(f, ">({}, {})", closure.display(self.meta), index)?;
+                Ok(())
+            }
+            Expr::ClosureSetEnv(env_types, closure, index, value) => {
+                write!(f, "closure_set_env<")?;
+                for (i, typ) in env_types.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ",")?;
+                    }
+                    write!(f, "{}", typ)?;
+                }
+                write!(
+                    f,
+                    ">({}, {}, {})",
+                    closure.display(self.meta),
+                    index,
+                    value.display(self.meta)
+                )?;
                 Ok(())
             }
             Expr::ClosureModuleId(id) => write!(f, "closure_module_id({})", id.display(self.meta)),

@@ -428,8 +428,6 @@ impl<P: UsedPrevPhase> Used<P> {
                     let id = var_id_gen.gen_local(VarMeta {
                         name: name.value.clone(),
                     });
-                    // letrecはflag_mutateが必要だが、1度しか代入されない場合特殊化したい
-                    var_id_gen.flag_mutate(id);
                     new_ctx.env.insert(
                         name.value.clone(),
                         EnvLocalVar {

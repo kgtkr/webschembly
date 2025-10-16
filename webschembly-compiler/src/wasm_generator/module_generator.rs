@@ -177,7 +177,7 @@ impl<'a> ModuleGenerator<'a> {
                 for ty in env_types.iter() {
                     fields.push(FieldType {
                         element_type: StorageType::Val(*ty),
-                        mutable: false,
+                        mutable: true,
                     });
                 }
 
@@ -1018,6 +1018,10 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             debug_assert!(expr.local.is_none());
             return;
         }
+        if let ir::Expr::Uninitialized(_) = expr.expr {
+            // wasmのデフォルト値をそのまま使う
+            return;
+        }
         self.gen_expr(function, locals, &expr.expr);
         if let Some(local) = &expr.local {
             function.instruction(&Instruction::LocalSet(self.local_id_to_idx(*local)));
@@ -1038,6 +1042,9 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             }
             ir::Expr::Phi(..) => {
                 unreachable!("unexpected Phi");
+            }
+            ir::Expr::Uninitialized(_) => {
+                unreachable!("unexpected Uninitialized");
             }
             ir::Expr::CallClosure(..) => {
                 unreachable!("unexpected CallClosure");
@@ -1197,6 +1204,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*env)));
                 }
 
+                // TODO:IRにクロージャの型情報を持たせるべき
                 function.instruction(&Instruction::StructNew(
                     self.module_generator.closure_type_from_ir(
                         &envs.iter().map(|env| locals[*env].typ).collect::<Vec<_>>(),
@@ -1382,6 +1390,20 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     struct_type_index: closure_type,
                     field_index: ModuleGenerator::CLOSURE_ENVS_FIELD_OFFSET + *env_index as u32,
                 });
+            }
+            ir::Expr::ClosureSetEnv(env_types, closure, env_index, val) => {
+                let closure_type = self.module_generator.closure_type_from_ir(env_types);
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*closure)));
+                // TODO: irでキャストするべき
+                function.instruction(&Instruction::RefCastNonNull(HeapType::Concrete(
+                    closure_type,
+                )));
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
+                function.instruction(&Instruction::StructSet {
+                    struct_type_index: closure_type,
+                    field_index: ModuleGenerator::CLOSURE_ENVS_FIELD_OFFSET + *env_index as u32,
+                });
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
             }
             ir::Expr::GlobalGet(global) => {
                 function.instruction(&Instruction::GlobalGet(
