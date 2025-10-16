@@ -64,33 +64,13 @@ impl Context {
             env: FxHashMap::default(),
         }
     }
-
-    fn extend_some_lambda(
-        mut self,
-        new_env: impl IntoIterator<Item = (String, EnvLocalVar)>,
-    ) -> Self {
-        for (name, local_var) in new_env {
-            self.env.insert(name, local_var);
-        }
-        self
-    }
-
-    fn extend_new_lambda(
-        mut self,
-        new_env: impl IntoIterator<Item = (String, EnvLocalVar)>,
-    ) -> Self {
-        for (_, var) in self.env.iter_mut() {
-            var.is_captured = true;
-        }
-
-        self.extend_some_lambda(new_env)
-    }
 }
 
 #[derive(Debug, Clone)]
 struct EnvLocalVar {
     id: LocalVarId,
-    is_captured: bool,
+    captured: bool,
+    initialized: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -239,7 +219,7 @@ impl<P: UsedPrevPhase> Used<P> {
             Expr::Const(x, lit) => result.push(Expr::Const(x, lit).with_span(expr.span)),
             Expr::Var(_, var) => {
                 let var_id = if let Some(local_var) = ctx.env.get(&var) {
-                    if local_var.is_captured {
+                    if local_var.captured {
                         state.captures.insert(local_var.id);
                     }
                     VarId::Local(local_var.id)
@@ -250,18 +230,25 @@ impl<P: UsedPrevPhase> Used<P> {
             }
             Expr::Define(x, _) => x,
             Expr::Lambda(_, lambda) => {
-                let mut new_env = FxHashMap::default();
+                let mut new_ctx = ctx.clone();
+
+                for var in new_ctx.env.values_mut() {
+                    // 全ての変数にキャプチャフラグを立て、letrecで未初期化の変数もラムダ内では初期化されているとみなす
+                    var.captured = true;
+                    var.initialized = true;
+                }
 
                 let args = lambda
                     .args
                     .iter()
                     .map(|Located { value: arg, .. }| {
                         let id = var_id_gen.gen_local(VarMeta { name: arg.clone() });
-                        new_env.insert(
+                        new_ctx.env.insert(
                             arg.clone(),
                             EnvLocalVar {
                                 id,
-                                is_captured: false,
+                                captured: false,
+                                initialized: true,
                             },
                         );
                         id
@@ -269,7 +256,7 @@ impl<P: UsedPrevPhase> Used<P> {
                     .collect::<Vec<_>>();
 
                 let mut new_state = LambdaState::new();
-                let new_ctx = ctx.clone().extend_new_lambda(new_env);
+
                 let new_body = Self::from_exprs(lambda.body, &new_ctx, var_id_gen, &mut new_state);
 
                 {
@@ -277,7 +264,7 @@ impl<P: UsedPrevPhase> Used<P> {
                     // ただし、親ラムダで定義されている変数を除く
                     let mut exnted_captures = new_state.captures.clone();
                     for var in ctx.env.values() {
-                        if !var.is_captured {
+                        if !var.captured {
                             exnted_captures.remove(&var.id);
                         }
                     }
@@ -341,7 +328,7 @@ impl<P: UsedPrevPhase> Used<P> {
             Expr::Begin(x, _) => x,
             Expr::Set(_, set) => {
                 let var_id = if let Some(local_var) = ctx.env.get(&set.name.value) {
-                    if local_var.is_captured {
+                    if local_var.captured {
                         state.captures.insert(local_var.id);
                     }
                     var_id_gen.flag_mutate(local_var.id);
@@ -362,7 +349,7 @@ impl<P: UsedPrevPhase> Used<P> {
                 )
             }
             Expr::Let(_, let_) => {
-                let mut new_env = FxHashMap::default();
+                let mut new_ctx = ctx.clone();
 
                 for Located {
                     value: Binding { name, expr },
@@ -372,11 +359,12 @@ impl<P: UsedPrevPhase> Used<P> {
                     let id = var_id_gen.gen_local(VarMeta {
                         name: name.value.clone(),
                     });
-                    new_env.insert(
+                    new_ctx.env.insert(
                         name.value.clone(),
                         EnvLocalVar {
                             id,
-                            is_captured: false,
+                            captured: false,
+                            initialized: true,
                         },
                     );
                     state.defines.push(id);
@@ -395,8 +383,6 @@ impl<P: UsedPrevPhase> Used<P> {
                     result.push(set_expr);
                 }
 
-                let new_ctx = ctx.clone().extend_some_lambda(new_env);
-
                 for expr in let_.body {
                     // stateは親のものを引き継ぐ
                     Self::from_expr(expr, &new_ctx, var_id_gen, state, result);
@@ -406,8 +392,7 @@ impl<P: UsedPrevPhase> Used<P> {
                 // TODO: letrecの定義式で同じletrecの変数を参照する場合、ラムダで囲わないとエラーにする必要がある
                 // (letrec ((a 1) (b (+ a 1))) b) のようなものは許されない。let*を使うべき
 
-                let mut new_env = FxHashMap::default();
-                let mut ids = Vec::new();
+                let mut new_ctx = ctx.clone();
                 for Located {
                     value: Binding { name, .. },
                     ..
@@ -418,30 +403,27 @@ impl<P: UsedPrevPhase> Used<P> {
                     });
                     // letrecはflag_mutateが必要だが、1度しか代入されない場合特殊化したい
                     var_id_gen.flag_mutate(id);
-                    new_env.insert(
+                    new_ctx.env.insert(
                         name.value.clone(),
                         EnvLocalVar {
                             id,
-                            is_captured: false,
+                            captured: false,
+                            initialized: false,
                         },
                     );
                     state.defines.push(id);
-                    ids.push(id);
                 }
 
-                let ctx = ctx.clone().extend_some_lambda(new_env);
-                for (
-                    Located {
-                        value: Binding { name, expr },
-                        span: binding_span,
-                    },
-                    &id,
-                ) in letrec.bindings.iter().zip(&ids)
+                for Located {
+                    value: Binding { name, expr },
+                    span: binding_span,
+                } in letrec.bindings.iter()
                 {
-                    let expr = Self::from_exprs(expr.clone(), &ctx, var_id_gen, state);
+                    let var_id = new_ctx.env.get(&name.value).unwrap().id;
+                    let expr = Self::from_exprs(expr.clone(), &new_ctx, var_id_gen, state);
                     let set_expr = Expr::Set(
                         UsedSetR {
-                            var_id: VarId::Local(id),
+                            var_id: VarId::Local(var_id),
                         },
                         Set {
                             name: name.clone(),
@@ -452,9 +434,20 @@ impl<P: UsedPrevPhase> Used<P> {
                     result.push(set_expr);
                 }
 
+                // body評価時点では初期化される
+                for Located {
+                    value: Binding { name, .. },
+                    ..
+                } in letrec.bindings.iter()
+                {
+                    let var = new_ctx.env.get_mut(&name.value).unwrap();
+                    debug_assert!(!var.initialized);
+                    var.initialized = true;
+                }
+
                 for expr in letrec.body.into_iter() {
                     // stateは親のものを引き継ぐ
-                    Self::from_expr(expr, &ctx, var_id_gen, state, result);
+                    Self::from_expr(expr, &new_ctx, var_id_gen, state, result);
                 }
             }
             Expr::Vector(x, vec) => {
