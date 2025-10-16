@@ -1,5 +1,6 @@
 use rustc_hash::{FxHashMap, FxHashSet};
 use webschembly_compiler_ast::*;
+use webschembly_compiler_error::{Result, compiler_error};
 use webschembly_compiler_locate::{Located, LocatedValue};
 
 pub trait UsedPrevPhase = AstPhase<XBegin = !, XQuote = !, XDefine = !, XLetStar = !>;
@@ -175,7 +176,7 @@ impl VarIdGen {
 }
 
 impl<P: UsedPrevPhase> Used<P> {
-    pub fn from_ast(ast: Ast<P>, var_id_gen: &mut VarIdGen) -> Ast<Self> {
+    pub fn from_ast(ast: Ast<P>, var_id_gen: &mut VarIdGen) -> Result<Ast<Self>> {
         var_id_gen.reset_for_module();
         let mut defines = Vec::new();
         let mut result = Vec::new();
@@ -187,12 +188,12 @@ impl<P: UsedPrevPhase> Used<P> {
                 var_id_gen,
                 &mut state,
                 &mut result,
-            );
+            )?;
             debug_assert!(state.captures.is_empty());
             defines.extend(state.defines);
         }
 
-        Ast {
+        Ok(Ast {
             x: UsedAstR {
                 box_vars: var_id_gen
                     .mutated_vars
@@ -205,7 +206,7 @@ impl<P: UsedPrevPhase> Used<P> {
                 defines,
             },
             exprs: result,
-        }
+        })
     }
 
     fn from_expr(
@@ -214,11 +215,14 @@ impl<P: UsedPrevPhase> Used<P> {
         var_id_gen: &mut VarIdGen,
         state: &mut LambdaState,
         result: &mut Vec<LExpr<Self>>,
-    ) {
+    ) -> Result<()> {
         match expr.value {
             Expr::Const(x, lit) => result.push(Expr::Const(x, lit).with_span(expr.span)),
             Expr::Var(_, var) => {
                 let var_id = if let Some(local_var) = ctx.env.get(&var) {
+                    if !local_var.initialized {
+                        return Err(compiler_error!("use of uninitialized variable: {}", var));
+                    }
                     if local_var.captured {
                         state.captures.insert(local_var.id);
                     }
@@ -257,7 +261,7 @@ impl<P: UsedPrevPhase> Used<P> {
 
                 let mut new_state = LambdaState::new();
 
-                let new_body = Self::from_exprs(lambda.body, &new_ctx, var_id_gen, &mut new_state);
+                let new_body = Self::from_exprs(lambda.body, &new_ctx, var_id_gen, &mut new_state)?;
 
                 {
                     // キャプチャリストを親ラムダが継承する
@@ -292,9 +296,9 @@ impl<P: UsedPrevPhase> Used<P> {
                 );
             }
             Expr::If(x, if_) => {
-                let new_cond = Self::from_exprs(if_.cond, ctx, var_id_gen, state);
-                let new_then = Self::from_exprs(if_.then, ctx, var_id_gen, state);
-                let new_els = Self::from_exprs(if_.els, ctx, var_id_gen, state);
+                let new_cond = Self::from_exprs(if_.cond, ctx, var_id_gen, state)?;
+                let new_then = Self::from_exprs(if_.then, ctx, var_id_gen, state)?;
+                let new_els = Self::from_exprs(if_.els, ctx, var_id_gen, state)?;
                 result.push(
                     Expr::If(
                         x,
@@ -308,12 +312,12 @@ impl<P: UsedPrevPhase> Used<P> {
                 )
             }
             Expr::Call(x, call) => {
-                let new_func = Self::from_exprs(call.func, ctx, var_id_gen, state);
+                let new_func = Self::from_exprs(call.func, ctx, var_id_gen, state)?;
                 let new_args = call
                     .args
                     .into_iter()
                     .map(|arg| Self::from_exprs(arg, ctx, var_id_gen, state))
-                    .collect();
+                    .collect::<Result<Vec<_>>>()?;
                 result.push(
                     Expr::Call(
                         x,
@@ -328,6 +332,13 @@ impl<P: UsedPrevPhase> Used<P> {
             Expr::Begin(x, _) => x,
             Expr::Set(_, set) => {
                 let var_id = if let Some(local_var) = ctx.env.get(&set.name.value) {
+                    if !local_var.initialized {
+                        return Err(compiler_error!(
+                            "set of uninitialized variable: {}",
+                            set.name.value
+                        ));
+                    }
+
                     if local_var.captured {
                         state.captures.insert(local_var.id);
                     }
@@ -336,7 +347,7 @@ impl<P: UsedPrevPhase> Used<P> {
                 } else {
                     VarId::Global(var_id_gen.global_var_id(&set.name.value))
                 };
-                let new_expr = Self::from_exprs(set.expr, ctx, var_id_gen, state);
+                let new_expr = Self::from_exprs(set.expr, ctx, var_id_gen, state)?;
                 result.push(
                     Expr::Set(
                         UsedSetR { var_id },
@@ -369,7 +380,7 @@ impl<P: UsedPrevPhase> Used<P> {
                     );
                     state.defines.push(id);
 
-                    let expr = Self::from_exprs(expr.clone(), ctx, var_id_gen, state);
+                    let expr = Self::from_exprs(expr.clone(), ctx, var_id_gen, state)?;
                     let set_expr = Expr::Set(
                         UsedSetR {
                             var_id: VarId::Local(id),
@@ -385,7 +396,7 @@ impl<P: UsedPrevPhase> Used<P> {
 
                 for expr in let_.body {
                     // stateは親のものを引き継ぐ
-                    Self::from_expr(expr, &new_ctx, var_id_gen, state, result);
+                    Self::from_expr(expr, &new_ctx, var_id_gen, state, result)?;
                 }
             }
             Expr::LetStar(x, _) => x,
@@ -421,7 +432,7 @@ impl<P: UsedPrevPhase> Used<P> {
                 } in letrec.bindings.iter()
                 {
                     let var_id = new_ctx.env.get(&name.value).unwrap().id;
-                    let expr = Self::from_exprs(expr.clone(), &new_ctx, var_id_gen, state);
+                    let expr = Self::from_exprs(expr.clone(), &new_ctx, var_id_gen, state)?;
                     let set_expr = Expr::Set(
                         UsedSetR {
                             var_id: VarId::Local(var_id),
@@ -448,14 +459,14 @@ impl<P: UsedPrevPhase> Used<P> {
 
                 for expr in letrec.body.into_iter() {
                     // stateは親のものを引き継ぐ
-                    Self::from_expr(expr, &new_ctx, var_id_gen, state, result);
+                    Self::from_expr(expr, &new_ctx, var_id_gen, state, result)?;
                 }
             }
             Expr::Vector(x, vec) => {
                 let new_vec = vec
                     .into_iter()
                     .map(|expr| Self::from_exprs(expr, ctx, var_id_gen, state))
-                    .collect();
+                    .collect::<Result<Vec<_>>>()?;
                 result.push(Expr::Vector(x, new_vec).with_span(expr.span))
             }
             Expr::UVector(x, uvec) => result.push(
@@ -467,15 +478,15 @@ impl<P: UsedPrevPhase> Used<P> {
                             .elements
                             .into_iter()
                             .map(|expr| Self::from_exprs(expr, ctx, var_id_gen, state))
-                            .collect(),
+                            .collect::<Result<Vec<_>>>()?,
                     },
                 )
                 .with_span(expr.span),
             ),
             Expr::Quote(x, _) => x,
             Expr::Cons(x, cons) => {
-                let new_car = Self::from_exprs(cons.car, ctx, var_id_gen, state);
-                let new_cdr = Self::from_exprs(cons.cdr, ctx, var_id_gen, state);
+                let new_car = Self::from_exprs(cons.car, ctx, var_id_gen, state)?;
+                let new_cdr = Self::from_exprs(cons.cdr, ctx, var_id_gen, state)?;
                 result.push(
                     Expr::Cons(
                         x,
@@ -488,6 +499,8 @@ impl<P: UsedPrevPhase> Used<P> {
                 );
             }
         }
+
+        Ok(())
     }
 
     fn from_exprs(
@@ -495,11 +508,11 @@ impl<P: UsedPrevPhase> Used<P> {
         ctx: &Context,
         var_id_gen: &mut VarIdGen,
         state: &mut LambdaState,
-    ) -> Vec<LExpr<Self>> {
+    ) -> Result<Vec<LExpr<Self>>> {
         let mut result = Vec::new();
         for expr in exprs {
-            Self::from_expr(expr, ctx, var_id_gen, state, &mut result);
+            Self::from_expr(expr, ctx, var_id_gen, state, &mut result)?;
         }
-        result
+        Ok(result)
     }
 }
