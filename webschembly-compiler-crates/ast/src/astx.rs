@@ -30,6 +30,7 @@ pub trait AstPhase: Sized + Clone + Debug {
     type XBegin: AstPhaseX;
     type XSet: AstPhaseX;
     type XLet: AstPhaseX;
+    type XLetStar: AstPhaseX;
     type XLetRec: AstPhaseX;
     type XVector: AstPhaseX;
     type XUVector: AstPhaseX;
@@ -49,6 +50,7 @@ pub trait ExtendAstPhase: Sized + Clone + Debug {
     type XBegin: AstPhaseX = <Self::Prev as AstPhase>::XBegin;
     type XSet: AstPhaseX = <Self::Prev as AstPhase>::XSet;
     type XLet: AstPhaseX = <Self::Prev as AstPhase>::XLet;
+    type XLetStar: AstPhaseX = <Self::Prev as AstPhase>::XLetStar;
     type XLetRec: AstPhaseX = <Self::Prev as AstPhase>::XLetRec;
     type XVector: AstPhaseX = <Self::Prev as AstPhase>::XVector;
     type XUVector: AstPhaseX = <Self::Prev as AstPhase>::XUVector;
@@ -67,6 +69,7 @@ impl<T: ExtendAstPhase> AstPhase for T {
     type XBegin = T::XBegin;
     type XSet = T::XSet;
     type XLet = T::XLet;
+    type XLetStar = T::XLetStar;
     type XLetRec = T::XLetRec;
     type XVector = T::XVector;
     type XUVector = T::XUVector;
@@ -96,8 +99,9 @@ where
     Call(X::XCall, Call<X>),
     Begin(X::XBegin, Begin<X>),
     Set(X::XSet, Set<X>),
-    Let(X::XLet, Let<X>),
-    LetRec(X::XLetRec, LetRec<X>),
+    Let(X::XLet, LetLike<X>),
+    LetStar(X::XLetStar, LetLike<X>),
+    LetRec(X::XLetRec, LetLike<X>),
     Vector(X::XVector, Vec<ExprBox<LExpr<X>>>),
     UVector(X::XUVector, UVector<X>),
     Quote(X::XQuote, LSExpr),
@@ -171,16 +175,7 @@ where
 }
 
 #[derive(Debug, Clone)]
-pub struct Let<X>
-where
-    X: AstPhase,
-{
-    pub bindings: Vec<L<Binding<X>>>,
-    pub body: Vec<LExpr<X>>,
-}
-
-#[derive(Debug, Clone)]
-pub struct LetRec<X>
+pub struct LetLike<X>
 where
     X: AstPhase,
 {

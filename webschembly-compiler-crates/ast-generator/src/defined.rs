@@ -3,7 +3,7 @@ use webschembly_compiler_error::{Result, compiler_error};
 use webschembly_compiler_locate::{Located, LocatedValue, Span};
 // defineをletrec or set!に変換
 
-pub trait DefinedPrevPhase = AstPhase<XBegin = !, XQuote = !>;
+pub trait DefinedPrevPhase = AstPhase<XBegin = !, XQuote = !, XLetStar = !>;
 
 #[derive(Debug, Clone)]
 pub struct Defined<P: DefinedPrevPhase>(std::marker::PhantomData<P>);
@@ -164,59 +164,18 @@ impl<P: DefinedPrevPhase> Defined<P> {
                 );
                 Ok(())
             }
-            Expr::Let(x, let_) => {
-                let new_body = Self::from_exprs_new_scope(expr.span, let_.body)?;
+            Expr::Let(x, let_like) => {
                 result.push(
-                    Expr::Let(
-                        x,
-                        Let {
-                            bindings: let_
-                                .bindings
-                                .into_iter()
-                                .map(|binding| {
-                                    Ok(Binding {
-                                        name: binding.value.name,
-                                        expr: Self::from_exprs(
-                                            binding.value.expr,
-                                            ctx.to_undefinable_if_local(),
-                                            defines,
-                                        )?,
-                                    }
-                                    .with_span(binding.span))
-                                })
-                                .collect::<Result<Vec<_>>>()?,
-                            body: new_body,
-                        },
-                    )
-                    .with_span(expr.span),
+                    Expr::Let(x, Self::from_let_like(let_like, expr.span, ctx, defines)?)
+                        .with_span(expr.span),
                 );
                 Ok(())
             }
-            Expr::LetRec(_, letrec) => {
-                let new_body = Self::from_exprs_new_scope(expr.span, letrec.body)?;
+            Expr::LetStar(x, _) => x,
+            Expr::LetRec(_, let_like) => {
                 result.push(
-                    Expr::LetRec(
-                        (),
-                        LetRec {
-                            bindings: letrec
-                                .bindings
-                                .into_iter()
-                                .map(|binding| {
-                                    Ok(Binding {
-                                        name: binding.value.name,
-                                        expr: Self::from_exprs(
-                                            binding.value.expr,
-                                            ctx.to_undefinable_if_local(),
-                                            defines,
-                                        )?,
-                                    }
-                                    .with_span(binding.span))
-                                })
-                                .collect::<Result<Vec<_>>>()?,
-                            body: new_body,
-                        },
-                    )
-                    .with_span(expr.span),
+                    Expr::LetRec((), Self::from_let_like(let_like, expr.span, ctx, defines)?)
+                        .with_span(expr.span),
                 );
                 Ok(())
             }
@@ -305,7 +264,7 @@ impl<P: DefinedPrevPhase> Defined<P> {
             Ok(vec![
                 Expr::LetRec(
                     (),
-                    LetRec {
+                    LetLike {
                         bindings: defines,
                         body: exprs,
                     },
@@ -313,5 +272,32 @@ impl<P: DefinedPrevPhase> Defined<P> {
                 .with_span(span),
             ])
         }
+    }
+
+    fn from_let_like(
+        let_like: LetLike<P>,
+        span: Span,
+        ctx: DefineContext,
+        defines: &mut Vec<Located<Binding<Self>>>,
+    ) -> Result<LetLike<Self>> {
+        let new_body = Self::from_exprs_new_scope(span, let_like.body)?;
+        Ok(LetLike {
+            bindings: let_like
+                .bindings
+                .into_iter()
+                .map(|binding| {
+                    Ok(Binding {
+                        name: binding.value.name,
+                        expr: Self::from_exprs(
+                            binding.value.expr,
+                            ctx.to_undefinable_if_local(),
+                            defines,
+                        )?,
+                    }
+                    .with_span(binding.span))
+                })
+                .collect::<Result<Vec<_>>>()?,
+            body: new_body,
+        })
     }
 }

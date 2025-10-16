@@ -2,7 +2,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use webschembly_compiler_ast::*;
 use webschembly_compiler_locate::{Located, LocatedValue};
 
-pub trait UsedPrevPhase = AstPhase<XBegin = !, XQuote = !, XDefine = !>;
+pub trait UsedPrevPhase = AstPhase<XBegin = !, XQuote = !, XDefine = !, XLetStar = !>;
 
 #[derive(Debug, Clone)]
 pub struct Used<P: UsedPrevPhase>(std::marker::PhantomData<P>);
@@ -388,6 +388,7 @@ impl<P: UsedPrevPhase> Used<P> {
                     Self::from_expr(expr, &new_ctx, var_id_gen, state, result);
                 }
             }
+            Expr::LetStar(x, _) => x,
             Expr::LetRec(_, letrec) => {
                 // TODO: letrecの定義式で同じletrecの変数を参照する場合、ラムダで囲わないとエラーにする必要がある
                 // (letrec ((a 1) (b (+ a 1))) b) のようなものは許されない。let*を使うべき

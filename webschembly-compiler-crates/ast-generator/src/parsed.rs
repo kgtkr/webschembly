@@ -17,6 +17,7 @@ impl AstPhase for Parsed {
     type XBegin = ();
     type XSet = ();
     type XLet = ();
+    type XLetStar = ();
     type XLetRec = ();
     type XVector = ();
     type XUVector = ();
@@ -180,80 +181,21 @@ impl Parsed {
                     ..
                 } => span,
                 ..cdr
-            ] => match cdr {
-                list_pattern![bindings, ..body] => {
-                    let bindings = bindings
-                        .value
-                        .to_vec()
-                        .ok_or_else(|| compiler_error!("Expected a list of bindings"))?
-                        .into_iter()
-                        .map(|binding| match binding {
-                            list_pattern![
-                                LSExpr {
-                                    value: SExpr::Symbol(name),
-                                    ..
-                                } => name_span,
-                                expr,
-                            ] => Ok(Binding {
-                                name: name.with_span(name_span),
-                                expr: vec![Self::from_sexpr(expr)?],
-                            }
-                            .with_span(binding.span)),
-                            _ => Err(compiler_error!("Invalid binding")),
-                        })
-                        .collect::<Result<Vec<_>>>()?;
-                    let body = body
-                        .value
-                        .to_vec()
-                        .ok_or_else(|| compiler_error!("Expected a list of expressions"))?
-                        .into_iter()
-                        .map(Self::from_sexpr)
-                        .collect::<Result<Vec<_>>>()?;
-
-                    Ok(Expr::Let((), Let { bindings, body }).with_span(span))
-                }
-                _ => Err(compiler_error!("Invalid let expression")),
-            },
+            ] => Ok(Expr::Let((), Self::parse_let_like(cdr)?).with_span(span)),
+            list_pattern![
+                LSExpr {
+                    value: SExpr::Symbol("let*"),
+                    ..
+                } => span,
+                ..cdr
+            ] => Ok(Expr::LetStar((), Self::parse_let_like(cdr)?).with_span(span)),
             list_pattern![
                 LSExpr {
                     value: SExpr::Symbol("letrec"),
                     ..
                 } => span,
                 ..cdr
-            ] => match cdr {
-                list_pattern![bindings, ..body] => {
-                    let bindings = bindings
-                        .value
-                        .to_vec()
-                        .ok_or_else(|| compiler_error!("Expected a list of bindings"))?
-                        .into_iter()
-                        .map(|binding| match binding {
-                            list_pattern![
-                                LSExpr {
-                                    value: SExpr::Symbol(name),
-                                    ..
-                                } => name_span,
-                                expr,
-                            ] => Ok(Binding {
-                                name: name.with_span(name_span),
-                                expr: vec![Self::from_sexpr(expr)?],
-                            }
-                            .with_span(binding.span)),
-                            _ => Err(compiler_error!("Invalid binding")),
-                        })
-                        .collect::<Result<Vec<_>>>()?;
-                    let body = body
-                        .value
-                        .to_vec()
-                        .ok_or_else(|| compiler_error!("Expected a list of expressions"))?
-                        .into_iter()
-                        .map(Self::from_sexpr)
-                        .collect::<Result<Vec<_>>>()?;
-
-                    Ok(Expr::LetRec((), LetRec { bindings, body }).with_span(span))
-                }
-                _ => Err(compiler_error!("Invalid let expression")),
-            },
+            ] => Ok(Expr::LetRec((), Self::parse_let_like(cdr)?).with_span(span)),
             list_pattern![
                 LSExpr {
                     value: SExpr::Symbol("begin"),
@@ -314,6 +256,43 @@ impl Parsed {
                 )
                 .with_span(span))
             }
+        }
+    }
+
+    fn parse_let_like(sexpr: LSExpr) -> Result<LetLike<Self>> {
+        match sexpr {
+            list_pattern![bindings, ..body] => {
+                let bindings = bindings
+                    .value
+                    .to_vec()
+                    .ok_or_else(|| compiler_error!("Expected a list of bindings"))?
+                    .into_iter()
+                    .map(|binding| match binding {
+                        list_pattern![
+                            LSExpr {
+                                value: SExpr::Symbol(name),
+                                ..
+                            } => name_span,
+                            expr,
+                        ] => Ok(Binding {
+                            name: name.with_span(name_span),
+                            expr: vec![Self::from_sexpr(expr)?],
+                        }
+                        .with_span(binding.span)),
+                        _ => Err(compiler_error!("Invalid binding")),
+                    })
+                    .collect::<Result<Vec<_>>>()?;
+                let body = body
+                    .value
+                    .to_vec()
+                    .ok_or_else(|| compiler_error!("Expected a list of expressions"))?
+                    .into_iter()
+                    .map(Self::from_sexpr)
+                    .collect::<Result<Vec<_>>>()?;
+
+                Ok(LetLike { bindings, body })
+            }
+            _ => Err(compiler_error!("Invalid let-like expression")),
         }
     }
 

@@ -14,7 +14,7 @@ pub struct TailCallCallR {
     pub is_tail: bool,
 }
 
-pub trait TailCallPrevPhase = AstPhase<XBegin = !, XQuote = !, XDefine = !>;
+pub trait TailCallPrevPhase = AstPhase<XBegin = !, XQuote = !, XDefine = !, XLetStar = !>;
 
 impl<P: TailCallPrevPhase> TailCall<P> {
     pub fn from_ast(ast: Ast<P>) -> Ast<Self> {
@@ -71,42 +71,13 @@ impl<P: TailCallPrevPhase> TailCall<P> {
                 },
             )
             .with_span(expr.span),
-            Expr::Let(x, let_) => Expr::Let(
-                x,
-                Let {
-                    bindings: let_
-                        .bindings
-                        .into_iter()
-                        .map(|binding| {
-                            Binding {
-                                name: binding.value.name,
-                                expr: Self::from_exprs(binding.value.expr, false),
-                            }
-                            .with_span(binding.span)
-                        })
-                        .collect(),
-                    body: Self::from_exprs(let_.body, is_tail),
-                },
-            )
-            .with_span(expr.span),
-            Expr::LetRec(x, letrec) => Expr::LetRec(
-                x,
-                LetRec {
-                    bindings: letrec
-                        .bindings
-                        .into_iter()
-                        .map(|binding| {
-                            Binding {
-                                name: binding.value.name,
-                                expr: Self::from_exprs(binding.value.expr, false),
-                            }
-                            .with_span(binding.span)
-                        })
-                        .collect(),
-                    body: Self::from_exprs(letrec.body, is_tail),
-                },
-            )
-            .with_span(expr.span),
+            Expr::Let(x, let_like) => {
+                Expr::Let(x, Self::from_let_like(let_like, is_tail)).with_span(expr.span)
+            }
+            Expr::LetStar(x, _) => x,
+            Expr::LetRec(x, let_like) => {
+                Expr::LetRec(x, Self::from_let_like(let_like, is_tail)).with_span(expr.span)
+            }
             Expr::Vector(x, vec) => Expr::Vector(x, {
                 vec.into_iter()
                     .map(|expr| Self::from_exprs(expr, false))
@@ -144,5 +115,22 @@ impl<P: TailCallPrevPhase> TailCall<P> {
             .enumerate()
             .map(|(i, expr)| Self::from_expr(expr, is_tail && i == n - 1))
             .collect()
+    }
+
+    fn from_let_like(let_like: LetLike<P>, is_tail: bool) -> LetLike<Self> {
+        LetLike {
+            bindings: let_like
+                .bindings
+                .into_iter()
+                .map(|binding| {
+                    Binding {
+                        name: binding.value.name,
+                        expr: Self::from_exprs(binding.value.expr, false),
+                    }
+                    .with_span(binding.span)
+                })
+                .collect(),
+            body: Self::from_exprs(let_like.body, is_tail),
+        }
     }
 }

@@ -1,4 +1,4 @@
-use webschembly_compiler_locate::LocatedValue;
+use webschembly_compiler_locate::{L, LocatedValue};
 
 use webschembly_compiler_ast::*;
 use webschembly_compiler_sexpr as sexpr;
@@ -12,6 +12,8 @@ impl<P: DesugaredPrevPhase> ExtendAstPhase for Desugared<P> {
     type Prev = P;
     type XBegin = !;
     type XQuote = !;
+    type XLetStar = !;
+    type XLet = ();
     type XConst = ();
     type XCons = ();
     type XVector = ();
@@ -86,46 +88,34 @@ impl<P: DesugaredPrevPhase> Desugared<P> {
                 )
                 .with_span(expr.span),
             ),
-            Expr::Let(x, let_) => exprs.push(
-                Expr::Let(
-                    x,
-                    Let {
-                        bindings: let_
-                            .bindings
-                            .into_iter()
-                            .map(|binding| {
-                                Binding {
-                                    name: binding.value.name,
-                                    expr: Self::from_exprs(binding.value.expr),
-                                }
-                                .with_span(binding.span)
-                            })
-                            .collect(),
-                        body: Self::from_exprs(let_.body),
+            Expr::Let(_, let_like) => {
+                exprs.push(Expr::Let((), Self::from_let_like(let_like)).with_span(expr.span))
+            }
+            Expr::LetStar(_, let_like) => {
+                // 空のlet*でもスコープを作るためにバインディングが空のletで囲む
+                let mut body = Expr::Let(
+                    (),
+                    LetLike {
+                        bindings: vec![],
+                        body: Self::from_exprs(let_like.body),
                     },
                 )
-                .with_span(expr.span),
-            ),
-            Expr::LetRec(x, letrec) => exprs.push(
-                Expr::LetRec(
-                    x,
-                    LetRec {
-                        bindings: letrec
-                            .bindings
-                            .into_iter()
-                            .map(|binding| {
-                                Binding {
-                                    name: binding.value.name,
-                                    expr: Self::from_exprs(binding.value.expr),
-                                }
-                                .with_span(binding.span)
-                            })
-                            .collect(),
-                        body: Self::from_exprs(letrec.body),
-                    },
-                )
-                .with_span(expr.span),
-            ),
+                .with_span(expr.span);
+                for binding in let_like.bindings.into_iter().rev() {
+                    body = Expr::Let(
+                        (),
+                        LetLike {
+                            bindings: vec![Self::from_binding(binding)],
+                            body: vec![body],
+                        },
+                    )
+                    .with_span(expr.span);
+                }
+                exprs.push(body);
+            }
+            Expr::LetRec(x, let_like) => {
+                exprs.push(Expr::LetRec(x, Self::from_let_like(let_like)).with_span(expr.span))
+            }
             Expr::Vector(_, vec) => exprs.push(
                 Expr::Vector((), vec.into_iter().map(Self::from_exprs).collect())
                     .with_span(expr.span),
@@ -205,5 +195,24 @@ impl<P: DesugaredPrevPhase> Desugared<P> {
             Self::from_expr(expr, &mut result);
         }
         result
+    }
+
+    fn from_let_like(let_like: LetLike<P>) -> LetLike<Self> {
+        LetLike {
+            bindings: let_like
+                .bindings
+                .into_iter()
+                .map(Self::from_binding)
+                .collect(),
+            body: Self::from_exprs(let_like.body),
+        }
+    }
+
+    fn from_binding(binding: L<Binding<P>>) -> L<Binding<Self>> {
+        Binding {
+            name: binding.value.name,
+            expr: Self::from_exprs(binding.value.expr),
+        }
+        .with_span(binding.span)
     }
 }
