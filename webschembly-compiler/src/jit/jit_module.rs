@@ -382,14 +382,6 @@ impl JitFunc {
             })
         };
 
-        let mut bb_stub_func_ids = FxHashMap::default();
-        for jit_bb in self.jit_bbs.values() {
-            let id = funcs.push_with(|id| {
-                self.generate_bb_stub_func(self.module_id, jit_bb, id, GLOBAL_LAYOUT_DEFAULT_INDEX)
-            });
-            bb_stub_func_ids.insert(jit_bb.bb_id, id);
-        }
-
         /*
         func entry() {
             set_global f0_ref f0
@@ -422,25 +414,6 @@ impl JitFunc {
                     expr: Expr::GlobalSet(func_to_globals[self.func.id], func_ref_local),
                 });
             }
-            for jit_bb in self.jit_bbs.values() {
-                let func_ref_local = locals.push_with(|id| Local {
-                    id,
-                    typ: LocalType::FuncRef,
-                });
-                let (_, index_global) = jit_bb
-                    .bb_index_manager
-                    .type_args(GLOBAL_LAYOUT_DEFAULT_INDEX);
-
-                exprs.push(ExprAssign {
-                    local: Some(func_ref_local),
-                    expr: Expr::FuncRef(bb_stub_func_ids[&jit_bb.bb_id]),
-                });
-
-                exprs.push(ExprAssign {
-                    local: None,
-                    expr: Expr::GlobalSet(index_global.id, func_ref_local),
-                });
-            }
 
             funcs.push_with(|id| Func {
                 id,
@@ -458,7 +431,7 @@ impl JitFunc {
             })
         };
 
-        Module {
+        let mut module = Module {
             globals: FxHashMap::default(),
             funcs,
             entry: entry_func_id,
@@ -467,71 +440,111 @@ impl JitFunc {
                 local_metas: FxHashMap::default(),
                 global_metas: FxHashMap::default(),
             },
+        };
+
+        for bb_id in self.jit_bbs.keys() {
+            self.add_bb_stub_func(
+                self.module_id,
+                bb_id,
+                GLOBAL_LAYOUT_DEFAULT_INDEX,
+                &mut module,
+            );
         }
+
+        module
     }
 
-    fn generate_bb_stub_func(
+    fn add_bb_stub_func(
         &self,
         module_id: ModuleId,
-        jit_bb: &JitBB,
-        id: FuncId,
+        bb_id: BasicBlockId,
         index: usize,
-    ) -> Func {
-        /*
-        func bb0_stub(...) {
-            instantiate_bb(..., index)
-            bb0 <- get_global bb0_ref
-            bb0(...)
-        }
-        */
-        let (type_args, index_global) = jit_bb.bb_index_manager.type_args(index);
-        let mut locals = self.func.locals.clone();
-        for (type_param_id, type_arg) in type_args.iter() {
-            let local = *jit_bb.info.type_params.get_by_left(&type_param_id).unwrap();
-            locals[local].typ = LocalType::Type(Type::Val(*type_arg));
-        }
+        module: &mut Module,
+    ) {
+        let jit_bb = &self.jit_bbs[bb_id];
+        let func_id = module.funcs.push_with(|id| {
+            /*
+            func bb0_stub(...) {
+                instantiate_bb(..., index)
+                bb0 <- get_global bb0_ref
+                bb0(...)
+            }
+            */
+            let (type_args, index_global) = jit_bb.bb_index_manager.type_args(index);
+            let mut locals = self.func.locals.clone();
+            for (type_param_id, type_arg) in type_args.iter() {
+                let local = *jit_bb.info.type_params.get_by_left(&type_param_id).unwrap();
+                locals[local].typ = LocalType::Type(Type::Val(*type_arg));
+            }
 
-        let func_ref_local = locals.push_with(|id| Local {
+            let func_ref_local = locals.push_with(|id| Local {
+                id,
+                typ: LocalType::FuncRef,
+            });
+
+            Func {
+                id,
+                args: jit_bb.info.args.clone(),
+                ret_type: self.func.ret_type,
+                locals,
+                bb_entry: BasicBlockId::from(0),
+                bbs: [BasicBlock {
+                    id: BasicBlockId::from(0),
+                    exprs: vec![
+                        ExprAssign {
+                            local: None,
+                            expr: Expr::InstantiateBB(
+                                module_id,
+                                self.func.id,
+                                self.func_index,
+                                jit_bb.bb_id,
+                                index,
+                            ),
+                        },
+                        ExprAssign {
+                            local: Some(func_ref_local),
+                            expr: Expr::GlobalGet(index_global.id),
+                        },
+                    ],
+                    next: BasicBlockNext::Terminator(BasicBlockTerminator::TailCallRef(
+                        ExprCallRef {
+                            func: func_ref_local,
+                            args: jit_bb.info.args.clone(),
+                            func_type: FuncType {
+                                args: jit_bb.info.arg_types(&self.func, type_args),
+                                ret: self.func.ret_type,
+                            },
+                        },
+                    )),
+                }]
+                .into_iter()
+                .collect(),
+            }
+        });
+
+        let (_, index_global) = jit_bb.bb_index_manager.type_args(index);
+
+        let entry_func = &mut module.funcs[module.entry];
+        let func_ref_local = entry_func.locals.push_with(|id| Local {
             id,
             typ: LocalType::FuncRef,
         });
-
-        Func {
+        let prev_entry_bb_id = entry_func.bb_entry;
+        let new_entry_bb_id = entry_func.bbs.push_with(|id| BasicBlock {
             id,
-            args: jit_bb.info.args.clone(),
-            ret_type: self.func.ret_type,
-            locals,
-            bb_entry: BasicBlockId::from(0),
-            bbs: [BasicBlock {
-                id: BasicBlockId::from(0),
-                exprs: vec![
-                    ExprAssign {
-                        local: None,
-                        expr: Expr::InstantiateBB(
-                            module_id,
-                            self.func.id,
-                            self.func_index,
-                            jit_bb.bb_id,
-                            index,
-                        ),
-                    },
-                    ExprAssign {
-                        local: Some(func_ref_local),
-                        expr: Expr::GlobalGet(index_global.id),
-                    },
-                ],
-                next: BasicBlockNext::Terminator(BasicBlockTerminator::TailCallRef(ExprCallRef {
-                    func: func_ref_local,
-                    args: jit_bb.info.args.clone(),
-                    func_type: FuncType {
-                        args: jit_bb.info.arg_types(&self.func, type_args),
-                        ret: self.func.ret_type,
-                    },
-                })),
-            }]
-            .into_iter()
-            .collect(),
-        }
+            exprs: vec![
+                ExprAssign {
+                    local: Some(func_ref_local),
+                    expr: Expr::FuncRef(func_id),
+                },
+                ExprAssign {
+                    local: None,
+                    expr: Expr::GlobalSet(index_global.id, func_ref_local),
+                },
+            ],
+            next: BasicBlockNext::Jump(prev_entry_bb_id),
+        });
+        entry_func.bb_entry = new_entry_bb_id;
     }
 
     pub fn generate_bb_module(
@@ -976,18 +989,6 @@ impl JitFunc {
             bbs,
         });
 
-        let required_stubs = required_stubs
-            .iter()
-            .filter(|(_, _, index)| *index != GLOBAL_LAYOUT_DEFAULT_INDEX)
-            .map(|&(bb_id, index_global, index)| {
-                let bb_stub_func_id = funcs.push_with(|id| {
-                    self.generate_bb_stub_func(self.module_id, &self.jit_bbs[bb_id], id, index)
-                });
-
-                (bb_id, index_global, bb_stub_func_id)
-            })
-            .collect::<Vec<_>>();
-
         let required_closure_idx = required_closure_idx
             .iter()
             .map(|&closure_idx| {
@@ -1149,28 +1150,6 @@ impl JitFunc {
                     });
                 }
 
-                /*
-                bbX_ref = stub_func
-                */
-
-                for &(_, index_global, stub_func_id) in required_stubs.iter() {
-                    let func_ref_local = locals.push_with(|id| Local {
-                        id,
-                        typ: LocalType::FuncRef,
-                    });
-
-                    exprs.extend([
-                        ExprAssign {
-                            local: Some(func_ref_local),
-                            expr: Expr::FuncRef(stub_func_id),
-                        },
-                        ExprAssign {
-                            local: None,
-                            expr: Expr::GlobalSet(index_global.id, func_ref_local),
-                        },
-                    ]);
-                }
-
                 BasicBlock {
                     id: BasicBlockId::from(0),
                     exprs,
@@ -1188,7 +1167,7 @@ impl JitFunc {
             })
         };
 
-        Module {
+        let mut module = Module {
             globals: FxHashMap::default(),
             funcs,
             entry: entry_func_id,
@@ -1197,7 +1176,13 @@ impl JitFunc {
                 local_metas: FxHashMap::default(),
                 global_metas: FxHashMap::default(),
             },
+        };
+
+        for (bb_id, index) in &required_stubs {
+            self.add_bb_stub_func(self.module_id, *bb_id, *index, &mut module);
         }
+
+        module
     }
 }
 
@@ -1341,7 +1326,7 @@ fn calculate_args_to_pass(
     caller_typed_objs: impl Fn(LocalId) -> Option<TypedObj>,
     caller_assigned_local_to_obj: &FxBiHashMap<LocalId, LocalId>,
     bb_index_manager: &mut BBIndexManager,
-    required_stubs: &mut Vec<(BasicBlockId, Global, usize)>,
+    required_stubs: &mut Vec<(BasicBlockId, usize)>,
     global_manager: &mut GlobalManager,
 ) -> (Vec<LocalId>, VecMap<TypeParamId, ValType>, Global) {
     let mut type_args = VecMap::new();
@@ -1367,7 +1352,7 @@ fn calculate_args_to_pass(
 
     if let Some((global, index, flag)) = bb_index_manager.idx(&type_args, global_manager) {
         if flag == IndexFlag::NewInstance {
-            required_stubs.push((callee.bb_id, global, index));
+            required_stubs.push((callee.bb_id, index));
         }
         (args_to_pass, type_args, global)
     } else {
