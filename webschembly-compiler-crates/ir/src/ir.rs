@@ -1,49 +1,12 @@
 use std::fmt;
 use std::iter::from_coroutine;
 
-use derive_more::{From, Into};
+use super::display::*;
+use super::id::*;
+use super::meta::*;
 use ordered_float::NotNan;
 use rustc_hash::FxHashMap;
 use vec_map::{HasId, VecMap};
-
-const DISPLAY_INDENT: &str = "  ";
-
-#[derive(Debug, Clone)]
-pub struct VarMeta {
-    pub name: String,
-}
-#[derive(Debug, Clone, Default)]
-pub struct Meta {
-    pub local_metas: FxHashMap<(FuncId, LocalId), VarMeta>,
-    pub global_metas: FxHashMap<GlobalId, VarMeta>,
-}
-
-impl Meta {
-    pub fn in_func<'a>(&'a self, func_id: FuncId) -> MetaInFunc<'a> {
-        MetaInFunc {
-            func_id,
-            meta: self,
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Display<'a, T> {
-    value: T,
-    meta: &'a Meta,
-}
-
-#[derive(Debug, Clone)]
-pub struct DisplayInFunc<'a, T> {
-    value: T,
-    meta: MetaInFunc<'a>,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct MetaInFunc<'a> {
-    func_id: FuncId,
-    meta: &'a Meta,
-}
 
 /*
 TypeもしくはmutableなTypeを表す
@@ -143,69 +106,6 @@ impl UVectorKind {
             UVectorKind::S64 => ValType::Int,
             UVectorKind::F64 => ValType::Float,
         }
-    }
-}
-
-#[derive(Debug, Clone, Copy, From, Into, Hash, PartialEq, Eq, Ord, PartialOrd)]
-pub struct LocalId(usize);
-
-impl LocalId {
-    pub fn display<'a>(&self, meta: MetaInFunc<'a>) -> DisplayInFunc<'a, LocalId> {
-        DisplayInFunc { value: *self, meta }
-    }
-}
-
-impl fmt::Display for DisplayInFunc<'_, LocalId> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "l{}", self.value.0)?;
-        if let Some(meta) = self
-            .meta
-            .meta
-            .local_metas
-            .get(&(self.meta.func_id, self.value))
-        {
-            write!(f, "_{}", meta.name)?;
-        }
-
-        Ok(())
-    }
-}
-
-#[derive(Debug, Clone, Copy, From, Into, Hash, PartialEq, Eq)]
-pub struct GlobalId(usize);
-
-impl GlobalId {
-    pub fn display<'a>(&self, meta: &'a Meta) -> Display<'a, GlobalId> {
-        Display { value: *self, meta }
-    }
-}
-
-impl fmt::Display for Display<'_, GlobalId> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "g{}", self.value.0)?;
-        if let Some(meta) = self.meta.global_metas.get(&self.value) {
-            write!(f, "_{}", meta.name)?;
-        }
-
-        Ok(())
-    }
-}
-
-#[derive(Debug, Clone, Copy, From, Into, Hash, PartialEq, Eq)]
-pub struct FuncId(usize);
-
-impl FuncId {
-    pub fn display<'a>(&self, meta: &'a Meta) -> Display<'a, FuncId> {
-        Display { value: *self, meta }
-    }
-}
-
-impl fmt::Display for Display<'_, FuncId> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "f{}", self.value.0)?;
-        // TODO: add function name
-
-        Ok(())
     }
 }
 
@@ -1438,23 +1338,6 @@ impl fmt::Display for DisplayInFunc<'_, &'_ BasicBlock> {
     }
 }
 
-#[derive(Debug, Clone, Copy, From, Into, Hash, PartialEq, Eq)]
-pub struct BasicBlockId(usize);
-
-impl BasicBlockId {
-    pub fn display<'a>(&self, meta: &'a Meta) -> Display<'a, BasicBlockId> {
-        Display { value: *self, meta }
-    }
-}
-
-impl fmt::Display for Display<'_, BasicBlockId> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "bb{}", self.value.0)?;
-        // TODO: add basic block name
-        Ok(())
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BasicBlockTerminator {
     Return(LocalId),
@@ -1830,23 +1713,6 @@ impl fmt::Display for Display<'_, &'_ Global> {
     }
 }
 
-#[derive(Debug, Clone, Copy, From, Into, Hash, PartialEq, Eq)]
-pub struct ModuleId(usize);
-
-impl ModuleId {
-    pub fn display<'a>(&self, meta: &'a Meta) -> Display<'a, ModuleId> {
-        Display { value: *self, meta }
-    }
-}
-
-impl fmt::Display for Display<'_, ModuleId> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "module{}", self.value.0)?;
-
-        Ok(())
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct Module {
     pub globals: FxHashMap<GlobalId, Global>,
@@ -1876,7 +1742,3 @@ impl fmt::Display for Display<'_, &'_ Module> {
         Ok(())
     }
 }
-
-// TODO: ここに置くべきじゃない
-#[derive(Debug, Clone, Copy, From, Into, Hash, PartialEq, Eq, Ord, PartialOrd)]
-pub struct TypeParamId(usize);
