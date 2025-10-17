@@ -93,18 +93,18 @@ impl JitModule {
                 bb_entry: BasicBlockId::from(0),
                 bbs: [BasicBlock {
                     id: BasicBlockId::from(0),
-                    exprs: vec![
-                        ExprAssign {
+                    instrs: vec![
+                        Instr {
                             local: None,
-                            expr: Expr::InstantiateFunc(self.module_id, func.id, 0),
+                            expr: InstrKind::InstantiateFunc(self.module_id, func.id, 0),
                         },
-                        ExprAssign {
+                        Instr {
                             local: Some(f0_ref_local),
-                            expr: Expr::GlobalGet(self.func_to_globals[func.id]),
+                            expr: InstrKind::GlobalGet(self.func_to_globals[func.id]),
                         },
                     ],
                     next: BasicBlockNext::Terminator(BasicBlockTerminator::TailCallRef(
-                        ExprCallRef {
+                        InstrCallRef {
                             func: f0_ref_local,
                             args: func.args.clone(),
                             func_type: func.func_type(),
@@ -127,13 +127,13 @@ impl JitModule {
                     typ: LocalType::FuncRef,
                 });
 
-                exprs.push(ExprAssign {
+                exprs.push(Instr {
                     local: Some(func_ref_local),
-                    expr: Expr::FuncRef(stub_func_ids[&func.id]),
+                    expr: InstrKind::FuncRef(stub_func_ids[&func.id]),
                 });
-                exprs.push(ExprAssign {
+                exprs.push(Instr {
                     local: None,
-                    expr: Expr::GlobalSet(self.func_to_globals[func.id], func_ref_local),
+                    expr: InstrKind::GlobalSet(self.func_to_globals[func.id], func_ref_local),
                 });
             }
 
@@ -147,13 +147,13 @@ impl JitModule {
                         id,
                         typ: LocalType::MutFuncRef,
                     });
-                    exprs.push(ExprAssign {
+                    exprs.push(Instr {
                         local: Some(stub_local),
-                        expr: Expr::CreateEmptyMutFuncRef,
+                        expr: InstrKind::CreateEmptyMutFuncRef,
                     });
-                    exprs.push(ExprAssign {
+                    exprs.push(Instr {
                         local: None,
-                        expr: Expr::GlobalSet(stub_global.id, stub_local),
+                        expr: InstrKind::GlobalSet(stub_global.id, stub_local),
                     });
                 }
 
@@ -169,8 +169,8 @@ impl JitModule {
                 bb_entry: BasicBlockId::from(0),
                 bbs: [BasicBlock {
                     id: BasicBlockId::from(0),
-                    exprs,
-                    next: BasicBlockNext::Terminator(BasicBlockTerminator::TailCall(ExprCall {
+                    instrs: exprs,
+                    next: BasicBlockNext::Terminator(BasicBlockTerminator::TailCall(InstrCall {
                         func_id: stub_func_ids[&self.module.entry],
                         args: vec![],
                     })),
@@ -372,8 +372,8 @@ impl JitFunc {
                 bb_entry: BasicBlockId::from(0),
                 bbs: [BasicBlock {
                     id: BasicBlockId::from(0),
-                    exprs: vec![],
-                    next: BasicBlockNext::Terminator(BasicBlockTerminator::TailCall(ExprCall {
+                    instrs: vec![],
+                    next: BasicBlockNext::Terminator(BasicBlockTerminator::TailCall(InstrCall {
                         func_id: bb_func_id,
                         args: entry_bb_info.args.to_vec(),
                     })),
@@ -400,24 +400,31 @@ impl JitFunc {
 
                 let mut exprs = Vec::new();
                 exprs.extend([
-                    ExprAssign {
+                    Instr {
                         local: Some(func_ref_local),
-                        expr: Expr::FuncRef(body_func_id),
+                        expr: InstrKind::FuncRef(body_func_id),
                     },
-                    ExprAssign {
+                    Instr {
                         local: None,
-                        expr: Expr::GlobalSet(jit_ctx.instantiate_func_global().id, func_ref_local),
+                        expr: InstrKind::GlobalSet(
+                            jit_ctx.instantiate_func_global().id,
+                            func_ref_local,
+                        ),
                     },
                 ]);
                 if self.func_index == GLOBAL_LAYOUT_DEFAULT_INDEX {
                     // func_to_globalsはindex=0のためのもの
-                    exprs.push(ExprAssign {
+                    exprs.push(Instr {
                         local: None,
-                        expr: Expr::GlobalSet(func_to_globals[self.func.id], func_ref_local),
+                        expr: InstrKind::GlobalSet(func_to_globals[self.func.id], func_ref_local),
                     });
                 }
 
-                BasicBlock { id, exprs, next }
+                BasicBlock {
+                    id,
+                    instrs: exprs,
+                    next,
+                }
             })
         });
 
@@ -469,10 +476,10 @@ impl JitFunc {
                 bb_entry: BasicBlockId::from(0),
                 bbs: [BasicBlock {
                     id: BasicBlockId::from(0),
-                    exprs: vec![
-                        ExprAssign {
+                    instrs: vec![
+                        Instr {
                             local: None,
-                            expr: Expr::InstantiateBB(
+                            expr: InstrKind::InstantiateBB(
                                 module_id,
                                 self.func.id,
                                 self.func_index,
@@ -480,13 +487,13 @@ impl JitFunc {
                                 index,
                             ),
                         },
-                        ExprAssign {
+                        Instr {
                             local: Some(func_ref_local),
-                            expr: Expr::GlobalGet(index_global.id),
+                            expr: InstrKind::GlobalGet(index_global.id),
                         },
                     ],
                     next: BasicBlockNext::Terminator(BasicBlockTerminator::TailCallRef(
-                        ExprCallRef {
+                        InstrCallRef {
                             func: func_ref_local,
                             args: jit_bb.info.args.clone(),
                             func_type: FuncType {
@@ -510,14 +517,14 @@ impl JitFunc {
             });
             entry_func.bbs.push_with(|id| BasicBlock {
                 id,
-                exprs: vec![
-                    ExprAssign {
+                instrs: vec![
+                    Instr {
                         local: Some(func_ref_local),
-                        expr: Expr::FuncRef(func_id),
+                        expr: InstrKind::FuncRef(func_id),
                     },
-                    ExprAssign {
+                    Instr {
                         local: None,
-                        expr: Expr::GlobalSet(index_global.id, func_ref_local),
+                        expr: InstrKind::GlobalSet(index_global.id, func_ref_local),
                     },
                 ],
                 next,
@@ -617,12 +624,12 @@ impl JitFunc {
             // Args専用のuse-def chainのようなもの
             let mut local_to_args_expr_idx = FxHashMap::default();
             let mut exprs = Vec::new();
-            for expr in bb.exprs.iter() {
+            for expr in bb.instrs.iter() {
                 // FuncRefとCall命令はget global命令に置き換えられる
                 match *expr {
-                    ExprAssign {
+                    Instr {
                         local,
-                        expr: Expr::Phi(ref incomings),
+                        expr: InstrKind::Phi(ref incomings),
                     } => {
                         if orig_bb_id == orig_entry_bb_id {
                             // 削除
@@ -640,46 +647,46 @@ impl JitFunc {
                                     })
                                 })
                                 .collect();
-                            exprs.push(ExprAssign {
+                            exprs.push(Instr {
                                 local,
-                                expr: Expr::Phi(incomings),
+                                expr: InstrKind::Phi(incomings),
                             });
                         }
                     }
-                    ExprAssign {
+                    Instr {
                         local,
-                        expr: Expr::FuncRef(id),
+                        expr: InstrKind::FuncRef(id),
                     } => {
-                        exprs.push(ExprAssign {
+                        exprs.push(Instr {
                             local,
-                            expr: Expr::GlobalGet(func_to_globals[id]),
+                            expr: InstrKind::GlobalGet(func_to_globals[id]),
                         });
                     }
-                    ExprAssign {
+                    Instr {
                         local,
-                        expr: Expr::Call(ExprCall { func_id, ref args }),
+                        expr: InstrKind::Call(InstrCall { func_id, ref args }),
                     } => {
                         let func_ref_local = new_locals.push_with(|id| Local {
                             id,
                             typ: LocalType::FuncRef,
                         });
 
-                        exprs.push(ExprAssign {
+                        exprs.push(Instr {
                             local: Some(func_ref_local),
-                            expr: Expr::GlobalGet(func_to_globals[func_id]),
+                            expr: InstrKind::GlobalGet(func_to_globals[func_id]),
                         });
-                        exprs.push(ExprAssign {
+                        exprs.push(Instr {
                             local,
-                            expr: Expr::CallRef(ExprCallRef {
+                            expr: InstrKind::CallRef(InstrCallRef {
                                 func: func_ref_local,
                                 args: args.clone(),
                                 func_type: func_types[func_id].clone(),
                             }),
                         });
                     }
-                    ExprAssign {
+                    Instr {
                         local,
-                        expr: Expr::EntrypointTable(_),
+                        expr: InstrKind::EntrypointTable(_),
                     } => {
                         let mut locals = Vec::new();
                         for index in 0..GLOBAL_LAYOUT_MAX_SIZE {
@@ -687,20 +694,20 @@ impl JitFunc {
                                 id,
                                 typ: LocalType::MutFuncRef,
                             });
-                            exprs.push(ExprAssign {
+                            exprs.push(Instr {
                                 local: Some(stub),
-                                expr: Expr::GlobalGet(jit_ctx.stub_global(index).id),
+                                expr: InstrKind::GlobalGet(jit_ctx.stub_global(index).id),
                             });
                             locals.push(stub);
                         }
-                        exprs.push(ExprAssign {
+                        exprs.push(Instr {
                             local,
-                            expr: Expr::EntrypointTable(locals),
+                            expr: InstrKind::EntrypointTable(locals),
                         });
                     }
-                    ExprAssign {
+                    Instr {
                         local,
-                        expr: Expr::CallClosure(ref call_closure),
+                        expr: InstrKind::CallClosure(ref call_closure),
                     } => {
                         let call_closure = specialize_call_closure(
                             call_closure,
@@ -712,21 +719,21 @@ impl JitFunc {
                         )
                         .unwrap_or_else(|| call_closure.clone());
 
-                        exprs.push(ExprAssign {
+                        exprs.push(Instr {
                             local,
-                            expr: Expr::CallClosure(call_closure),
+                            expr: InstrKind::CallClosure(call_closure),
                         });
                     }
-                    ExprAssign {
+                    Instr {
                         local: Some(local),
-                        expr: Expr::VariadicArgs(_),
+                        expr: InstrKind::VariadicArgs(_),
                     } => {
                         local_to_args_expr_idx.insert(local, exprs.len());
                         exprs.push(expr.clone());
                     }
-                    ExprAssign {
+                    Instr {
                         local: Some(local),
-                        expr: Expr::Move(value),
+                        expr: InstrKind::Move(value),
                     } if let Some(args_expr_idx) = local_to_args_expr_idx.get(&value) => {
                         local_to_args_expr_idx.insert(local, *args_expr_idx);
                         exprs.push(expr.clone());
@@ -736,7 +743,7 @@ impl JitFunc {
                     }
                 }
             }
-            bb.exprs = exprs;
+            bb.instrs = exprs;
 
             // nextの決定にdef_use_chainとbbsが必要なので、一旦計算し、bbsに追加する
             // bb.nextはdef_use_chainの計算には影響を与えないのでここで計算して問題ない
@@ -751,13 +758,13 @@ impl JitFunc {
                     // もし cond が Is<T>(obj) かつ、obj が to_obj<P> ならば分岐をなくす
                     // この形の定数畳み込みのみ assign_type_args で新たに生まれるためここで処理する
                     // それ以外の形の定数畳み込みはJITとは無関係に外部で行う
-                    let const_cond = if let Some(&Expr::Is(ty1, obj)) = cond_expr
-                        && let Some(&Expr::ToObj(ty2, _)) =
+                    let const_cond = if let Some(&InstrKind::Is(ty1, obj)) = cond_expr
+                        && let Some(&InstrKind::ToObj(ty2, _)) =
                             def_use_chain.get_def_non_move_expr(&bbs, obj)
                     {
                         // TODO: 定数畳み込みを実装したのでもうなくていいかも
                         Some(ty1 == ty2)
-                    } else if let Some(&Expr::Bool(b)) = cond_expr {
+                    } else if let Some(&InstrKind::Bool(b)) = cond_expr {
                         Some(b)
                     } else {
                         None
@@ -782,7 +789,7 @@ impl JitFunc {
                     } else {
                         let mut then_types = Vec::new();
                         // Is命令で分岐している場合、then側のBBで型情報を使える
-                        if let Some(&Expr::Is(typ, obj_local)) = cond_expr {
+                        if let Some(&InstrKind::Is(typ, obj_local)) = cond_expr {
                             then_types.push((obj_local, typ));
                         }
 
@@ -807,7 +814,7 @@ impl JitFunc {
 
                     BasicBlockNext::Jump(next_bb_id)
                 }
-                BasicBlockNext::Terminator(BasicBlockTerminator::TailCall(ExprCall {
+                BasicBlockNext::Terminator(BasicBlockTerminator::TailCall(InstrCall {
                     func_id,
                     ref args,
                 })) => {
@@ -815,12 +822,12 @@ impl JitFunc {
                         id,
                         typ: LocalType::FuncRef,
                     });
-                    let exprs = &mut bbs[new_bb_id].exprs;
-                    exprs.push(ExprAssign {
+                    let exprs = &mut bbs[new_bb_id].instrs;
+                    exprs.push(Instr {
                         local: Some(func_ref_local),
-                        expr: Expr::GlobalGet(func_to_globals[func_id]),
+                        expr: InstrKind::GlobalGet(func_to_globals[func_id]),
                     });
-                    BasicBlockNext::Terminator(BasicBlockTerminator::TailCallRef(ExprCallRef {
+                    BasicBlockNext::Terminator(BasicBlockTerminator::TailCallRef(InstrCallRef {
                         func: func_ref_local,
                         args: args.clone(),
                         func_type: func_types[func_id].clone(),
@@ -831,7 +838,7 @@ impl JitFunc {
                 )) => {
                     let call_closure = specialize_call_closure(
                         call_closure,
-                        &bbs[new_bb_id].exprs,
+                        &bbs[new_bb_id].instrs,
                         jit_ctx.closure_global_layout(),
                         &local_to_args_expr_idx,
                         &mut required_closure_idx,
@@ -863,11 +870,11 @@ impl JitFunc {
             let mut exprs = Vec::new();
             // ジャンプ先のBBのPhiはここに移動
             // TODO: 型代入を考慮
-            for expr_assign in &func.bbs[orig_bb_id].exprs {
-                if let ExprAssign {
+            for instr in &func.bbs[orig_bb_id].instrs {
+                if let Instr {
                     local,
-                    expr: Expr::Phi(incomings),
-                } = expr_assign
+                    expr: InstrKind::Phi(incomings),
+                } = instr
                 {
                     let incomings = incomings
                         .iter()
@@ -876,9 +883,9 @@ impl JitFunc {
                             local: incoming.local,
                         })
                         .collect();
-                    exprs.push(ExprAssign {
+                    exprs.push(Instr {
                         local: *local,
-                        expr: Expr::Phi(incomings),
+                        expr: InstrKind::Phi(incomings),
                     });
                 }
             }
@@ -890,9 +897,9 @@ impl JitFunc {
                     id,
                     typ: LocalType::Type(Type::Val(typ)),
                 });
-                exprs.push(ExprAssign {
+                exprs.push(Instr {
                     local: Some(val_local),
-                    expr: Expr::FromObj(typ, obj_local),
+                    expr: InstrKind::FromObj(typ, obj_local),
                 });
                 branch_typed_objs.insert(
                     obj_local,
@@ -917,7 +924,7 @@ impl JitFunc {
                             def_use_chain
                                 .get_def_non_move_expr(&bbs, obj_local)
                                 .and_then(|expr| {
-                                    if let Expr::ToObj(typ, val_local) = *expr {
+                                    if let InstrKind::ToObj(typ, val_local) = *expr {
                                         Some(TypedObj {
                                             val_type: val_local,
                                             typ,
@@ -939,15 +946,15 @@ impl JitFunc {
                 typ: LocalType::FuncRef,
             });
 
-            exprs.extend([ExprAssign {
+            exprs.extend([Instr {
                 local: Some(func_ref_local),
-                expr: Expr::GlobalGet(index_global.id),
+                expr: InstrKind::GlobalGet(index_global.id),
             }]);
 
             bbs.insert_node(BasicBlock {
                 id: bb_id,
-                exprs,
-                next: BasicBlockNext::Terminator(BasicBlockTerminator::TailCallRef(ExprCallRef {
+                instrs: exprs,
+                next: BasicBlockNext::Terminator(BasicBlockTerminator::TailCallRef(InstrCallRef {
                     func: func_ref_local,
                     args: locals_to_pass,
                     func_type: FuncType {
@@ -1023,33 +1030,37 @@ impl JitFunc {
 
                 let mut exprs = Vec::new();
 
-                exprs.push(ExprAssign {
+                exprs.push(Instr {
                     local: Some(module_id_local),
-                    expr: Expr::ClosureModuleId(closure_local),
+                    expr: InstrKind::ClosureModuleId(closure_local),
                 });
-                exprs.push(ExprAssign {
+                exprs.push(Instr {
                     local: Some(func_id_local),
-                    expr: Expr::ClosureFuncId(closure_local),
+                    expr: InstrKind::ClosureFuncId(closure_local),
                 });
-                exprs.push(ExprAssign {
+                exprs.push(Instr {
                     local: None,
-                    expr: Expr::InstantiateClosureFunc(module_id_local, func_id_local, closure_idx),
+                    expr: InstrKind::InstantiateClosureFunc(
+                        module_id_local,
+                        func_id_local,
+                        closure_idx,
+                    ),
                 });
-                exprs.push(ExprAssign {
+                exprs.push(Instr {
                     local: Some(func_ref_local),
-                    expr: Expr::GlobalGet(jit_ctx.instantiate_func_global().id),
+                    expr: InstrKind::GlobalGet(jit_ctx.instantiate_func_global().id),
                 });
-                exprs.push(ExprAssign {
+                exprs.push(Instr {
                     local: Some(mut_func_ref_local),
-                    expr: Expr::CreateMutFuncRef(func_ref_local),
+                    expr: InstrKind::CreateMutFuncRef(func_ref_local),
                 });
-                exprs.push(ExprAssign {
+                exprs.push(Instr {
                     local: Some(entrypoint_table_local),
-                    expr: Expr::ClosureEntrypointTable(closure_local),
+                    expr: InstrKind::ClosureEntrypointTable(closure_local),
                 });
-                exprs.push(ExprAssign {
+                exprs.push(Instr {
                     local: None,
-                    expr: Expr::SetEntrypointTable(
+                    expr: InstrKind::SetEntrypointTable(
                         closure_idx,
                         entrypoint_table_local,
                         mut_func_ref_local,
@@ -1065,9 +1076,9 @@ impl JitFunc {
                     bb_entry: BasicBlockId::from(0),
                     bbs: [BasicBlock {
                         id: BasicBlockId::from(0),
-                        exprs,
+                        instrs: exprs,
                         next: BasicBlockNext::Terminator(BasicBlockTerminator::TailCallClosure(
-                            ExprCallClosure {
+                            InstrCallClosure {
                                 closure: closure_local,
                                 args: arg_locals,
                                 arg_types,
@@ -1095,13 +1106,13 @@ impl JitFunc {
 
             bbs.insert_node({
                 let mut exprs = vec![
-                    ExprAssign {
+                    Instr {
                         local: Some(func_ref_local),
-                        expr: Expr::FuncRef(body_func_id),
+                        expr: InstrKind::FuncRef(body_func_id),
                     },
-                    ExprAssign {
+                    Instr {
                         local: None,
-                        expr: Expr::GlobalSet(index_global.id, func_ref_local),
+                        expr: InstrKind::GlobalSet(index_global.id, func_ref_local),
                     },
                 ];
 
@@ -1114,23 +1125,26 @@ impl JitFunc {
                         id,
                         typ: LocalType::MutFuncRef,
                     });
-                    exprs.push(ExprAssign {
+                    exprs.push(Instr {
                         local: Some(stub_func_ref_local),
-                        expr: Expr::FuncRef(stub_func_id),
+                        expr: InstrKind::FuncRef(stub_func_id),
                     });
-                    exprs.push(ExprAssign {
+                    exprs.push(Instr {
                         local: Some(stub_mut_func_ref_local),
-                        expr: Expr::GlobalGet(jit_ctx.stub_global(closure_idx).id),
+                        expr: InstrKind::GlobalGet(jit_ctx.stub_global(closure_idx).id),
                     });
-                    exprs.push(ExprAssign {
+                    exprs.push(Instr {
                         local: None,
-                        expr: Expr::SetMutFuncRef(stub_mut_func_ref_local, stub_func_ref_local),
+                        expr: InstrKind::SetMutFuncRef(
+                            stub_mut_func_ref_local,
+                            stub_func_ref_local,
+                        ),
                     });
                 }
 
                 BasicBlock {
                     id: BasicBlockId::from(0),
-                    exprs,
+                    instrs: exprs,
                     next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(func_ref_local)),
                 }
             });
@@ -1165,20 +1179,20 @@ impl JitFunc {
 }
 
 fn specialize_call_closure(
-    call_closure: &ExprCallClosure,
-    exprs: &[ExprAssign],
+    call_closure: &InstrCallClosure,
+    exprs: &[Instr],
     closure_global_layout: &mut ClosureGlobalLayout,
     local_to_args_expr_idx: &FxHashMap<LocalId, usize>,
     required_closure_idx: &mut Vec<usize>,
     typed_objs: &VecMap<LocalId, TypedObj>,
-) -> Option<ExprCallClosure> {
+) -> Option<InstrCallClosure> {
     if call_closure.func_index != GLOBAL_LAYOUT_DEFAULT_INDEX {
         return None;
     }
 
     // func_index == GLOBAL_LAYOUT_DEFAULT_INDEX なら引数は[Args]を仮定してよい
     let args_expr_idx = *local_to_args_expr_idx.get(&call_closure.args[0])?;
-    let Expr::VariadicArgs(args) = &exprs[args_expr_idx].expr else {
+    let InstrKind::VariadicArgs(args) = &exprs[args_expr_idx].expr else {
         unreachable!("unexpected expr other than VariadicArgs");
     };
 
@@ -1209,7 +1223,7 @@ fn specialize_call_closure(
     Some(if closure_index == GLOBAL_LAYOUT_DEFAULT_INDEX {
         call_closure.clone()
     } else {
-        ExprCallClosure {
+        InstrCallClosure {
             closure: call_closure.closure,
             args: fixed_args,
             arg_types,
@@ -1512,9 +1526,9 @@ fn closure_func_assign_types(
                     id,
                     typ: LocalType::Type(Type::Obj),
                 });
-                exprs.push(ExprAssign {
+                exprs.push(Instr {
                     local: Some(obj_local),
-                    expr: Expr::ToObj(val_type, local),
+                    expr: InstrKind::ToObj(val_type, local),
                 });
                 obj_local
             } else {
@@ -1523,14 +1537,14 @@ fn closure_func_assign_types(
             obj_locals.push(obj_local);
         }
 
-        exprs.push(ExprAssign {
+        exprs.push(Instr {
             local: Some(variadic_args_local),
-            expr: Expr::VariadicArgs(obj_locals),
+            expr: InstrKind::VariadicArgs(obj_locals),
         });
 
         BasicBlock {
             id: bb_id,
-            exprs,
+            instrs: exprs,
             next: BasicBlockNext::Jump(prev_entry),
         }
     });

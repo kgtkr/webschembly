@@ -22,9 +22,9 @@ fn remove_phi_in_bb(func: &mut Func, bb_id: BasicBlockId) {
     let mut pending_copies: FxHashMap<BasicBlockId, Vec<Copy>> = FxHashMap::default();
 
     // 先行ブロックごとの並列コピーリストを収集
-    for expr_assign in &func.bbs[bb_id].exprs {
-        if let Expr::Phi(incomings) = &expr_assign.expr
-            && let Some(result) = expr_assign.local
+    for instr in &func.bbs[bb_id].instrs {
+        if let InstrKind::Phi(incomings) = &instr.expr
+            && let Some(result) = instr.local
         {
             for incoming in incomings {
                 pending_copies.entry(incoming.bb).or_default().push(Copy {
@@ -41,18 +41,18 @@ fn remove_phi_in_bb(func: &mut Func, bb_id: BasicBlockId) {
         let bb = &mut func.bbs[block_id];
 
         for copy in sequential_copies {
-            bb.exprs.push(ExprAssign {
+            bb.instrs.push(Instr {
                 local: Some(copy.dest),
-                expr: Expr::Move(copy.src),
+                expr: InstrKind::Move(copy.src),
             });
         }
     }
 
     // 対象ブロックのPHI命令を削除
-    for expr_assign in &mut func.bbs[bb_id].exprs {
-        if let Expr::Phi(_) = &expr_assign.expr {
-            expr_assign.expr = Expr::Nop;
-            expr_assign.local = None;
+    for instr in &mut func.bbs[bb_id].instrs {
+        if let InstrKind::Phi(_) = &instr.expr {
+            instr.expr = InstrKind::Nop;
+            instr.local = None;
         }
     }
 }
@@ -108,7 +108,7 @@ fn assert_ssa(func: &Func) {
     for bb in func.bbs.values() {
         let mut phi_area = true;
 
-        for expr in bb.exprs.iter() {
+        for expr in bb.instrs.iter() {
             if let Some(local_id) = expr.local {
                 if assigned[local_id] {
                     panic!("local {:?} is assigned more than once", local_id);
@@ -117,12 +117,12 @@ fn assert_ssa(func: &Func) {
             }
 
             if phi_area {
-                if let Expr::Phi(_) | Expr::Nop = expr.expr {
+                if let InstrKind::Phi(_) | InstrKind::Nop = expr.expr {
                     // do nothing
                 } else {
                     phi_area = false;
                 }
-            } else if let Expr::Phi(_) = expr.expr {
+            } else if let InstrKind::Phi(_) = expr.expr {
                 panic!("phi instruction must be at the beginning of a basic block");
             }
         }
@@ -138,8 +138,8 @@ pub fn debug_assert_ssa(func: &Func) {
 // TODO: test
 pub fn collect_defs(bb: &BasicBlock) -> VecMap<LocalId, usize> {
     let mut defs = VecMap::new();
-    for (i, expr_assign) in bb.exprs.iter().enumerate() {
-        if let Some(local) = expr_assign.local {
+    for (i, instr) in bb.instrs.iter().enumerate() {
+        if let Some(local) = instr.local {
             debug_assert!(defs.get(local).is_none());
             defs.insert(local, i);
         }
@@ -213,9 +213,9 @@ impl DefUseChain {
         &self,
         bbs: &'a VecMap<BasicBlockId, BasicBlock>,
         local: LocalId,
-    ) -> Option<&'a Expr> {
+    ) -> Option<&'a InstrKind> {
         if let Some(def) = self.defs.get(local) {
-            Some(&bbs[def.bb_id].exprs[def.expr_idx].expr)
+            Some(&bbs[def.bb_id].instrs[def.expr_idx].expr)
         } else {
             None
         }
@@ -225,10 +225,10 @@ impl DefUseChain {
         &self,
         bbs: &'a VecMap<BasicBlockId, BasicBlock>,
         mut local: LocalId,
-    ) -> Option<&'a Expr> {
+    ) -> Option<&'a InstrKind> {
         while let Some(expr) = self.get_def_expr(bbs, local) {
             match expr {
-                Expr::Move(value) => {
+                InstrKind::Move(value) => {
                     local = *value;
                 }
                 _ => {

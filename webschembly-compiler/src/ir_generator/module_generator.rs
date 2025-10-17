@@ -92,26 +92,26 @@ impl<'a> ModuleGenerator<'a> {
                 id,
                 typ: LocalType::EntrypointTable,
             });
-            entry_exprs.push(ExprAssign {
+            entry_exprs.push(Instr {
                 local: Some(func_ref_local),
-                expr: Expr::FuncRef(func_id),
+                expr: InstrKind::FuncRef(func_id),
             });
-            entry_exprs.push(ExprAssign {
+            entry_exprs.push(Instr {
                 local: Some(mut_func_ref_local),
-                expr: Expr::CreateMutFuncRef(func_ref_local),
+                expr: InstrKind::CreateMutFuncRef(func_ref_local),
             });
-            entry_exprs.push(ExprAssign {
+            entry_exprs.push(Instr {
                 local: Some(entrypoint_table_local),
-                expr: Expr::EntrypointTable(vec![mut_func_ref_local]),
+                expr: InstrKind::EntrypointTable(vec![mut_func_ref_local]),
             });
-            entry_exprs.push(ExprAssign {
+            entry_exprs.push(Instr {
                 local: None,
-                expr: Expr::GlobalSet(entrypoint_table_global_id, entrypoint_table_local),
+                expr: InstrKind::GlobalSet(entrypoint_table_global_id, entrypoint_table_local),
             });
         }
         let new_bb_entry = entry_func.bbs.push_with(|bb_id| BasicBlock {
             id: bb_id,
-            exprs: entry_exprs,
+            instrs: entry_exprs,
             next: BasicBlockNext::Jump(prev_bb_entry),
         });
         entry_func.bb_entry = new_bb_entry;
@@ -164,7 +164,7 @@ struct FuncGenerator<'a, 'b> {
     local_ids: FxHashMap<LocalVarId, LocalId>,
     bbs: VecMap<BasicBlockId, BasicBlock>,
     module_generator: &'a mut ModuleGenerator<'b>,
-    exprs: Vec<ExprAssign>,
+    exprs: Vec<Instr>,
     current_bb_id: Option<BasicBlockId>,
     uninitialized_vars: FxHashMap<LocalVarId, Vec<UninitializedVarCaptureClosure>>,
 }
@@ -223,17 +223,17 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         let expected_args_len_local = self.local(Type::Val(ValType::Int));
         let args_len_check_success_local = self.local(Type::Val(ValType::Bool));
 
-        self.exprs.push(ExprAssign {
+        self.exprs.push(Instr {
             local: Some(args_len_local),
-            expr: Expr::VariadicArgsLength(args),
+            expr: InstrKind::VariadicArgsLength(args),
         });
-        self.exprs.push(ExprAssign {
+        self.exprs.push(Instr {
             local: Some(expected_args_len_local),
-            expr: Expr::Int(lambda.args.len() as i64),
+            expr: InstrKind::Int(lambda.args.len() as i64),
         });
-        self.exprs.push(ExprAssign {
+        self.exprs.push(Instr {
             local: Some(args_len_check_success_local),
-            expr: Expr::EqInt(args_len_local, expected_args_len_local),
+            expr: InstrKind::EqInt(args_len_local, expected_args_len_local),
         });
 
         let error_bb_id = self.bbs.allocate_key();
@@ -245,9 +245,9 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         ));
         self.current_bb_id = Some(error_bb_id);
         let msg = self.local(Type::Val(ValType::String));
-        self.exprs.push(ExprAssign {
+        self.exprs.push(Instr {
             local: Some(msg),
-            expr: Expr::String("args count mismatch\n".to_string()),
+            expr: InstrKind::String("args count mismatch\n".to_string()),
         });
         self.close_bb(BasicBlockNext::Terminator(BasicBlockTerminator::Error(msg)));
         self.current_bb_id = Some(merge_bb_id);
@@ -255,25 +255,25 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         for (arg_idx, arg) in x.args.iter().enumerate() {
             if self.module_generator.ast.x.box_vars.contains(arg) {
                 let local = self.local(LocalType::Type(Type::Obj));
-                self.exprs.push(ExprAssign {
+                self.exprs.push(Instr {
                     local: Some(local),
-                    expr: Expr::VariadicArgsRef(args, arg_idx),
+                    expr: InstrKind::VariadicArgsRef(args, arg_idx),
                 });
 
                 let ref_ = self.define_ast_local(*arg);
-                self.exprs.push(ExprAssign {
+                self.exprs.push(Instr {
                     local: Some(ref_),
-                    expr: Expr::CreateRef(Type::Obj),
+                    expr: InstrKind::CreateRef(Type::Obj),
                 });
-                self.exprs.push(ExprAssign {
+                self.exprs.push(Instr {
                     local: None,
-                    expr: Expr::SetRef(Type::Obj, ref_, local),
+                    expr: InstrKind::SetRef(Type::Obj, ref_, local),
                 });
             } else {
                 let arg_id = self.define_ast_local(*arg);
-                self.exprs.push(ExprAssign {
+                self.exprs.push(Instr {
                     local: Some(arg_id),
-                    expr: Expr::VariadicArgsRef(args, arg_idx),
+                    expr: InstrKind::VariadicArgsRef(args, arg_idx),
                 });
             }
         }
@@ -291,10 +291,10 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         // 環境を復元する処理を追加
         for (i, var_id) in x.captures.iter().enumerate() {
             let env_local = *self.local_ids.get(var_id).unwrap();
-            self.exprs.push(ExprAssign {
+            self.exprs.push(Instr {
                 local: Some(env_local),
                 // TODO: 無駄なclone。Irの設計を見直す
-                expr: Expr::ClosureEnv(env_types.clone(), self_closure, i),
+                expr: InstrKind::ClosureEnv(env_types.clone(), self_closure, i),
             });
         }
 
@@ -326,9 +326,9 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         for id in locals {
             let local = self.define_ast_local(*id);
             if self.module_generator.ast.x.box_vars.contains(id) {
-                self.exprs.push(ExprAssign {
+                self.exprs.push(Instr {
                     local: Some(local),
-                    expr: Expr::CreateRef(Type::Obj),
+                    expr: InstrKind::CreateRef(Type::Obj),
                 });
             }
         }
@@ -375,95 +375,95 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             ast::Expr::Const(_, lit) => match lit {
                 ast::Const::Bool(b) => {
                     let val_type_local = self.local(Type::Val(ValType::Bool));
-                    self.exprs.push(ExprAssign {
+                    self.exprs.push(Instr {
                         local: Some(val_type_local),
-                        expr: Expr::Bool(*b),
+                        expr: InstrKind::Bool(*b),
                     });
-                    self.exprs.push(ExprAssign {
+                    self.exprs.push(Instr {
                         local: result,
-                        expr: Expr::ToObj(ValType::Bool, val_type_local),
+                        expr: InstrKind::ToObj(ValType::Bool, val_type_local),
                     });
                 }
                 ast::Const::Int(i) => {
                     let val_type_local = self.local(Type::Val(ValType::Int));
-                    self.exprs.push(ExprAssign {
+                    self.exprs.push(Instr {
                         local: Some(val_type_local),
-                        expr: Expr::Int(*i),
+                        expr: InstrKind::Int(*i),
                     });
-                    self.exprs.push(ExprAssign {
+                    self.exprs.push(Instr {
                         local: result,
-                        expr: Expr::ToObj(ValType::Int, val_type_local),
+                        expr: InstrKind::ToObj(ValType::Int, val_type_local),
                     });
                 }
                 ast::Const::Float(f) => {
                     let val_type_local = self.local(Type::Val(ValType::Float));
-                    self.exprs.push(ExprAssign {
+                    self.exprs.push(Instr {
                         local: Some(val_type_local),
-                        expr: Expr::Float(*f),
+                        expr: InstrKind::Float(*f),
                     });
-                    self.exprs.push(ExprAssign {
+                    self.exprs.push(Instr {
                         local: result,
-                        expr: Expr::ToObj(ValType::Float, val_type_local),
+                        expr: InstrKind::ToObj(ValType::Float, val_type_local),
                     });
                 }
                 ast::Const::NaN => {
                     let val_type_local = self.local(Type::Val(ValType::Float));
-                    self.exprs.push(ExprAssign {
+                    self.exprs.push(Instr {
                         local: Some(val_type_local),
-                        expr: Expr::NaN,
+                        expr: InstrKind::NaN,
                     });
-                    self.exprs.push(ExprAssign {
+                    self.exprs.push(Instr {
                         local: result,
-                        expr: Expr::ToObj(ValType::Float, val_type_local),
+                        expr: InstrKind::ToObj(ValType::Float, val_type_local),
                     });
                 }
                 ast::Const::String(s) => {
                     let val_type_local = self.local(Type::Val(ValType::String));
-                    self.exprs.push(ExprAssign {
+                    self.exprs.push(Instr {
                         local: Some(val_type_local),
-                        expr: Expr::String(s.clone()),
+                        expr: InstrKind::String(s.clone()),
                     });
-                    self.exprs.push(ExprAssign {
+                    self.exprs.push(Instr {
                         local: result,
-                        expr: Expr::ToObj(ValType::String, val_type_local),
+                        expr: InstrKind::ToObj(ValType::String, val_type_local),
                     });
                 }
                 ast::Const::Nil => {
                     let val_type_local = self.local(Type::Val(ValType::Nil));
-                    self.exprs.push(ExprAssign {
+                    self.exprs.push(Instr {
                         local: Some(val_type_local),
-                        expr: Expr::Nil,
+                        expr: InstrKind::Nil,
                     });
-                    self.exprs.push(ExprAssign {
+                    self.exprs.push(Instr {
                         local: result,
-                        expr: Expr::ToObj(ValType::Nil, val_type_local),
+                        expr: InstrKind::ToObj(ValType::Nil, val_type_local),
                     });
                 }
                 ast::Const::Char(c) => {
                     let val_type_local = self.local(Type::Val(ValType::Char));
-                    self.exprs.push(ExprAssign {
+                    self.exprs.push(Instr {
                         local: Some(val_type_local),
-                        expr: Expr::Char(*c),
+                        expr: InstrKind::Char(*c),
                     });
-                    self.exprs.push(ExprAssign {
+                    self.exprs.push(Instr {
                         local: result,
-                        expr: Expr::ToObj(ValType::Char, val_type_local),
+                        expr: InstrKind::ToObj(ValType::Char, val_type_local),
                     });
                 }
                 ast::Const::Symbol(s) => {
                     let string = self.local(Type::Val(ValType::String));
                     let val_type_local = self.local(Type::Val(ValType::Symbol));
-                    self.exprs.push(ExprAssign {
+                    self.exprs.push(Instr {
                         local: Some(string),
-                        expr: Expr::String(s.clone()),
+                        expr: InstrKind::String(s.clone()),
                     });
-                    self.exprs.push(ExprAssign {
+                    self.exprs.push(Instr {
                         local: Some(val_type_local),
-                        expr: Expr::StringToSymbol(string),
+                        expr: InstrKind::StringToSymbol(string),
                     });
-                    self.exprs.push(ExprAssign {
+                    self.exprs.push(Instr {
                         local: result,
-                        expr: Expr::ToObj(ValType::Symbol, val_type_local),
+                        expr: InstrKind::ToObj(ValType::Symbol, val_type_local),
                     });
                 }
             },
@@ -472,9 +472,9 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 let func_id = self.module_generator.gen_func(x, lambda);
                 let func_local = self.local(LocalType::FuncRef);
                 let val_type_local = self.local(Type::Val(ValType::Closure));
-                self.exprs.push(ExprAssign {
+                self.exprs.push(Instr {
                     local: Some(func_local),
-                    expr: Expr::FuncRef(func_id),
+                    expr: InstrKind::FuncRef(func_id),
                 });
 
                 let entrypoint_table_global = self
@@ -489,9 +489,9 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     .insert(func_id, entrypoint_table_global.id);
 
                 let entrypoint_table_local = self.local(LocalType::EntrypointTable);
-                self.exprs.push(ExprAssign {
+                self.exprs.push(Instr {
                     local: Some(entrypoint_table_local),
-                    expr: Expr::GlobalGet(entrypoint_table_global.id),
+                    expr: InstrKind::GlobalGet(entrypoint_table_global.id),
                 });
 
                 let env_types = x
@@ -510,9 +510,9 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                             env_types: env_types.clone(),
                         });
                         let undef_local = self.local(env_types[i]);
-                        self.exprs.push(ExprAssign {
+                        self.exprs.push(Instr {
                             local: Some(undef_local),
-                            expr: Expr::Uninitialized(env_types[i]),
+                            expr: InstrKind::Uninitialized(env_types[i]),
                         });
                         captures.push(undef_local);
                     } else {
@@ -520,18 +520,18 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     }
                 }
 
-                self.exprs.push(ExprAssign {
+                self.exprs.push(Instr {
                     local: Some(val_type_local),
-                    expr: Expr::Closure {
+                    expr: InstrKind::Closure {
                         envs: captures,
                         func_id,
                         module_id: self.module_generator.id,
                         entrypoint_table: entrypoint_table_local,
                     },
                 });
-                self.exprs.push(ExprAssign {
+                self.exprs.push(Instr {
                     local: result,
-                    expr: Expr::ToObj(ValType::Closure, val_type_local),
+                    expr: InstrKind::ToObj(ValType::Closure, val_type_local),
                 });
             }
             ast::Expr::If(_, ast::If { cond, then, els }) => {
@@ -539,20 +539,20 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 self.gen_exprs(Some(obj_cond_local), cond);
 
                 let false_local = self.local(Type::Val(ValType::Bool));
-                self.exprs.push(ExprAssign {
+                self.exprs.push(Instr {
                     local: Some(false_local),
-                    expr: Expr::Bool(false),
+                    expr: InstrKind::Bool(false),
                 });
                 let false_obj_local = self.local(Type::Obj);
-                self.exprs.push(ExprAssign {
+                self.exprs.push(Instr {
                     local: Some(false_obj_local),
-                    expr: Expr::ToObj(ValType::Bool, false_local),
+                    expr: InstrKind::ToObj(ValType::Bool, false_local),
                 });
 
                 let cond_not_local = self.local(Type::Val(ValType::Bool));
-                self.exprs.push(ExprAssign {
+                self.exprs.push(Instr {
                     local: Some(cond_not_local),
-                    expr: Expr::EqObj(obj_cond_local, false_obj_local),
+                    expr: InstrKind::EqObj(obj_cond_local, false_obj_local),
                 });
 
                 let then_bb_id = self.bbs.allocate_key();
@@ -577,9 +577,9 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 self.close_bb(BasicBlockNext::Jump(merge_bb_id));
 
                 self.current_bb_id = Some(merge_bb_id);
-                self.exprs.push(ExprAssign {
+                self.exprs.push(Instr {
                     local: result,
-                    expr: Expr::Phi({
+                    expr: InstrKind::Phi({
                         let mut incomings = Vec::new();
                         if let Some(bb) = then_ended_bb_id {
                             incomings.push(PhiIncomingValue {
@@ -609,9 +609,9 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                             self.locals[before_local].typ,
                         );
                         let phi_local = self.new_version_ast_local(var_id);
-                        self.exprs.push(ExprAssign {
+                        self.exprs.push(Instr {
                             local: Some(phi_local),
-                            expr: Expr::Phi({
+                            expr: InstrKind::Phi({
                                 let mut incomings = Vec::new();
                                 if let Some(bb) = then_ended_bb_id {
                                     incomings.push(PhiIncomingValue {
@@ -648,9 +648,9 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
 
                     if rules.is_empty() {
                         let msg = self.local(Type::Val(ValType::String));
-                        self.exprs.push(ExprAssign {
+                        self.exprs.push(Instr {
                             local: Some(msg),
-                            expr: Expr::String("builtin args count mismatch\n".to_string()),
+                            expr: InstrKind::String("builtin args count mismatch\n".to_string()),
                         });
                         self.close_bb(BasicBlockNext::Terminator(BasicBlockTerminator::Error(msg)));
                     } else {
@@ -666,9 +666,9 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                                 if let Type::Val(val_type) = typ {
                                     let type_check_success_local =
                                         self.local(Type::Val(ValType::Bool));
-                                    self.exprs.push(ExprAssign {
+                                    self.exprs.push(Instr {
                                         local: Some(type_check_success_local),
-                                        expr: Expr::Is(*val_type, obj_arg_local),
+                                        expr: InstrKind::Is(*val_type, obj_arg_local),
                                     });
                                     type_check_success_locals.push(type_check_success_local);
                                 }
@@ -676,16 +676,16 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
 
                             let mut all_type_check_success_local =
                                 self.local(Type::Val(ValType::Bool));
-                            self.exprs.push(ExprAssign {
+                            self.exprs.push(Instr {
                                 local: Some(all_type_check_success_local),
-                                expr: Expr::Bool(true),
+                                expr: InstrKind::Bool(true),
                             });
                             for type_check_success_local in type_check_success_locals {
                                 let new_all_type_check_success_local =
                                     self.local(Type::Val(ValType::Bool));
-                                self.exprs.push(ExprAssign {
+                                self.exprs.push(Instr {
                                     local: Some(new_all_type_check_success_local),
-                                    expr: Expr::And(
+                                    expr: InstrKind::And(
                                         all_type_check_success_local,
                                         type_check_success_local,
                                     ),
@@ -711,9 +711,9 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                                     Type::Obj => obj_arg_local,
                                     Type::Val(val_type) => {
                                         let val_type_local = self.local(Type::Val(*val_type));
-                                        self.exprs.push(ExprAssign {
+                                        self.exprs.push(Instr {
                                             local: Some(val_type_local),
-                                            expr: Expr::FromObj(*val_type, obj_arg_local),
+                                            expr: InstrKind::FromObj(*val_type, obj_arg_local),
                                         });
                                         val_type_local
                                     }
@@ -743,11 +743,11 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                             };
 
                             let ret_obj_local = self.local(Type::Obj);
-                            self.exprs.push(ExprAssign {
+                            self.exprs.push(Instr {
                                 local: Some(ret_obj_local),
                                 expr: match rule.ret_type() {
-                                    Type::Obj => Expr::Move(ret_local),
-                                    Type::Val(val_type) => Expr::ToObj(val_type, ret_local),
+                                    Type::Obj => InstrKind::Move(ret_local),
+                                    Type::Val(val_type) => InstrKind::ToObj(val_type, ret_local),
                                 },
                             });
                             phi_incoming_values.push(PhiIncomingValue {
@@ -760,15 +760,18 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                         }
 
                         let msg = self.local(Type::Val(ValType::String));
-                        self.exprs.push(ExprAssign {
+                        self.exprs.push(Instr {
                             local: Some(msg),
-                            expr: Expr::String(format!("{}: arg type mismatch\n", builtin.name())),
+                            expr: InstrKind::String(format!(
+                                "{}: arg type mismatch\n",
+                                builtin.name()
+                            )),
                         });
                         self.close_bb(BasicBlockNext::Terminator(BasicBlockTerminator::Error(msg)));
                         self.current_bb_id = Some(merge_bb_id);
-                        self.exprs.push(ExprAssign {
+                        self.exprs.push(Instr {
                             local: result,
-                            expr: Expr::Phi(phi_incoming_values),
+                            expr: InstrKind::Phi(phi_incoming_values),
                         });
                     }
                 } else {
@@ -777,9 +780,9 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
 
                     // TODO: funcがクロージャかのチェック
                     let closure_local = self.local(ValType::Closure);
-                    self.exprs.push(ExprAssign {
+                    self.exprs.push(Instr {
                         local: Some(closure_local),
-                        expr: Expr::FromObj(ValType::Closure, obj_func_local),
+                        expr: InstrKind::FromObj(ValType::Closure, obj_func_local),
                     });
 
                     let args_local = self.local(LocalType::VariadicArgs);
@@ -789,13 +792,13 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                         self.gen_exprs(Some(arg_local), arg);
                         args_locals.push(arg_local);
                     }
-                    self.exprs.push(ExprAssign {
+                    self.exprs.push(Instr {
                         local: Some(args_local),
-                        expr: Expr::VariadicArgs(args_locals),
+                        expr: InstrKind::VariadicArgs(args_locals),
                     });
 
                     let is_tail = x.is_tail;
-                    let call_closure = ExprCallClosure {
+                    let call_closure = InstrCallClosure {
                         closure: closure_local,
                         args: vec![args_local],
                         arg_types: vec![LocalType::VariadicArgs],
@@ -806,9 +809,9 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                             BasicBlockTerminator::TailCallClosure(call_closure),
                         ));
                     } else {
-                        self.exprs.push(ExprAssign {
+                        self.exprs.push(Instr {
                             local: result,
-                            expr: Expr::CallClosure(call_closure),
+                            expr: InstrKind::CallClosure(call_closure),
                         });
                     }
                 }
@@ -816,22 +819,22 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             ast::Expr::Var(x, _) => match &x.var_id {
                 VarId::Local(id) => {
                     if self.module_generator.ast.x.box_vars.contains(id) {
-                        self.exprs.push(ExprAssign {
+                        self.exprs.push(Instr {
                             local: result,
-                            expr: Expr::DerefRef(Type::Obj, *self.local_ids.get(id).unwrap()),
+                            expr: InstrKind::DerefRef(Type::Obj, *self.local_ids.get(id).unwrap()),
                         });
                     } else {
-                        self.exprs.push(ExprAssign {
+                        self.exprs.push(Instr {
                             local: result,
-                            expr: Expr::Move(*self.local_ids.get(id).unwrap()),
+                            expr: InstrKind::Move(*self.local_ids.get(id).unwrap()),
                         });
                     }
                 }
                 VarId::Global(id) => {
                     let global = self.module_generator.global(*id);
-                    self.exprs.push(ExprAssign {
+                    self.exprs.push(Instr {
                         local: result,
-                        expr: Expr::GlobalGet(global.id),
+                        expr: InstrKind::GlobalGet(global.id),
                     });
                 }
             },
@@ -845,21 +848,21 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                             let obj_local = self.local(Type::Obj);
                             self.gen_exprs(Some(obj_local), expr);
                             let local = self.local_ids.get(id).unwrap();
-                            self.exprs.push(ExprAssign {
+                            self.exprs.push(Instr {
                                 local: None,
-                                expr: Expr::SetRef(Type::Obj, *local, obj_local),
+                                expr: InstrKind::SetRef(Type::Obj, *local, obj_local),
                             });
-                            self.exprs.push(ExprAssign {
+                            self.exprs.push(Instr {
                                 local: result,
-                                expr: Expr::Move(obj_local),
+                                expr: InstrKind::Move(obj_local),
                             });
                         } else {
                             // SSA形式のため、新しいローカルを定義して代入する
                             let local = self.new_version_ast_local(*id);
                             self.gen_exprs(Some(local), expr);
-                            self.exprs.push(ExprAssign {
+                            self.exprs.push(Instr {
                                 local: result,
-                                expr: Expr::Move(local),
+                                expr: InstrKind::Move(local),
                             });
                         }
                     }
@@ -868,9 +871,11 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                             && !self.module_generator.config.allow_set_builtin
                         {
                             let msg = self.local(Type::Val(ValType::String));
-                            self.exprs.push(ExprAssign {
+                            self.exprs.push(Instr {
                                 local: Some(msg),
-                                expr: Expr::String("set! builtin is not allowed\n".to_string()),
+                                expr: InstrKind::String(
+                                    "set! builtin is not allowed\n".to_string(),
+                                ),
                             });
                             self.close_bb(BasicBlockNext::Terminator(BasicBlockTerminator::Error(
                                 msg,
@@ -879,13 +884,13 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                             let local = self.local(Type::Obj);
                             self.gen_exprs(Some(local), expr);
                             let global = self.module_generator.global(*id);
-                            self.exprs.push(ExprAssign {
+                            self.exprs.push(Instr {
                                 local: None,
-                                expr: Expr::GlobalSet(global.id, local),
+                                expr: InstrKind::GlobalSet(global.id, local),
                             });
-                            self.exprs.push(ExprAssign {
+                            self.exprs.push(Instr {
                                 local: result,
-                                expr: Expr::Move(local),
+                                expr: InstrKind::Move(local),
                             });
                         }
                     }
@@ -902,13 +907,13 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     vec_locals.push(obj_local);
                 }
                 let val_type_local = self.local(Type::Val(ValType::Vector));
-                self.exprs.push(ExprAssign {
+                self.exprs.push(Instr {
                     local: Some(val_type_local),
-                    expr: Expr::Vector(vec_locals),
+                    expr: InstrKind::Vector(vec_locals),
                 });
-                self.exprs.push(ExprAssign {
+                self.exprs.push(Instr {
                     local: result,
-                    expr: Expr::ToObj(ValType::Vector, val_type_local),
+                    expr: InstrKind::ToObj(ValType::Vector, val_type_local),
                 });
             }
             ast::Expr::UVector(_, uvec) => {
@@ -924,20 +929,23 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     element_obj_locals.push(obj_local);
                 }
                 let mut type_check_all_success_local = self.local(Type::Val(ValType::Bool));
-                self.exprs.push(ExprAssign {
+                self.exprs.push(Instr {
                     local: Some(type_check_all_success_local),
-                    expr: Expr::Bool(true),
+                    expr: InstrKind::Bool(true),
                 });
                 for obj_local in &element_obj_locals {
                     let type_check_success_local = self.local(Type::Val(ValType::Bool));
-                    self.exprs.push(ExprAssign {
+                    self.exprs.push(Instr {
                         local: Some(type_check_success_local),
-                        expr: Expr::Is(kind.element_type(), *obj_local),
+                        expr: InstrKind::Is(kind.element_type(), *obj_local),
                     });
                     let new_type_check_all_success_local = self.local(Type::Val(ValType::Bool));
-                    self.exprs.push(ExprAssign {
+                    self.exprs.push(Instr {
                         local: Some(new_type_check_all_success_local),
-                        expr: Expr::And(type_check_all_success_local, type_check_success_local),
+                        expr: InstrKind::And(
+                            type_check_all_success_local,
+                            type_check_success_local,
+                        ),
                     });
                     type_check_all_success_local = new_type_check_all_success_local;
                 }
@@ -952,9 +960,9 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
 
                 self.current_bb_id = Some(else_bb_id);
                 let msg = self.local(Type::Val(ValType::String));
-                self.exprs.push(ExprAssign {
+                self.exprs.push(Instr {
                     local: Some(msg),
-                    expr: Expr::String(format!(
+                    expr: InstrKind::String(format!(
                         "uvector element type mismatch: expected {:?}\n",
                         kind.element_type()
                     )),
@@ -964,20 +972,20 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 let mut element_locals = Vec::new();
                 for obj_local in element_obj_locals {
                     let elem_local = self.local(kind.element_type());
-                    self.exprs.push(ExprAssign {
+                    self.exprs.push(Instr {
                         local: Some(elem_local),
-                        expr: Expr::FromObj(kind.element_type(), obj_local),
+                        expr: InstrKind::FromObj(kind.element_type(), obj_local),
                     });
                     element_locals.push(elem_local);
                 }
                 let uvector_local = self.local(Type::Val(ValType::UVector(kind)));
-                self.exprs.push(ExprAssign {
+                self.exprs.push(Instr {
                     local: Some(uvector_local),
-                    expr: Expr::UVector(kind, element_locals),
+                    expr: InstrKind::UVector(kind, element_locals),
                 });
-                self.exprs.push(ExprAssign {
+                self.exprs.push(Instr {
                     local: result,
-                    expr: Expr::ToObj(ValType::UVector(kind), uvector_local),
+                    expr: InstrKind::ToObj(ValType::UVector(kind), uvector_local),
                 });
             }
             ast::Expr::Cons(_, cons) => {
@@ -987,13 +995,13 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 self.gen_exprs(Some(cdr_local), &cons.cdr);
 
                 let val_type_local = self.local(Type::Val(ValType::Cons));
-                self.exprs.push(ExprAssign {
+                self.exprs.push(Instr {
                     local: Some(val_type_local),
-                    expr: Expr::Cons(car_local, cdr_local),
+                    expr: InstrKind::Cons(car_local, cdr_local),
                 });
-                self.exprs.push(ExprAssign {
+                self.exprs.push(Instr {
                     local: result,
-                    expr: Expr::ToObj(ValType::Cons, val_type_local),
+                    expr: InstrKind::ToObj(ValType::Cons, val_type_local),
                 });
             }
             ast::Expr::Quote(x, _) => *x,
@@ -1007,9 +1015,9 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     for var_id in &set_group.var_ids {
                         let captures = self.uninitialized_vars.remove(var_id).unwrap();
                         for capture in captures {
-                            self.exprs.push(ExprAssign {
+                            self.exprs.push(Instr {
                                 local: None,
-                                expr: Expr::ClosureSetEnv(
+                                expr: InstrKind::ClosureSetEnv(
                                     capture.env_types.clone(),
                                     capture.closure,
                                     capture.env_index,
@@ -1031,13 +1039,13 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             self.gen_expr(result, last);
         } else {
             let val_type_local = self.local(Type::Val(ValType::Nil));
-            self.exprs.push(ExprAssign {
+            self.exprs.push(Instr {
                 local: Some(val_type_local),
-                expr: Expr::Nil,
+                expr: InstrKind::Nil,
             });
-            self.exprs.push(ExprAssign {
+            self.exprs.push(Instr {
                 local: result,
-                expr: Expr::ToObj(ValType::Nil, val_type_local),
+                expr: InstrKind::ToObj(ValType::Nil, val_type_local),
             });
         }
     }
@@ -1049,7 +1057,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 self.current_bb_id.unwrap(),
                 BasicBlock {
                     id,
-                    exprs: bb_exprs,
+                    instrs: bb_exprs,
                     next,
                 },
             );
@@ -1062,7 +1070,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
 
 #[derive(Debug)]
 pub struct BuiltinIrGenCtx<'a> {
-    exprs: &'a mut Vec<ExprAssign>,
+    exprs: &'a mut Vec<Instr>,
     locals: &'a mut VecMap<LocalId, Local>,
     dest: LocalId,
 }
@@ -1118,9 +1126,9 @@ impl BuiltinConversionRule {
                 args: [Type::Val(ValType::String)],
                 ret: Type::Val(ValType::Nil),
                 ir_gen: |ctx, arg1| {
-                    ctx.exprs.push(ExprAssign {
+                    ctx.exprs.push(Instr {
                         local: Some(ctx.dest),
-                        expr: Expr::Display(arg1),
+                        expr: InstrKind::Display(arg1),
                     });
                 },
             }],
@@ -1129,9 +1137,9 @@ impl BuiltinConversionRule {
                     args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
                     ret: Type::Val(ValType::Int),
                     ir_gen: |ctx, arg1, arg2| {
-                        ctx.exprs.push(ExprAssign {
+                        ctx.exprs.push(Instr {
                             local: Some(ctx.dest),
-                            expr: Expr::AddInt(arg1, arg2),
+                            expr: InstrKind::AddInt(arg1, arg2),
                         });
                     },
                 },
@@ -1139,9 +1147,9 @@ impl BuiltinConversionRule {
                     args: [Type::Val(ValType::Float), Type::Val(ValType::Float)],
                     ret: Type::Val(ValType::Float),
                     ir_gen: |ctx, arg1, arg2| {
-                        ctx.exprs.push(ExprAssign {
+                        ctx.exprs.push(Instr {
                             local: Some(ctx.dest),
-                            expr: Expr::AddFloat(arg1, arg2),
+                            expr: InstrKind::AddFloat(arg1, arg2),
                         });
                     },
                 },
@@ -1151,9 +1159,9 @@ impl BuiltinConversionRule {
                     args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
                     ret: Type::Val(ValType::Int),
                     ir_gen: |ctx, arg1, arg2| {
-                        ctx.exprs.push(ExprAssign {
+                        ctx.exprs.push(Instr {
                             local: Some(ctx.dest),
-                            expr: Expr::SubInt(arg1, arg2),
+                            expr: InstrKind::SubInt(arg1, arg2),
                         });
                     },
                 },
@@ -1161,9 +1169,9 @@ impl BuiltinConversionRule {
                     args: [Type::Val(ValType::Float), Type::Val(ValType::Float)],
                     ret: Type::Val(ValType::Float),
                     ir_gen: |ctx, arg1, arg2| {
-                        ctx.exprs.push(ExprAssign {
+                        ctx.exprs.push(Instr {
                             local: Some(ctx.dest),
-                            expr: Expr::SubFloat(arg1, arg2),
+                            expr: InstrKind::SubFloat(arg1, arg2),
                         });
                     },
                 },
@@ -1173,9 +1181,9 @@ impl BuiltinConversionRule {
                     args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
                     ret: Type::Val(ValType::Int),
                     ir_gen: |ctx, arg1, arg2| {
-                        ctx.exprs.push(ExprAssign {
+                        ctx.exprs.push(Instr {
                             local: Some(ctx.dest),
-                            expr: Expr::MulInt(arg1, arg2),
+                            expr: InstrKind::MulInt(arg1, arg2),
                         });
                     },
                 },
@@ -1183,9 +1191,9 @@ impl BuiltinConversionRule {
                     args: [Type::Val(ValType::Float), Type::Val(ValType::Float)],
                     ret: Type::Val(ValType::Float),
                     ir_gen: |ctx, arg1, arg2| {
-                        ctx.exprs.push(ExprAssign {
+                        ctx.exprs.push(Instr {
                             local: Some(ctx.dest),
-                            expr: Expr::MulFloat(arg1, arg2),
+                            expr: InstrKind::MulFloat(arg1, arg2),
                         });
                     },
                 },
@@ -1194,9 +1202,9 @@ impl BuiltinConversionRule {
                 args: [Type::Val(ValType::Float), Type::Val(ValType::Float)],
                 ret: Type::Val(ValType::Float),
                 ir_gen: |ctx, arg1, arg2| {
-                    ctx.exprs.push(ExprAssign {
+                    ctx.exprs.push(Instr {
                         local: Some(ctx.dest),
-                        expr: Expr::DivFloat(arg1, arg2),
+                        expr: InstrKind::DivFloat(arg1, arg2),
                     });
                 },
             }],
@@ -1204,9 +1212,9 @@ impl BuiltinConversionRule {
                 args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
                 ret: Type::Val(ValType::Int),
                 ir_gen: |ctx, arg1, arg2| {
-                    ctx.exprs.push(ExprAssign {
+                    ctx.exprs.push(Instr {
                         local: Some(ctx.dest),
-                        expr: Expr::DivInt(arg1, arg2),
+                        expr: InstrKind::DivInt(arg1, arg2),
                     });
                 },
             }],
@@ -1215,9 +1223,9 @@ impl BuiltinConversionRule {
                 args: [Type::Val(ValType::Char)],
                 ret: Type::Val(ValType::Nil),
                 ir_gen: |ctx, arg1| {
-                    ctx.exprs.push(ExprAssign {
+                    ctx.exprs.push(Instr {
                         local: Some(ctx.dest),
-                        expr: Expr::WriteChar(arg1),
+                        expr: InstrKind::WriteChar(arg1),
                     });
                 },
             }],
@@ -1225,9 +1233,9 @@ impl BuiltinConversionRule {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
                 ir_gen: |ctx, arg1| {
-                    ctx.exprs.push(ExprAssign {
+                    ctx.exprs.push(Instr {
                         local: Some(ctx.dest),
-                        expr: Expr::Is(ValType::Cons, arg1),
+                        expr: InstrKind::Is(ValType::Cons, arg1),
                     });
                 },
             }],
@@ -1235,9 +1243,9 @@ impl BuiltinConversionRule {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
                 ir_gen: |ctx, arg1| {
-                    ctx.exprs.push(ExprAssign {
+                    ctx.exprs.push(Instr {
                         local: Some(ctx.dest),
-                        expr: Expr::Is(ValType::Symbol, arg1),
+                        expr: InstrKind::Is(ValType::Symbol, arg1),
                     });
                 },
             }],
@@ -1245,9 +1253,9 @@ impl BuiltinConversionRule {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
                 ir_gen: |ctx, arg1| {
-                    ctx.exprs.push(ExprAssign {
+                    ctx.exprs.push(Instr {
                         local: Some(ctx.dest),
-                        expr: Expr::Is(ValType::String, arg1),
+                        expr: InstrKind::Is(ValType::String, arg1),
                     });
                 },
             }],
@@ -1263,17 +1271,17 @@ impl BuiltinConversionRule {
                         id,
                         typ: ValType::Bool.into(),
                     });
-                    ctx.exprs.push(ExprAssign {
+                    ctx.exprs.push(Instr {
                         local: Some(is_int_local),
-                        expr: Expr::Is(ValType::Int, arg1),
+                        expr: InstrKind::Is(ValType::Int, arg1),
                     });
-                    ctx.exprs.push(ExprAssign {
+                    ctx.exprs.push(Instr {
                         local: Some(is_float_local),
-                        expr: Expr::Is(ValType::Float, arg1),
+                        expr: InstrKind::Is(ValType::Float, arg1),
                     });
-                    ctx.exprs.push(ExprAssign {
+                    ctx.exprs.push(Instr {
                         local: Some(ctx.dest),
-                        expr: Expr::Or(is_int_local, is_float_local),
+                        expr: InstrKind::Or(is_int_local, is_float_local),
                     });
                 },
             }],
@@ -1281,9 +1289,9 @@ impl BuiltinConversionRule {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
                 ir_gen: |ctx, arg1| {
-                    ctx.exprs.push(ExprAssign {
+                    ctx.exprs.push(Instr {
                         local: Some(ctx.dest),
-                        expr: Expr::Is(ValType::Bool, arg1),
+                        expr: InstrKind::Is(ValType::Bool, arg1),
                     });
                 },
             }],
@@ -1291,9 +1299,9 @@ impl BuiltinConversionRule {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
                 ir_gen: |ctx, arg1| {
-                    ctx.exprs.push(ExprAssign {
+                    ctx.exprs.push(Instr {
                         local: Some(ctx.dest),
-                        expr: Expr::Is(ValType::Closure, arg1),
+                        expr: InstrKind::Is(ValType::Closure, arg1),
                     });
                 },
             }],
@@ -1301,9 +1309,9 @@ impl BuiltinConversionRule {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
                 ir_gen: |ctx, arg1| {
-                    ctx.exprs.push(ExprAssign {
+                    ctx.exprs.push(Instr {
                         local: Some(ctx.dest),
-                        expr: Expr::Is(ValType::Char, arg1),
+                        expr: InstrKind::Is(ValType::Char, arg1),
                     });
                 },
             }],
@@ -1311,9 +1319,9 @@ impl BuiltinConversionRule {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
                 ir_gen: |ctx, arg1| {
-                    ctx.exprs.push(ExprAssign {
+                    ctx.exprs.push(Instr {
                         local: Some(ctx.dest),
-                        expr: Expr::Is(ValType::Vector, arg1),
+                        expr: InstrKind::Is(ValType::Vector, arg1),
                     });
                 },
             }],
@@ -1321,9 +1329,9 @@ impl BuiltinConversionRule {
                 args: [Type::Val(ValType::Vector)],
                 ret: Type::Val(ValType::Int),
                 ir_gen: |ctx, arg1| {
-                    ctx.exprs.push(ExprAssign {
+                    ctx.exprs.push(Instr {
                         local: Some(ctx.dest),
-                        expr: Expr::VectorLength(arg1),
+                        expr: InstrKind::VectorLength(arg1),
                     });
                 },
             }],
@@ -1331,9 +1339,9 @@ impl BuiltinConversionRule {
                 args: [Type::Val(ValType::Vector), Type::Val(ValType::Int)],
                 ret: Type::Obj,
                 ir_gen: |ctx, arg1, arg2| {
-                    ctx.exprs.push(ExprAssign {
+                    ctx.exprs.push(Instr {
                         local: Some(ctx.dest),
-                        expr: Expr::VectorRef(arg1, arg2),
+                        expr: InstrKind::VectorRef(arg1, arg2),
                     });
                 },
             }],
@@ -1345,9 +1353,9 @@ impl BuiltinConversionRule {
                 ],
                 ret: Type::Val(ValType::Nil),
                 ir_gen: |ctx, arg1, arg2, arg3| {
-                    ctx.exprs.push(ExprAssign {
+                    ctx.exprs.push(Instr {
                         local: Some(ctx.dest),
-                        expr: Expr::VectorSet(arg1, arg2, arg3),
+                        expr: InstrKind::VectorSet(arg1, arg2, arg3),
                     });
                 },
             }],
@@ -1355,9 +1363,9 @@ impl BuiltinConversionRule {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
                 ir_gen: |ctx, arg1| {
-                    ctx.exprs.push(ExprAssign {
+                    ctx.exprs.push(Instr {
                         local: Some(ctx.dest),
-                        expr: Expr::Is(ValType::UVector(UVectorKind::S64), arg1),
+                        expr: InstrKind::Is(ValType::UVector(UVectorKind::S64), arg1),
                     });
                 },
             }],
@@ -1365,9 +1373,9 @@ impl BuiltinConversionRule {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
                 ir_gen: |ctx, arg1| {
-                    ctx.exprs.push(ExprAssign {
+                    ctx.exprs.push(Instr {
                         local: Some(ctx.dest),
-                        expr: Expr::Is(ValType::UVector(UVectorKind::F64), arg1),
+                        expr: InstrKind::Is(ValType::UVector(UVectorKind::F64), arg1),
                     });
                 },
             }],
@@ -1383,17 +1391,17 @@ impl BuiltinConversionRule {
                         id,
                         typ: ValType::Bool.into(),
                     });
-                    ctx.exprs.push(ExprAssign {
+                    ctx.exprs.push(Instr {
                         local: Some(is_s64_local),
-                        expr: Expr::Is(ValType::UVector(UVectorKind::S64), arg1),
+                        expr: InstrKind::Is(ValType::UVector(UVectorKind::S64), arg1),
                     });
-                    ctx.exprs.push(ExprAssign {
+                    ctx.exprs.push(Instr {
                         local: Some(is_f64_local),
-                        expr: Expr::Is(ValType::UVector(UVectorKind::F64), arg1),
+                        expr: InstrKind::Is(ValType::UVector(UVectorKind::F64), arg1),
                     });
-                    ctx.exprs.push(ExprAssign {
+                    ctx.exprs.push(Instr {
                         local: Some(ctx.dest),
-                        expr: Expr::Or(is_s64_local, is_f64_local),
+                        expr: InstrKind::Or(is_s64_local, is_f64_local),
                     });
                 },
             }],
@@ -1401,9 +1409,9 @@ impl BuiltinConversionRule {
                 args: [Type::Val(ValType::Int)],
                 ret: Type::Val(ValType::UVector(UVectorKind::S64)),
                 ir_gen: |ctx, arg1| {
-                    ctx.exprs.push(ExprAssign {
+                    ctx.exprs.push(Instr {
                         local: Some(ctx.dest),
-                        expr: Expr::MakeUVector(UVectorKind::S64, arg1),
+                        expr: InstrKind::MakeUVector(UVectorKind::S64, arg1),
                     });
                 },
             }],
@@ -1411,9 +1419,9 @@ impl BuiltinConversionRule {
                 args: [Type::Val(ValType::Int)],
                 ret: Type::Val(ValType::UVector(UVectorKind::F64)),
                 ir_gen: |ctx, arg1| {
-                    ctx.exprs.push(ExprAssign {
+                    ctx.exprs.push(Instr {
                         local: Some(ctx.dest),
-                        expr: Expr::MakeUVector(UVectorKind::F64, arg1),
+                        expr: InstrKind::MakeUVector(UVectorKind::F64, arg1),
                     });
                 },
             }],
@@ -1422,9 +1430,9 @@ impl BuiltinConversionRule {
                     args: [Type::Val(ValType::UVector(UVectorKind::S64))],
                     ret: Type::Val(ValType::Int),
                     ir_gen: |ctx, arg1| {
-                        ctx.exprs.push(ExprAssign {
+                        ctx.exprs.push(Instr {
                             local: Some(ctx.dest),
-                            expr: Expr::UVectorLength(UVectorKind::S64, arg1),
+                            expr: InstrKind::UVectorLength(UVectorKind::S64, arg1),
                         });
                     },
                 },
@@ -1432,9 +1440,9 @@ impl BuiltinConversionRule {
                     args: [Type::Val(ValType::UVector(UVectorKind::F64))],
                     ret: Type::Val(ValType::Int),
                     ir_gen: |ctx, arg1| {
-                        ctx.exprs.push(ExprAssign {
+                        ctx.exprs.push(Instr {
                             local: Some(ctx.dest),
-                            expr: Expr::UVectorLength(UVectorKind::F64, arg1),
+                            expr: InstrKind::UVectorLength(UVectorKind::F64, arg1),
                         });
                     },
                 },
@@ -1447,9 +1455,9 @@ impl BuiltinConversionRule {
                     ],
                     ret: Type::Val(ValType::Int),
                     ir_gen: |ctx, arg1, arg2| {
-                        ctx.exprs.push(ExprAssign {
+                        ctx.exprs.push(Instr {
                             local: Some(ctx.dest),
-                            expr: Expr::UVectorRef(UVectorKind::S64, arg1, arg2),
+                            expr: InstrKind::UVectorRef(UVectorKind::S64, arg1, arg2),
                         });
                     },
                 },
@@ -1460,9 +1468,9 @@ impl BuiltinConversionRule {
                     ],
                     ret: Type::Val(ValType::Float),
                     ir_gen: |ctx, arg1, arg2| {
-                        ctx.exprs.push(ExprAssign {
+                        ctx.exprs.push(Instr {
                             local: Some(ctx.dest),
-                            expr: Expr::UVectorRef(UVectorKind::F64, arg1, arg2),
+                            expr: InstrKind::UVectorRef(UVectorKind::F64, arg1, arg2),
                         });
                     },
                 },
@@ -1476,9 +1484,9 @@ impl BuiltinConversionRule {
                     ],
                     ret: Type::Val(ValType::Nil),
                     ir_gen: |ctx, arg1, arg2, arg3| {
-                        ctx.exprs.push(ExprAssign {
+                        ctx.exprs.push(Instr {
                             local: Some(ctx.dest),
-                            expr: Expr::UVectorSet(UVectorKind::S64, arg1, arg2, arg3),
+                            expr: InstrKind::UVectorSet(UVectorKind::S64, arg1, arg2, arg3),
                         });
                     },
                 },
@@ -1490,9 +1498,9 @@ impl BuiltinConversionRule {
                     ],
                     ret: Type::Val(ValType::Nil),
                     ir_gen: |ctx, arg1, arg2, arg3| {
-                        ctx.exprs.push(ExprAssign {
+                        ctx.exprs.push(Instr {
                             local: Some(ctx.dest),
-                            expr: Expr::UVectorSet(UVectorKind::F64, arg1, arg2, arg3),
+                            expr: InstrKind::UVectorSet(UVectorKind::F64, arg1, arg2, arg3),
                         });
                     },
                 },
@@ -1501,9 +1509,9 @@ impl BuiltinConversionRule {
                 args: [Type::Obj, Type::Obj],
                 ret: Type::Val(ValType::Bool),
                 ir_gen: |ctx, arg1, arg2| {
-                    ctx.exprs.push(ExprAssign {
+                    ctx.exprs.push(Instr {
                         local: Some(ctx.dest),
-                        expr: Expr::EqObj(arg1, arg2),
+                        expr: InstrKind::EqObj(arg1, arg2),
                     });
                 },
             }],
@@ -1511,9 +1519,9 @@ impl BuiltinConversionRule {
                 args: [Type::Obj, Type::Obj],
                 ret: Type::Val(ValType::Cons),
                 ir_gen: |ctx, arg1, arg2| {
-                    ctx.exprs.push(ExprAssign {
+                    ctx.exprs.push(Instr {
                         local: Some(ctx.dest),
-                        expr: Expr::Cons(arg1, arg2),
+                        expr: InstrKind::Cons(arg1, arg2),
                     });
                 },
             }],
@@ -1521,9 +1529,9 @@ impl BuiltinConversionRule {
                 args: [Type::Val(ValType::Cons)],
                 ret: Type::Obj,
                 ir_gen: |ctx, arg1| {
-                    ctx.exprs.push(ExprAssign {
+                    ctx.exprs.push(Instr {
                         local: Some(ctx.dest),
-                        expr: Expr::Car(arg1),
+                        expr: InstrKind::Car(arg1),
                     });
                 },
             }],
@@ -1531,9 +1539,9 @@ impl BuiltinConversionRule {
                 args: [Type::Val(ValType::Cons)],
                 ret: Type::Obj,
                 ir_gen: |ctx, arg1| {
-                    ctx.exprs.push(ExprAssign {
+                    ctx.exprs.push(Instr {
                         local: Some(ctx.dest),
-                        expr: Expr::Cdr(arg1),
+                        expr: InstrKind::Cdr(arg1),
                     });
                 },
             }],
@@ -1541,9 +1549,9 @@ impl BuiltinConversionRule {
                 args: [Type::Val(ValType::Symbol)],
                 ret: Type::Val(ValType::String),
                 ir_gen: |ctx, arg1| {
-                    ctx.exprs.push(ExprAssign {
+                    ctx.exprs.push(Instr {
                         local: Some(ctx.dest),
-                        expr: Expr::SymbolToString(arg1),
+                        expr: InstrKind::SymbolToString(arg1),
                     });
                 },
             }],
@@ -1552,9 +1560,9 @@ impl BuiltinConversionRule {
                     args: [Type::Val(ValType::Int)],
                     ret: Type::Val(ValType::String),
                     ir_gen: |ctx, arg1| {
-                        ctx.exprs.push(ExprAssign {
+                        ctx.exprs.push(Instr {
                             local: Some(ctx.dest),
-                            expr: Expr::IntToString(arg1),
+                            expr: InstrKind::IntToString(arg1),
                         });
                     },
                 },
@@ -1562,9 +1570,9 @@ impl BuiltinConversionRule {
                     args: [Type::Val(ValType::Float)],
                     ret: Type::Val(ValType::String),
                     ir_gen: |ctx, arg1| {
-                        ctx.exprs.push(ExprAssign {
+                        ctx.exprs.push(Instr {
                             local: Some(ctx.dest),
-                            expr: Expr::FloatToString(arg1),
+                            expr: InstrKind::FloatToString(arg1),
                         });
                     },
                 },
@@ -1574,9 +1582,9 @@ impl BuiltinConversionRule {
                     args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
                     ret: Type::Val(ValType::Bool),
                     ir_gen: |ctx, arg1, arg2| {
-                        ctx.exprs.push(ExprAssign {
+                        ctx.exprs.push(Instr {
                             local: Some(ctx.dest),
-                            expr: Expr::EqInt(arg1, arg2),
+                            expr: InstrKind::EqInt(arg1, arg2),
                         });
                     },
                 },
@@ -1584,9 +1592,9 @@ impl BuiltinConversionRule {
                     args: [Type::Val(ValType::Float), Type::Val(ValType::Float)],
                     ret: Type::Val(ValType::Bool),
                     ir_gen: |ctx, arg1, arg2| {
-                        ctx.exprs.push(ExprAssign {
+                        ctx.exprs.push(Instr {
                             local: Some(ctx.dest),
-                            expr: Expr::EqFloat(arg1, arg2),
+                            expr: InstrKind::EqFloat(arg1, arg2),
                         });
                     },
                 },
@@ -1596,9 +1604,9 @@ impl BuiltinConversionRule {
                     args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
                     ret: Type::Val(ValType::Bool),
                     ir_gen: |ctx, arg1, arg2| {
-                        ctx.exprs.push(ExprAssign {
+                        ctx.exprs.push(Instr {
                             local: Some(ctx.dest),
-                            expr: Expr::LtInt(arg1, arg2),
+                            expr: InstrKind::LtInt(arg1, arg2),
                         });
                     },
                 },
@@ -1606,9 +1614,9 @@ impl BuiltinConversionRule {
                     args: [Type::Val(ValType::Float), Type::Val(ValType::Float)],
                     ret: Type::Val(ValType::Bool),
                     ir_gen: |ctx, arg1, arg2| {
-                        ctx.exprs.push(ExprAssign {
+                        ctx.exprs.push(Instr {
                             local: Some(ctx.dest),
-                            expr: Expr::LtFloat(arg1, arg2),
+                            expr: InstrKind::LtFloat(arg1, arg2),
                         });
                     },
                 },
@@ -1618,9 +1626,9 @@ impl BuiltinConversionRule {
                     args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
                     ret: Type::Val(ValType::Bool),
                     ir_gen: |ctx, arg1, arg2| {
-                        ctx.exprs.push(ExprAssign {
+                        ctx.exprs.push(Instr {
                             local: Some(ctx.dest),
-                            expr: Expr::GtInt(arg1, arg2),
+                            expr: InstrKind::GtInt(arg1, arg2),
                         });
                     },
                 },
@@ -1628,9 +1636,9 @@ impl BuiltinConversionRule {
                     args: [Type::Val(ValType::Float), Type::Val(ValType::Float)],
                     ret: Type::Val(ValType::Bool),
                     ir_gen: |ctx, arg1, arg2| {
-                        ctx.exprs.push(ExprAssign {
+                        ctx.exprs.push(Instr {
                             local: Some(ctx.dest),
-                            expr: Expr::GtFloat(arg1, arg2),
+                            expr: InstrKind::GtFloat(arg1, arg2),
                         });
                     },
                 },
@@ -1640,9 +1648,9 @@ impl BuiltinConversionRule {
                     args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
                     ret: Type::Val(ValType::Bool),
                     ir_gen: |ctx, arg1, arg2| {
-                        ctx.exprs.push(ExprAssign {
+                        ctx.exprs.push(Instr {
                             local: Some(ctx.dest),
-                            expr: Expr::LeInt(arg1, arg2),
+                            expr: InstrKind::LeInt(arg1, arg2),
                         });
                     },
                 },
@@ -1650,9 +1658,9 @@ impl BuiltinConversionRule {
                     args: [Type::Val(ValType::Float), Type::Val(ValType::Float)],
                     ret: Type::Val(ValType::Bool),
                     ir_gen: |ctx, arg1, arg2| {
-                        ctx.exprs.push(ExprAssign {
+                        ctx.exprs.push(Instr {
                             local: Some(ctx.dest),
-                            expr: Expr::LeFloat(arg1, arg2),
+                            expr: InstrKind::LeFloat(arg1, arg2),
                         });
                     },
                 },
@@ -1662,9 +1670,9 @@ impl BuiltinConversionRule {
                     args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
                     ret: Type::Val(ValType::Bool),
                     ir_gen: |ctx, arg1, arg2| {
-                        ctx.exprs.push(ExprAssign {
+                        ctx.exprs.push(Instr {
                             local: Some(ctx.dest),
-                            expr: Expr::GeInt(arg1, arg2),
+                            expr: InstrKind::GeInt(arg1, arg2),
                         });
                     },
                 },
@@ -1672,9 +1680,9 @@ impl BuiltinConversionRule {
                     args: [Type::Val(ValType::Float), Type::Val(ValType::Float)],
                     ret: Type::Val(ValType::Bool),
                     ir_gen: |ctx, arg1, arg2| {
-                        ctx.exprs.push(ExprAssign {
+                        ctx.exprs.push(Instr {
                             local: Some(ctx.dest),
-                            expr: Expr::GeFloat(arg1, arg2),
+                            expr: InstrKind::GeFloat(arg1, arg2),
                         });
                     },
                 },

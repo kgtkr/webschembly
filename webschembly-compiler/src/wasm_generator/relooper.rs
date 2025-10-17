@@ -207,7 +207,7 @@ mod tests {
                 let block_id = BasicBlockId::from(id);
                 let block = BasicBlock {
                     id: block_id,
-                    exprs: vec![],
+                    instrs: vec![],
                     next: next.clone(),
                 };
                 (block_id, block)

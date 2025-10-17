@@ -178,9 +178,9 @@ fn postprocess(module: &mut ir::Module, global_manager: &mut GlobalManager) {
     let mut global_ids = FxHashSet::default();
     for func in module.funcs.values() {
         for bbs in func.bbs.values() {
-            for expr_assign in bbs.exprs.iter() {
-                if let ir::Expr::GlobalGet(global_id) | ir::Expr::GlobalSet(global_id, _) =
-                    expr_assign.expr
+            for instr in bbs.instrs.iter() {
+                if let ir::InstrKind::GlobalGet(global_id)
+                | ir::InstrKind::GlobalSet(global_id, _) = instr.expr
                 {
                     global_ids.insert(global_id);
                 }

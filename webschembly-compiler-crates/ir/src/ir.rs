@@ -122,12 +122,12 @@ pub enum LocalUsedFlag {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct ExprCall {
+pub struct InstrCall {
     pub func_id: FuncId,
     pub args: Vec<LocalId>,
 }
 
-macro_rules! impl_ExprCall_func_ids {
+macro_rules! impl_InstrCall_func_ids {
     ($($suffix: ident)?,$($mutability: tt)?) => {
         paste::paste! {
             pub fn [<func_ids $($suffix)?>](&$($mutability)? self) -> impl Iterator<Item = &$($mutability)? FuncId> {
@@ -142,7 +142,7 @@ macro_rules! impl_ExprCall_func_ids {
     };
 }
 
-macro_rules! impl_ExprCall_local_ids {
+macro_rules! impl_InstrCall_local_ids {
     ($($suffix: ident)?,$($mutability: tt)?) => {
         paste::paste! {
             pub fn [<local_ids $($suffix)?>](&$($mutability)? self) -> impl Iterator<Item = &$($mutability)? LocalId> {
@@ -159,18 +159,18 @@ macro_rules! impl_ExprCall_local_ids {
     };
 }
 
-impl ExprCall {
-    impl_ExprCall_func_ids!(_mut, mut);
-    impl_ExprCall_func_ids!(,);
-    impl_ExprCall_local_ids!(_mut, mut);
-    impl_ExprCall_local_ids!(,);
+impl InstrCall {
+    impl_InstrCall_func_ids!(_mut, mut);
+    impl_InstrCall_func_ids!(,);
+    impl_InstrCall_local_ids!(_mut, mut);
+    impl_InstrCall_local_ids!(,);
 
-    pub fn display<'a>(&self, meta: MetaInFunc<'a>) -> DisplayInFunc<'a, &'_ ExprCall> {
+    pub fn display<'a>(&self, meta: MetaInFunc<'a>) -> DisplayInFunc<'a, &'_ InstrCall> {
         DisplayInFunc { value: self, meta }
     }
 }
 
-impl fmt::Display for DisplayInFunc<'_, &'_ ExprCall> {
+impl fmt::Display for DisplayInFunc<'_, &'_ InstrCall> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "call({})", self.value.func_id.display(self.meta.meta))?;
         if !self.value.args.is_empty() {
@@ -188,13 +188,13 @@ impl fmt::Display for DisplayInFunc<'_, &'_ ExprCall> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct ExprCallRef {
+pub struct InstrCallRef {
     pub func: LocalId,
     pub args: Vec<LocalId>,
     pub func_type: FuncType,
 }
 
-macro_rules! impl_ExprCallRef_local_ids {
+macro_rules! impl_InstrCallRef_local_ids {
     ($($suffix: ident)?,$($mutability: tt)?) => {
         paste::paste! {
             pub fn [<local_ids $($suffix)?>](&$($mutability)? self) -> impl Iterator<Item = &$($mutability)? LocalId> {
@@ -212,16 +212,16 @@ macro_rules! impl_ExprCallRef_local_ids {
     };
 }
 
-impl ExprCallRef {
-    impl_ExprCallRef_local_ids!(_mut, mut);
-    impl_ExprCallRef_local_ids!(,);
+impl InstrCallRef {
+    impl_InstrCallRef_local_ids!(_mut, mut);
+    impl_InstrCallRef_local_ids!(,);
 
-    pub fn display<'a>(&self, meta: MetaInFunc<'a>) -> DisplayInFunc<'a, &'_ ExprCallRef> {
+    pub fn display<'a>(&self, meta: MetaInFunc<'a>) -> DisplayInFunc<'a, &'_ InstrCallRef> {
         DisplayInFunc { value: self, meta }
     }
 }
 
-impl fmt::Display for DisplayInFunc<'_, &'_ ExprCallRef> {
+impl fmt::Display for DisplayInFunc<'_, &'_ InstrCallRef> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -253,14 +253,14 @@ l23 = deref_mut_func_ref(l22)
 l0 = call_ref<(closure, ...arg_types) -> obj>(l23)(closure, ...args)
 */
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct ExprCallClosure {
+pub struct InstrCallClosure {
     pub closure: LocalId,
     pub args: Vec<LocalId>,
     pub arg_types: Vec<LocalType>,
     pub func_index: usize,
 }
 
-macro_rules! impl_ExprCallClosure_local_ids {
+macro_rules! impl_InstrCallClosure_local_ids {
     ($($suffix: ident)?,$($mutability: tt)?) => {
         paste::paste! {
             pub fn [<local_ids $($suffix)?>](&$($mutability)? self) -> impl Iterator<Item = &$($mutability)? LocalId> {
@@ -278,16 +278,16 @@ macro_rules! impl_ExprCallClosure_local_ids {
     };
 }
 
-impl ExprCallClosure {
-    impl_ExprCallClosure_local_ids!(_mut, mut);
-    impl_ExprCallClosure_local_ids!(,);
+impl InstrCallClosure {
+    impl_InstrCallClosure_local_ids!(_mut, mut);
+    impl_InstrCallClosure_local_ids!(,);
 
-    pub fn display<'a>(&self, meta: MetaInFunc<'a>) -> DisplayInFunc<'a, &'_ ExprCallClosure> {
+    pub fn display<'a>(&self, meta: MetaInFunc<'a>) -> DisplayInFunc<'a, &'_ InstrCallClosure> {
         DisplayInFunc { value: self, meta }
     }
 }
 
-impl fmt::Display for DisplayInFunc<'_, &'_ ExprCallClosure> {
+impl fmt::Display for DisplayInFunc<'_, &'_ InstrCallClosure> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "call_closure<")?;
         for (i, arg_type) in self.value.arg_types.iter().enumerate() {
@@ -317,7 +317,7 @@ pub struct PhiIncomingValue {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum Expr {
+pub enum InstrKind {
     Nop,                        // 左辺はNoneでなければならない
     Phi(Vec<PhiIncomingValue>), // BBの先頭にのみ連続して出現可能(Nopが間に入るのは可)
     Uninitialized(LocalType), // // IR上で未初期化変数にアクセスすることを認めるとデータフロー解析などが複雑になるので、明示的に「未初期値」を表す命令を用意する
@@ -340,8 +340,8 @@ pub enum Expr {
     DerefRef(Type, LocalId),
     SetRef(Type, LocalId /* ref */, LocalId /* value */),
     FuncRef(FuncId),
-    Call(ExprCall),
-    CallRef(ExprCallRef),
+    Call(InstrCall),
+    CallRef(InstrCallRef),
     Closure {
         envs: Vec<LocalId>,
         module_id: ModuleId,
@@ -416,18 +416,18 @@ pub enum Expr {
     EntrypointTable(Vec<LocalId>),               // (MutFuncRef...) -> EntrypointTable
     EntrypointTableRef(usize, LocalId),          // (EntrypointTable, index) -> MutFuncRef
     SetEntrypointTable(usize, LocalId, LocalId), // (EntrypointTable, index, MutFuncRef) -> Nil
-    CallClosure(ExprCallClosure),
+    CallClosure(InstrCallClosure),
 }
 
-macro_rules! impl_Expr_func_ids {
+macro_rules! impl_InstrKind_func_ids {
     ($($suffix: ident)?,$($mutability: tt)?) => {
         paste::paste! {
             pub fn [<func_ids $($suffix)?>](&$($mutability)? self) -> impl Iterator<Item = &$($mutability)? FuncId> {
                 from_coroutine(
                     #[coroutine]
                     move || match self {
-                        Expr::FuncRef(func_id) => yield func_id,
-                        Expr::Call(call) => {
+                        InstrKind::FuncRef(func_id) => yield func_id,
+                        InstrKind::Call(call) => {
                             for id in call.[<func_ids $($suffix)?>]() {
                                 yield id;
                             }
@@ -440,46 +440,46 @@ macro_rules! impl_Expr_func_ids {
     };
 }
 
-macro_rules! impl_Expr_local_usages {
+macro_rules! impl_InstrKind_local_usages {
     ($($suffix: ident)?,$($mutability: tt)?) => {
         paste::paste! {
             pub fn [<local_usages $($suffix)?>](&$($mutability)? self) -> impl Iterator<Item = (&$($mutability)? LocalId, LocalUsedFlag)> {
                 from_coroutine(
                     #[coroutine]
                     move || match self {
-                        Expr::Phi(values) => {
+                        InstrKind::Phi(values) => {
                             for value in values.[<iter $($suffix)?>]() {
                                 yield (&$($mutability)? value.local, LocalUsedFlag::Phi(value.bb));
                             }
                         }
-                        Expr::Uninitialized(_) => {}
-                        Expr::StringToSymbol(id) => yield (id, LocalUsedFlag::NonPhi),
-                        Expr::Vector(ids) => {
+                        InstrKind::Uninitialized(_) => {}
+                        InstrKind::StringToSymbol(id) => yield (id, LocalUsedFlag::NonPhi),
+                        InstrKind::Vector(ids) => {
                             for id in ids {
                                 yield (id, LocalUsedFlag::NonPhi);
                             }
                         }
-                        Expr::UVector(_, ids) => {
+                        InstrKind::UVector(_, ids) => {
                             for id in ids {
                                 yield (id, LocalUsedFlag::NonPhi);
                             }
                         }
-                        Expr::MakeUVector(_, id) => yield (id, LocalUsedFlag::NonPhi),
-                        Expr::Cons(a, b) => {
+                        InstrKind::MakeUVector(_, id) => yield (id, LocalUsedFlag::NonPhi),
+                        InstrKind::Cons(a, b) => {
                             yield (a, LocalUsedFlag::NonPhi);
                             yield (b, LocalUsedFlag::NonPhi);
                         }
-                        Expr::DerefRef(_, id) => yield (id, LocalUsedFlag::NonPhi),
-                        Expr::SetRef(_, ref_id, value_id) => {
+                        InstrKind::DerefRef(_, id) => yield (id, LocalUsedFlag::NonPhi),
+                        InstrKind::SetRef(_, ref_id, value_id) => {
                             yield (ref_id, LocalUsedFlag::NonPhi);
                             yield (value_id, LocalUsedFlag::NonPhi);
                         }
-                        Expr::Call(call) => {
+                        InstrKind::Call(call) => {
                             for id in call.[<local_ids $($suffix)?>]() {
                                 yield (id, LocalUsedFlag::NonPhi);
                             }
                         }
-                        Expr::Closure {
+                        InstrKind::Closure {
                             envs,
                             module_id: _,
                             func_id: _,
@@ -490,146 +490,146 @@ macro_rules! impl_Expr_local_usages {
                             }
                             yield (entrypoint_table, LocalUsedFlag::NonPhi);
                         }
-                        Expr::CallRef(call_ref) => {
+                        InstrKind::CallRef(call_ref) => {
                             for id in call_ref.[<local_ids $($suffix)?>]() {
                                 yield (id, LocalUsedFlag::NonPhi);
                             }
                         }
-                        Expr::CallClosure(call_closure) => {
+                        InstrKind::CallClosure(call_closure) => {
                             for id in call_closure.[<local_ids $($suffix)?>]() {
                                 yield (id, LocalUsedFlag::NonPhi);
                             }
                         }
-                        Expr::Move(id) => yield (id, LocalUsedFlag::NonPhi),
-                        Expr::ToObj(_, id) => yield (id, LocalUsedFlag::NonPhi),
-                        Expr::FromObj(_, id) => yield (id, LocalUsedFlag::NonPhi),
-                        Expr::ClosureEnv(_, closure, _) => yield (closure, LocalUsedFlag::NonPhi),
-                        Expr::ClosureSetEnv(_, closure, _, value) => {
+                        InstrKind::Move(id) => yield (id, LocalUsedFlag::NonPhi),
+                        InstrKind::ToObj(_, id) => yield (id, LocalUsedFlag::NonPhi),
+                        InstrKind::FromObj(_, id) => yield (id, LocalUsedFlag::NonPhi),
+                        InstrKind::ClosureEnv(_, closure, _) => yield (closure, LocalUsedFlag::NonPhi),
+                        InstrKind::ClosureSetEnv(_, closure, _, value) => {
                             yield (closure, LocalUsedFlag::NonPhi);
                             yield (value, LocalUsedFlag::NonPhi);
                         }
-                        Expr::ClosureModuleId(closure) => yield (closure, LocalUsedFlag::NonPhi),
-                        Expr::ClosureFuncId(closure) => yield (closure, LocalUsedFlag::NonPhi),
-                        Expr::ClosureEntrypointTable(id) => yield (id, LocalUsedFlag::NonPhi),
-                        Expr::GlobalSet(_, value) => yield (value, LocalUsedFlag::NonPhi),
-                        Expr::Display(id) => yield (id, LocalUsedFlag::NonPhi),
-                        Expr::AddInt(a, b)
-                        | Expr::AddFloat(a, b)
-                        | Expr::SubInt(a, b)
-                        | Expr::SubFloat(a, b)
-                        | Expr::MulInt(a, b)
-                        | Expr::MulFloat(a, b)
-                        | Expr::DivInt(a, b)
-                        | Expr::DivFloat(a, b) => {
+                        InstrKind::ClosureModuleId(closure) => yield (closure, LocalUsedFlag::NonPhi),
+                        InstrKind::ClosureFuncId(closure) => yield (closure, LocalUsedFlag::NonPhi),
+                        InstrKind::ClosureEntrypointTable(id) => yield (id, LocalUsedFlag::NonPhi),
+                        InstrKind::GlobalSet(_, value) => yield (value, LocalUsedFlag::NonPhi),
+                        InstrKind::Display(id) => yield (id, LocalUsedFlag::NonPhi),
+                        InstrKind::AddInt(a, b)
+                        | InstrKind::AddFloat(a, b)
+                        | InstrKind::SubInt(a, b)
+                        | InstrKind::SubFloat(a, b)
+                        | InstrKind::MulInt(a, b)
+                        | InstrKind::MulFloat(a, b)
+                        | InstrKind::DivInt(a, b)
+                        | InstrKind::DivFloat(a, b) => {
                             yield (a, LocalUsedFlag::NonPhi);
                             yield (b, LocalUsedFlag::NonPhi);
                         }
-                        Expr::WriteChar(id) => yield (id, LocalUsedFlag::NonPhi),
-                        Expr::Is(_,id) => yield (id, LocalUsedFlag::NonPhi),
-                        Expr::VectorLength(id) => yield (id, LocalUsedFlag::NonPhi),
-                        Expr::VectorRef(vec_id, index_id) => {
+                        InstrKind::WriteChar(id) => yield (id, LocalUsedFlag::NonPhi),
+                        InstrKind::Is(_,id) => yield (id, LocalUsedFlag::NonPhi),
+                        InstrKind::VectorLength(id) => yield (id, LocalUsedFlag::NonPhi),
+                        InstrKind::VectorRef(vec_id, index_id) => {
                             yield (vec_id, LocalUsedFlag::NonPhi);
                             yield (index_id, LocalUsedFlag::NonPhi);
                         }
-                        Expr::VectorSet(vec_id, index_id, value_id) => {
+                        InstrKind::VectorSet(vec_id, index_id, value_id) => {
                             yield (vec_id, LocalUsedFlag::NonPhi);
                             yield (index_id, LocalUsedFlag::NonPhi);
                             yield (value_id, LocalUsedFlag::NonPhi);
                         }
-                        Expr::UVectorLength(_, id) => yield (id, LocalUsedFlag::NonPhi),
-                        Expr::UVectorRef(_, uvec_id, index_id) => {
+                        InstrKind::UVectorLength(_, id) => yield (id, LocalUsedFlag::NonPhi),
+                        InstrKind::UVectorRef(_, uvec_id, index_id) => {
                             yield (uvec_id, LocalUsedFlag::NonPhi);
                             yield (index_id, LocalUsedFlag::NonPhi);
                         }
-                        Expr::UVectorSet(_, uvec_id, index_id, value_id) => {
+                        InstrKind::UVectorSet(_, uvec_id, index_id, value_id) => {
                             yield (uvec_id, LocalUsedFlag::NonPhi);
                             yield (index_id, LocalUsedFlag::NonPhi);
                             yield (value_id, LocalUsedFlag::NonPhi);
                         }
-                        Expr::EqObj(a, b) => {
+                        InstrKind::EqObj(a, b) => {
                             yield (a, LocalUsedFlag::NonPhi);
                             yield (b, LocalUsedFlag::NonPhi);
                         }
-                        Expr::Not(id) => yield (id, LocalUsedFlag::NonPhi),
-                        Expr::And(a, b) => {
+                        InstrKind::Not(id) => yield (id, LocalUsedFlag::NonPhi),
+                        InstrKind::And(a, b) => {
                             yield (a, LocalUsedFlag::NonPhi);
                             yield (b, LocalUsedFlag::NonPhi);
                         }
-                        Expr::Or(a, b) => {
+                        InstrKind::Or(a, b) => {
                             yield (a, LocalUsedFlag::NonPhi);
                             yield (b, LocalUsedFlag::NonPhi);
                         }
-                        Expr::Car(id) => yield (id, LocalUsedFlag::NonPhi),
-                        Expr::Cdr(id) => yield (id, LocalUsedFlag::NonPhi),
-                        Expr::SymbolToString(id) => yield (id, LocalUsedFlag::NonPhi),
-                        Expr::IntToString(id) => yield (id, LocalUsedFlag::NonPhi),
-                        Expr::FloatToString(id) => yield (id, LocalUsedFlag::NonPhi),
-                        Expr::EqInt(a, b)
-                        | Expr::EqFloat(a, b)
-                        | Expr::LtInt(a, b)
-                        | Expr::LtFloat(a, b)
-                        | Expr::GtInt(a, b)
-                        | Expr::GtFloat(a, b)
-                        | Expr::LeInt(a, b)
-                        | Expr::LeFloat(a, b)
-                        | Expr::GeInt(a, b)
-                        | Expr::GeFloat(a, b) => {
+                        InstrKind::Car(id) => yield (id, LocalUsedFlag::NonPhi),
+                        InstrKind::Cdr(id) => yield (id, LocalUsedFlag::NonPhi),
+                        InstrKind::SymbolToString(id) => yield (id, LocalUsedFlag::NonPhi),
+                        InstrKind::IntToString(id) => yield (id, LocalUsedFlag::NonPhi),
+                        InstrKind::FloatToString(id) => yield (id, LocalUsedFlag::NonPhi),
+                        InstrKind::EqInt(a, b)
+                        | InstrKind::EqFloat(a, b)
+                        | InstrKind::LtInt(a, b)
+                        | InstrKind::LtFloat(a, b)
+                        | InstrKind::GtInt(a, b)
+                        | InstrKind::GtFloat(a, b)
+                        | InstrKind::LeInt(a, b)
+                        | InstrKind::LeFloat(a, b)
+                        | InstrKind::GeInt(a, b)
+                        | InstrKind::GeFloat(a, b) => {
                             yield (a, LocalUsedFlag::NonPhi);
                             yield (b, LocalUsedFlag::NonPhi);
                         }
-                        Expr::VariadicArgs(ids) => {
+                        InstrKind::VariadicArgs(ids) => {
                             for id in ids {
                                 yield (id, LocalUsedFlag::NonPhi);
                             }
                         }
-                        Expr::VariadicArgsRef(id, _) => {
+                        InstrKind::VariadicArgsRef(id, _) => {
                             yield (id, LocalUsedFlag::NonPhi);
                         }
-                        Expr::VariadicArgsLength(id) => {
+                        InstrKind::VariadicArgsLength(id) => {
                             yield (id, LocalUsedFlag::NonPhi);
                         }
-                        Expr::CreateMutFuncRef(id) => {
+                        InstrKind::CreateMutFuncRef(id) => {
                             yield (id, LocalUsedFlag::NonPhi);
                         }
-                        Expr::CreateEmptyMutFuncRef => {}
-                        Expr::DerefMutFuncRef(id) => {
+                        InstrKind::CreateEmptyMutFuncRef => {}
+                        InstrKind::DerefMutFuncRef(id) => {
                             yield (id, LocalUsedFlag::NonPhi);
                         }
-                        Expr::SetMutFuncRef(mut_func_ref_id, func_ref_id) => {
+                        InstrKind::SetMutFuncRef(mut_func_ref_id, func_ref_id) => {
                             yield (mut_func_ref_id, LocalUsedFlag::NonPhi);
                             yield (func_ref_id, LocalUsedFlag::NonPhi);
                         }
-                        Expr::EntrypointTable(mut_func_ref_ids) => {
+                        InstrKind::EntrypointTable(mut_func_ref_ids) => {
                             for id in mut_func_ref_ids {
                                 yield (id, LocalUsedFlag::NonPhi);
                             }
                         }
-                        Expr::EntrypointTableRef(_, entrypoint_table_id) => {
+                        InstrKind::EntrypointTableRef(_, entrypoint_table_id) => {
                             yield (entrypoint_table_id, LocalUsedFlag::NonPhi);
                         }
-                        Expr::SetEntrypointTable(_, entrypoint_table_id, mut_func_ref_id) => {
+                        InstrKind::SetEntrypointTable(_, entrypoint_table_id, mut_func_ref_id) => {
                             yield (entrypoint_table_id, LocalUsedFlag::NonPhi);
                             yield (mut_func_ref_id, LocalUsedFlag::NonPhi);
                         }
-                        Expr::InstantiateClosureFunc(module_id, func_id, _) => {
+                        InstrKind::InstantiateClosureFunc(module_id, func_id, _) => {
                             yield (module_id, LocalUsedFlag::NonPhi);
                             yield (func_id, LocalUsedFlag::NonPhi);
                         }
 
 
-                        Expr::Nop
-                        | Expr::InstantiateFunc(..)
-                        | Expr::InstantiateBB(..)
-                        | Expr::Bool(..)
-                        | Expr::Int(..)
-                        | Expr::Float(..)
-                        | Expr::NaN
-                        | Expr::String(..)
-                        | Expr::Nil
-                        | Expr::Char(..)
-                        | Expr::CreateRef(..)
-                        | Expr::FuncRef(..)
-                        | Expr::GlobalGet(..) => {}
+                        InstrKind::Nop
+                        | InstrKind::InstantiateFunc(..)
+                        | InstrKind::InstantiateBB(..)
+                        | InstrKind::Bool(..)
+                        | InstrKind::Int(..)
+                        | InstrKind::Float(..)
+                        | InstrKind::NaN
+                        | InstrKind::String(..)
+                        | InstrKind::Nil
+                        | InstrKind::Char(..)
+                        | InstrKind::CreateRef(..)
+                        | InstrKind::FuncRef(..)
+                        | InstrKind::GlobalGet(..) => {}
                     },
                 )
             }
@@ -638,7 +638,7 @@ macro_rules! impl_Expr_local_usages {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
-pub enum ExprPurelity {
+pub enum InstrKindPurelity {
     Phi,
     // 決定的かつ副作用無し
     // 例: add
@@ -651,131 +651,133 @@ pub enum ExprPurelity {
     Effectful,
 }
 
-impl ExprPurelity {
+impl InstrKindPurelity {
     // デッドコード削除可能か
     pub fn can_dce(&self) -> bool {
         match self {
-            ExprPurelity::Pure | ExprPurelity::ImpureRead => true,
-            ExprPurelity::Phi | ExprPurelity::Effectful => false,
+            InstrKindPurelity::Pure | InstrKindPurelity::ImpureRead => true,
+            InstrKindPurelity::Phi | InstrKindPurelity::Effectful => false,
         }
     }
 
     // 共通部分式除去可能か
     pub fn can_cse(&self) -> bool {
         match self {
-            ExprPurelity::Pure => true,
-            ExprPurelity::Phi | ExprPurelity::ImpureRead | ExprPurelity::Effectful => false,
+            InstrKindPurelity::Pure => true,
+            InstrKindPurelity::Phi
+            | InstrKindPurelity::ImpureRead
+            | InstrKindPurelity::Effectful => false,
         }
     }
 }
 
-impl Expr {
-    pub fn display<'a>(&self, meta: MetaInFunc<'a>) -> DisplayInFunc<'a, &'_ Expr> {
+impl InstrKind {
+    pub fn display<'a>(&self, meta: MetaInFunc<'a>) -> DisplayInFunc<'a, &'_ InstrKind> {
         DisplayInFunc { value: self, meta }
     }
 
-    pub fn purelity(&self) -> ExprPurelity {
+    pub fn purelity(&self) -> InstrKindPurelity {
         match self {
-            Expr::Phi(..) => ExprPurelity::Phi,
-            Expr::Nop
-            | Expr::Uninitialized(_)
-            | Expr::Bool(..)
-            | Expr::Int(..)
-            | Expr::Float(..)
-            | Expr::NaN
-            | Expr::Nil
-            | Expr::Char(..)
-            | Expr::FuncRef(..)
-            | Expr::Move(..)
-            | Expr::ToObj(..)
-            | Expr::FromObj(..)
+            InstrKind::Phi(..) => InstrKindPurelity::Phi,
+            InstrKind::Nop
+            | InstrKind::Uninitialized(_)
+            | InstrKind::Bool(..)
+            | InstrKind::Int(..)
+            | InstrKind::Float(..)
+            | InstrKind::NaN
+            | InstrKind::Nil
+            | InstrKind::Char(..)
+            | InstrKind::FuncRef(..)
+            | InstrKind::Move(..)
+            | InstrKind::ToObj(..)
+            | InstrKind::FromObj(..)
             // Closureのmodule_id/func_id/entrypoint_tableは不変である
-            | Expr::ClosureModuleId(..)
-            | Expr::ClosureFuncId(..)
-            | Expr::ClosureEntrypointTable(..)
-            | Expr::Is(..)
-            | Expr::EqObj(..)
-            | Expr::Not(..)
-            | Expr::And(..)
-            | Expr::Or(..)
-            | Expr::EqInt(..)
-            | Expr::EqFloat(..)
-            | Expr::LtInt(..)
-            | Expr::LtFloat(..)
-            | Expr::GtInt(..)
-            | Expr::GtFloat(..)
-            | Expr::LeInt(..)
-            | Expr::LeFloat(..)
-            | Expr::GeInt(..)
-            | Expr::GeFloat(..)
-            | Expr::VariadicArgs(..)
-            | Expr::VariadicArgsRef(..)
-            | Expr::VariadicArgsLength(..)
-            | Expr::AddInt(..)
-            | Expr::AddFloat(..)
-            | Expr::SubInt(..)
-            | Expr::SubFloat(..)
-            | Expr::MulInt(..)
-            | Expr::MulFloat(..)
-            | Expr::DivInt(..)
-            | Expr::DivFloat(..) => ExprPurelity::Pure,
+            | InstrKind::ClosureModuleId(..)
+            | InstrKind::ClosureFuncId(..)
+            | InstrKind::ClosureEntrypointTable(..)
+            | InstrKind::Is(..)
+            | InstrKind::EqObj(..)
+            | InstrKind::Not(..)
+            | InstrKind::And(..)
+            | InstrKind::Or(..)
+            | InstrKind::EqInt(..)
+            | InstrKind::EqFloat(..)
+            | InstrKind::LtInt(..)
+            | InstrKind::LtFloat(..)
+            | InstrKind::GtInt(..)
+            | InstrKind::GtFloat(..)
+            | InstrKind::LeInt(..)
+            | InstrKind::LeFloat(..)
+            | InstrKind::GeInt(..)
+            | InstrKind::GeFloat(..)
+            | InstrKind::VariadicArgs(..)
+            | InstrKind::VariadicArgsRef(..)
+            | InstrKind::VariadicArgsLength(..)
+            | InstrKind::AddInt(..)
+            | InstrKind::AddFloat(..)
+            | InstrKind::SubInt(..)
+            | InstrKind::SubFloat(..)
+            | InstrKind::MulInt(..)
+            | InstrKind::MulFloat(..)
+            | InstrKind::DivInt(..)
+            | InstrKind::DivFloat(..) => InstrKindPurelity::Pure,
             // String/Cons/Vectorなどは可変なオブジェクトを生成するので純粋ではない
-            Expr::String(..)
-            | Expr::StringToSymbol(..)
-            | Expr::Vector(..)
-            | Expr::UVector(..)
-            | Expr::MakeUVector(..)
-            | Expr::Cons(..)
-            | Expr::CreateRef(..)
-            | Expr::DerefRef(..)
-            | Expr::VectorLength(..)
-            | Expr::VectorRef(..)
-            | Expr::UVectorLength(..)
-            | Expr::UVectorRef(..)
-            | Expr::Car(..)
-            | Expr::Cdr(..)
-            | Expr::GlobalGet(..)
-            | Expr::SymbolToString(..)
-            | Expr::IntToString(..)
-            | Expr::FloatToString(..)
-            | Expr::CreateMutFuncRef(..)
-            | Expr::CreateEmptyMutFuncRef
-            | Expr::DerefMutFuncRef(..)
-            | Expr::EntrypointTable(..)
-            | Expr::EntrypointTableRef(..)
-            | Expr::SetEntrypointTable(..)
+            InstrKind::String(..)
+            | InstrKind::StringToSymbol(..)
+            | InstrKind::Vector(..)
+            | InstrKind::UVector(..)
+            | InstrKind::MakeUVector(..)
+            | InstrKind::Cons(..)
+            | InstrKind::CreateRef(..)
+            | InstrKind::DerefRef(..)
+            | InstrKind::VectorLength(..)
+            | InstrKind::VectorRef(..)
+            | InstrKind::UVectorLength(..)
+            | InstrKind::UVectorRef(..)
+            | InstrKind::Car(..)
+            | InstrKind::Cdr(..)
+            | InstrKind::GlobalGet(..)
+            | InstrKind::SymbolToString(..)
+            | InstrKind::IntToString(..)
+            | InstrKind::FloatToString(..)
+            | InstrKind::CreateMutFuncRef(..)
+            | InstrKind::CreateEmptyMutFuncRef
+            | InstrKind::DerefMutFuncRef(..)
+            | InstrKind::EntrypointTable(..)
+            | InstrKind::EntrypointTableRef(..)
+            | InstrKind::SetEntrypointTable(..)
             // closureの環境は可変である
-            | Expr::Closure { .. }
-            | Expr::ClosureEnv(..) => ExprPurelity::ImpureRead,
-            Expr::InstantiateFunc(..)
-            | Expr::InstantiateClosureFunc(..)
-            | Expr::InstantiateBB(..)
-            | Expr::SetRef(..)
-            | Expr::SetMutFuncRef(..)
-            | Expr::Call(..)
-            | Expr::CallRef(..)
-            | Expr::CallClosure(..)
-            | Expr::GlobalSet(..)
-            | Expr::Display(..)
-            | Expr::WriteChar(..)
-            | Expr::VectorSet(..)
-            | Expr::UVectorSet(..)
-            | Expr::ClosureSetEnv(..) => ExprPurelity::Effectful,
+            | InstrKind::Closure { .. }
+            | InstrKind::ClosureEnv(..) => InstrKindPurelity::ImpureRead,
+            InstrKind::InstantiateFunc(..)
+            | InstrKind::InstantiateClosureFunc(..)
+            | InstrKind::InstantiateBB(..)
+            | InstrKind::SetRef(..)
+            | InstrKind::SetMutFuncRef(..)
+            | InstrKind::Call(..)
+            | InstrKind::CallRef(..)
+            | InstrKind::CallClosure(..)
+            | InstrKind::GlobalSet(..)
+            | InstrKind::Display(..)
+            | InstrKind::WriteChar(..)
+            | InstrKind::VectorSet(..)
+            | InstrKind::UVectorSet(..)
+            | InstrKind::ClosureSetEnv(..) => InstrKindPurelity::Effectful,
         }
     }
 
-    impl_Expr_func_ids!(_mut, mut);
-    impl_Expr_func_ids!(,);
-    impl_Expr_local_usages!(_mut, mut);
-    impl_Expr_local_usages!(,);
+    impl_InstrKind_func_ids!(_mut, mut);
+    impl_InstrKind_func_ids!(,);
+    impl_InstrKind_local_usages!(_mut, mut);
+    impl_InstrKind_local_usages!(,);
 }
 
-impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
+impl fmt::Display for DisplayInFunc<'_, &'_ InstrKind> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.value {
-            Expr::Nop => write!(f, "nop"),
-            Expr::Uninitialized(typ) => write!(f, "uninitialized<{}>", typ),
-            Expr::Phi(values) => {
+            InstrKind::Nop => write!(f, "nop"),
+            InstrKind::Uninitialized(typ) => write!(f, "uninitialized<{}>", typ),
+            InstrKind::Phi(values) => {
                 write!(f, "phi(")?;
                 for (i, value) in values.iter().enumerate() {
                     if i > 0 {
@@ -790,7 +792,7 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                 }
                 write!(f, ")")
             }
-            Expr::InstantiateFunc(module_id, func_id, func_index) => {
+            InstrKind::InstantiateFunc(module_id, func_id, func_index) => {
                 write!(
                     f,
                     "instantiate_func({}, {}, {})",
@@ -799,7 +801,7 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                     func_index
                 )
             }
-            Expr::InstantiateClosureFunc(module_id, func_id, func_index) => {
+            InstrKind::InstantiateClosureFunc(module_id, func_id, func_index) => {
                 write!(
                     f,
                     "instantiate_closure_func({}, {}, {})",
@@ -808,7 +810,7 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                     func_index
                 )
             }
-            Expr::InstantiateBB(module_id, func_id, func_index, bb_id, index) => {
+            InstrKind::InstantiateBB(module_id, func_id, func_index, bb_id, index) => {
                 write!(
                     f,
                     "instantiate_bb({}, {}, {}, {}, {})",
@@ -819,15 +821,17 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                     index,
                 )
             }
-            Expr::Bool(b) => write!(f, "{}", b),
-            Expr::Int(i) => write!(f, "{}", i),
-            Expr::Float(fl) => write!(f, "{}", fl),
-            Expr::NaN => write!(f, "nan"),
-            Expr::String(s) => write!(f, "{:?}", s),
-            Expr::StringToSymbol(id) => write!(f, "string_to_symbol({})", id.display(self.meta)),
-            Expr::Nil => write!(f, "nil"),
-            Expr::Char(c) => write!(f, "{:?}", c),
-            Expr::Vector(v) => {
+            InstrKind::Bool(b) => write!(f, "{}", b),
+            InstrKind::Int(i) => write!(f, "{}", i),
+            InstrKind::Float(fl) => write!(f, "{}", fl),
+            InstrKind::NaN => write!(f, "nan"),
+            InstrKind::String(s) => write!(f, "{:?}", s),
+            InstrKind::StringToSymbol(id) => {
+                write!(f, "string_to_symbol({})", id.display(self.meta))
+            }
+            InstrKind::Nil => write!(f, "nil"),
+            InstrKind::Char(c) => write!(f, "{:?}", c),
+            InstrKind::Vector(v) => {
                 write!(f, "[")?;
                 for (i, id) in v.iter().enumerate() {
                     if i > 0 {
@@ -837,7 +841,7 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                 }
                 write!(f, "]")
             }
-            Expr::UVector(kind, v) => {
+            InstrKind::UVector(kind, v) => {
                 write!(f, "uvector<{}>[", kind)?;
                 for (i, id) in v.iter().enumerate() {
                     if i > 0 {
@@ -847,17 +851,17 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                 }
                 write!(f, "]")
             }
-            Expr::MakeUVector(kind, id) => {
+            InstrKind::MakeUVector(kind, id) => {
                 write!(f, "make_uvector<{}>({})", kind, id.display(self.meta))
             }
-            Expr::Cons(a, b) => {
+            InstrKind::Cons(a, b) => {
                 write!(f, "({} . {})", a.display(self.meta), b.display(self.meta))
             }
-            Expr::CreateRef(typ) => write!(f, "create_ref<{}>", typ),
-            Expr::DerefRef(typ, id) => {
+            InstrKind::CreateRef(typ) => write!(f, "create_ref<{}>", typ),
+            InstrKind::DerefRef(typ, id) => {
                 write!(f, "deref_ref<{}>({})", typ, id.display(self.meta))
             }
-            Expr::SetRef(typ, id, value) => {
+            InstrKind::SetRef(typ, id, value) => {
                 write!(
                     f,
                     "set_ref<{}>({}, {})",
@@ -866,11 +870,11 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                     value.display(self.meta)
                 )
             }
-            Expr::FuncRef(id) => write!(f, "func_ref({})", id.display(self.meta.meta)),
-            Expr::Call(call) => {
+            InstrKind::FuncRef(id) => write!(f, "func_ref({})", id.display(self.meta.meta)),
+            InstrKind::Call(call) => {
                 write!(f, "{}", call.display(self.meta))
             }
-            Expr::Closure {
+            InstrKind::Closure {
                 envs,
                 module_id,
                 func_id,
@@ -888,16 +892,18 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                 }
                 write!(f, ")")
             }
-            Expr::CallRef(call_ref) => {
+            InstrKind::CallRef(call_ref) => {
                 write!(f, "{}", call_ref.display(self.meta))
             }
-            Expr::CallClosure(call_closure) => {
+            InstrKind::CallClosure(call_closure) => {
                 write!(f, "{}", call_closure.display(self.meta))
             }
-            Expr::Move(id) => write!(f, "move({})", id.display(self.meta)),
-            Expr::ToObj(typ, id) => write!(f, "to_obj<{}>({})", typ, id.display(self.meta)),
-            Expr::FromObj(typ, id) => write!(f, "from_obj<{}>({})", typ, id.display(self.meta)),
-            Expr::ClosureEnv(env_types, closure, index) => {
+            InstrKind::Move(id) => write!(f, "move({})", id.display(self.meta)),
+            InstrKind::ToObj(typ, id) => write!(f, "to_obj<{}>({})", typ, id.display(self.meta)),
+            InstrKind::FromObj(typ, id) => {
+                write!(f, "from_obj<{}>({})", typ, id.display(self.meta))
+            }
+            InstrKind::ClosureEnv(env_types, closure, index) => {
                 write!(f, "closure_env<")?;
                 for (i, typ) in env_types.iter().enumerate() {
                     if i > 0 {
@@ -908,7 +914,7 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                 write!(f, ">({}, {})", closure.display(self.meta), index)?;
                 Ok(())
             }
-            Expr::ClosureSetEnv(env_types, closure, index, value) => {
+            InstrKind::ClosureSetEnv(env_types, closure, index, value) => {
                 write!(f, "closure_set_env<")?;
                 for (i, typ) in env_types.iter().enumerate() {
                     if i > 0 {
@@ -925,12 +931,14 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                 )?;
                 Ok(())
             }
-            Expr::ClosureModuleId(id) => write!(f, "closure_module_id({})", id.display(self.meta)),
-            Expr::ClosureFuncId(id) => write!(f, "closure_func_id({})", id.display(self.meta)),
-            Expr::ClosureEntrypointTable(id) => {
+            InstrKind::ClosureModuleId(id) => {
+                write!(f, "closure_module_id({})", id.display(self.meta))
+            }
+            InstrKind::ClosureFuncId(id) => write!(f, "closure_func_id({})", id.display(self.meta)),
+            InstrKind::ClosureEntrypointTable(id) => {
                 write!(f, "closure_entrypoint_table({})", id.display(self.meta))
             }
-            Expr::GlobalSet(id, value) => {
+            InstrKind::GlobalSet(id, value) => {
                 write!(
                     f,
                     "global_set({}, {})",
@@ -938,9 +946,9 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                     value.display(self.meta)
                 )
             }
-            Expr::GlobalGet(id) => write!(f, "global_get({})", id.display(self.meta.meta)),
-            Expr::Display(id) => write!(f, "display({})", id.display(self.meta)),
-            Expr::AddInt(a, b) => {
+            InstrKind::GlobalGet(id) => write!(f, "global_get({})", id.display(self.meta.meta)),
+            InstrKind::Display(id) => write!(f, "display({})", id.display(self.meta)),
+            InstrKind::AddInt(a, b) => {
                 write!(
                     f,
                     "add_int({}, {})",
@@ -948,7 +956,7 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                     b.display(self.meta)
                 )
             }
-            Expr::AddFloat(a, b) => {
+            InstrKind::AddFloat(a, b) => {
                 write!(
                     f,
                     "add_float({}, {})",
@@ -956,7 +964,7 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                     b.display(self.meta)
                 )
             }
-            Expr::SubInt(a, b) => {
+            InstrKind::SubInt(a, b) => {
                 write!(
                     f,
                     "sub_int({}, {})",
@@ -964,7 +972,7 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                     b.display(self.meta)
                 )
             }
-            Expr::SubFloat(a, b) => {
+            InstrKind::SubFloat(a, b) => {
                 write!(
                     f,
                     "sub_float({}, {})",
@@ -972,7 +980,7 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                     b.display(self.meta)
                 )
             }
-            Expr::MulInt(a, b) => {
+            InstrKind::MulInt(a, b) => {
                 write!(
                     f,
                     "mul_int({}, {})",
@@ -980,7 +988,7 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                     b.display(self.meta)
                 )
             }
-            Expr::MulFloat(a, b) => {
+            InstrKind::MulFloat(a, b) => {
                 write!(
                     f,
                     "mul_float({}, {})",
@@ -988,7 +996,7 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                     b.display(self.meta)
                 )
             }
-            Expr::DivInt(a, b) => {
+            InstrKind::DivInt(a, b) => {
                 write!(
                     f,
                     "div_int({}, {})",
@@ -996,7 +1004,7 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                     b.display(self.meta)
                 )
             }
-            Expr::DivFloat(a, b) => {
+            InstrKind::DivFloat(a, b) => {
                 write!(
                     f,
                     "div_float({}, {})",
@@ -1004,10 +1012,10 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                     b.display(self.meta)
                 )
             }
-            Expr::WriteChar(id) => write!(f, "write_char({})", id.display(self.meta)),
-            Expr::Is(typ, id) => write!(f, "is<{}>({})", typ, id.display(self.meta)),
-            Expr::VectorLength(id) => write!(f, "vector_length({})", id.display(self.meta)),
-            Expr::VectorRef(id, index) => {
+            InstrKind::WriteChar(id) => write!(f, "write_char({})", id.display(self.meta)),
+            InstrKind::Is(typ, id) => write!(f, "is<{}>({})", typ, id.display(self.meta)),
+            InstrKind::VectorLength(id) => write!(f, "vector_length({})", id.display(self.meta)),
+            InstrKind::VectorRef(id, index) => {
                 write!(
                     f,
                     "vector_ref({}, {})",
@@ -1015,7 +1023,7 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                     index.display(self.meta)
                 )
             }
-            Expr::VectorSet(id, index, value) => {
+            InstrKind::VectorSet(id, index, value) => {
                 write!(
                     f,
                     "vector_set({}, {}, {})",
@@ -1024,10 +1032,10 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                     value.display(self.meta)
                 )
             }
-            Expr::UVectorLength(kind, id) => {
+            InstrKind::UVectorLength(kind, id) => {
                 write!(f, "uvector_length<{}>({})", kind, id.display(self.meta))
             }
-            Expr::UVectorRef(kind, uvec_id, index_id) => {
+            InstrKind::UVectorRef(kind, uvec_id, index_id) => {
                 write!(
                     f,
                     "uvector_ref<{}>({}, {})",
@@ -1036,7 +1044,7 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                     index_id.display(self.meta)
                 )
             }
-            Expr::UVectorSet(kind, uvec_id, index_id, value_id) => {
+            InstrKind::UVectorSet(kind, uvec_id, index_id, value_id) => {
                 write!(
                     f,
                     "uvector_set<{}>({}, {}, {})",
@@ -1046,7 +1054,7 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                     value_id.display(self.meta)
                 )
             }
-            Expr::EqObj(a, b) => {
+            InstrKind::EqObj(a, b) => {
                 write!(
                     f,
                     "eq_obj({}, {})",
@@ -1054,27 +1062,33 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                     b.display(self.meta)
                 )
             }
-            Expr::Not(id) => write!(f, "not({})", id.display(self.meta)),
-            Expr::And(a, b) => write!(f, "and({}, {})", a.display(self.meta), b.display(self.meta)),
-            Expr::Or(a, b) => write!(f, "or({}, {})", a.display(self.meta), b.display(self.meta)),
-            Expr::Car(id) => write!(f, "car({})", id.display(self.meta)),
-            Expr::Cdr(id) => write!(f, "cdr({})", id.display(self.meta)),
-            Expr::SymbolToString(id) => write!(f, "symbol_to_string({})", id.display(self.meta)),
-            Expr::IntToString(id) => write!(f, "int_to_string({})", id.display(self.meta)),
-            Expr::FloatToString(id) => write!(f, "float_to_string({})", id.display(self.meta)),
-            Expr::EqInt(a, b) => write!(
+            InstrKind::Not(id) => write!(f, "not({})", id.display(self.meta)),
+            InstrKind::And(a, b) => {
+                write!(f, "and({}, {})", a.display(self.meta), b.display(self.meta))
+            }
+            InstrKind::Or(a, b) => {
+                write!(f, "or({}, {})", a.display(self.meta), b.display(self.meta))
+            }
+            InstrKind::Car(id) => write!(f, "car({})", id.display(self.meta)),
+            InstrKind::Cdr(id) => write!(f, "cdr({})", id.display(self.meta)),
+            InstrKind::SymbolToString(id) => {
+                write!(f, "symbol_to_string({})", id.display(self.meta))
+            }
+            InstrKind::IntToString(id) => write!(f, "int_to_string({})", id.display(self.meta)),
+            InstrKind::FloatToString(id) => write!(f, "float_to_string({})", id.display(self.meta)),
+            InstrKind::EqInt(a, b) => write!(
                 f,
                 "eq_int({}, {})",
                 a.display(self.meta),
                 b.display(self.meta)
             ),
-            Expr::EqFloat(a, b) => write!(
+            InstrKind::EqFloat(a, b) => write!(
                 f,
                 "eq_float({}, {})",
                 a.display(self.meta),
                 b.display(self.meta)
             ),
-            Expr::LtInt(a, b) => {
+            InstrKind::LtInt(a, b) => {
                 write!(
                     f,
                     "lt_int({}, {})",
@@ -1082,7 +1096,7 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                     b.display(self.meta)
                 )
             }
-            Expr::LtFloat(a, b) => {
+            InstrKind::LtFloat(a, b) => {
                 write!(
                     f,
                     "lt_float({}, {})",
@@ -1090,7 +1104,7 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                     b.display(self.meta)
                 )
             }
-            Expr::GtInt(a, b) => {
+            InstrKind::GtInt(a, b) => {
                 write!(
                     f,
                     "gt_int({}, {})",
@@ -1098,7 +1112,7 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                     b.display(self.meta)
                 )
             }
-            Expr::GtFloat(a, b) => {
+            InstrKind::GtFloat(a, b) => {
                 write!(
                     f,
                     "gt_float({}, {})",
@@ -1106,7 +1120,7 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                     b.display(self.meta)
                 )
             }
-            Expr::LeInt(a, b) => {
+            InstrKind::LeInt(a, b) => {
                 write!(
                     f,
                     "le_int({}, {})",
@@ -1114,7 +1128,7 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                     b.display(self.meta)
                 )
             }
-            Expr::LeFloat(a, b) => {
+            InstrKind::LeFloat(a, b) => {
                 write!(
                     f,
                     "le_float({}, {})",
@@ -1122,7 +1136,7 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                     b.display(self.meta)
                 )
             }
-            Expr::GeInt(a, b) => {
+            InstrKind::GeInt(a, b) => {
                 write!(
                     f,
                     "ge_int({}, {})",
@@ -1130,7 +1144,7 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                     b.display(self.meta)
                 )
             }
-            Expr::GeFloat(a, b) => {
+            InstrKind::GeFloat(a, b) => {
                 write!(
                     f,
                     "ge_float({}, {})",
@@ -1138,7 +1152,7 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                     b.display(self.meta)
                 )
             }
-            Expr::VariadicArgs(ids) => {
+            InstrKind::VariadicArgs(ids) => {
                 write!(f, "variadic_args(")?;
                 for (i, id) in ids.iter().enumerate() {
                     if i > 0 {
@@ -1148,24 +1162,26 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                 }
                 write!(f, ")")
             }
-            Expr::VariadicArgsRef(id, index) => {
+            InstrKind::VariadicArgsRef(id, index) => {
                 write!(f, "variadic_args_ref({}, {})", id.display(self.meta), index)
             }
-            Expr::VariadicArgsLength(id) => {
+            InstrKind::VariadicArgsLength(id) => {
                 write!(f, "variadic_args_length({})", id.display(self.meta))
             }
-            Expr::CreateMutFuncRef(func_ref_id) => {
+            InstrKind::CreateMutFuncRef(func_ref_id) => {
                 write!(f, "create_mut_func_ref({})", func_ref_id.display(self.meta))
             }
-            Expr::CreateEmptyMutFuncRef => write!(f, "create_empty_mut_func_ref"),
-            Expr::DerefMutFuncRef(id) => write!(f, "deref_mut_func_ref({})", id.display(self.meta)),
-            Expr::SetMutFuncRef(mut_func_ref_id, func_ref_id) => write!(
+            InstrKind::CreateEmptyMutFuncRef => write!(f, "create_empty_mut_func_ref"),
+            InstrKind::DerefMutFuncRef(id) => {
+                write!(f, "deref_mut_func_ref({})", id.display(self.meta))
+            }
+            InstrKind::SetMutFuncRef(mut_func_ref_id, func_ref_id) => write!(
                 f,
                 "set_mut_func_ref({}, {})",
                 mut_func_ref_id.display(self.meta),
                 func_ref_id.display(self.meta)
             ),
-            Expr::EntrypointTable(mut_func_ref_ids) => {
+            InstrKind::EntrypointTable(mut_func_ref_ids) => {
                 write!(f, "entrypoint_table(")?;
                 for (i, id) in mut_func_ref_ids.iter().enumerate() {
                     if i > 0 {
@@ -1175,13 +1191,13 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
                 }
                 write!(f, ")")
             }
-            Expr::EntrypointTableRef(index, entrypoint_table_id) => write!(
+            InstrKind::EntrypointTableRef(index, entrypoint_table_id) => write!(
                 f,
                 "entrypoint_table_ref({}, {})",
                 index,
                 entrypoint_table_id.display(self.meta),
             ),
-            Expr::SetEntrypointTable(index, entrypoint_table_id, mut_func_ref_id) => write!(
+            InstrKind::SetEntrypointTable(index, entrypoint_table_id, mut_func_ref_id) => write!(
                 f,
                 "set_entrypoint_table({}, {}, {})",
                 index,
@@ -1193,12 +1209,12 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Expr> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ExprAssign {
+pub struct Instr {
     pub local: Option<LocalId>,
-    pub expr: Expr,
+    pub expr: InstrKind,
 }
 
-macro_rules! impl_ExprAssign_local_usages {
+macro_rules! impl_Instr_local_usages {
     ($($suffix: ident)?,$($mutability: tt)?) => {
         paste::paste! {
             pub fn [<local_usages $($suffix)?>](&$($mutability)? self) -> impl Iterator<Item = (&$($mutability)? LocalId, LocalFlag)> {
@@ -1218,16 +1234,16 @@ macro_rules! impl_ExprAssign_local_usages {
     };
 }
 
-impl ExprAssign {
-    pub fn display<'a>(&self, meta: MetaInFunc<'a>) -> DisplayInFunc<'a, &'_ ExprAssign> {
+impl Instr {
+    pub fn display<'a>(&self, meta: MetaInFunc<'a>) -> DisplayInFunc<'a, &'_ Instr> {
         DisplayInFunc { value: self, meta }
     }
 
-    impl_ExprAssign_local_usages!(_mut, mut);
-    impl_ExprAssign_local_usages!(,);
+    impl_Instr_local_usages!(_mut, mut);
+    impl_Instr_local_usages!(,);
 }
 
-impl fmt::Display for DisplayInFunc<'_, &'_ ExprAssign> {
+impl fmt::Display for DisplayInFunc<'_, &'_ Instr> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Some(local) = self.value.local {
             write!(f, "{}", local.display(self.meta))?;
@@ -1241,7 +1257,7 @@ impl fmt::Display for DisplayInFunc<'_, &'_ ExprAssign> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BasicBlock {
     pub id: BasicBlockId,
-    pub exprs: Vec<ExprAssign>,
+    pub instrs: Vec<Instr>,
     pub next: BasicBlockNext,
 }
 
@@ -1252,8 +1268,8 @@ macro_rules! impl_BasicBlock_local_usages {
                 from_coroutine(
                     #[coroutine]
                     move || {
-                        for expr in &$($mutability)? self.exprs {
-                            for usage in expr.[<local_usages $($suffix)?>]() {
+                        for instr in &$($mutability)? self.instrs {
+                            for usage in instr.[<local_usages $($suffix)?>]() {
                                 yield usage;
                             }
                         }
@@ -1274,8 +1290,8 @@ macro_rules! impl_BasicBlock_func_ids {
                 from_coroutine(
                     #[coroutine]
                     move || {
-                        for expr in &$($mutability)? self.exprs {
-                            for id in expr.expr.[<func_ids $($suffix)?>]() {
+                        for instr in &$($mutability)? self.instrs {
+                            for id in instr.expr.[<func_ids $($suffix)?>]() {
                                 yield id;
                             }
                         }
@@ -1318,7 +1334,7 @@ impl fmt::Display for DisplayInFunc<'_, &'_ BasicBlock> {
             DISPLAY_INDENT,
             self.value.id.display(self.meta.meta)
         )?;
-        for expr in &self.value.exprs {
+        for expr in &self.value.instrs {
             writeln!(
                 f,
                 "{}{}{}",
@@ -1341,9 +1357,9 @@ impl fmt::Display for DisplayInFunc<'_, &'_ BasicBlock> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BasicBlockTerminator {
     Return(LocalId),
-    TailCall(ExprCall),
-    TailCallRef(ExprCallRef),
-    TailCallClosure(ExprCallClosure),
+    TailCall(InstrCall),
+    TailCallRef(InstrCallRef),
+    TailCallClosure(InstrCallClosure),
     Error(LocalId),
 }
 macro_rules! impl_BasicBlockTerminator_local_ids {

@@ -42,7 +42,7 @@ pub fn assign_type_args(
     type_params: &FxBiHashMap<TypeParamId, LocalId>,
     type_args: &VecMap<TypeParamId, ValType>,
 ) -> FxBiHashMap<LocalId, LocalId> {
-    let mut additional_expr_assigns = Vec::new();
+    let mut additional_instrs = Vec::new();
 
     // 型代入されている変数のobj版を用意(l1_objに対応)
     let mut assigned_local_to_obj = FxBiHashMap::default();
@@ -60,9 +60,9 @@ pub fn assign_type_args(
             typ: LocalType::Type(Type::Obj),
         });
         assigned_local_to_obj.insert(local, obj_local);
-        additional_expr_assigns.push(ExprAssign {
+        additional_instrs.push(Instr {
             local: Some(obj_local),
-            expr: Expr::ToObj(*typ, *type_params.get_by_left(&type_param_id).unwrap()),
+            expr: InstrKind::ToObj(*typ, *type_params.get_by_left(&type_param_id).unwrap()),
         });
     }
 
@@ -73,7 +73,7 @@ pub fn assign_type_args(
     }
 
     // TODO: BBを拡張するのではなくBBを追加
-    bb.exprs.splice(0..0, additional_expr_assigns);
+    bb.instrs.splice(0..0, additional_instrs);
 
     assigned_local_to_obj
 }
@@ -119,11 +119,11 @@ pub fn extend_typed_obj(
 ) {
     let mut worklist = Vec::new();
 
-    for expr_assign in bb.exprs.iter() {
-        match *expr_assign {
-            ExprAssign {
+    for instr in bb.instrs.iter() {
+        match *instr {
+            Instr {
                 local: Some(local),
-                expr: Expr::FromObj(typ, value),
+                expr: InstrKind::FromObj(typ, value),
             } => {
                 typed_objs.entry(value).or_insert(TypedObj {
                     val_type: local,
@@ -131,9 +131,9 @@ pub fn extend_typed_obj(
                 });
                 worklist.push(value);
             }
-            ExprAssign {
+            Instr {
                 local: Some(local),
-                expr: Expr::ToObj(typ, value),
+                expr: InstrKind::ToObj(typ, value),
             } => {
                 typed_objs.entry(local).or_insert(TypedObj {
                     val_type: value,
@@ -141,9 +141,9 @@ pub fn extend_typed_obj(
                 });
             }
             // 後方に型情報を伝播
-            ExprAssign {
+            Instr {
                 local: Some(local),
-                expr: Expr::Move(value),
+                expr: InstrKind::Move(value),
             } => {
                 if let Some(&typed_obj) = typed_objs.get(value) {
                     typed_objs.entry(local).or_insert(typed_obj);
@@ -156,10 +156,10 @@ pub fn extend_typed_obj(
     // 前方のmoveをたどって型情報を伝播
     while let Some(local) = worklist.pop() {
         if let Some(def_idx) = defs.get(local)
-            && let Some(&ExprAssign {
+            && let Some(&Instr {
                 local: Some(_),
-                expr: Expr::Move(value),
-            }) = bb.exprs.get(*def_idx)
+                expr: InstrKind::Move(value),
+            }) = bb.instrs.get(*def_idx)
             && !typed_objs.contains_key(value)
         {
             let typed_obj = typed_objs[local];
@@ -181,18 +181,18 @@ pub fn remove_type_check(
     typed_objs: &VecMap<LocalId, TypedObj>,
     defs: &VecMap<LocalId, usize>,
 ) {
-    for (i, expr_assign) in bb.exprs.iter_mut().enumerate() {
-        match expr_assign.expr {
-            Expr::Is(val_type, local) => {
+    for (i, instr) in bb.instrs.iter_mut().enumerate() {
+        match instr.expr {
+            InstrKind::Is(val_type, local) => {
                 if let Some(typed_obj) = typed_objs.get(local) {
                     if typed_obj.typ == val_type {
-                        expr_assign.expr = Expr::Bool(true);
+                        instr.expr = InstrKind::Bool(true);
                     } else {
-                        expr_assign.expr = Expr::Bool(false);
+                        instr.expr = InstrKind::Bool(false);
                     }
                 }
             }
-            Expr::FromObj(ty, obj_local) => {
+            InstrKind::FromObj(ty, obj_local) => {
                 if let Some(typed_obj) = typed_objs.get(obj_local)
                     && defs
                         .get(typed_obj.val_type)
@@ -201,7 +201,7 @@ pub fn remove_type_check(
                 // defsに存在しない = 先行ブロックで定義されている
                 {
                     debug_assert_eq!(typed_obj.typ, ty);
-                    expr_assign.expr = Expr::Move(typed_obj.val_type);
+                    instr.expr = InstrKind::Move(typed_obj.val_type);
                 }
             }
             _ => {}
@@ -251,23 +251,23 @@ pub fn copy_propagate(locals: &VecMap<LocalId, Local>, bb: &mut BasicBlock) {
         from_obj_replacements.insert(local, None);
     }
 
-    for expr_assign in bb.exprs.iter_mut() {
-        use Expr::*;
+    for instr in bb.instrs.iter_mut() {
+        use InstrKind::*;
 
-        for (local, flag) in expr_assign.local_usages_mut() {
+        for (local, flag) in instr.local_usages_mut() {
             if let LocalFlag::Used(_) = flag {
                 *local = local_replacements[*local];
             }
         }
 
-        match *expr_assign {
-            ExprAssign {
+        match *instr {
+            Instr {
                 local: Some(local),
                 expr: Move(value),
             } => {
                 local_replacements[local] = value;
             }
-            ExprAssign {
+            Instr {
                 local: Some(local),
                 expr: ToObj(typ, value),
             } => {
@@ -280,7 +280,7 @@ pub fn copy_propagate(locals: &VecMap<LocalId, Local>, bb: &mut BasicBlock) {
                     local_replacements[local] = val_type;
                 }
             }
-            ExprAssign {
+            Instr {
                 local: Some(local),
                 expr: FromObj(typ, value),
             } => {
@@ -321,18 +321,18 @@ pub fn dead_code_elimination(
         used[local] = true;
     }
 
-    for expr_assign in bb.exprs.iter_mut().rev() {
-        let can_dce = expr_assign.expr.purelity().can_dce();
-        let expr_used = !can_dce || expr_assign.local.map(|l| used[l]).unwrap_or(false);
+    for instr in bb.instrs.iter_mut().rev() {
+        let can_dce = instr.expr.purelity().can_dce();
+        let expr_used = !can_dce || instr.local.map(|l| used[l]).unwrap_or(false);
         if expr_used {
-            for (&local, flag) in expr_assign.local_usages() {
+            for (&local, flag) in instr.local_usages() {
                 if let LocalFlag::Used(_) = flag {
                     used[local] = true;
                 }
             }
         } else {
-            expr_assign.expr = Expr::Nop;
-            expr_assign.local = None;
+            instr.expr = InstrKind::Nop;
+            instr.local = None;
         }
     }
 }
@@ -364,22 +364,22 @@ mod tests {
 
         let mut bb = BasicBlock {
             id: BasicBlockId::from(0),
-            exprs: vec![
-                ExprAssign {
+            instrs: vec![
+                Instr {
                     local: None,
-                    expr: Expr::Cons(LocalId::from(0), LocalId::from(0)),
+                    expr: InstrKind::Cons(LocalId::from(0), LocalId::from(0)),
                 },
-                ExprAssign {
+                Instr {
                     local: Some(LocalId::from(1)),
-                    expr: Expr::FromObj(ValType::Int, LocalId::from(0)),
+                    expr: InstrKind::FromObj(ValType::Int, LocalId::from(0)),
                 },
-                ExprAssign {
+                Instr {
                     local: Some(LocalId::from(2)),
-                    expr: Expr::FromObj(ValType::Int, LocalId::from(0)),
+                    expr: InstrKind::FromObj(ValType::Int, LocalId::from(0)),
                 },
-                ExprAssign {
+                Instr {
                     local: None,
-                    expr: Expr::AddInt(LocalId::from(1), LocalId::from(2)),
+                    expr: InstrKind::AddInt(LocalId::from(1), LocalId::from(2)),
                 },
             ],
             next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(1))),
@@ -417,27 +417,27 @@ mod tests {
         );
 
         assert_eq!(
-            bb.exprs,
+            bb.instrs,
             vec![
-                ExprAssign {
+                Instr {
                     local: Some(LocalId::from(3)),
-                    expr: Expr::ToObj(ValType::Int, LocalId::from(0)),
+                    expr: InstrKind::ToObj(ValType::Int, LocalId::from(0)),
                 },
-                ExprAssign {
+                Instr {
                     local: None,
-                    expr: Expr::Cons(LocalId::from(3), LocalId::from(3)),
+                    expr: InstrKind::Cons(LocalId::from(3), LocalId::from(3)),
                 },
-                ExprAssign {
+                Instr {
                     local: Some(LocalId::from(1)),
-                    expr: Expr::FromObj(ValType::Int, LocalId::from(3)),
+                    expr: InstrKind::FromObj(ValType::Int, LocalId::from(3)),
                 },
-                ExprAssign {
+                Instr {
                     local: Some(LocalId::from(2)),
-                    expr: Expr::FromObj(ValType::Int, LocalId::from(3)),
+                    expr: InstrKind::FromObj(ValType::Int, LocalId::from(3)),
                 },
-                ExprAssign {
+                Instr {
                     local: None,
-                    expr: Expr::AddInt(LocalId::from(1), LocalId::from(2)),
+                    expr: InstrKind::AddInt(LocalId::from(1), LocalId::from(2)),
                 },
             ]
         );
@@ -487,14 +487,14 @@ mod tests {
 
         let mut bb = BasicBlock {
             id: BasicBlockId::from(0),
-            exprs: vec![
-                ExprAssign {
+            instrs: vec![
+                Instr {
                     local: Some(LocalId::from(1)),
-                    expr: Expr::Move(LocalId::from(0)),
+                    expr: InstrKind::Move(LocalId::from(0)),
                 },
-                ExprAssign {
+                Instr {
                     local: Some(LocalId::from(2)),
-                    expr: Expr::AddInt(LocalId::from(1), LocalId::from(1)),
+                    expr: InstrKind::AddInt(LocalId::from(1), LocalId::from(1)),
                 },
             ],
             next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(2))),
@@ -506,14 +506,14 @@ mod tests {
             bb,
             BasicBlock {
                 id: BasicBlockId::from(0),
-                exprs: vec![
-                    ExprAssign {
+                instrs: vec![
+                    Instr {
                         local: Some(LocalId::from(1)),
-                        expr: Expr::Move(LocalId::from(0)),
+                        expr: InstrKind::Move(LocalId::from(0)),
                     },
-                    ExprAssign {
+                    Instr {
                         local: Some(LocalId::from(2)),
-                        expr: Expr::AddInt(LocalId::from(0), LocalId::from(0)),
+                        expr: InstrKind::AddInt(LocalId::from(0), LocalId::from(0)),
                     },
                 ],
                 next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(2))),
@@ -546,18 +546,18 @@ mod tests {
 
         let mut bb = BasicBlock {
             id: BasicBlockId::from(0),
-            exprs: vec![
-                ExprAssign {
+            instrs: vec![
+                Instr {
                     local: Some(LocalId::from(1)),
-                    expr: Expr::ToObj(ValType::Int, LocalId::from(0)),
+                    expr: InstrKind::ToObj(ValType::Int, LocalId::from(0)),
                 },
-                ExprAssign {
+                Instr {
                     local: Some(LocalId::from(2)),
-                    expr: Expr::FromObj(ValType::Int, LocalId::from(1)),
+                    expr: InstrKind::FromObj(ValType::Int, LocalId::from(1)),
                 },
-                ExprAssign {
+                Instr {
                     local: Some(LocalId::from(3)),
-                    expr: Expr::AddInt(LocalId::from(2), LocalId::from(2)),
+                    expr: InstrKind::AddInt(LocalId::from(2), LocalId::from(2)),
                 },
             ],
             next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(3))),
@@ -569,18 +569,18 @@ mod tests {
             bb,
             BasicBlock {
                 id: BasicBlockId::from(0),
-                exprs: vec![
-                    ExprAssign {
+                instrs: vec![
+                    Instr {
                         local: Some(LocalId::from(1)),
-                        expr: Expr::ToObj(ValType::Int, LocalId::from(0)),
+                        expr: InstrKind::ToObj(ValType::Int, LocalId::from(0)),
                     },
-                    ExprAssign {
+                    Instr {
                         local: Some(LocalId::from(2)),
-                        expr: Expr::FromObj(ValType::Int, LocalId::from(1)),
+                        expr: InstrKind::FromObj(ValType::Int, LocalId::from(1)),
                     },
-                    ExprAssign {
+                    Instr {
                         local: Some(LocalId::from(3)),
-                        expr: Expr::AddInt(LocalId::from(0), LocalId::from(0)),
+                        expr: InstrKind::AddInt(LocalId::from(0), LocalId::from(0)),
                     },
                 ],
                 next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(3))),
@@ -609,14 +609,14 @@ mod tests {
 
         let mut bb = BasicBlock {
             id: BasicBlockId::from(0),
-            exprs: vec![
-                ExprAssign {
+            instrs: vec![
+                Instr {
                     local: Some(LocalId::from(1)),
-                    expr: Expr::AddInt(LocalId::from(0), LocalId::from(0)),
+                    expr: InstrKind::AddInt(LocalId::from(0), LocalId::from(0)),
                 },
-                ExprAssign {
+                Instr {
                     local: Some(LocalId::from(2)),
-                    expr: Expr::AddInt(LocalId::from(0), LocalId::from(0)),
+                    expr: InstrKind::AddInt(LocalId::from(0), LocalId::from(0)),
                 },
             ],
             next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(2))),
@@ -630,14 +630,14 @@ mod tests {
             bb,
             BasicBlock {
                 id: BasicBlockId::from(0),
-                exprs: vec![
-                    ExprAssign {
+                instrs: vec![
+                    Instr {
                         local: None,
-                        expr: Expr::Nop,
+                        expr: InstrKind::Nop,
                     },
-                    ExprAssign {
+                    Instr {
                         local: Some(LocalId::from(2)),
-                        expr: Expr::AddInt(LocalId::from(0), LocalId::from(0)),
+                        expr: InstrKind::AddInt(LocalId::from(0), LocalId::from(0)),
                     },
                 ],
                 next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(2))),
