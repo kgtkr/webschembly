@@ -1,10 +1,8 @@
 use rustc_hash::FxHashMap;
 use std::borrow::Cow;
 
-use crate::ir::BasicBlockTerminator;
-
 use crate::wasm_generator::relooper::{Structured, reloop};
-use crate::{VecMap, ir};
+use vec_map::VecMap;
 use wasm_encoder::{
     AbstractHeapType, BlockType, CodeSection, CompositeInnerType, CompositeType, ConstExpr,
     DataCountSection, DataSection, ElementSection, Elements, EntityType, ExportKind, ExportSection,
@@ -12,6 +10,7 @@ use wasm_encoder::{
     Instruction, MemoryType, Module, RefType, StorageType, StructType, SubType, TableSection,
     TypeSection, ValType,
 };
+use webschembly_compiler_ir as ir;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct WasmFuncType {
@@ -982,20 +981,20 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 function.instruction(&Instruction::Br(*index as u32));
             }
             Structured::Terminator(terminator) => match terminator {
-                BasicBlockTerminator::Return(local) => {
+                ir::BasicBlockTerminator::Return(local) => {
                     function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*local)));
                     function.instruction(&Instruction::Return);
                 }
-                BasicBlockTerminator::TailCall(call) => {
+                ir::BasicBlockTerminator::TailCall(call) => {
                     self.gen_call(function, true, call);
                 }
-                BasicBlockTerminator::TailCallRef(call_ref) => {
+                ir::BasicBlockTerminator::TailCallRef(call_ref) => {
                     self.gen_call_ref(function, true, call_ref);
                 }
-                BasicBlockTerminator::TailCallClosure(..) => {
+                ir::BasicBlockTerminator::TailCallClosure(..) => {
                     unreachable!("unexpected TailCallClosure");
                 }
-                BasicBlockTerminator::Error(msg) => {
+                ir::BasicBlockTerminator::Error(msg) => {
                     function.instruction(&Instruction::I32Const(2));
                     function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*msg)));
                     function.instruction(&Instruction::Call(self.module_generator.display_fd_func));

@@ -1,9 +1,6 @@
 use rustc_hash::{FxHashMap, FxHashSet};
-
-use crate::{
-    VecMap,
-    ir::{BasicBlock, BasicBlockId},
-};
+use vec_map::VecMap;
+use webschembly_compiler_ir::*;
 
 pub fn calc_predecessors(
     cfg: &VecMap<BasicBlockId, BasicBlock>,

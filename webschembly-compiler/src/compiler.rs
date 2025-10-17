@@ -1,6 +1,5 @@
 use rustc_hash::FxHashSet;
 
-use crate::ir;
 use crate::ir_generator;
 use crate::ir_generator::GlobalManager;
 use crate::ir_processor::desugar::desugar;
@@ -13,6 +12,7 @@ use crate::lexer;
 use crate::sexpr_parser;
 use webschembly_compiler_ast_generator::ASTGenerator;
 use webschembly_compiler_error::compiler_error;
+use webschembly_compiler_ir as ir;
 
 #[derive(Debug)]
 pub struct Compiler {
@@ -102,10 +102,12 @@ impl Compiler {
 
     pub fn instantiate_func(
         &mut self,
-        module_id: ir::ModuleId,
-        func_id: ir::FuncId,
+        module_id: usize,
+        func_id: usize,
         func_index: usize,
     ) -> ir::Module {
+        let module_id = ir::ModuleId::from(module_id);
+        let func_id = ir::FuncId::from(func_id);
         let jit = self.jit.as_mut().expect("JIT is not enabled");
         let mut module =
             jit.instantiate_func(&mut self.global_manager, module_id, func_id, func_index);
@@ -119,12 +121,15 @@ impl Compiler {
 
     pub fn instantiate_bb(
         &mut self,
-        module_id: ir::ModuleId,
-        func_id: ir::FuncId,
+        module_id: usize,
+        func_id: usize,
         func_index: usize,
-        bb_id: ir::BasicBlockId,
+        bb_id: usize,
         index: usize,
     ) -> ir::Module {
+        let module_id = ir::ModuleId::from(module_id);
+        let func_id = ir::FuncId::from(func_id);
+        let bb_id = ir::BasicBlockId::from(bb_id);
         let jit = self.jit.as_mut().expect("JIT is not enabled");
         let mut module = jit.instantiate_bb(
             module_id,

@@ -1,4 +1,5 @@
-use std::{fmt, iter::from_coroutine};
+use std::fmt;
+use std::iter::from_coroutine;
 
 use derive_more::{From, Into};
 use ordered_float::NotNan;

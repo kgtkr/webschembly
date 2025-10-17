@@ -1,5 +1,6 @@
-use crate::{fxbihashmap::FxBiHashMap, ir::*};
+use crate::fxbihashmap::FxBiHashMap;
 use vec_map::VecMap;
+use webschembly_compiler_ir::*;
 
 /*
 BBに型代入を行う

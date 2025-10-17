@@ -1,5 +1,6 @@
-use crate::{VecMap, ir::*};
 use std::mem;
+use vec_map::VecMap;
+use webschembly_compiler_ir::*;
 
 pub fn desugar(func: &mut Func) {
     for bb in func.bbs.values_mut() {

@@ -1,13 +1,11 @@
 use rustc_hash::FxHashMap;
 
-use crate::{
-    VecMap,
-    ir::*,
-    ir_processor::{
-        cfg_analyzer::{DomTreeNode, build_dom_tree, calc_doms, calc_predecessors, calculate_rpo},
-        ssa::{DefUseChain, debug_assert_ssa},
-    },
+use crate::ir_processor::{
+    cfg_analyzer::{DomTreeNode, build_dom_tree, calc_doms, calc_predecessors, calculate_rpo},
+    ssa::{DefUseChain, debug_assert_ssa},
 };
+use vec_map::VecMap;
+use webschembly_compiler_ir::*;
 
 // 制限事項: ループなどで循環参照がある純粋な命令同士は削除できない
 pub fn dead_code_elimination(func: &mut Func, def_use: &mut DefUseChain) {

@@ -13,8 +13,9 @@
 #![allow(clippy::vec_init_then_push)]
 pub mod compiler;
 pub mod fxbihashmap;
-pub mod ir;
 pub mod ir_generator;
+pub mod ir_processor;
+pub mod jit;
 pub mod lexer;
 pub mod parser_combinator;
 pub mod sexpr_parser;
@@ -22,6 +23,3 @@ pub mod stdlib;
 pub mod token;
 pub mod tokens;
 pub mod wasm_generator;
-pub use vec_map::{VecMap, VecMapEq};
-pub mod ir_processor;
-pub mod jit;

@@ -2,7 +2,7 @@ use rustc_hash::FxHashMap;
 
 use super::jit_config::JitConfig;
 use super::jit_module::ClosureGlobalLayout;
-use crate::ir::*;
+use webschembly_compiler_ir::*;
 
 #[derive(Debug)]
 pub struct JitCtx {

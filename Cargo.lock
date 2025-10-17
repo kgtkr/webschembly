@@ -456,13 +456,11 @@ name = "webschembly-compiler"
 version = "0.1.0"
 dependencies = [
  "bimap",
- "derive_more",
  "insta",
  "log",
  "nom",
  "nom_locate",
  "ordered-float",
- "paste",
  "rustc-hash",
  "strum",
  "vec-map",
@@ -470,6 +468,7 @@ dependencies = [
  "webschembly-compiler-ast",
  "webschembly-compiler-ast-generator",
  "webschembly-compiler-error",
+ "webschembly-compiler-ir",
  "webschembly-compiler-locate",
  "webschembly-compiler-sexpr",
 ]
@@ -510,6 +509,18 @@ dependencies = [
 [[package]]
 name = "webschembly-compiler-error"
 version = "0.1.0"
+
+[[package]]
+name = "webschembly-compiler-ir"
+version = "0.1.0"
+dependencies = [
+ "derive_more",
+ "ordered-float",
+ "paste",
+ "rustc-hash",
+ "strum",
+ "vec-map",
+]
 
 [[package]]
 name = "webschembly-compiler-locate"

@@ -3,12 +3,14 @@
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::ir::{BasicBlock, BasicBlockId, BasicBlockNext, BasicBlockTerminator, Func, LocalId};
 use crate::ir_processor::cfg_analyzer::{
     DomTreeNode, build_dom_tree, calc_doms, calc_predecessors, calculate_rpo, find_loop_headers,
     find_merge_nodes,
 };
 use vec_map::VecMap;
+use webschembly_compiler_ir::{
+    BasicBlock, BasicBlockId, BasicBlockNext, BasicBlockTerminator, Func, LocalId,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Structured {

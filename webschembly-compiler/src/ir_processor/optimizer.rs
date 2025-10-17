@@ -1,5 +1,6 @@
 use super::cfg_analyzer::find_reachable_nodes;
-use crate::{VecMap, ir::Func};
+use vec_map::VecMap;
+use webschembly_compiler_ir::Func;
 
 // SSA関係なく可能な最適化関数の一覧
 

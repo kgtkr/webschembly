@@ -3,9 +3,10 @@ use webschembly_compiler_ast_generator::{Final, GlobalVarId, LocalVarId, UsedExt
 use webschembly_compiler_locate::Located;
 
 use crate::ir_generator::GlobalManager;
-use crate::{VecMap, ir::*};
+use vec_map::VecMap;
 use webschembly_compiler_ast as ast;
 use webschembly_compiler_ast::AstPhase;
+use webschembly_compiler_ir::*;
 
 #[derive(Debug, Clone)]
 pub struct Config {

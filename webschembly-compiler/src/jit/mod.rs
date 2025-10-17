@@ -1,12 +1,13 @@
 use crate::ir_generator::GlobalManager;
 use crate::ir_processor::bb_optimizer;
-use crate::{VecMap, ir::*};
+use vec_map::VecMap;
 mod jit_config;
 mod jit_module;
 pub use jit_config::JitConfig;
 use jit_module::JitModule;
 mod jit_ctx;
 use jit_ctx::JitCtx;
+use webschembly_compiler_ir::*;
 
 #[derive(Debug)]
 pub struct Jit {

@@ -1,9 +1,7 @@
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::{
-    VecMap,
-    ir::{BasicBlock, BasicBlockId, LocalFlag, LocalId, LocalUsedFlag},
-};
+use vec_map::VecMap;
+use webschembly_compiler_ir::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DefUse {

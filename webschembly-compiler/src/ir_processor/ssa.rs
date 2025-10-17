@@ -1,6 +1,6 @@
-use crate::ir::{BasicBlock, BasicBlockId, Expr, ExprAssign, Func, Local, LocalId};
 use rustc_hash::{FxHashMap, FxHashSet};
 use vec_map::{HasId, VecMap};
+use webschembly_compiler_ir::*;
 
 // 前提条件: クリティカルエッジが存在しない
 pub fn remove_phi(func: &mut Func) {
