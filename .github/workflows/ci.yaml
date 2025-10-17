@@ -56,7 +56,6 @@ jobs:
           tool: 'benchmarkjs'
           output-file-path: ./webschembly-js/benchmark.result
           gh-pages-branch: github-action-benchmark-data
-          github-token: ${{ secrets.GITHUB_TOKEN }} # リポジトリをpublicにしたら渡さなくて良い
           auto-push: false
       - name: Push benchmark result
         run: git push origin github-action-benchmark-data:github-action-benchmark-data

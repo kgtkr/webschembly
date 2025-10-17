@@ -1,4 +1,3 @@
-# arm runnerはprivateリポジトリで使えない
 name: ci
 on: push
 jobs:
@@ -23,8 +22,8 @@ jobs:
         include:
           - runner: ubuntu-latest
             arch: amd64
-          #- runner: ubuntu-24.04-arm
-          #  arch: arm64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v3
@@ -70,9 +69,8 @@ jobs:
       - name: Create and push manifest
         run: |
           for TAG in ${TAGS//,/ }; do
-            # --platforms linux/amd64,linux/arm64
             manifest-tool push from-args \
-              --platforms linux/amd64 \
+              --platforms linux/amd64,linux/arm64 \
               --template $TAG-ARCH \
               --target $TAG
           done
