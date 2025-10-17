@@ -94,19 +94,19 @@ impl<'a> ModuleGenerator<'a> {
             });
             entry_exprs.push(Instr {
                 local: Some(func_ref_local),
-                expr: InstrKind::FuncRef(func_id),
+                kind: InstrKind::FuncRef(func_id),
             });
             entry_exprs.push(Instr {
                 local: Some(mut_func_ref_local),
-                expr: InstrKind::CreateMutFuncRef(func_ref_local),
+                kind: InstrKind::CreateMutFuncRef(func_ref_local),
             });
             entry_exprs.push(Instr {
                 local: Some(entrypoint_table_local),
-                expr: InstrKind::EntrypointTable(vec![mut_func_ref_local]),
+                kind: InstrKind::EntrypointTable(vec![mut_func_ref_local]),
             });
             entry_exprs.push(Instr {
                 local: None,
-                expr: InstrKind::GlobalSet(entrypoint_table_global_id, entrypoint_table_local),
+                kind: InstrKind::GlobalSet(entrypoint_table_global_id, entrypoint_table_local),
             });
         }
         let new_bb_entry = entry_func.bbs.push_with(|bb_id| BasicBlock {
@@ -225,15 +225,15 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
 
         self.exprs.push(Instr {
             local: Some(args_len_local),
-            expr: InstrKind::VariadicArgsLength(args),
+            kind: InstrKind::VariadicArgsLength(args),
         });
         self.exprs.push(Instr {
             local: Some(expected_args_len_local),
-            expr: InstrKind::Int(lambda.args.len() as i64),
+            kind: InstrKind::Int(lambda.args.len() as i64),
         });
         self.exprs.push(Instr {
             local: Some(args_len_check_success_local),
-            expr: InstrKind::EqInt(args_len_local, expected_args_len_local),
+            kind: InstrKind::EqInt(args_len_local, expected_args_len_local),
         });
 
         let error_bb_id = self.bbs.allocate_key();
@@ -247,7 +247,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         let msg = self.local(Type::Val(ValType::String));
         self.exprs.push(Instr {
             local: Some(msg),
-            expr: InstrKind::String("args count mismatch\n".to_string()),
+            kind: InstrKind::String("args count mismatch\n".to_string()),
         });
         self.close_bb(BasicBlockNext::Terminator(BasicBlockTerminator::Error(msg)));
         self.current_bb_id = Some(merge_bb_id);
@@ -257,23 +257,23 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 let local = self.local(LocalType::Type(Type::Obj));
                 self.exprs.push(Instr {
                     local: Some(local),
-                    expr: InstrKind::VariadicArgsRef(args, arg_idx),
+                    kind: InstrKind::VariadicArgsRef(args, arg_idx),
                 });
 
                 let ref_ = self.define_ast_local(*arg);
                 self.exprs.push(Instr {
                     local: Some(ref_),
-                    expr: InstrKind::CreateRef(Type::Obj),
+                    kind: InstrKind::CreateRef(Type::Obj),
                 });
                 self.exprs.push(Instr {
                     local: None,
-                    expr: InstrKind::SetRef(Type::Obj, ref_, local),
+                    kind: InstrKind::SetRef(Type::Obj, ref_, local),
                 });
             } else {
                 let arg_id = self.define_ast_local(*arg);
                 self.exprs.push(Instr {
                     local: Some(arg_id),
-                    expr: InstrKind::VariadicArgsRef(args, arg_idx),
+                    kind: InstrKind::VariadicArgsRef(args, arg_idx),
                 });
             }
         }
@@ -294,7 +294,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             self.exprs.push(Instr {
                 local: Some(env_local),
                 // TODO: 無駄なclone。Irの設計を見直す
-                expr: InstrKind::ClosureEnv(env_types.clone(), self_closure, i),
+                kind: InstrKind::ClosureEnv(env_types.clone(), self_closure, i),
             });
         }
 
@@ -328,7 +328,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             if self.module_generator.ast.x.box_vars.contains(id) {
                 self.exprs.push(Instr {
                     local: Some(local),
-                    expr: InstrKind::CreateRef(Type::Obj),
+                    kind: InstrKind::CreateRef(Type::Obj),
                 });
             }
         }
@@ -377,77 +377,77 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     let val_type_local = self.local(Type::Val(ValType::Bool));
                     self.exprs.push(Instr {
                         local: Some(val_type_local),
-                        expr: InstrKind::Bool(*b),
+                        kind: InstrKind::Bool(*b),
                     });
                     self.exprs.push(Instr {
                         local: result,
-                        expr: InstrKind::ToObj(ValType::Bool, val_type_local),
+                        kind: InstrKind::ToObj(ValType::Bool, val_type_local),
                     });
                 }
                 ast::Const::Int(i) => {
                     let val_type_local = self.local(Type::Val(ValType::Int));
                     self.exprs.push(Instr {
                         local: Some(val_type_local),
-                        expr: InstrKind::Int(*i),
+                        kind: InstrKind::Int(*i),
                     });
                     self.exprs.push(Instr {
                         local: result,
-                        expr: InstrKind::ToObj(ValType::Int, val_type_local),
+                        kind: InstrKind::ToObj(ValType::Int, val_type_local),
                     });
                 }
                 ast::Const::Float(f) => {
                     let val_type_local = self.local(Type::Val(ValType::Float));
                     self.exprs.push(Instr {
                         local: Some(val_type_local),
-                        expr: InstrKind::Float(*f),
+                        kind: InstrKind::Float(*f),
                     });
                     self.exprs.push(Instr {
                         local: result,
-                        expr: InstrKind::ToObj(ValType::Float, val_type_local),
+                        kind: InstrKind::ToObj(ValType::Float, val_type_local),
                     });
                 }
                 ast::Const::NaN => {
                     let val_type_local = self.local(Type::Val(ValType::Float));
                     self.exprs.push(Instr {
                         local: Some(val_type_local),
-                        expr: InstrKind::NaN,
+                        kind: InstrKind::NaN,
                     });
                     self.exprs.push(Instr {
                         local: result,
-                        expr: InstrKind::ToObj(ValType::Float, val_type_local),
+                        kind: InstrKind::ToObj(ValType::Float, val_type_local),
                     });
                 }
                 ast::Const::String(s) => {
                     let val_type_local = self.local(Type::Val(ValType::String));
                     self.exprs.push(Instr {
                         local: Some(val_type_local),
-                        expr: InstrKind::String(s.clone()),
+                        kind: InstrKind::String(s.clone()),
                     });
                     self.exprs.push(Instr {
                         local: result,
-                        expr: InstrKind::ToObj(ValType::String, val_type_local),
+                        kind: InstrKind::ToObj(ValType::String, val_type_local),
                     });
                 }
                 ast::Const::Nil => {
                     let val_type_local = self.local(Type::Val(ValType::Nil));
                     self.exprs.push(Instr {
                         local: Some(val_type_local),
-                        expr: InstrKind::Nil,
+                        kind: InstrKind::Nil,
                     });
                     self.exprs.push(Instr {
                         local: result,
-                        expr: InstrKind::ToObj(ValType::Nil, val_type_local),
+                        kind: InstrKind::ToObj(ValType::Nil, val_type_local),
                     });
                 }
                 ast::Const::Char(c) => {
                     let val_type_local = self.local(Type::Val(ValType::Char));
                     self.exprs.push(Instr {
                         local: Some(val_type_local),
-                        expr: InstrKind::Char(*c),
+                        kind: InstrKind::Char(*c),
                     });
                     self.exprs.push(Instr {
                         local: result,
-                        expr: InstrKind::ToObj(ValType::Char, val_type_local),
+                        kind: InstrKind::ToObj(ValType::Char, val_type_local),
                     });
                 }
                 ast::Const::Symbol(s) => {
@@ -455,15 +455,15 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     let val_type_local = self.local(Type::Val(ValType::Symbol));
                     self.exprs.push(Instr {
                         local: Some(string),
-                        expr: InstrKind::String(s.clone()),
+                        kind: InstrKind::String(s.clone()),
                     });
                     self.exprs.push(Instr {
                         local: Some(val_type_local),
-                        expr: InstrKind::StringToSymbol(string),
+                        kind: InstrKind::StringToSymbol(string),
                     });
                     self.exprs.push(Instr {
                         local: result,
-                        expr: InstrKind::ToObj(ValType::Symbol, val_type_local),
+                        kind: InstrKind::ToObj(ValType::Symbol, val_type_local),
                     });
                 }
             },
@@ -474,7 +474,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 let val_type_local = self.local(Type::Val(ValType::Closure));
                 self.exprs.push(Instr {
                     local: Some(func_local),
-                    expr: InstrKind::FuncRef(func_id),
+                    kind: InstrKind::FuncRef(func_id),
                 });
 
                 let entrypoint_table_global = self
@@ -491,7 +491,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 let entrypoint_table_local = self.local(LocalType::EntrypointTable);
                 self.exprs.push(Instr {
                     local: Some(entrypoint_table_local),
-                    expr: InstrKind::GlobalGet(entrypoint_table_global.id),
+                    kind: InstrKind::GlobalGet(entrypoint_table_global.id),
                 });
 
                 let env_types = x
@@ -512,7 +512,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                         let undef_local = self.local(env_types[i]);
                         self.exprs.push(Instr {
                             local: Some(undef_local),
-                            expr: InstrKind::Uninitialized(env_types[i]),
+                            kind: InstrKind::Uninitialized(env_types[i]),
                         });
                         captures.push(undef_local);
                     } else {
@@ -522,7 +522,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
 
                 self.exprs.push(Instr {
                     local: Some(val_type_local),
-                    expr: InstrKind::Closure {
+                    kind: InstrKind::Closure {
                         envs: captures,
                         func_id,
                         module_id: self.module_generator.id,
@@ -531,7 +531,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 });
                 self.exprs.push(Instr {
                     local: result,
-                    expr: InstrKind::ToObj(ValType::Closure, val_type_local),
+                    kind: InstrKind::ToObj(ValType::Closure, val_type_local),
                 });
             }
             ast::Expr::If(_, ast::If { cond, then, els }) => {
@@ -541,18 +541,18 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 let false_local = self.local(Type::Val(ValType::Bool));
                 self.exprs.push(Instr {
                     local: Some(false_local),
-                    expr: InstrKind::Bool(false),
+                    kind: InstrKind::Bool(false),
                 });
                 let false_obj_local = self.local(Type::Obj);
                 self.exprs.push(Instr {
                     local: Some(false_obj_local),
-                    expr: InstrKind::ToObj(ValType::Bool, false_local),
+                    kind: InstrKind::ToObj(ValType::Bool, false_local),
                 });
 
                 let cond_not_local = self.local(Type::Val(ValType::Bool));
                 self.exprs.push(Instr {
                     local: Some(cond_not_local),
-                    expr: InstrKind::EqObj(obj_cond_local, false_obj_local),
+                    kind: InstrKind::EqObj(obj_cond_local, false_obj_local),
                 });
 
                 let then_bb_id = self.bbs.allocate_key();
@@ -579,7 +579,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 self.current_bb_id = Some(merge_bb_id);
                 self.exprs.push(Instr {
                     local: result,
-                    expr: InstrKind::Phi({
+                    kind: InstrKind::Phi({
                         let mut incomings = Vec::new();
                         if let Some(bb) = then_ended_bb_id {
                             incomings.push(PhiIncomingValue {
@@ -611,7 +611,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                         let phi_local = self.new_version_ast_local(var_id);
                         self.exprs.push(Instr {
                             local: Some(phi_local),
-                            expr: InstrKind::Phi({
+                            kind: InstrKind::Phi({
                                 let mut incomings = Vec::new();
                                 if let Some(bb) = then_ended_bb_id {
                                     incomings.push(PhiIncomingValue {
@@ -650,7 +650,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                         let msg = self.local(Type::Val(ValType::String));
                         self.exprs.push(Instr {
                             local: Some(msg),
-                            expr: InstrKind::String("builtin args count mismatch\n".to_string()),
+                            kind: InstrKind::String("builtin args count mismatch\n".to_string()),
                         });
                         self.close_bb(BasicBlockNext::Terminator(BasicBlockTerminator::Error(msg)));
                     } else {
@@ -668,7 +668,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                                         self.local(Type::Val(ValType::Bool));
                                     self.exprs.push(Instr {
                                         local: Some(type_check_success_local),
-                                        expr: InstrKind::Is(*val_type, obj_arg_local),
+                                        kind: InstrKind::Is(*val_type, obj_arg_local),
                                     });
                                     type_check_success_locals.push(type_check_success_local);
                                 }
@@ -678,14 +678,14 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                                 self.local(Type::Val(ValType::Bool));
                             self.exprs.push(Instr {
                                 local: Some(all_type_check_success_local),
-                                expr: InstrKind::Bool(true),
+                                kind: InstrKind::Bool(true),
                             });
                             for type_check_success_local in type_check_success_locals {
                                 let new_all_type_check_success_local =
                                     self.local(Type::Val(ValType::Bool));
                                 self.exprs.push(Instr {
                                     local: Some(new_all_type_check_success_local),
-                                    expr: InstrKind::And(
+                                    kind: InstrKind::And(
                                         all_type_check_success_local,
                                         type_check_success_local,
                                     ),
@@ -713,7 +713,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                                         let val_type_local = self.local(Type::Val(*val_type));
                                         self.exprs.push(Instr {
                                             local: Some(val_type_local),
-                                            expr: InstrKind::FromObj(*val_type, obj_arg_local),
+                                            kind: InstrKind::FromObj(*val_type, obj_arg_local),
                                         });
                                         val_type_local
                                     }
@@ -745,7 +745,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                             let ret_obj_local = self.local(Type::Obj);
                             self.exprs.push(Instr {
                                 local: Some(ret_obj_local),
-                                expr: match rule.ret_type() {
+                                kind: match rule.ret_type() {
                                     Type::Obj => InstrKind::Move(ret_local),
                                     Type::Val(val_type) => InstrKind::ToObj(val_type, ret_local),
                                 },
@@ -762,7 +762,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                         let msg = self.local(Type::Val(ValType::String));
                         self.exprs.push(Instr {
                             local: Some(msg),
-                            expr: InstrKind::String(format!(
+                            kind: InstrKind::String(format!(
                                 "{}: arg type mismatch\n",
                                 builtin.name()
                             )),
@@ -771,7 +771,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                         self.current_bb_id = Some(merge_bb_id);
                         self.exprs.push(Instr {
                             local: result,
-                            expr: InstrKind::Phi(phi_incoming_values),
+                            kind: InstrKind::Phi(phi_incoming_values),
                         });
                     }
                 } else {
@@ -782,7 +782,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     let closure_local = self.local(ValType::Closure);
                     self.exprs.push(Instr {
                         local: Some(closure_local),
-                        expr: InstrKind::FromObj(ValType::Closure, obj_func_local),
+                        kind: InstrKind::FromObj(ValType::Closure, obj_func_local),
                     });
 
                     let args_local = self.local(LocalType::VariadicArgs);
@@ -794,7 +794,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     }
                     self.exprs.push(Instr {
                         local: Some(args_local),
-                        expr: InstrKind::VariadicArgs(args_locals),
+                        kind: InstrKind::VariadicArgs(args_locals),
                     });
 
                     let is_tail = x.is_tail;
@@ -811,7 +811,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     } else {
                         self.exprs.push(Instr {
                             local: result,
-                            expr: InstrKind::CallClosure(call_closure),
+                            kind: InstrKind::CallClosure(call_closure),
                         });
                     }
                 }
@@ -821,12 +821,12 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     if self.module_generator.ast.x.box_vars.contains(id) {
                         self.exprs.push(Instr {
                             local: result,
-                            expr: InstrKind::DerefRef(Type::Obj, *self.local_ids.get(id).unwrap()),
+                            kind: InstrKind::DerefRef(Type::Obj, *self.local_ids.get(id).unwrap()),
                         });
                     } else {
                         self.exprs.push(Instr {
                             local: result,
-                            expr: InstrKind::Move(*self.local_ids.get(id).unwrap()),
+                            kind: InstrKind::Move(*self.local_ids.get(id).unwrap()),
                         });
                     }
                 }
@@ -834,7 +834,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     let global = self.module_generator.global(*id);
                     self.exprs.push(Instr {
                         local: result,
-                        expr: InstrKind::GlobalGet(global.id),
+                        kind: InstrKind::GlobalGet(global.id),
                     });
                 }
             },
@@ -850,11 +850,11 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                             let local = self.local_ids.get(id).unwrap();
                             self.exprs.push(Instr {
                                 local: None,
-                                expr: InstrKind::SetRef(Type::Obj, *local, obj_local),
+                                kind: InstrKind::SetRef(Type::Obj, *local, obj_local),
                             });
                             self.exprs.push(Instr {
                                 local: result,
-                                expr: InstrKind::Move(obj_local),
+                                kind: InstrKind::Move(obj_local),
                             });
                         } else {
                             // SSA形式のため、新しいローカルを定義して代入する
@@ -862,7 +862,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                             self.gen_exprs(Some(local), expr);
                             self.exprs.push(Instr {
                                 local: result,
-                                expr: InstrKind::Move(local),
+                                kind: InstrKind::Move(local),
                             });
                         }
                     }
@@ -873,7 +873,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                             let msg = self.local(Type::Val(ValType::String));
                             self.exprs.push(Instr {
                                 local: Some(msg),
-                                expr: InstrKind::String(
+                                kind: InstrKind::String(
                                     "set! builtin is not allowed\n".to_string(),
                                 ),
                             });
@@ -886,11 +886,11 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                             let global = self.module_generator.global(*id);
                             self.exprs.push(Instr {
                                 local: None,
-                                expr: InstrKind::GlobalSet(global.id, local),
+                                kind: InstrKind::GlobalSet(global.id, local),
                             });
                             self.exprs.push(Instr {
                                 local: result,
-                                expr: InstrKind::Move(local),
+                                kind: InstrKind::Move(local),
                             });
                         }
                     }
@@ -909,11 +909,11 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 let val_type_local = self.local(Type::Val(ValType::Vector));
                 self.exprs.push(Instr {
                     local: Some(val_type_local),
-                    expr: InstrKind::Vector(vec_locals),
+                    kind: InstrKind::Vector(vec_locals),
                 });
                 self.exprs.push(Instr {
                     local: result,
-                    expr: InstrKind::ToObj(ValType::Vector, val_type_local),
+                    kind: InstrKind::ToObj(ValType::Vector, val_type_local),
                 });
             }
             ast::Expr::UVector(_, uvec) => {
@@ -931,18 +931,18 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 let mut type_check_all_success_local = self.local(Type::Val(ValType::Bool));
                 self.exprs.push(Instr {
                     local: Some(type_check_all_success_local),
-                    expr: InstrKind::Bool(true),
+                    kind: InstrKind::Bool(true),
                 });
                 for obj_local in &element_obj_locals {
                     let type_check_success_local = self.local(Type::Val(ValType::Bool));
                     self.exprs.push(Instr {
                         local: Some(type_check_success_local),
-                        expr: InstrKind::Is(kind.element_type(), *obj_local),
+                        kind: InstrKind::Is(kind.element_type(), *obj_local),
                     });
                     let new_type_check_all_success_local = self.local(Type::Val(ValType::Bool));
                     self.exprs.push(Instr {
                         local: Some(new_type_check_all_success_local),
-                        expr: InstrKind::And(
+                        kind: InstrKind::And(
                             type_check_all_success_local,
                             type_check_success_local,
                         ),
@@ -962,7 +962,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 let msg = self.local(Type::Val(ValType::String));
                 self.exprs.push(Instr {
                     local: Some(msg),
-                    expr: InstrKind::String(format!(
+                    kind: InstrKind::String(format!(
                         "uvector element type mismatch: expected {:?}\n",
                         kind.element_type()
                     )),
@@ -974,18 +974,18 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     let elem_local = self.local(kind.element_type());
                     self.exprs.push(Instr {
                         local: Some(elem_local),
-                        expr: InstrKind::FromObj(kind.element_type(), obj_local),
+                        kind: InstrKind::FromObj(kind.element_type(), obj_local),
                     });
                     element_locals.push(elem_local);
                 }
                 let uvector_local = self.local(Type::Val(ValType::UVector(kind)));
                 self.exprs.push(Instr {
                     local: Some(uvector_local),
-                    expr: InstrKind::UVector(kind, element_locals),
+                    kind: InstrKind::UVector(kind, element_locals),
                 });
                 self.exprs.push(Instr {
                     local: result,
-                    expr: InstrKind::ToObj(ValType::UVector(kind), uvector_local),
+                    kind: InstrKind::ToObj(ValType::UVector(kind), uvector_local),
                 });
             }
             ast::Expr::Cons(_, cons) => {
@@ -997,11 +997,11 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 let val_type_local = self.local(Type::Val(ValType::Cons));
                 self.exprs.push(Instr {
                     local: Some(val_type_local),
-                    expr: InstrKind::Cons(car_local, cdr_local),
+                    kind: InstrKind::Cons(car_local, cdr_local),
                 });
                 self.exprs.push(Instr {
                     local: result,
-                    expr: InstrKind::ToObj(ValType::Cons, val_type_local),
+                    kind: InstrKind::ToObj(ValType::Cons, val_type_local),
                 });
             }
             ast::Expr::Quote(x, _) => *x,
@@ -1017,7 +1017,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                         for capture in captures {
                             self.exprs.push(Instr {
                                 local: None,
-                                expr: InstrKind::ClosureSetEnv(
+                                kind: InstrKind::ClosureSetEnv(
                                     capture.env_types.clone(),
                                     capture.closure,
                                     capture.env_index,
@@ -1041,11 +1041,11 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             let val_type_local = self.local(Type::Val(ValType::Nil));
             self.exprs.push(Instr {
                 local: Some(val_type_local),
-                expr: InstrKind::Nil,
+                kind: InstrKind::Nil,
             });
             self.exprs.push(Instr {
                 local: result,
-                expr: InstrKind::ToObj(ValType::Nil, val_type_local),
+                kind: InstrKind::ToObj(ValType::Nil, val_type_local),
             });
         }
     }
@@ -1128,7 +1128,7 @@ impl BuiltinConversionRule {
                 ir_gen: |ctx, arg1| {
                     ctx.exprs.push(Instr {
                         local: Some(ctx.dest),
-                        expr: InstrKind::Display(arg1),
+                        kind: InstrKind::Display(arg1),
                     });
                 },
             }],
@@ -1139,7 +1139,7 @@ impl BuiltinConversionRule {
                     ir_gen: |ctx, arg1, arg2| {
                         ctx.exprs.push(Instr {
                             local: Some(ctx.dest),
-                            expr: InstrKind::AddInt(arg1, arg2),
+                            kind: InstrKind::AddInt(arg1, arg2),
                         });
                     },
                 },
@@ -1149,7 +1149,7 @@ impl BuiltinConversionRule {
                     ir_gen: |ctx, arg1, arg2| {
                         ctx.exprs.push(Instr {
                             local: Some(ctx.dest),
-                            expr: InstrKind::AddFloat(arg1, arg2),
+                            kind: InstrKind::AddFloat(arg1, arg2),
                         });
                     },
                 },
@@ -1161,7 +1161,7 @@ impl BuiltinConversionRule {
                     ir_gen: |ctx, arg1, arg2| {
                         ctx.exprs.push(Instr {
                             local: Some(ctx.dest),
-                            expr: InstrKind::SubInt(arg1, arg2),
+                            kind: InstrKind::SubInt(arg1, arg2),
                         });
                     },
                 },
@@ -1171,7 +1171,7 @@ impl BuiltinConversionRule {
                     ir_gen: |ctx, arg1, arg2| {
                         ctx.exprs.push(Instr {
                             local: Some(ctx.dest),
-                            expr: InstrKind::SubFloat(arg1, arg2),
+                            kind: InstrKind::SubFloat(arg1, arg2),
                         });
                     },
                 },
@@ -1183,7 +1183,7 @@ impl BuiltinConversionRule {
                     ir_gen: |ctx, arg1, arg2| {
                         ctx.exprs.push(Instr {
                             local: Some(ctx.dest),
-                            expr: InstrKind::MulInt(arg1, arg2),
+                            kind: InstrKind::MulInt(arg1, arg2),
                         });
                     },
                 },
@@ -1193,7 +1193,7 @@ impl BuiltinConversionRule {
                     ir_gen: |ctx, arg1, arg2| {
                         ctx.exprs.push(Instr {
                             local: Some(ctx.dest),
-                            expr: InstrKind::MulFloat(arg1, arg2),
+                            kind: InstrKind::MulFloat(arg1, arg2),
                         });
                     },
                 },
@@ -1204,7 +1204,7 @@ impl BuiltinConversionRule {
                 ir_gen: |ctx, arg1, arg2| {
                     ctx.exprs.push(Instr {
                         local: Some(ctx.dest),
-                        expr: InstrKind::DivFloat(arg1, arg2),
+                        kind: InstrKind::DivFloat(arg1, arg2),
                     });
                 },
             }],
@@ -1214,7 +1214,7 @@ impl BuiltinConversionRule {
                 ir_gen: |ctx, arg1, arg2| {
                     ctx.exprs.push(Instr {
                         local: Some(ctx.dest),
-                        expr: InstrKind::DivInt(arg1, arg2),
+                        kind: InstrKind::DivInt(arg1, arg2),
                     });
                 },
             }],
@@ -1225,7 +1225,7 @@ impl BuiltinConversionRule {
                 ir_gen: |ctx, arg1| {
                     ctx.exprs.push(Instr {
                         local: Some(ctx.dest),
-                        expr: InstrKind::WriteChar(arg1),
+                        kind: InstrKind::WriteChar(arg1),
                     });
                 },
             }],
@@ -1235,7 +1235,7 @@ impl BuiltinConversionRule {
                 ir_gen: |ctx, arg1| {
                     ctx.exprs.push(Instr {
                         local: Some(ctx.dest),
-                        expr: InstrKind::Is(ValType::Cons, arg1),
+                        kind: InstrKind::Is(ValType::Cons, arg1),
                     });
                 },
             }],
@@ -1245,7 +1245,7 @@ impl BuiltinConversionRule {
                 ir_gen: |ctx, arg1| {
                     ctx.exprs.push(Instr {
                         local: Some(ctx.dest),
-                        expr: InstrKind::Is(ValType::Symbol, arg1),
+                        kind: InstrKind::Is(ValType::Symbol, arg1),
                     });
                 },
             }],
@@ -1255,7 +1255,7 @@ impl BuiltinConversionRule {
                 ir_gen: |ctx, arg1| {
                     ctx.exprs.push(Instr {
                         local: Some(ctx.dest),
-                        expr: InstrKind::Is(ValType::String, arg1),
+                        kind: InstrKind::Is(ValType::String, arg1),
                     });
                 },
             }],
@@ -1273,15 +1273,15 @@ impl BuiltinConversionRule {
                     });
                     ctx.exprs.push(Instr {
                         local: Some(is_int_local),
-                        expr: InstrKind::Is(ValType::Int, arg1),
+                        kind: InstrKind::Is(ValType::Int, arg1),
                     });
                     ctx.exprs.push(Instr {
                         local: Some(is_float_local),
-                        expr: InstrKind::Is(ValType::Float, arg1),
+                        kind: InstrKind::Is(ValType::Float, arg1),
                     });
                     ctx.exprs.push(Instr {
                         local: Some(ctx.dest),
-                        expr: InstrKind::Or(is_int_local, is_float_local),
+                        kind: InstrKind::Or(is_int_local, is_float_local),
                     });
                 },
             }],
@@ -1291,7 +1291,7 @@ impl BuiltinConversionRule {
                 ir_gen: |ctx, arg1| {
                     ctx.exprs.push(Instr {
                         local: Some(ctx.dest),
-                        expr: InstrKind::Is(ValType::Bool, arg1),
+                        kind: InstrKind::Is(ValType::Bool, arg1),
                     });
                 },
             }],
@@ -1301,7 +1301,7 @@ impl BuiltinConversionRule {
                 ir_gen: |ctx, arg1| {
                     ctx.exprs.push(Instr {
                         local: Some(ctx.dest),
-                        expr: InstrKind::Is(ValType::Closure, arg1),
+                        kind: InstrKind::Is(ValType::Closure, arg1),
                     });
                 },
             }],
@@ -1311,7 +1311,7 @@ impl BuiltinConversionRule {
                 ir_gen: |ctx, arg1| {
                     ctx.exprs.push(Instr {
                         local: Some(ctx.dest),
-                        expr: InstrKind::Is(ValType::Char, arg1),
+                        kind: InstrKind::Is(ValType::Char, arg1),
                     });
                 },
             }],
@@ -1321,7 +1321,7 @@ impl BuiltinConversionRule {
                 ir_gen: |ctx, arg1| {
                     ctx.exprs.push(Instr {
                         local: Some(ctx.dest),
-                        expr: InstrKind::Is(ValType::Vector, arg1),
+                        kind: InstrKind::Is(ValType::Vector, arg1),
                     });
                 },
             }],
@@ -1331,7 +1331,7 @@ impl BuiltinConversionRule {
                 ir_gen: |ctx, arg1| {
                     ctx.exprs.push(Instr {
                         local: Some(ctx.dest),
-                        expr: InstrKind::VectorLength(arg1),
+                        kind: InstrKind::VectorLength(arg1),
                     });
                 },
             }],
@@ -1341,7 +1341,7 @@ impl BuiltinConversionRule {
                 ir_gen: |ctx, arg1, arg2| {
                     ctx.exprs.push(Instr {
                         local: Some(ctx.dest),
-                        expr: InstrKind::VectorRef(arg1, arg2),
+                        kind: InstrKind::VectorRef(arg1, arg2),
                     });
                 },
             }],
@@ -1355,7 +1355,7 @@ impl BuiltinConversionRule {
                 ir_gen: |ctx, arg1, arg2, arg3| {
                     ctx.exprs.push(Instr {
                         local: Some(ctx.dest),
-                        expr: InstrKind::VectorSet(arg1, arg2, arg3),
+                        kind: InstrKind::VectorSet(arg1, arg2, arg3),
                     });
                 },
             }],
@@ -1365,7 +1365,7 @@ impl BuiltinConversionRule {
                 ir_gen: |ctx, arg1| {
                     ctx.exprs.push(Instr {
                         local: Some(ctx.dest),
-                        expr: InstrKind::Is(ValType::UVector(UVectorKind::S64), arg1),
+                        kind: InstrKind::Is(ValType::UVector(UVectorKind::S64), arg1),
                     });
                 },
             }],
@@ -1375,7 +1375,7 @@ impl BuiltinConversionRule {
                 ir_gen: |ctx, arg1| {
                     ctx.exprs.push(Instr {
                         local: Some(ctx.dest),
-                        expr: InstrKind::Is(ValType::UVector(UVectorKind::F64), arg1),
+                        kind: InstrKind::Is(ValType::UVector(UVectorKind::F64), arg1),
                     });
                 },
             }],
@@ -1393,15 +1393,15 @@ impl BuiltinConversionRule {
                     });
                     ctx.exprs.push(Instr {
                         local: Some(is_s64_local),
-                        expr: InstrKind::Is(ValType::UVector(UVectorKind::S64), arg1),
+                        kind: InstrKind::Is(ValType::UVector(UVectorKind::S64), arg1),
                     });
                     ctx.exprs.push(Instr {
                         local: Some(is_f64_local),
-                        expr: InstrKind::Is(ValType::UVector(UVectorKind::F64), arg1),
+                        kind: InstrKind::Is(ValType::UVector(UVectorKind::F64), arg1),
                     });
                     ctx.exprs.push(Instr {
                         local: Some(ctx.dest),
-                        expr: InstrKind::Or(is_s64_local, is_f64_local),
+                        kind: InstrKind::Or(is_s64_local, is_f64_local),
                     });
                 },
             }],
@@ -1411,7 +1411,7 @@ impl BuiltinConversionRule {
                 ir_gen: |ctx, arg1| {
                     ctx.exprs.push(Instr {
                         local: Some(ctx.dest),
-                        expr: InstrKind::MakeUVector(UVectorKind::S64, arg1),
+                        kind: InstrKind::MakeUVector(UVectorKind::S64, arg1),
                     });
                 },
             }],
@@ -1421,7 +1421,7 @@ impl BuiltinConversionRule {
                 ir_gen: |ctx, arg1| {
                     ctx.exprs.push(Instr {
                         local: Some(ctx.dest),
-                        expr: InstrKind::MakeUVector(UVectorKind::F64, arg1),
+                        kind: InstrKind::MakeUVector(UVectorKind::F64, arg1),
                     });
                 },
             }],
@@ -1432,7 +1432,7 @@ impl BuiltinConversionRule {
                     ir_gen: |ctx, arg1| {
                         ctx.exprs.push(Instr {
                             local: Some(ctx.dest),
-                            expr: InstrKind::UVectorLength(UVectorKind::S64, arg1),
+                            kind: InstrKind::UVectorLength(UVectorKind::S64, arg1),
                         });
                     },
                 },
@@ -1442,7 +1442,7 @@ impl BuiltinConversionRule {
                     ir_gen: |ctx, arg1| {
                         ctx.exprs.push(Instr {
                             local: Some(ctx.dest),
-                            expr: InstrKind::UVectorLength(UVectorKind::F64, arg1),
+                            kind: InstrKind::UVectorLength(UVectorKind::F64, arg1),
                         });
                     },
                 },
@@ -1457,7 +1457,7 @@ impl BuiltinConversionRule {
                     ir_gen: |ctx, arg1, arg2| {
                         ctx.exprs.push(Instr {
                             local: Some(ctx.dest),
-                            expr: InstrKind::UVectorRef(UVectorKind::S64, arg1, arg2),
+                            kind: InstrKind::UVectorRef(UVectorKind::S64, arg1, arg2),
                         });
                     },
                 },
@@ -1470,7 +1470,7 @@ impl BuiltinConversionRule {
                     ir_gen: |ctx, arg1, arg2| {
                         ctx.exprs.push(Instr {
                             local: Some(ctx.dest),
-                            expr: InstrKind::UVectorRef(UVectorKind::F64, arg1, arg2),
+                            kind: InstrKind::UVectorRef(UVectorKind::F64, arg1, arg2),
                         });
                     },
                 },
@@ -1486,7 +1486,7 @@ impl BuiltinConversionRule {
                     ir_gen: |ctx, arg1, arg2, arg3| {
                         ctx.exprs.push(Instr {
                             local: Some(ctx.dest),
-                            expr: InstrKind::UVectorSet(UVectorKind::S64, arg1, arg2, arg3),
+                            kind: InstrKind::UVectorSet(UVectorKind::S64, arg1, arg2, arg3),
                         });
                     },
                 },
@@ -1500,7 +1500,7 @@ impl BuiltinConversionRule {
                     ir_gen: |ctx, arg1, arg2, arg3| {
                         ctx.exprs.push(Instr {
                             local: Some(ctx.dest),
-                            expr: InstrKind::UVectorSet(UVectorKind::F64, arg1, arg2, arg3),
+                            kind: InstrKind::UVectorSet(UVectorKind::F64, arg1, arg2, arg3),
                         });
                     },
                 },
@@ -1511,7 +1511,7 @@ impl BuiltinConversionRule {
                 ir_gen: |ctx, arg1, arg2| {
                     ctx.exprs.push(Instr {
                         local: Some(ctx.dest),
-                        expr: InstrKind::EqObj(arg1, arg2),
+                        kind: InstrKind::EqObj(arg1, arg2),
                     });
                 },
             }],
@@ -1521,7 +1521,7 @@ impl BuiltinConversionRule {
                 ir_gen: |ctx, arg1, arg2| {
                     ctx.exprs.push(Instr {
                         local: Some(ctx.dest),
-                        expr: InstrKind::Cons(arg1, arg2),
+                        kind: InstrKind::Cons(arg1, arg2),
                     });
                 },
             }],
@@ -1531,7 +1531,7 @@ impl BuiltinConversionRule {
                 ir_gen: |ctx, arg1| {
                     ctx.exprs.push(Instr {
                         local: Some(ctx.dest),
-                        expr: InstrKind::Car(arg1),
+                        kind: InstrKind::Car(arg1),
                     });
                 },
             }],
@@ -1541,7 +1541,7 @@ impl BuiltinConversionRule {
                 ir_gen: |ctx, arg1| {
                     ctx.exprs.push(Instr {
                         local: Some(ctx.dest),
-                        expr: InstrKind::Cdr(arg1),
+                        kind: InstrKind::Cdr(arg1),
                     });
                 },
             }],
@@ -1551,7 +1551,7 @@ impl BuiltinConversionRule {
                 ir_gen: |ctx, arg1| {
                     ctx.exprs.push(Instr {
                         local: Some(ctx.dest),
-                        expr: InstrKind::SymbolToString(arg1),
+                        kind: InstrKind::SymbolToString(arg1),
                     });
                 },
             }],
@@ -1562,7 +1562,7 @@ impl BuiltinConversionRule {
                     ir_gen: |ctx, arg1| {
                         ctx.exprs.push(Instr {
                             local: Some(ctx.dest),
-                            expr: InstrKind::IntToString(arg1),
+                            kind: InstrKind::IntToString(arg1),
                         });
                     },
                 },
@@ -1572,7 +1572,7 @@ impl BuiltinConversionRule {
                     ir_gen: |ctx, arg1| {
                         ctx.exprs.push(Instr {
                             local: Some(ctx.dest),
-                            expr: InstrKind::FloatToString(arg1),
+                            kind: InstrKind::FloatToString(arg1),
                         });
                     },
                 },
@@ -1584,7 +1584,7 @@ impl BuiltinConversionRule {
                     ir_gen: |ctx, arg1, arg2| {
                         ctx.exprs.push(Instr {
                             local: Some(ctx.dest),
-                            expr: InstrKind::EqInt(arg1, arg2),
+                            kind: InstrKind::EqInt(arg1, arg2),
                         });
                     },
                 },
@@ -1594,7 +1594,7 @@ impl BuiltinConversionRule {
                     ir_gen: |ctx, arg1, arg2| {
                         ctx.exprs.push(Instr {
                             local: Some(ctx.dest),
-                            expr: InstrKind::EqFloat(arg1, arg2),
+                            kind: InstrKind::EqFloat(arg1, arg2),
                         });
                     },
                 },
@@ -1606,7 +1606,7 @@ impl BuiltinConversionRule {
                     ir_gen: |ctx, arg1, arg2| {
                         ctx.exprs.push(Instr {
                             local: Some(ctx.dest),
-                            expr: InstrKind::LtInt(arg1, arg2),
+                            kind: InstrKind::LtInt(arg1, arg2),
                         });
                     },
                 },
@@ -1616,7 +1616,7 @@ impl BuiltinConversionRule {
                     ir_gen: |ctx, arg1, arg2| {
                         ctx.exprs.push(Instr {
                             local: Some(ctx.dest),
-                            expr: InstrKind::LtFloat(arg1, arg2),
+                            kind: InstrKind::LtFloat(arg1, arg2),
                         });
                     },
                 },
@@ -1628,7 +1628,7 @@ impl BuiltinConversionRule {
                     ir_gen: |ctx, arg1, arg2| {
                         ctx.exprs.push(Instr {
                             local: Some(ctx.dest),
-                            expr: InstrKind::GtInt(arg1, arg2),
+                            kind: InstrKind::GtInt(arg1, arg2),
                         });
                     },
                 },
@@ -1638,7 +1638,7 @@ impl BuiltinConversionRule {
                     ir_gen: |ctx, arg1, arg2| {
                         ctx.exprs.push(Instr {
                             local: Some(ctx.dest),
-                            expr: InstrKind::GtFloat(arg1, arg2),
+                            kind: InstrKind::GtFloat(arg1, arg2),
                         });
                     },
                 },
@@ -1650,7 +1650,7 @@ impl BuiltinConversionRule {
                     ir_gen: |ctx, arg1, arg2| {
                         ctx.exprs.push(Instr {
                             local: Some(ctx.dest),
-                            expr: InstrKind::LeInt(arg1, arg2),
+                            kind: InstrKind::LeInt(arg1, arg2),
                         });
                     },
                 },
@@ -1660,7 +1660,7 @@ impl BuiltinConversionRule {
                     ir_gen: |ctx, arg1, arg2| {
                         ctx.exprs.push(Instr {
                             local: Some(ctx.dest),
-                            expr: InstrKind::LeFloat(arg1, arg2),
+                            kind: InstrKind::LeFloat(arg1, arg2),
                         });
                     },
                 },
@@ -1672,7 +1672,7 @@ impl BuiltinConversionRule {
                     ir_gen: |ctx, arg1, arg2| {
                         ctx.exprs.push(Instr {
                             local: Some(ctx.dest),
-                            expr: InstrKind::GeInt(arg1, arg2),
+                            kind: InstrKind::GeInt(arg1, arg2),
                         });
                     },
                 },
@@ -1682,7 +1682,7 @@ impl BuiltinConversionRule {
                     ir_gen: |ctx, arg1, arg2| {
                         ctx.exprs.push(Instr {
                             local: Some(ctx.dest),
-                            expr: InstrKind::GeFloat(arg1, arg2),
+                            kind: InstrKind::GeFloat(arg1, arg2),
                         });
                     },
                 },

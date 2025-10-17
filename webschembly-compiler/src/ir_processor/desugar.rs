@@ -14,18 +14,18 @@ fn desugar_bb(bb: &mut BasicBlock, locals: &mut VecMap<LocalId, Local>) {
         match instr {
             Instr {
                 local,
-                expr: InstrKind::Nop,
+                kind: InstrKind::Nop,
             } => {
                 debug_assert!(local.is_none());
             }
             Instr {
                 local,
-                expr: InstrKind::CallClosure(call_closure),
+                kind: InstrKind::CallClosure(call_closure),
             } => {
                 let call_ref = desugar_call_closure(call_closure, locals, &mut new_instrs);
                 new_instrs.push(Instr {
                     local,
-                    expr: InstrKind::CallRef(call_ref),
+                    kind: InstrKind::CallRef(call_ref),
                 });
             }
             instr => {
@@ -65,15 +65,15 @@ fn desugar_call_closure(
     });
     new_instrs.push(Instr {
         local: Some(entrypoint_table_local),
-        expr: InstrKind::ClosureEntrypointTable(call_closure.closure),
+        kind: InstrKind::ClosureEntrypointTable(call_closure.closure),
     });
     new_instrs.push(Instr {
         local: Some(mut_func_ref_local),
-        expr: InstrKind::EntrypointTableRef(call_closure.func_index, entrypoint_table_local),
+        kind: InstrKind::EntrypointTableRef(call_closure.func_index, entrypoint_table_local),
     });
     new_instrs.push(Instr {
         local: Some(func_ref_local),
-        expr: InstrKind::DerefMutFuncRef(mut_func_ref_local),
+        kind: InstrKind::DerefMutFuncRef(mut_func_ref_local),
     });
     InstrCallRef {
         func: func_ref_local,

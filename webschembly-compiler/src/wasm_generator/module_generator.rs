@@ -1012,16 +1012,16 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         locals: &VecMap<ir::LocalId, ir::Local>,
         expr: &ir::Instr,
     ) {
-        if let ir::InstrKind::Nop = expr.expr {
+        if let ir::InstrKind::Nop = expr.kind {
             // desugarである程度は削除しているが、その後の最適化で再度Nopが発生することがあるためここでも除去
             debug_assert!(expr.local.is_none());
             return;
         }
-        if let ir::InstrKind::Uninitialized(_) = expr.expr {
+        if let ir::InstrKind::Uninitialized(_) = expr.kind {
             // wasmのデフォルト値をそのまま使う
             return;
         }
-        self.gen_expr(function, locals, &expr.expr);
+        self.gen_expr(function, locals, &expr.kind);
         if let Some(local) = &expr.local {
             function.instruction(&Instruction::LocalSet(self.local_id_to_idx(*local)));
         } else {

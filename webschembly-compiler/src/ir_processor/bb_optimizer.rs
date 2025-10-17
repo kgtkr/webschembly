@@ -62,7 +62,7 @@ pub fn assign_type_args(
         assigned_local_to_obj.insert(local, obj_local);
         additional_instrs.push(Instr {
             local: Some(obj_local),
-            expr: InstrKind::ToObj(*typ, *type_params.get_by_left(&type_param_id).unwrap()),
+            kind: InstrKind::ToObj(*typ, *type_params.get_by_left(&type_param_id).unwrap()),
         });
     }
 
@@ -123,7 +123,7 @@ pub fn extend_typed_obj(
         match *instr {
             Instr {
                 local: Some(local),
-                expr: InstrKind::FromObj(typ, value),
+                kind: InstrKind::FromObj(typ, value),
             } => {
                 typed_objs.entry(value).or_insert(TypedObj {
                     val_type: local,
@@ -133,7 +133,7 @@ pub fn extend_typed_obj(
             }
             Instr {
                 local: Some(local),
-                expr: InstrKind::ToObj(typ, value),
+                kind: InstrKind::ToObj(typ, value),
             } => {
                 typed_objs.entry(local).or_insert(TypedObj {
                     val_type: value,
@@ -143,7 +143,7 @@ pub fn extend_typed_obj(
             // 後方に型情報を伝播
             Instr {
                 local: Some(local),
-                expr: InstrKind::Move(value),
+                kind: InstrKind::Move(value),
             } => {
                 if let Some(&typed_obj) = typed_objs.get(value) {
                     typed_objs.entry(local).or_insert(typed_obj);
@@ -158,7 +158,7 @@ pub fn extend_typed_obj(
         if let Some(def_idx) = defs.get(local)
             && let Some(&Instr {
                 local: Some(_),
-                expr: InstrKind::Move(value),
+                kind: InstrKind::Move(value),
             }) = bb.instrs.get(*def_idx)
             && !typed_objs.contains_key(value)
         {
@@ -182,13 +182,13 @@ pub fn remove_type_check(
     defs: &VecMap<LocalId, usize>,
 ) {
     for (i, instr) in bb.instrs.iter_mut().enumerate() {
-        match instr.expr {
+        match instr.kind {
             InstrKind::Is(val_type, local) => {
                 if let Some(typed_obj) = typed_objs.get(local) {
                     if typed_obj.typ == val_type {
-                        instr.expr = InstrKind::Bool(true);
+                        instr.kind = InstrKind::Bool(true);
                     } else {
-                        instr.expr = InstrKind::Bool(false);
+                        instr.kind = InstrKind::Bool(false);
                     }
                 }
             }
@@ -201,7 +201,7 @@ pub fn remove_type_check(
                 // defsに存在しない = 先行ブロックで定義されている
                 {
                     debug_assert_eq!(typed_obj.typ, ty);
-                    instr.expr = InstrKind::Move(typed_obj.val_type);
+                    instr.kind = InstrKind::Move(typed_obj.val_type);
                 }
             }
             _ => {}
@@ -263,13 +263,13 @@ pub fn copy_propagate(locals: &VecMap<LocalId, Local>, bb: &mut BasicBlock) {
         match *instr {
             Instr {
                 local: Some(local),
-                expr: Move(value),
+                kind: Move(value),
             } => {
                 local_replacements[local] = value;
             }
             Instr {
                 local: Some(local),
-                expr: ToObj(typ, value),
+                kind: ToObj(typ, value),
             } => {
                 to_obj_replacements[local] = Some((value, typ));
 
@@ -282,7 +282,7 @@ pub fn copy_propagate(locals: &VecMap<LocalId, Local>, bb: &mut BasicBlock) {
             }
             Instr {
                 local: Some(local),
-                expr: FromObj(typ, value),
+                kind: FromObj(typ, value),
             } => {
                 from_obj_replacements[local] = Some((value, typ));
 
@@ -322,7 +322,7 @@ pub fn dead_code_elimination(
     }
 
     for instr in bb.instrs.iter_mut().rev() {
-        let can_dce = instr.expr.purelity().can_dce();
+        let can_dce = instr.kind.purelity().can_dce();
         let expr_used = !can_dce || instr.local.map(|l| used[l]).unwrap_or(false);
         if expr_used {
             for (&local, flag) in instr.local_usages() {
@@ -331,7 +331,7 @@ pub fn dead_code_elimination(
                 }
             }
         } else {
-            instr.expr = InstrKind::Nop;
+            instr.kind = InstrKind::Nop;
             instr.local = None;
         }
     }
@@ -367,19 +367,19 @@ mod tests {
             instrs: vec![
                 Instr {
                     local: None,
-                    expr: InstrKind::Cons(LocalId::from(0), LocalId::from(0)),
+                    kind: InstrKind::Cons(LocalId::from(0), LocalId::from(0)),
                 },
                 Instr {
                     local: Some(LocalId::from(1)),
-                    expr: InstrKind::FromObj(ValType::Int, LocalId::from(0)),
+                    kind: InstrKind::FromObj(ValType::Int, LocalId::from(0)),
                 },
                 Instr {
                     local: Some(LocalId::from(2)),
-                    expr: InstrKind::FromObj(ValType::Int, LocalId::from(0)),
+                    kind: InstrKind::FromObj(ValType::Int, LocalId::from(0)),
                 },
                 Instr {
                     local: None,
-                    expr: InstrKind::AddInt(LocalId::from(1), LocalId::from(2)),
+                    kind: InstrKind::AddInt(LocalId::from(1), LocalId::from(2)),
                 },
             ],
             next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(1))),
@@ -421,23 +421,23 @@ mod tests {
             vec![
                 Instr {
                     local: Some(LocalId::from(3)),
-                    expr: InstrKind::ToObj(ValType::Int, LocalId::from(0)),
+                    kind: InstrKind::ToObj(ValType::Int, LocalId::from(0)),
                 },
                 Instr {
                     local: None,
-                    expr: InstrKind::Cons(LocalId::from(3), LocalId::from(3)),
+                    kind: InstrKind::Cons(LocalId::from(3), LocalId::from(3)),
                 },
                 Instr {
                     local: Some(LocalId::from(1)),
-                    expr: InstrKind::FromObj(ValType::Int, LocalId::from(3)),
+                    kind: InstrKind::FromObj(ValType::Int, LocalId::from(3)),
                 },
                 Instr {
                     local: Some(LocalId::from(2)),
-                    expr: InstrKind::FromObj(ValType::Int, LocalId::from(3)),
+                    kind: InstrKind::FromObj(ValType::Int, LocalId::from(3)),
                 },
                 Instr {
                     local: None,
-                    expr: InstrKind::AddInt(LocalId::from(1), LocalId::from(2)),
+                    kind: InstrKind::AddInt(LocalId::from(1), LocalId::from(2)),
                 },
             ]
         );
@@ -490,11 +490,11 @@ mod tests {
             instrs: vec![
                 Instr {
                     local: Some(LocalId::from(1)),
-                    expr: InstrKind::Move(LocalId::from(0)),
+                    kind: InstrKind::Move(LocalId::from(0)),
                 },
                 Instr {
                     local: Some(LocalId::from(2)),
-                    expr: InstrKind::AddInt(LocalId::from(1), LocalId::from(1)),
+                    kind: InstrKind::AddInt(LocalId::from(1), LocalId::from(1)),
                 },
             ],
             next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(2))),
@@ -509,11 +509,11 @@ mod tests {
                 instrs: vec![
                     Instr {
                         local: Some(LocalId::from(1)),
-                        expr: InstrKind::Move(LocalId::from(0)),
+                        kind: InstrKind::Move(LocalId::from(0)),
                     },
                     Instr {
                         local: Some(LocalId::from(2)),
-                        expr: InstrKind::AddInt(LocalId::from(0), LocalId::from(0)),
+                        kind: InstrKind::AddInt(LocalId::from(0), LocalId::from(0)),
                     },
                 ],
                 next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(2))),
@@ -549,15 +549,15 @@ mod tests {
             instrs: vec![
                 Instr {
                     local: Some(LocalId::from(1)),
-                    expr: InstrKind::ToObj(ValType::Int, LocalId::from(0)),
+                    kind: InstrKind::ToObj(ValType::Int, LocalId::from(0)),
                 },
                 Instr {
                     local: Some(LocalId::from(2)),
-                    expr: InstrKind::FromObj(ValType::Int, LocalId::from(1)),
+                    kind: InstrKind::FromObj(ValType::Int, LocalId::from(1)),
                 },
                 Instr {
                     local: Some(LocalId::from(3)),
-                    expr: InstrKind::AddInt(LocalId::from(2), LocalId::from(2)),
+                    kind: InstrKind::AddInt(LocalId::from(2), LocalId::from(2)),
                 },
             ],
             next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(3))),
@@ -572,15 +572,15 @@ mod tests {
                 instrs: vec![
                     Instr {
                         local: Some(LocalId::from(1)),
-                        expr: InstrKind::ToObj(ValType::Int, LocalId::from(0)),
+                        kind: InstrKind::ToObj(ValType::Int, LocalId::from(0)),
                     },
                     Instr {
                         local: Some(LocalId::from(2)),
-                        expr: InstrKind::FromObj(ValType::Int, LocalId::from(1)),
+                        kind: InstrKind::FromObj(ValType::Int, LocalId::from(1)),
                     },
                     Instr {
                         local: Some(LocalId::from(3)),
-                        expr: InstrKind::AddInt(LocalId::from(0), LocalId::from(0)),
+                        kind: InstrKind::AddInt(LocalId::from(0), LocalId::from(0)),
                     },
                 ],
                 next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(3))),
@@ -612,11 +612,11 @@ mod tests {
             instrs: vec![
                 Instr {
                     local: Some(LocalId::from(1)),
-                    expr: InstrKind::AddInt(LocalId::from(0), LocalId::from(0)),
+                    kind: InstrKind::AddInt(LocalId::from(0), LocalId::from(0)),
                 },
                 Instr {
                     local: Some(LocalId::from(2)),
-                    expr: InstrKind::AddInt(LocalId::from(0), LocalId::from(0)),
+                    kind: InstrKind::AddInt(LocalId::from(0), LocalId::from(0)),
                 },
             ],
             next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(2))),
@@ -633,11 +633,11 @@ mod tests {
                 instrs: vec![
                     Instr {
                         local: None,
-                        expr: InstrKind::Nop,
+                        kind: InstrKind::Nop,
                     },
                     Instr {
                         local: Some(LocalId::from(2)),
-                        expr: InstrKind::AddInt(LocalId::from(0), LocalId::from(0)),
+                        kind: InstrKind::AddInt(LocalId::from(0), LocalId::from(0)),
                     },
                 ],
                 next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(2))),

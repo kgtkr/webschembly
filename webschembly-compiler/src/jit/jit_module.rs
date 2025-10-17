@@ -96,11 +96,11 @@ impl JitModule {
                     instrs: vec![
                         Instr {
                             local: None,
-                            expr: InstrKind::InstantiateFunc(self.module_id, func.id, 0),
+                            kind: InstrKind::InstantiateFunc(self.module_id, func.id, 0),
                         },
                         Instr {
                             local: Some(f0_ref_local),
-                            expr: InstrKind::GlobalGet(self.func_to_globals[func.id]),
+                            kind: InstrKind::GlobalGet(self.func_to_globals[func.id]),
                         },
                     ],
                     next: BasicBlockNext::Terminator(BasicBlockTerminator::TailCallRef(
@@ -129,11 +129,11 @@ impl JitModule {
 
                 exprs.push(Instr {
                     local: Some(func_ref_local),
-                    expr: InstrKind::FuncRef(stub_func_ids[&func.id]),
+                    kind: InstrKind::FuncRef(stub_func_ids[&func.id]),
                 });
                 exprs.push(Instr {
                     local: None,
-                    expr: InstrKind::GlobalSet(self.func_to_globals[func.id], func_ref_local),
+                    kind: InstrKind::GlobalSet(self.func_to_globals[func.id], func_ref_local),
                 });
             }
 
@@ -149,11 +149,11 @@ impl JitModule {
                     });
                     exprs.push(Instr {
                         local: Some(stub_local),
-                        expr: InstrKind::CreateEmptyMutFuncRef,
+                        kind: InstrKind::CreateEmptyMutFuncRef,
                     });
                     exprs.push(Instr {
                         local: None,
-                        expr: InstrKind::GlobalSet(stub_global.id, stub_local),
+                        kind: InstrKind::GlobalSet(stub_global.id, stub_local),
                     });
                 }
 
@@ -402,11 +402,11 @@ impl JitFunc {
                 exprs.extend([
                     Instr {
                         local: Some(func_ref_local),
-                        expr: InstrKind::FuncRef(body_func_id),
+                        kind: InstrKind::FuncRef(body_func_id),
                     },
                     Instr {
                         local: None,
-                        expr: InstrKind::GlobalSet(
+                        kind: InstrKind::GlobalSet(
                             jit_ctx.instantiate_func_global().id,
                             func_ref_local,
                         ),
@@ -416,7 +416,7 @@ impl JitFunc {
                     // func_to_globalsはindex=0のためのもの
                     exprs.push(Instr {
                         local: None,
-                        expr: InstrKind::GlobalSet(func_to_globals[self.func.id], func_ref_local),
+                        kind: InstrKind::GlobalSet(func_to_globals[self.func.id], func_ref_local),
                     });
                 }
 
@@ -479,7 +479,7 @@ impl JitFunc {
                     instrs: vec![
                         Instr {
                             local: None,
-                            expr: InstrKind::InstantiateBB(
+                            kind: InstrKind::InstantiateBB(
                                 module_id,
                                 self.func.id,
                                 self.func_index,
@@ -489,7 +489,7 @@ impl JitFunc {
                         },
                         Instr {
                             local: Some(func_ref_local),
-                            expr: InstrKind::GlobalGet(index_global.id),
+                            kind: InstrKind::GlobalGet(index_global.id),
                         },
                     ],
                     next: BasicBlockNext::Terminator(BasicBlockTerminator::TailCallRef(
@@ -520,11 +520,11 @@ impl JitFunc {
                 instrs: vec![
                     Instr {
                         local: Some(func_ref_local),
-                        expr: InstrKind::FuncRef(func_id),
+                        kind: InstrKind::FuncRef(func_id),
                     },
                     Instr {
                         local: None,
-                        expr: InstrKind::GlobalSet(index_global.id, func_ref_local),
+                        kind: InstrKind::GlobalSet(index_global.id, func_ref_local),
                     },
                 ],
                 next,
@@ -629,7 +629,7 @@ impl JitFunc {
                 match *expr {
                     Instr {
                         local,
-                        expr: InstrKind::Phi(ref incomings),
+                        kind: InstrKind::Phi(ref incomings),
                     } => {
                         if orig_bb_id == orig_entry_bb_id {
                             // 削除
@@ -649,22 +649,22 @@ impl JitFunc {
                                 .collect();
                             exprs.push(Instr {
                                 local,
-                                expr: InstrKind::Phi(incomings),
+                                kind: InstrKind::Phi(incomings),
                             });
                         }
                     }
                     Instr {
                         local,
-                        expr: InstrKind::FuncRef(id),
+                        kind: InstrKind::FuncRef(id),
                     } => {
                         exprs.push(Instr {
                             local,
-                            expr: InstrKind::GlobalGet(func_to_globals[id]),
+                            kind: InstrKind::GlobalGet(func_to_globals[id]),
                         });
                     }
                     Instr {
                         local,
-                        expr: InstrKind::Call(InstrCall { func_id, ref args }),
+                        kind: InstrKind::Call(InstrCall { func_id, ref args }),
                     } => {
                         let func_ref_local = new_locals.push_with(|id| Local {
                             id,
@@ -673,11 +673,11 @@ impl JitFunc {
 
                         exprs.push(Instr {
                             local: Some(func_ref_local),
-                            expr: InstrKind::GlobalGet(func_to_globals[func_id]),
+                            kind: InstrKind::GlobalGet(func_to_globals[func_id]),
                         });
                         exprs.push(Instr {
                             local,
-                            expr: InstrKind::CallRef(InstrCallRef {
+                            kind: InstrKind::CallRef(InstrCallRef {
                                 func: func_ref_local,
                                 args: args.clone(),
                                 func_type: func_types[func_id].clone(),
@@ -686,7 +686,7 @@ impl JitFunc {
                     }
                     Instr {
                         local,
-                        expr: InstrKind::EntrypointTable(_),
+                        kind: InstrKind::EntrypointTable(_),
                     } => {
                         let mut locals = Vec::new();
                         for index in 0..GLOBAL_LAYOUT_MAX_SIZE {
@@ -696,18 +696,18 @@ impl JitFunc {
                             });
                             exprs.push(Instr {
                                 local: Some(stub),
-                                expr: InstrKind::GlobalGet(jit_ctx.stub_global(index).id),
+                                kind: InstrKind::GlobalGet(jit_ctx.stub_global(index).id),
                             });
                             locals.push(stub);
                         }
                         exprs.push(Instr {
                             local,
-                            expr: InstrKind::EntrypointTable(locals),
+                            kind: InstrKind::EntrypointTable(locals),
                         });
                     }
                     Instr {
                         local,
-                        expr: InstrKind::CallClosure(ref call_closure),
+                        kind: InstrKind::CallClosure(ref call_closure),
                     } => {
                         let call_closure = specialize_call_closure(
                             call_closure,
@@ -721,19 +721,19 @@ impl JitFunc {
 
                         exprs.push(Instr {
                             local,
-                            expr: InstrKind::CallClosure(call_closure),
+                            kind: InstrKind::CallClosure(call_closure),
                         });
                     }
                     Instr {
                         local: Some(local),
-                        expr: InstrKind::VariadicArgs(_),
+                        kind: InstrKind::VariadicArgs(_),
                     } => {
                         local_to_args_expr_idx.insert(local, exprs.len());
                         exprs.push(expr.clone());
                     }
                     Instr {
                         local: Some(local),
-                        expr: InstrKind::Move(value),
+                        kind: InstrKind::Move(value),
                     } if let Some(args_expr_idx) = local_to_args_expr_idx.get(&value) => {
                         local_to_args_expr_idx.insert(local, *args_expr_idx);
                         exprs.push(expr.clone());
@@ -825,7 +825,7 @@ impl JitFunc {
                     let exprs = &mut bbs[new_bb_id].instrs;
                     exprs.push(Instr {
                         local: Some(func_ref_local),
-                        expr: InstrKind::GlobalGet(func_to_globals[func_id]),
+                        kind: InstrKind::GlobalGet(func_to_globals[func_id]),
                     });
                     BasicBlockNext::Terminator(BasicBlockTerminator::TailCallRef(InstrCallRef {
                         func: func_ref_local,
@@ -873,7 +873,7 @@ impl JitFunc {
             for instr in &func.bbs[orig_bb_id].instrs {
                 if let Instr {
                     local,
-                    expr: InstrKind::Phi(incomings),
+                    kind: InstrKind::Phi(incomings),
                 } = instr
                 {
                     let incomings = incomings
@@ -885,7 +885,7 @@ impl JitFunc {
                         .collect();
                     exprs.push(Instr {
                         local: *local,
-                        expr: InstrKind::Phi(incomings),
+                        kind: InstrKind::Phi(incomings),
                     });
                 }
             }
@@ -899,7 +899,7 @@ impl JitFunc {
                 });
                 exprs.push(Instr {
                     local: Some(val_local),
-                    expr: InstrKind::FromObj(typ, obj_local),
+                    kind: InstrKind::FromObj(typ, obj_local),
                 });
                 branch_typed_objs.insert(
                     obj_local,
@@ -948,7 +948,7 @@ impl JitFunc {
 
             exprs.extend([Instr {
                 local: Some(func_ref_local),
-                expr: InstrKind::GlobalGet(index_global.id),
+                kind: InstrKind::GlobalGet(index_global.id),
             }]);
 
             bbs.insert_node(BasicBlock {
@@ -1032,15 +1032,15 @@ impl JitFunc {
 
                 exprs.push(Instr {
                     local: Some(module_id_local),
-                    expr: InstrKind::ClosureModuleId(closure_local),
+                    kind: InstrKind::ClosureModuleId(closure_local),
                 });
                 exprs.push(Instr {
                     local: Some(func_id_local),
-                    expr: InstrKind::ClosureFuncId(closure_local),
+                    kind: InstrKind::ClosureFuncId(closure_local),
                 });
                 exprs.push(Instr {
                     local: None,
-                    expr: InstrKind::InstantiateClosureFunc(
+                    kind: InstrKind::InstantiateClosureFunc(
                         module_id_local,
                         func_id_local,
                         closure_idx,
@@ -1048,19 +1048,19 @@ impl JitFunc {
                 });
                 exprs.push(Instr {
                     local: Some(func_ref_local),
-                    expr: InstrKind::GlobalGet(jit_ctx.instantiate_func_global().id),
+                    kind: InstrKind::GlobalGet(jit_ctx.instantiate_func_global().id),
                 });
                 exprs.push(Instr {
                     local: Some(mut_func_ref_local),
-                    expr: InstrKind::CreateMutFuncRef(func_ref_local),
+                    kind: InstrKind::CreateMutFuncRef(func_ref_local),
                 });
                 exprs.push(Instr {
                     local: Some(entrypoint_table_local),
-                    expr: InstrKind::ClosureEntrypointTable(closure_local),
+                    kind: InstrKind::ClosureEntrypointTable(closure_local),
                 });
                 exprs.push(Instr {
                     local: None,
-                    expr: InstrKind::SetEntrypointTable(
+                    kind: InstrKind::SetEntrypointTable(
                         closure_idx,
                         entrypoint_table_local,
                         mut_func_ref_local,
@@ -1108,11 +1108,11 @@ impl JitFunc {
                 let mut exprs = vec![
                     Instr {
                         local: Some(func_ref_local),
-                        expr: InstrKind::FuncRef(body_func_id),
+                        kind: InstrKind::FuncRef(body_func_id),
                     },
                     Instr {
                         local: None,
-                        expr: InstrKind::GlobalSet(index_global.id, func_ref_local),
+                        kind: InstrKind::GlobalSet(index_global.id, func_ref_local),
                     },
                 ];
 
@@ -1127,15 +1127,15 @@ impl JitFunc {
                     });
                     exprs.push(Instr {
                         local: Some(stub_func_ref_local),
-                        expr: InstrKind::FuncRef(stub_func_id),
+                        kind: InstrKind::FuncRef(stub_func_id),
                     });
                     exprs.push(Instr {
                         local: Some(stub_mut_func_ref_local),
-                        expr: InstrKind::GlobalGet(jit_ctx.stub_global(closure_idx).id),
+                        kind: InstrKind::GlobalGet(jit_ctx.stub_global(closure_idx).id),
                     });
                     exprs.push(Instr {
                         local: None,
-                        expr: InstrKind::SetMutFuncRef(
+                        kind: InstrKind::SetMutFuncRef(
                             stub_mut_func_ref_local,
                             stub_func_ref_local,
                         ),
@@ -1192,7 +1192,7 @@ fn specialize_call_closure(
 
     // func_index == GLOBAL_LAYOUT_DEFAULT_INDEX なら引数は[Args]を仮定してよい
     let args_expr_idx = *local_to_args_expr_idx.get(&call_closure.args[0])?;
-    let InstrKind::VariadicArgs(args) = &exprs[args_expr_idx].expr else {
+    let InstrKind::VariadicArgs(args) = &exprs[args_expr_idx].kind else {
         unreachable!("unexpected expr other than VariadicArgs");
     };
 
@@ -1528,7 +1528,7 @@ fn closure_func_assign_types(
                 });
                 exprs.push(Instr {
                     local: Some(obj_local),
-                    expr: InstrKind::ToObj(val_type, local),
+                    kind: InstrKind::ToObj(val_type, local),
                 });
                 obj_local
             } else {
@@ -1539,7 +1539,7 @@ fn closure_func_assign_types(
 
         exprs.push(Instr {
             local: Some(variadic_args_local),
-            expr: InstrKind::VariadicArgs(obj_locals),
+            kind: InstrKind::VariadicArgs(obj_locals),
         });
 
         BasicBlock {

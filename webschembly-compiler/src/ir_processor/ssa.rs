@@ -23,7 +23,7 @@ fn remove_phi_in_bb(func: &mut Func, bb_id: BasicBlockId) {
 
     // 先行ブロックごとの並列コピーリストを収集
     for instr in &func.bbs[bb_id].instrs {
-        if let InstrKind::Phi(incomings) = &instr.expr
+        if let InstrKind::Phi(incomings) = &instr.kind
             && let Some(result) = instr.local
         {
             for incoming in incomings {
@@ -43,15 +43,15 @@ fn remove_phi_in_bb(func: &mut Func, bb_id: BasicBlockId) {
         for copy in sequential_copies {
             bb.instrs.push(Instr {
                 local: Some(copy.dest),
-                expr: InstrKind::Move(copy.src),
+                kind: InstrKind::Move(copy.src),
             });
         }
     }
 
     // 対象ブロックのPHI命令を削除
     for instr in &mut func.bbs[bb_id].instrs {
-        if let InstrKind::Phi(_) = &instr.expr {
-            instr.expr = InstrKind::Nop;
+        if let InstrKind::Phi(_) = &instr.kind {
+            instr.kind = InstrKind::Nop;
             instr.local = None;
         }
     }
@@ -117,12 +117,12 @@ fn assert_ssa(func: &Func) {
             }
 
             if phi_area {
-                if let InstrKind::Phi(_) | InstrKind::Nop = expr.expr {
+                if let InstrKind::Phi(_) | InstrKind::Nop = expr.kind {
                     // do nothing
                 } else {
                     phi_area = false;
                 }
-            } else if let InstrKind::Phi(_) = expr.expr {
+            } else if let InstrKind::Phi(_) = expr.kind {
                 panic!("phi instruction must be at the beginning of a basic block");
             }
         }
@@ -215,7 +215,7 @@ impl DefUseChain {
         local: LocalId,
     ) -> Option<&'a InstrKind> {
         if let Some(def) = self.defs.get(local) {
-            Some(&bbs[def.bb_id].instrs[def.expr_idx].expr)
+            Some(&bbs[def.bb_id].instrs[def.expr_idx].kind)
         } else {
             None
         }

@@ -1211,7 +1211,7 @@ impl fmt::Display for DisplayInFunc<'_, &'_ InstrKind> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Instr {
     pub local: Option<LocalId>,
-    pub expr: InstrKind,
+    pub kind: InstrKind,
 }
 
 macro_rules! impl_Instr_local_usages {
@@ -1221,7 +1221,7 @@ macro_rules! impl_Instr_local_usages {
                 from_coroutine(
                     #[coroutine]
                     move || {
-                        for (id, used_flag) in self.expr.[<local_usages $($suffix)?>]() {
+                        for (id, used_flag) in self.kind.[<local_usages $($suffix)?>]() {
                             yield (id, LocalFlag::Used(used_flag));
                         }
                         if let Some(local) = &$($mutability)? self.local {
@@ -1250,7 +1250,7 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Instr> {
         } else {
             write!(f, "_")?;
         }
-        write!(f, " = {}", self.value.expr.display(self.meta))
+        write!(f, " = {}", self.value.kind.display(self.meta))
     }
 }
 
@@ -1291,7 +1291,7 @@ macro_rules! impl_BasicBlock_func_ids {
                     #[coroutine]
                     move || {
                         for instr in &$($mutability)? self.instrs {
-                            for id in instr.expr.[<func_ids $($suffix)?>]() {
+                            for id in instr.kind.[<func_ids $($suffix)?>]() {
                                 yield id;
                             }
                         }
@@ -1334,13 +1334,13 @@ impl fmt::Display for DisplayInFunc<'_, &'_ BasicBlock> {
             DISPLAY_INDENT,
             self.value.id.display(self.meta.meta)
         )?;
-        for expr in &self.value.instrs {
+        for instr in &self.value.instrs {
             writeln!(
                 f,
                 "{}{}{}",
                 DISPLAY_INDENT,
                 DISPLAY_INDENT,
-                expr.display(self.meta)
+                instr.display(self.meta)
             )?;
         }
         writeln!(
