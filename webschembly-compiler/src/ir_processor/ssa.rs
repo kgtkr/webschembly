@@ -226,7 +226,9 @@ impl DefUseChain {
         local: LocalId,
     ) -> Option<&'a InstrKind> {
         if let Some(def) = self.defs.get(local) {
-            Some(&bbs[def.bb_id].instrs[def.expr_idx].kind)
+            let instr = &bbs[def.bb_id].instrs[def.expr_idx];
+            debug_assert_eq!(instr.local, Some(local));
+            Some(&instr.kind)
         } else {
             None
         }

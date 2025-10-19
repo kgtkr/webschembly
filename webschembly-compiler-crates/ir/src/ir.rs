@@ -310,7 +310,7 @@ impl fmt::Display for DisplayInFunc<'_, &'_ InstrCallClosure> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PhiIncomingValue {
     pub bb: BasicBlockId,
     pub local: LocalId,

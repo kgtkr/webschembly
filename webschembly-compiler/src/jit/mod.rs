@@ -1,5 +1,4 @@
 use crate::ir_generator::GlobalManager;
-use crate::ir_processor::bb_optimizer;
 use vec_map::VecMap;
 mod jit_config;
 mod jit_module;
