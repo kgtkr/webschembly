@@ -3,6 +3,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use super::jit_ctx::JitCtx;
 use crate::fxbihashmap::FxBiHashMap;
 use crate::ir_generator::GlobalManager;
+use crate::ir_processor::bb_optimizer::TypedObj;
 use crate::ir_processor::cfg_analyzer::calculate_rpo;
 use crate::ir_processor::dataflow::{analyze_liveness, calc_def_use};
 use crate::ir_processor::optimizer::remove_unreachable_bb;
@@ -565,8 +566,23 @@ impl JitFunc {
                         todo_bb_ids.push(orig_next_bb_id);
                         BasicBlockNext::Jump(orig_next_bb_id)
                     } else {
-                        required_bbs.push(orig_then_bb_id);
-                        required_bbs.push(orig_else_bb_id);
+                        let mut then_types = Vec::new();
+                        let mut todo_cond_locals = vec![cond];
+                        while let Some(cond_local) = todo_cond_locals.pop() {
+                            if let Some(&InstrKind::Is(typ, obj_local)) =
+                                def_use_chain.get_def_non_move_expr(&body_func.bbs, cond_local)
+                            {
+                                then_types.push((obj_local, typ));
+                            } else if let Some(&InstrKind::And(cond_local1, cond_local2)) =
+                                def_use_chain.get_def_non_move_expr(&body_func.bbs, cond_local)
+                            {
+                                todo_cond_locals.push(cond_local1);
+                                todo_cond_locals.push(cond_local2);
+                            }
+                        }
+
+                        required_bbs.push((orig_then_bb_id, then_types));
+                        required_bbs.push((orig_else_bb_id, Vec::new()));
 
                         BasicBlockNext::If(cond, orig_then_bb_id, orig_else_bb_id)
                     }
@@ -615,10 +631,40 @@ impl JitFunc {
             body_func.bbs[orig_bb_id].next = new_next;
         }
 
-        for bb_id in required_bbs {
+        for (bb_id, types) in required_bbs {
+            let mut instrs = Vec::new();
+            for instr in &body_func.bbs[bb_id].instrs {
+                // ジャンプ先のBBのPhiはここに移動
+                // TODO: 型代入を考慮しなくてよい理由を明記
+                if let InstrKind::Phi(_) = instr.kind {
+                    instrs.push(instr.clone());
+                }
+            }
+
+            // この分岐で型が確定するobj
+            let mut typed_objs = FxHashMap::default();
+            for (obj_local, typ) in types {
+                let val_local = body_func.locals.push_with(|id| Local {
+                    id,
+                    typ: typ.into(),
+                });
+                instrs.push(Instr {
+                    local: Some(val_local),
+                    kind: InstrKind::FromObj(typ, obj_local),
+                });
+                typed_objs.insert(
+                    obj_local,
+                    TypedObj {
+                        typ,
+                        val_type: val_local,
+                    },
+                );
+            }
+
             let callee_jit_bb = &mut self.jit_bbs[bb_id];
             let (locals_to_pass, type_args, index_global) = calculate_args_to_pass(
                 &callee_jit_bb.info,
+                &typed_objs,
                 &def_use_chain,
                 &body_func.bbs,
                 &assigned_local_to_obj,
@@ -627,21 +673,17 @@ impl JitFunc {
                 global_manager,
             );
 
-            let exprs = &mut body_func.bbs[bb_id].instrs;
-            // ジャンプ先のBBのPhiはここに移動
-            // TODO: 型代入を考慮しなくてよい理由を明記
-            exprs.retain(|instr| matches!(instr.kind, InstrKind::Phi(_)));
-
             let func_ref_local = body_func.locals.push_with(|id| Local {
                 id,
                 typ: LocalType::FuncRef,
             });
 
-            exprs.extend([Instr {
+            instrs.extend([Instr {
                 local: Some(func_ref_local),
                 kind: InstrKind::GlobalGet(index_global.id),
             }]);
 
+            body_func.bbs[bb_id].instrs = instrs;
             body_func.bbs[bb_id].next =
                 BasicBlockNext::Terminator(BasicBlockTerminator::TailCallRef(InstrCallRef {
                     func: func_ref_local,
@@ -1101,6 +1143,7 @@ fn calculate_bb_info(func: &Func) -> VecMap<BasicBlockId, BBInfo> {
 
 fn calculate_args_to_pass(
     callee: &BBInfo,
+    typed_objs: &FxHashMap<LocalId, TypedObj>,
     def_use_chain: &DefUseChain,
     bbs: &VecMap<BasicBlockId, BasicBlock>,
     caller_assigned_local_to_obj: &FxBiHashMap<LocalId, LocalId>,
@@ -1123,6 +1166,11 @@ fn calculate_args_to_pass(
         {
             type_args.insert(type_param_id, typ);
             val_local
+        } else if let Some(&type_param_id) = callee.type_params.get_by_right(&arg)
+            && let Some(typed_obj) = typed_objs.get(&obj_arg)
+        {
+            type_args.insert(type_param_id, typed_obj.typ);
+            typed_obj.val_type
         } else {
             obj_arg
         };
@@ -1140,6 +1188,7 @@ fn calculate_args_to_pass(
             callee,
             // global layoutが満杯なら型パラメータなしで再計算
             // 型パラメータなしで呼び出すとto_idxの結果は必ずSomeになるので無限ループすることはない
+            &FxHashMap::default(),
             &DefUseChain::new(),
             bbs,
             caller_assigned_local_to_obj,
