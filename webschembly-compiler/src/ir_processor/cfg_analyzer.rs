@@ -216,3 +216,23 @@ pub fn find_reachable_nodes(
     }
     reachable
 }
+
+// クリティカルエッジを持っているか
+pub fn has_critical_edges(cfg: &VecMap<BasicBlockId, BasicBlock>) -> bool {
+    let mut pred_counts = FxHashMap::default();
+    let mut succ_counts = FxHashMap::default();
+    for (_, bb) in cfg.iter() {
+        for succ in bb.next.successors() {
+            *pred_counts.entry(succ).or_insert(0usize) += 1;
+            *succ_counts.entry(bb.id).or_insert(0usize) += 1;
+        }
+    }
+    for bb_id in cfg.keys() {
+        let pred_count = *pred_counts.get(&bb_id).unwrap_or(&0);
+        let succ_count = *succ_counts.get(&bb_id).unwrap_or(&0);
+        if pred_count >= 2 && succ_count >= 2 {
+            return true;
+        }
+    }
+    false
+}

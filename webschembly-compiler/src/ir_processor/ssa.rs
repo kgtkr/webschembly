@@ -2,12 +2,23 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use vec_map::{HasId, VecMap};
 use webschembly_compiler_ir::*;
 
+use crate::ir_processor::cfg_analyzer::has_critical_edges;
+
 // 前提条件: クリティカルエッジが存在しない
 pub fn remove_phi(func: &mut Func) {
+    debug_assert_no_critical_edge(func);
     let bb_ids = func.bbs.keys().collect::<Vec<_>>();
 
     for bb_id in bb_ids {
         remove_phi_in_bb(func, bb_id);
+    }
+}
+
+fn debug_assert_no_critical_edge(func: &Func) {
+    if cfg!(debug_assertions) {
+        if has_critical_edges(&func.bbs) {
+            panic!("Function has critical edges");
+        }
     }
 }
 
