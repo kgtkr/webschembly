@@ -777,7 +777,7 @@ impl JitFunc {
                         kind: InstrKind::CallClosure(ref call_closure),
                     } => {
                         let call_closure = specialize_call_closure(
-                            &call_closure,
+                            call_closure,
                             &def_use_chain,
                             &body_func.bbs,
                             jit_ctx.closure_global_layout(),
@@ -1141,6 +1141,7 @@ fn calculate_bb_info(func: &Func) -> VecMap<BasicBlockId, BBInfo> {
     bb_info
 }
 
+#[allow(clippy::too_many_arguments)]
 fn calculate_args_to_pass(
     callee: &BBInfo,
     typed_objs: &FxHashMap<LocalId, TypedObj>,
