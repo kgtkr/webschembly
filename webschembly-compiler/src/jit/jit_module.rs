@@ -798,22 +798,18 @@ impl JitFunc {
                 }
             }
 
-            match &body_func.bbs[bb_id].next {
-                BasicBlockNext::Terminator(BasicBlockTerminator::TailCallClosure(call_closure)) => {
-                    if let Some(new_call_closure) = specialize_call_closure(
-                        call_closure,
-                        &def_use_chain,
-                        &body_func.bbs,
-                        jit_ctx.closure_global_layout(),
-                        &mut required_closure_idx,
-                    ) {
-                        body_func.bbs[bb_id].next = BasicBlockNext::Terminator(
-                            BasicBlockTerminator::TailCallClosure(new_call_closure),
-                        );
-                    }
+            if let BasicBlockNext::Terminator(BasicBlockTerminator::TailCallClosure(call_closure)) = &body_func.bbs[bb_id].next
+                && let Some(new_call_closure) = specialize_call_closure(
+                    call_closure,
+                    &def_use_chain,
+                    &body_func.bbs,
+                    jit_ctx.closure_global_layout(),
+                    &mut required_closure_idx,
+                ) {
+                    body_func.bbs[bb_id].next = BasicBlockNext::Terminator(
+                        BasicBlockTerminator::TailCallClosure(new_call_closure),
+                    );
                 }
-                _ => {}
-            }
         }
 
         remove_unreachable_bb(body_func);
