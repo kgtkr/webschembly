@@ -243,6 +243,7 @@ pub enum InstrKind {
         LocalId,        /* closure */
         usize,          /* env index */
     ),
+    // Uninitializedで初期化されたEnvに対して一度のみ値を設定できる
     ClosureSetEnv(
         Vec<LocalType>, /* env types */
         LocalId,        /* closure */
