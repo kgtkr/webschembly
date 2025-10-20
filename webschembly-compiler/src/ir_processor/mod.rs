@@ -1,4 +1,3 @@
-pub mod bb_optimizer;
 pub mod cfg_analyzer;
 pub mod dataflow;
 pub mod desugar;
