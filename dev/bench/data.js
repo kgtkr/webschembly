@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1760959793679,
+  "lastUpdate": 1760992399495,
   "repoUrl": "https://github.com/kgtkr/webschembly",
   "entries": {
     "Benchmark": [
@@ -704,6 +704,198 @@ window.BENCHMARK_DATA = {
             "name": "tak-30.b.scm,with warmup,enableJit=false",
             "value": 22.25,
             "range": "±0.23%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "me@kgtkr.net",
+            "name": "kgtkr",
+            "username": "kgtkr"
+          },
+          "committer": {
+            "email": "me@kgtkr.net",
+            "name": "kgtkr",
+            "username": "kgtkr"
+          },
+          "distinct": true,
+          "id": "aefc18d8234f51644cdad6976126c087f97b85bc",
+          "message": "fix ベンチマーク",
+          "timestamp": "2025-10-21T05:14:10+09:00",
+          "tree_id": "663939821a7f1d6491de12914aa4382f9c360bfe",
+          "url": "https://github.com/kgtkr/webschembly/commit/aefc18d8234f51644cdad6976126c087f97b85bc"
+        },
+        "date": 1760992398611,
+        "tool": "benchmarkjs",
+        "benches": [
+          {
+            "name": "div2-300000.b.scm,",
+            "value": 6.72,
+            "range": "±0.61%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "div2-300000.b.scm,enableJitOptimization=false",
+            "value": 6.96,
+            "range": "±0.39%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "div2-300000.b.scm,enableJit=false",
+            "value": 11.68,
+            "range": "±2.34%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "div2-300000.b.scm,with warmup,",
+            "value": 9.53,
+            "range": "±0.66%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "div2-300000.b.scm,with warmup,enableJitOptimization=false",
+            "value": 8.41,
+            "range": "±0.41%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "div2-300000.b.scm,with warmup,enableJit=false",
+            "value": 11.96,
+            "range": "±1.63%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "matmul-64.b.scm,",
+            "value": 1.36,
+            "range": "±0.42%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "matmul-64.b.scm,enableJitOptimization=false",
+            "value": 0.99,
+            "range": "±0.82%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "matmul-64.b.scm,enableJit=false",
+            "value": 7.98,
+            "range": "±1.55%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "matmul-64.b.scm,with warmup,",
+            "value": 4.16,
+            "range": "±1.16%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "matmul-64.b.scm,with warmup,enableJitOptimization=false",
+            "value": 2.36,
+            "range": "±1.10%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "matmul-64.b.scm,with warmup,enableJit=false",
+            "value": 17.54,
+            "range": "±0.17%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "matmul2-64.b.scm,",
+            "value": 1.33,
+            "range": "±0.51%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "matmul2-64.b.scm,enableJitOptimization=false",
+            "value": 1.27,
+            "range": "±0.81%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "matmul2-64.b.scm,enableJit=false",
+            "value": 8.03,
+            "range": "±2.44%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "matmul2-64.b.scm,with warmup,",
+            "value": 4.23,
+            "range": "±1.30%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "matmul2-64.b.scm,with warmup,enableJitOptimization=false",
+            "value": 3.13,
+            "range": "±1.22%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "matmul2-64.b.scm,with warmup,enableJit=false",
+            "value": 17.85,
+            "range": "±0.13%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "tak-30.b.scm,",
+            "value": 10.67,
+            "range": "±0.70%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "tak-30.b.scm,enableJitOptimization=false",
+            "value": 13.21,
+            "range": "±0.77%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "tak-30.b.scm,enableJit=false",
+            "value": 21.3,
+            "range": "±0.81%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "tak-30.b.scm,with warmup,",
+            "value": 20.6,
+            "range": "±0.18%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "tak-30.b.scm,with warmup,enableJitOptimization=false",
+            "value": 20.42,
+            "range": "±0.52%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "tak-30.b.scm,with warmup,enableJit=false",
+            "value": 22.82,
+            "range": "±0.31%",
             "unit": "ops/sec",
             "extra": "64 samples"
           }
