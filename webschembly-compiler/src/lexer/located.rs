@@ -1,6 +1,6 @@
 use nom_locate::LocatedSpan;
 
-use crate::span::{Pos, Span};
+use webschembly_compiler_locate::{Pos, Span};
 
 pub type LocatedStr<'a> = LocatedSpan<&'a str>;
 

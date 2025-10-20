@@ -216,7 +216,7 @@ impl WasmWriter {
 
     fn write_buf(&mut self, buf: &[u8]) {
         self.buf.extend_from_slice(buf);
-        if buf.iter().any(|&c| c == b'\n') {
+        if buf.contains(&b'\n') {
             self.flush();
         } else {
             self.flush_if_needed();
@@ -292,6 +292,23 @@ pub extern "C" fn _int_to_string(i: i64) -> i64 {
     cons_tuple_i32(s_ptr, s_len)
 }
 
+#[unsafe(no_mangle)]
+pub extern "C" fn _float_to_string(f: f64) -> i64 {
+    let s = if f.fract() == 0.0 {
+        // 10 を 10.0 のように小数点以下1桁まで表示するための分岐
+        format!("{:.1}", f)
+    } else {
+        f.to_string()
+    };
+    let s = s.as_bytes();
+    let s_ptr = unsafe { malloc(s.len() as i32) };
+    unsafe {
+        std::ptr::copy_nonoverlapping(s.as_ptr(), s_ptr as *mut u8, s.len());
+    }
+    let s_len = s.len() as i32;
+    cons_tuple_i32(s_ptr, s_len)
+}
+
 fn cons_tuple_i32(a: i32, b: i32) -> i64 {
     // rustではmultivalueが使えないので、(i32, i32) を i64 として表す
     let a = a.to_le_bytes();
@@ -328,11 +345,8 @@ pub extern "C" fn instantiate_func(module_id: i32, func_id: i32, func_index: i32
     );
     let (wasm, ir) = COMPILER.with(|compiler| {
         let mut compiler = RefMut::map(compiler.borrow_mut(), |c| c.as_mut().unwrap());
-        let module = compiler.instantiate_func(
-            webschembly_compiler::ir::ModuleId::from(module_id as usize),
-            webschembly_compiler::ir::FuncId::from(func_id as usize),
-            func_index as usize,
-        );
+        let module =
+            compiler.instantiate_func(module_id as usize, func_id as usize, func_index as usize);
         let wasm = webschembly_compiler::wasm_generator::generate(&module);
         let ir = if cfg!(debug_assertions) {
             let ir = format!("{}", module.display());
@@ -375,10 +389,10 @@ pub extern "C" fn instantiate_bb(
     let (wasm, ir) = COMPILER.with(|compiler| {
         let mut compiler = RefMut::map(compiler.borrow_mut(), |c| c.as_mut().unwrap());
         let module = compiler.instantiate_bb(
-            webschembly_compiler::ir::ModuleId::from(module_id as usize),
-            webschembly_compiler::ir::FuncId::from(func_id as usize),
+            module_id as usize,
+            func_id as usize,
             func_index as usize,
-            webschembly_compiler::ir::BasicBlockId::from(bb_id as usize),
+            bb_id as usize,
             index as usize,
         );
         let wasm = webschembly_compiler::wasm_generator::generate(&module);

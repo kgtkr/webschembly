@@ -9,6 +9,14 @@
           (write-vector-inner v (+ i 1)))
         #f)
   )
+  (define (write-uvector-inner v i)
+    (write (uvector-ref v i))
+    (if (< (+ i 1) (uvector-length v))
+        (begin
+          (write-char #\space)
+          (write-uvector-inner v (+ i 1)))
+        #f)
+  )
   (if (pair? x)
       (begin
         (write-char #\openparen)
@@ -46,7 +54,21 @@
             #f
             (write-vector-inner x 0))
         (write-char #\closeparen))
-  (display "<unknown>")))))))))))
+  (if (uvector? x)
+      (begin
+        (write-char #\#)
+        (if (s64vector? x)
+          (display "s64")
+          (if (f64vector? x)
+              (display "f64")
+          (display "unknown_uvector")))
+            
+        (write-char #\openparen)
+        (if (= (uvector-length x) 0)
+            #f
+            (write-uvector-inner x 0))
+        (write-char #\closeparen))
+  (display "<unknown>"))))))))))))
 )
 (define (not x) (if x #f #t))
 (define (null? x) (eq? x '()))

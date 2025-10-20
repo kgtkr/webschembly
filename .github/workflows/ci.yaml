@@ -56,6 +56,7 @@ jobs:
           tool: 'benchmarkjs'
           output-file-path: ./webschembly-js/benchmark.result
           gh-pages-branch: github-action-benchmark-data
+          auto-push: false
       - name: Push benchmark result
         run: git push origin github-action-benchmark-data:github-action-benchmark-data
         if: github.ref == 'refs/heads/master'
@@ -99,27 +100,3 @@ jobs:
     steps:
       - uses: actions/deploy-pages@v4
         id: deployment
-  devcontainer:
-    permissions:
-      contents: read
-      id-token: write
-      packages: write
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: DeterminateSystems/nix-installer-action@main
-      - uses: DeterminateSystems/magic-nix-cache-action@main
-      - name: Install dependencies
-        run: |
-          nix profile add --inputs-from . nixpkgs#skopeo
-      - name: Build
-        run: |
-          $(nix build .#stream-devcontainer --no-link --print-out-paths) > devcontainer.tar
-      - name: Push
-        run: |
-          skopeo login ghcr.io -u "$DOCKER_USER" -p "$DOCKER_PASS"
-          skopeo copy docker-archive:./devcontainer.tar "docker://ghcr.io/kgtkr/webschembly-devcontainer:latest"
-        env:
-          DOCKER_USER: ${{ github.repository_owner }}
-          DOCKER_PASS: ${{ secrets.GITHUB_TOKEN }}
-        if: github.ref == 'refs/heads/master'

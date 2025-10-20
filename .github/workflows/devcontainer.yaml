@@ -1,0 +1,78 @@
+name: ci
+on: push
+jobs:
+  generate-tags:
+    runs-on: ubuntu-latest
+    outputs:
+      tags: ${{ steps.generate-tags.outputs.tags }}
+    steps:
+    - name: Generate tags
+      uses: kgtkr/docker-tags-gen-action@master
+      id: generate-tags
+      with:
+        name: ghcr.io/${{ github.repository_owner }}/webschembly-devcontainer
+  build-and-push:
+    needs: generate-tags
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v3
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - name: Build devShell
+        run: |
+          nix print-dev-env > result-devShell.sh
+          echo "BASH_ENV=$PWD/result-devShell.sh" >> $GITHUB_ENV
+      - name: Build
+        run: |
+          $(nix build .#stream-devcontainer --no-link --print-out-paths) > devcontainer.tar
+      - name: Push
+        run: |
+          skopeo login ghcr.io -u "$DOCKER_USER" -p "$DOCKER_PASS"
+          for TAG in ${TAGS//,/ }; do
+            skopeo copy docker-archive:./devcontainer.tar "docker://$TAG-${{ matrix.arch }}"
+          done
+        env:
+          DOCKER_USER: ${{ github.repository_owner }}
+          DOCKER_PASS: ${{ secrets.GITHUB_TOKEN }}
+          TAGS: ${{ needs.generate-tags.outputs.tags }}
+  push-manifest:
+    needs: [generate-tags, build-and-push]
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - name: Build devShell
+        run: |
+          nix print-dev-env > result-devShell.sh
+          echo "BASH_ENV=$PWD/result-devShell.sh" >> $GITHUB_ENV
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create and push manifest
+        run: |
+          for TAG in ${TAGS//,/ }; do
+            manifest-tool push from-args \
+              --platforms linux/amd64,linux/arm64 \
+              --template $TAG-ARCH \
+              --target $TAG
+          done
+        env:
+          TAGS: ${{ needs.generate-tags.outputs.tags }}

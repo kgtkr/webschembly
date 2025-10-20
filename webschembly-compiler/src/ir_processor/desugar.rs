@@ -1,5 +1,6 @@
-use crate::{VecMap, ir::*};
 use std::mem;
+use vec_map::VecMap;
+use webschembly_compiler_ir::*;
 
 pub fn desugar(func: &mut Func) {
     for bb in func.bbs.values_mut() {
@@ -8,27 +9,27 @@ pub fn desugar(func: &mut Func) {
 }
 
 fn desugar_bb(bb: &mut BasicBlock, locals: &mut VecMap<LocalId, Local>) {
-    let mut new_expr_assigns = Vec::new();
-    for expr_assign in mem::take(&mut bb.exprs) {
-        match expr_assign {
-            ExprAssign {
+    let mut new_instrs = Vec::new();
+    for instr in mem::take(&mut bb.instrs) {
+        match instr {
+            Instr {
                 local,
-                expr: Expr::Nop,
+                kind: InstrKind::Nop,
             } => {
                 debug_assert!(local.is_none());
             }
-            ExprAssign {
+            Instr {
                 local,
-                expr: Expr::CallClosure(call_closure),
+                kind: InstrKind::CallClosure(call_closure),
             } => {
-                let call_ref = desugar_call_closure(call_closure, locals, &mut new_expr_assigns);
-                new_expr_assigns.push(ExprAssign {
+                let call_ref = desugar_call_closure(call_closure, locals, &mut new_instrs);
+                new_instrs.push(Instr {
                     local,
-                    expr: Expr::CallRef(call_ref),
+                    kind: InstrKind::CallRef(call_ref),
                 });
             }
-            expr_assign => {
-                new_expr_assigns.push(expr_assign);
+            instr => {
+                new_instrs.push(instr);
             }
         }
     }
@@ -36,20 +37,20 @@ fn desugar_bb(bb: &mut BasicBlock, locals: &mut VecMap<LocalId, Local>) {
     let dummy_next = BasicBlockNext::Jump(BasicBlockId::from(0));
     bb.next = match mem::replace(&mut bb.next, dummy_next) {
         BasicBlockNext::Terminator(BasicBlockTerminator::TailCallClosure(call_closure)) => {
-            let call_ref = desugar_call_closure(call_closure, locals, &mut new_expr_assigns);
+            let call_ref = desugar_call_closure(call_closure, locals, &mut new_instrs);
             BasicBlockNext::Terminator(BasicBlockTerminator::TailCallRef(call_ref))
         }
         next => next,
     };
 
-    bb.exprs = new_expr_assigns;
+    bb.instrs = new_instrs;
 }
 
 fn desugar_call_closure(
-    call_closure: ExprCallClosure,
+    call_closure: InstrCallClosure,
     locals: &mut VecMap<LocalId, Local>,
-    new_expr_assigns: &mut Vec<ExprAssign>,
-) -> ExprCallRef {
+    new_instrs: &mut Vec<Instr>,
+) -> InstrCallRef {
     let entrypoint_table_local = locals.push_with(|id| Local {
         id,
         typ: LocalType::EntrypointTable,
@@ -62,19 +63,19 @@ fn desugar_call_closure(
         id,
         typ: LocalType::FuncRef,
     });
-    new_expr_assigns.push(ExprAssign {
+    new_instrs.push(Instr {
         local: Some(entrypoint_table_local),
-        expr: Expr::ClosureEntrypointTable(call_closure.closure),
+        kind: InstrKind::ClosureEntrypointTable(call_closure.closure),
     });
-    new_expr_assigns.push(ExprAssign {
+    new_instrs.push(Instr {
         local: Some(mut_func_ref_local),
-        expr: Expr::EntrypointTableRef(call_closure.func_index, entrypoint_table_local),
+        kind: InstrKind::EntrypointTableRef(call_closure.func_index, entrypoint_table_local),
     });
-    new_expr_assigns.push(ExprAssign {
+    new_instrs.push(Instr {
         local: Some(func_ref_local),
-        expr: Expr::DerefMutFuncRef(mut_func_ref_local),
+        kind: InstrKind::DerefMutFuncRef(mut_func_ref_local),
     });
-    ExprCallRef {
+    InstrCallRef {
         func: func_ref_local,
         args: {
             let mut args = Vec::new();

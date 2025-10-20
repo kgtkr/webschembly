@@ -7,9 +7,9 @@ use crate::ir_processor::cfg_analyzer::{
     DomTreeNode, build_dom_tree, calc_doms, calc_predecessors, calculate_rpo, find_loop_headers,
     find_merge_nodes,
 };
-use crate::{
-    ir::{BasicBlock, BasicBlockId, BasicBlockNext, BasicBlockTerminator, Func, LocalId},
-    vec_map::VecMap,
+use vec_map::VecMap;
+use webschembly_compiler_ir::{
+    BasicBlock, BasicBlockId, BasicBlockNext, BasicBlockTerminator, Func, LocalId,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -207,7 +207,7 @@ mod tests {
                 let block_id = BasicBlockId::from(id);
                 let block = BasicBlock {
                     id: block_id,
-                    exprs: vec![],
+                    instrs: vec![],
                     next: next.clone(),
                 };
                 (block_id, block)
@@ -259,17 +259,20 @@ mod tests {
 
         let expected = vec![
             Structured::Block {
-                body: vec![Structured::Simple(BasicBlockId::from(0)), Structured::If {
-                    cond: LocalId::from(100),
-                    then: vec![
-                        Structured::Simple(BasicBlockId::from(1)),
-                        Structured::Break(1),
-                    ],
-                    else_: vec![
-                        Structured::Simple(BasicBlockId::from(2)),
-                        Structured::Break(1),
-                    ],
-                }],
+                body: vec![
+                    Structured::Simple(BasicBlockId::from(0)),
+                    Structured::If {
+                        cond: LocalId::from(100),
+                        then: vec![
+                            Structured::Simple(BasicBlockId::from(1)),
+                            Structured::Break(1),
+                        ],
+                        else_: vec![
+                            Structured::Simple(BasicBlockId::from(2)),
+                            Structured::Break(1),
+                        ],
+                    },
+                ],
             },
             Structured::Simple(BasicBlockId::from(3)),
             Structured::Terminator(BasicBlockTerminator::Return(LocalId::from(500))),
@@ -310,24 +313,30 @@ mod tests {
 
         let expected = vec![
             Structured::Block {
-                body: vec![Structured::Simple(BasicBlockId::from(0)), Structured::If {
-                    cond: LocalId::from(100),
-                    then: vec![Structured::Simple(BasicBlockId::from(1)), Structured::If {
-                        cond: LocalId::from(101),
+                body: vec![
+                    Structured::Simple(BasicBlockId::from(0)),
+                    Structured::If {
+                        cond: LocalId::from(100),
                         then: vec![
-                            Structured::Simple(BasicBlockId::from(2)),
-                            Structured::Break(2),
+                            Structured::Simple(BasicBlockId::from(1)),
+                            Structured::If {
+                                cond: LocalId::from(101),
+                                then: vec![
+                                    Structured::Simple(BasicBlockId::from(2)),
+                                    Structured::Break(2),
+                                ],
+                                else_: vec![
+                                    Structured::Simple(BasicBlockId::from(3)),
+                                    Structured::Break(2),
+                                ],
+                            },
                         ],
                         else_: vec![
-                            Structured::Simple(BasicBlockId::from(3)),
-                            Structured::Break(2),
+                            Structured::Simple(BasicBlockId::from(4)),
+                            Structured::Break(1),
                         ],
-                    }],
-                    else_: vec![
-                        Structured::Simple(BasicBlockId::from(4)),
-                        Structured::Break(1),
-                    ],
-                }],
+                    },
+                ],
             },
             Structured::Simple(BasicBlockId::from(5)),
             Structured::Terminator(BasicBlockTerminator::Return(LocalId::from(500))),
@@ -360,17 +369,22 @@ mod tests {
         let expected = vec![
             Structured::Simple(BasicBlockId::from(0)),
             Structured::Loop {
-                body: vec![Structured::Simple(BasicBlockId::from(1)), Structured::If {
-                    cond: LocalId::from(101),
-                    then: vec![
-                        Structured::Simple(BasicBlockId::from(2)),
-                        Structured::Break(1), // ループ継続
-                    ],
-                    else_: vec![
-                        Structured::Simple(BasicBlockId::from(3)),
-                        Structured::Terminator(BasicBlockTerminator::Return(LocalId::from(500))), // ループ脱出
-                    ],
-                }],
+                body: vec![
+                    Structured::Simple(BasicBlockId::from(1)),
+                    Structured::If {
+                        cond: LocalId::from(101),
+                        then: vec![
+                            Structured::Simple(BasicBlockId::from(2)),
+                            Structured::Break(1), // ループ継続
+                        ],
+                        else_: vec![
+                            Structured::Simple(BasicBlockId::from(3)),
+                            Structured::Terminator(BasicBlockTerminator::Return(LocalId::from(
+                                500,
+                            ))), // ループ脱出
+                        ],
+                    },
+                ],
             },
         ];
 
@@ -426,17 +440,23 @@ mod tests {
 
         let expected = vec![
             Structured::Block {
-                body: vec![Structured::Simple(BasicBlockId::from(0)), Structured::If {
-                    cond: LocalId::from(100),
-                    then: vec![Structured::Loop {
-                        body: vec![Structured::Simple(BasicBlockId::from(1)), Structured::If {
-                            cond: LocalId::from(101),
-                            then: vec![Structured::Break(1)],
-                            else_: vec![Structured::Break(3)],
+                body: vec![
+                    Structured::Simple(BasicBlockId::from(0)),
+                    Structured::If {
+                        cond: LocalId::from(100),
+                        then: vec![Structured::Loop {
+                            body: vec![
+                                Structured::Simple(BasicBlockId::from(1)),
+                                Structured::If {
+                                    cond: LocalId::from(101),
+                                    then: vec![Structured::Break(1)],
+                                    else_: vec![Structured::Break(3)],
+                                },
+                            ],
                         }],
-                    }],
-                    else_: vec![Structured::Break(1)],
-                }],
+                        else_: vec![Structured::Break(1)],
+                    },
+                ],
             },
             Structured::Simple(BasicBlockId::from(2)),
             Structured::Terminator(BasicBlockTerminator::Return(LocalId::from(500))),

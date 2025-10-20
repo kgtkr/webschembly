@@ -1,5 +1,5 @@
 [workspace]
-members = ["webschembly-compiler", "webschembly-compiler-cli", "webschembly-runtime-rust"]
+members = ["webschembly-compiler", "webschembly-compiler-cli", "webschembly-runtime-rust", "webschembly-compiler-crates/*"]
 resolver = "2"
 
 [workspace.package]
@@ -9,3 +9,9 @@ edition = "2024"
 homepage = "https://kgtkr.github.io/webschembly/"
 repository = "https://github.com/kgtkr/webschembly"
 version = "0.1.0"
+
+[workspace.dependencies]
+ordered-float = "5.1.0"
+rustc-hash = "2.1.1"
+strum = "0.27"
+strum_macros = "0.27"

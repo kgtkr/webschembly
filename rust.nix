@@ -1,5 +1,5 @@
 { lib, ... }: {
-  perSystem = { config, system, pkgs, cargo2nix-ifd-lib, ... }:
+  perSystem = { config, system, pkgs, cargo2nix-ifd-lib, globset-lib, ... }:
     let
       rustToolchain = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
       projectName = "webschembly";
@@ -9,7 +9,7 @@
         fileset = lib.fileset.unions ([
           ./Cargo.toml
           ./Cargo.lock
-        ] ++ lib.map (lib.path.append ./.) (fromTOML (builtins.readFile ./Cargo.toml)).workspace.members);
+        ] ++ lib.map (globDir: globset-lib.glob ./. (globDir + "/**/*")) (fromTOML (builtins.readFile ./Cargo.toml)).workspace.members);
       };
       filteredSrc = cargo2nix-ifd-lib.filterSrc {
         inherit src;

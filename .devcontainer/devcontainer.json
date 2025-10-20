@@ -1,13 +1,17 @@
 {
     "name": "webschembly-dev",
-    "image": "ghcr.io/kgtkr/webschembly-devcontainer:latest",
+    "image": "webschembly-devcontainer:local",
+    "initializeCommand": [
+        ".devcontainer/pull-image.sh"
+    ],
     "customizations": {
         "vscode": {
             "settings": {},
             "extensions": [
                 "rust-lang.rust-analyzer",
                 "esbenp.prettier-vscode",
-                "jnoortheen.nix-ide"
+                "jnoortheen.nix-ide",
+                "James-Yu.latex-workshop"
             ]
         }
     },

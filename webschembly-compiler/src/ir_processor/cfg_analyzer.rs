@@ -1,9 +1,6 @@
 use rustc_hash::{FxHashMap, FxHashSet};
-
-use crate::{
-    VecMap,
-    ir::{BasicBlock, BasicBlockId},
-};
+use vec_map::VecMap;
+use webschembly_compiler_ir::*;
 
 pub fn calc_predecessors(
     cfg: &VecMap<BasicBlockId, BasicBlock>,
@@ -218,4 +215,36 @@ pub fn find_reachable_nodes(
         }
     }
     reachable
+}
+
+pub fn has_critical_edges(cfg: &VecMap<BasicBlockId, BasicBlock>) -> bool {
+    let mut pred_counts: FxHashMap<BasicBlockId, usize> = FxHashMap::default();
+    let mut succ_counts: FxHashMap<BasicBlockId, usize> = FxHashMap::default();
+
+    for (bb_id, bb) in cfg.iter() {
+        let mut succ_count = 0;
+        for succ_id in bb.next.successors() {
+            *pred_counts.entry(succ_id).or_insert(0) += 1;
+            succ_count += 1;
+        }
+        succ_counts.insert(bb_id, succ_count);
+    }
+
+    for (pred_id, pred_bb) in cfg.iter() {
+        let pred_succ_count = *succ_counts.get(&pred_id).unwrap_or(&0);
+
+        if pred_succ_count <= 1 {
+            continue;
+        }
+
+        for succ_id in pred_bb.next.successors() {
+            let succ_pred_count = *pred_counts.get(&succ_id).unwrap_or(&0);
+
+            if succ_pred_count > 1 {
+                return true;
+            }
+        }
+    }
+
+    false
 }

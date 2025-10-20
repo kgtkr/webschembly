@@ -1,16 +1,18 @@
-use crate::{error::CompilerError, token::TokenKind};
+use crate::token::TokenKind;
 
 use super::token::Token;
 use located::{to_pos, to_span};
 use nom::{
-    Err, Finish, IResult, Parser,
+    Finish, IResult, Parser,
     branch::alt,
     bytes::complete::{tag, take, take_while, take_while1},
     combinator::{consumed, eof as nom_eof, map, success, value},
     error::{ErrorKind, FromExternalError, ParseError, VerboseError, VerboseErrorKind},
     multi::many0,
 };
+use ordered_float::NotNan;
 use std::fmt::Write;
+use webschembly_compiler_error::CompilerError;
 mod error;
 mod located;
 pub use located::LocatedStr;
@@ -40,10 +42,20 @@ fn number<'a, E: ErrorBound<'a>>(input: LocatedStr<'a>) -> IResult<LocatedStr<'a
     let (input, sign) = alt((value(1, tag("+")), value(-1, tag("-")), success(1)))(input)?;
     let (input, ident) = identifier_like(input)?;
     if ident.starts_with(|c: char| c.is_ascii_digit() || c == '.') {
-        let num = ident
-            .parse::<i64>()
-            .map_err(|_| Err::Failure(E::from_error_kind(input, ErrorKind::Digit)))?;
-        Ok((input, TokenKind::Int(sign * num)))
+        if let Ok(int) = ident.parse::<i64>() {
+            Ok((input, TokenKind::Int(sign * int)))
+        } else if let Ok(float) = ident.parse::<f64>() {
+            if let Ok(not_nan) = NotNan::new(sign as f64 * float) {
+                Ok((input, TokenKind::Float(not_nan)))
+            } else {
+                Ok((input, TokenKind::NaN))
+            }
+        } else {
+            Err(nom::Err::Failure(E::from_error_kind(
+                input,
+                ErrorKind::Float,
+            )))
+        }
     } else {
         Err(nom::Err::Error(E::from_error_kind(input, ErrorKind::Digit)))
     }
@@ -94,9 +106,11 @@ fn token_kind<'a, E: ErrorBound<'a>>(
     alt((
         tag("(").map(|_| TokenKind::OpenParen),
         tag(")").map(|_| TokenKind::CloseParen),
+        tag("#(").map(|_| TokenKind::VectorOpenParen),
+        tag("#s64(").map(|_| TokenKind::UVectorS64OpenParen),
+        tag("#f64(").map(|_| TokenKind::UVectorF64OpenParen),
         tag("#t").map(|_| TokenKind::Bool(true)),
         tag("#f").map(|_| TokenKind::Bool(false)),
-        tag("#(").map(|_| TokenKind::VectorOpenParen),
         tag("'").map(|_| TokenKind::Quote),
         string,
         char,
@@ -126,19 +140,25 @@ fn ignore<'a, E: ErrorBound<'a>>(input: LocatedStr<'a>) -> IResult<LocatedStr<'a
 fn token<'a, E: ErrorBound<'a>>(input: LocatedStr<'a>) -> IResult<LocatedStr<'a>, Token, E> {
     let (input, _) = ignore(input)?;
     let (input, (pos, kind)) = consumed(token_kind)(input)?;
-    Ok((input, Token {
-        kind,
-        span: to_span(&pos),
-    }))
+    Ok((
+        input,
+        Token {
+            kind,
+            span: to_span(&pos),
+        },
+    ))
 }
 
 fn eof<'a, E: ErrorBound<'a>>(input: LocatedStr<'a>) -> IResult<LocatedStr<'a>, Token, E> {
     let (input, _) = ignore(input)?;
     let (input, (pos, _)) = consumed(nom_eof)(input)?;
-    Ok((input, Token {
-        kind: TokenKind::Eof,
-        span: to_span(&pos),
-    }))
+    Ok((
+        input,
+        Token {
+            kind: TokenKind::Eof,
+            span: to_span(&pos),
+        },
+    ))
 }
 
 fn tokens<'a, E: ErrorBound<'a>>(input: LocatedStr<'a>) -> IResult<LocatedStr<'a>, Vec<Token>, E> {

@@ -1,15 +1,22 @@
-use crate::{
-    HasId, VecMap,
-    ir::{BasicBlock, BasicBlockId, Expr, ExprAssign, Func, Local, LocalId},
-};
 use rustc_hash::{FxHashMap, FxHashSet};
+use vec_map::{HasId, VecMap};
+use webschembly_compiler_ir::*;
+
+use crate::ir_processor::cfg_analyzer::has_critical_edges;
 
 // 前提条件: クリティカルエッジが存在しない
 pub fn remove_phi(func: &mut Func) {
+    debug_assert_no_critical_edge(func);
     let bb_ids = func.bbs.keys().collect::<Vec<_>>();
 
     for bb_id in bb_ids {
         remove_phi_in_bb(func, bb_id);
+    }
+}
+
+fn debug_assert_no_critical_edge(func: &Func) {
+    if cfg!(debug_assertions) && has_critical_edges(&func.bbs) {
+        panic!("Function has critical edges");
     }
 }
 
@@ -24,9 +31,9 @@ fn remove_phi_in_bb(func: &mut Func, bb_id: BasicBlockId) {
     let mut pending_copies: FxHashMap<BasicBlockId, Vec<Copy>> = FxHashMap::default();
 
     // 先行ブロックごとの並列コピーリストを収集
-    for expr_assign in &func.bbs[bb_id].exprs {
-        if let Expr::Phi(incomings) = &expr_assign.expr
-            && let Some(result) = expr_assign.local
+    for instr in &func.bbs[bb_id].instrs {
+        if let InstrKind::Phi(incomings) = &instr.kind
+            && let Some(result) = instr.local
         {
             for incoming in incomings {
                 pending_copies.entry(incoming.bb).or_default().push(Copy {
@@ -43,18 +50,18 @@ fn remove_phi_in_bb(func: &mut Func, bb_id: BasicBlockId) {
         let bb = &mut func.bbs[block_id];
 
         for copy in sequential_copies {
-            bb.exprs.push(ExprAssign {
+            bb.instrs.push(Instr {
                 local: Some(copy.dest),
-                expr: Expr::Move(copy.src),
+                kind: InstrKind::Move(copy.src),
             });
         }
     }
 
     // 対象ブロックのPHI命令を削除
-    for expr_assign in &mut func.bbs[bb_id].exprs {
-        if let Expr::Phi(_) = &expr_assign.expr {
-            expr_assign.expr = Expr::Nop;
-            expr_assign.local = None;
+    for instr in &mut func.bbs[bb_id].instrs {
+        if let InstrKind::Phi(_) = &instr.kind {
+            instr.kind = InstrKind::Nop;
+            instr.local = None;
         }
     }
 }
@@ -108,12 +115,24 @@ fn assert_ssa(func: &Func) {
         assigned[local_id] = true;
     }
     for bb in func.bbs.values() {
-        for expr in bb.exprs.iter() {
+        let mut phi_area = true;
+
+        for expr in bb.instrs.iter() {
             if let Some(local_id) = expr.local {
                 if assigned[local_id] {
                     panic!("local {:?} is assigned more than once", local_id);
                 }
                 assigned[local_id] = true;
+            }
+
+            if phi_area {
+                if let InstrKind::Phi(_) | InstrKind::Nop = expr.kind {
+                    // do nothing
+                } else {
+                    phi_area = false;
+                }
+            } else if let InstrKind::Phi(_) = expr.kind {
+                panic!("phi instruction must be at the beginning of a basic block");
             }
         }
     }
@@ -128,8 +147,8 @@ pub fn debug_assert_ssa(func: &Func) {
 // TODO: test
 pub fn collect_defs(bb: &BasicBlock) -> VecMap<LocalId, usize> {
     let mut defs = VecMap::new();
-    for (i, expr_assign) in bb.exprs.iter().enumerate() {
-        if let Some(local) = expr_assign.local {
+    for (i, instr) in bb.instrs.iter().enumerate() {
+        if let Some(local) = instr.local {
             debug_assert!(defs.get(local).is_none());
             defs.insert(local, i);
         }
@@ -203,9 +222,11 @@ impl DefUseChain {
         &self,
         bbs: &'a VecMap<BasicBlockId, BasicBlock>,
         local: LocalId,
-    ) -> Option<&'a Expr> {
+    ) -> Option<&'a InstrKind> {
         if let Some(def) = self.defs.get(local) {
-            Some(&bbs[def.bb_id].exprs[def.expr_idx].expr)
+            let instr = &bbs[def.bb_id].instrs[def.expr_idx];
+            debug_assert_eq!(instr.local, Some(local));
+            Some(&instr.kind)
         } else {
             None
         }
@@ -215,11 +236,14 @@ impl DefUseChain {
         &self,
         bbs: &'a VecMap<BasicBlockId, BasicBlock>,
         mut local: LocalId,
-    ) -> Option<&'a Expr> {
+    ) -> Option<&'a InstrKind> {
         while let Some(expr) = self.get_def_expr(bbs, local) {
             match expr {
-                Expr::Move(value) => {
+                InstrKind::Move(value) => {
                     local = *value;
+                }
+                InstrKind::Phi(incomings) if incomings.len() == 1 => {
+                    local = incomings[0].local;
                 }
                 _ => {
                     return Some(expr);

@@ -1,12 +1,12 @@
 use rustc_hash::FxHashMap;
+use webschembly_compiler_ast_generator::{Final, GlobalVarId, LocalVarId, UsedExtR, VarId};
+use webschembly_compiler_locate::Located;
 
 use crate::ir_generator::GlobalManager;
-use crate::{VecMap, ir::*};
-use crate::{
-    ast::{self, Desugared, TailCall, Used},
-    x::{RunX, TypeMap, type_map},
-};
-use typed_index_collections::TiVec;
+use vec_map::VecMap;
+use webschembly_compiler_ast as ast;
+use webschembly_compiler_ast::AstPhase;
+use webschembly_compiler_ir::*;
 
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -16,7 +16,7 @@ pub struct Config {
 pub fn generate_module(
     id: ModuleId,
     global_manager: &mut GlobalManager,
-    ast: &ast::Ast<ast::Final>,
+    ast: &ast::Ast<Final>,
     config: Config,
 ) -> Module {
     let module_gen = ModuleGenerator::new(id, config, global_manager, ast);
@@ -28,8 +28,8 @@ pub fn generate_module(
 struct ModuleGenerator<'a> {
     id: ModuleId,
     global_manager: &'a mut GlobalManager,
-    ast: &'a ast::Ast<ast::Final>,
-    funcs: TiVec<FuncId, Option<Func>>,
+    ast: &'a ast::Ast<Final>,
+    funcs: VecMap<FuncId, Func>,
     config: Config,
     func_to_entrypoint_table: FxHashMap<FuncId, GlobalId>,
     globals: FxHashMap<GlobalId, Global>,
@@ -43,13 +43,13 @@ impl<'a> ModuleGenerator<'a> {
         id: ModuleId,
         config: Config,
         ir_generator: &'a mut GlobalManager,
-        ast: &'a ast::Ast<ast::Final>,
+        ast: &'a ast::Ast<Final>,
     ) -> Self {
         Self {
             id,
             ast,
             global_manager: ir_generator,
-            funcs: TiVec::new(),
+            funcs: VecMap::new(),
             config,
             local_metas: FxHashMap::default(),
             global_metas: FxHashMap::default(),
@@ -62,7 +62,6 @@ impl<'a> ModuleGenerator<'a> {
         let ast_globals = self
             .ast
             .x
-            .get_ref(type_map::key::<Used>())
             .global_vars
             .clone()
             .into_iter()
@@ -73,7 +72,7 @@ impl<'a> ModuleGenerator<'a> {
             .collect::<FxHashMap<_, _>>();
         self.globals.extend(ast_globals);
 
-        let entry_func_id = self.funcs.push_and_get_key(None);
+        let entry_func_id = self.funcs.allocate_key();
         let mut entry_func = FuncGenerator::new(&mut self, entry_func_id).entry_gen();
 
         // エントリーポイントにモジュール初期化ロジックを追加
@@ -93,31 +92,31 @@ impl<'a> ModuleGenerator<'a> {
                 id,
                 typ: LocalType::EntrypointTable,
             });
-            entry_exprs.push(ExprAssign {
+            entry_exprs.push(Instr {
                 local: Some(func_ref_local),
-                expr: Expr::FuncRef(func_id),
+                kind: InstrKind::FuncRef(func_id),
             });
-            entry_exprs.push(ExprAssign {
+            entry_exprs.push(Instr {
                 local: Some(mut_func_ref_local),
-                expr: Expr::CreateMutFuncRef(func_ref_local),
+                kind: InstrKind::CreateMutFuncRef(func_ref_local),
             });
-            entry_exprs.push(ExprAssign {
+            entry_exprs.push(Instr {
                 local: Some(entrypoint_table_local),
-                expr: Expr::EntrypointTable(vec![mut_func_ref_local]),
+                kind: InstrKind::EntrypointTable(vec![mut_func_ref_local]),
             });
-            entry_exprs.push(ExprAssign {
+            entry_exprs.push(Instr {
                 local: None,
-                expr: Expr::GlobalSet(entrypoint_table_global_id, entrypoint_table_local),
+                kind: InstrKind::GlobalSet(entrypoint_table_global_id, entrypoint_table_local),
             });
         }
         let new_bb_entry = entry_func.bbs.push_with(|bb_id| BasicBlock {
             id: bb_id,
-            exprs: entry_exprs,
+            instrs: entry_exprs,
             next: BasicBlockNext::Jump(prev_bb_entry),
         });
         entry_func.bb_entry = new_bb_entry;
 
-        self.funcs[entry_func_id] = Some(entry_func);
+        self.funcs.insert_node(entry_func);
 
         let meta = Meta {
             local_metas: self.local_metas,
@@ -126,20 +125,15 @@ impl<'a> ModuleGenerator<'a> {
 
         Module {
             globals: self.globals,
-            funcs: self.funcs.into_iter().map(|f| f.unwrap()).collect(),
+            funcs: self.funcs,
             entry: entry_func_id,
             meta,
         }
     }
 
-    fn global(&mut self, id: ast::GlobalVarId) -> Global {
+    fn global(&mut self, id: GlobalVarId) -> Global {
         let global = self.global_manager.global(id);
-        let ast_meta = self
-            .ast
-            .x
-            .get_ref(type_map::key::<Used>())
-            .global_metas
-            .get(&id);
+        let ast_meta = self.ast.x.global_metas.get(&id);
         if let Some(ast_meta) = ast_meta {
             self.global_metas
                 .entry(global.id)
@@ -152,12 +146,12 @@ impl<'a> ModuleGenerator<'a> {
 
     fn gen_func(
         &mut self,
-        x: &RunX<ast::LambdaX, ast::Final>,
-        lambda: &ast::Lambda<ast::Final>,
+        x: &<Final as AstPhase>::XLambda,
+        lambda: &ast::Lambda<Final>,
     ) -> FuncId {
-        let id = self.funcs.push_and_get_key(None);
+        let id = self.funcs.allocate_key();
         let func = FuncGenerator::new(self, id).lambda_gen(x, lambda);
-        self.funcs[id] = Some(func);
+        self.funcs.insert_node(func);
 
         id
     }
@@ -167,11 +161,20 @@ impl<'a> ModuleGenerator<'a> {
 struct FuncGenerator<'a, 'b> {
     id: FuncId,
     locals: VecMap<LocalId, Local>,
-    local_ids: FxHashMap<ast::LocalVarId, LocalId>,
+    local_ids: FxHashMap<LocalVarId, LocalId>,
     bbs: VecMap<BasicBlockId, BasicBlock>,
     module_generator: &'a mut ModuleGenerator<'b>,
-    exprs: Vec<ExprAssign>,
+    exprs: Vec<Instr>,
     current_bb_id: Option<BasicBlockId>,
+    uninitialized_vars: FxHashMap<LocalVarId, Vec<UninitializedVarCaptureClosure>>,
+}
+
+// クロージャにキャプチャされているが、まだ初期化されていない変数
+#[derive(Debug, Clone)]
+struct UninitializedVarCaptureClosure {
+    closure: LocalId,
+    env_index: usize,
+    env_types: Vec<LocalType>,
 }
 
 impl<'a, 'b> FuncGenerator<'a, 'b> {
@@ -184,20 +187,14 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             module_generator,
             exprs: Vec::new(),
             current_bb_id: None,
+            uninitialized_vars: FxHashMap::default(),
         }
     }
 
     fn entry_gen(mut self) -> Func {
         let obj_local = self.local(Type::Obj);
 
-        self.define_all_ast_local_and_create_ref(
-            &self
-                .module_generator
-                .ast
-                .x
-                .get_ref(type_map::key::<Used>())
-                .defines,
-        );
+        self.define_all_ast_local_and_create_ref(&self.module_generator.ast.x.defines);
 
         let bb_entry = self.bbs.allocate_key();
         self.current_bb_id = Some(bb_entry);
@@ -216,11 +213,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         }
     }
 
-    fn lambda_gen(
-        mut self,
-        x: &RunX<ast::LambdaX, ast::Final>,
-        lambda: &ast::Lambda<ast::Final>,
-    ) -> Func {
+    fn lambda_gen(mut self, x: &<Final as AstPhase>::XLambda, lambda: &ast::Lambda<Final>) -> Func {
         let bb_entry = self.bbs.allocate_key();
         self.current_bb_id = Some(bb_entry);
 
@@ -230,17 +223,17 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         let expected_args_len_local = self.local(Type::Val(ValType::Int));
         let args_len_check_success_local = self.local(Type::Val(ValType::Bool));
 
-        self.exprs.push(ExprAssign {
+        self.exprs.push(Instr {
             local: Some(args_len_local),
-            expr: Expr::VariadicArgsLength(args),
+            kind: InstrKind::VariadicArgsLength(args),
         });
-        self.exprs.push(ExprAssign {
+        self.exprs.push(Instr {
             local: Some(expected_args_len_local),
-            expr: Expr::Int(lambda.args.len() as i64),
+            kind: InstrKind::Int(lambda.args.len() as i64),
         });
-        self.exprs.push(ExprAssign {
+        self.exprs.push(Instr {
             local: Some(args_len_check_success_local),
-            expr: Expr::EqNum(args_len_local, expected_args_len_local),
+            kind: InstrKind::EqInt(args_len_local, expected_args_len_local),
         });
 
         let error_bb_id = self.bbs.allocate_key();
@@ -252,73 +245,60 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         ));
         self.current_bb_id = Some(error_bb_id);
         let msg = self.local(Type::Val(ValType::String));
-        self.exprs.push(ExprAssign {
+        self.exprs.push(Instr {
             local: Some(msg),
-            expr: Expr::String("args count mismatch\n".to_string()),
+            kind: InstrKind::String("args count mismatch\n".to_string()),
         });
         self.close_bb(BasicBlockNext::Terminator(BasicBlockTerminator::Error(msg)));
         self.current_bb_id = Some(merge_bb_id);
 
-        for (arg_idx, arg) in x.get_ref(type_map::key::<Used>()).args.iter().enumerate() {
-            if self
-                .module_generator
-                .ast
-                .x
-                .get_ref(type_map::key::<Used>())
-                .box_vars
-                .contains(arg)
-            {
+        for (arg_idx, arg) in x.args.iter().enumerate() {
+            if self.module_generator.ast.x.box_vars.contains(arg) {
                 let local = self.local(LocalType::Type(Type::Obj));
-                self.exprs.push(ExprAssign {
+                self.exprs.push(Instr {
                     local: Some(local),
-                    expr: Expr::VariadicArgsRef(args, arg_idx),
+                    kind: InstrKind::VariadicArgsRef(args, arg_idx),
                 });
 
                 let ref_ = self.define_ast_local(*arg);
-                self.exprs.push(ExprAssign {
+                self.exprs.push(Instr {
                     local: Some(ref_),
-                    expr: Expr::CreateRef(Type::Obj),
+                    kind: InstrKind::CreateRef(Type::Obj),
                 });
-                self.exprs.push(ExprAssign {
+                self.exprs.push(Instr {
                     local: None,
-                    expr: Expr::SetRef(Type::Obj, ref_, local),
+                    kind: InstrKind::SetRef(Type::Obj, ref_, local),
                 });
             } else {
                 let arg_id = self.define_ast_local(*arg);
-                self.exprs.push(ExprAssign {
+                self.exprs.push(Instr {
                     local: Some(arg_id),
-                    expr: Expr::VariadicArgsRef(args, arg_idx),
+                    kind: InstrKind::VariadicArgsRef(args, arg_idx),
                 });
             }
         }
 
         // 環境を復元するためのローカル変数を定義
-        for var_id in x.get_ref(type_map::key::<Used>()).captures.iter() {
+        for var_id in x.captures.iter() {
             self.define_ast_local(*var_id);
         }
         // 環境の型を収集
         let env_types = x
-            .get_ref(type_map::key::<Used>())
             .captures
             .iter()
             .map(|id| self.locals[*self.local_ids.get(id).unwrap()].typ)
             .collect::<Vec<_>>();
         // 環境を復元する処理を追加
-        for (i, var_id) in x
-            .get_ref(type_map::key::<Used>())
-            .captures
-            .iter()
-            .enumerate()
-        {
+        for (i, var_id) in x.captures.iter().enumerate() {
             let env_local = *self.local_ids.get(var_id).unwrap();
-            self.exprs.push(ExprAssign {
+            self.exprs.push(Instr {
                 local: Some(env_local),
                 // TODO: 無駄なclone。Irの設計を見直す
-                expr: Expr::ClosureEnv(env_types.clone(), self_closure, i),
+                kind: InstrKind::ClosureEnv(env_types.clone(), self_closure, i),
             });
         }
 
-        self.define_all_ast_local_and_create_ref(&x.get_ref(type_map::key::<Used>()).defines);
+        self.define_all_ast_local_and_create_ref(&x.defines);
 
         let ret = self.local(Type::Obj);
         self.gen_exprs(Some(ret), &lambda.body);
@@ -342,177 +322,159 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         })
     }
 
-    fn define_all_ast_local_and_create_ref(&mut self, locals: &[ast::LocalVarId]) {
+    fn define_all_ast_local_and_create_ref(&mut self, locals: &[LocalVarId]) {
         for id in locals {
             let local = self.define_ast_local(*id);
-            if self
-                .module_generator
-                .ast
-                .x
-                .get_ref(type_map::key::<Used>())
-                .box_vars
-                .contains(id)
-            {
-                self.exprs.push(ExprAssign {
+            if self.module_generator.ast.x.box_vars.contains(id) {
+                self.exprs.push(Instr {
                     local: Some(local),
-                    expr: Expr::CreateRef(Type::Obj),
+                    kind: InstrKind::CreateRef(Type::Obj),
                 });
             }
         }
     }
 
-    fn define_ast_local(&mut self, id: ast::LocalVarId) -> LocalId {
-        let ast_meta = self
-            .module_generator
-            .ast
-            .x
-            .get_ref(type_map::key::<Used>())
-            .local_metas
-            .get(&id);
-        let local = self.local(
-            if self
-                .module_generator
-                .ast
-                .x
-                .get_ref(type_map::key::<Used>())
-                .box_vars
-                .contains(&id)
-            {
-                LocalType::Ref(Type::Obj)
-            } else {
-                LocalType::Type(Type::Obj)
-            },
-        );
+    fn define_ast_local(&mut self, id: LocalVarId) -> LocalId {
+        let ast_meta = self.module_generator.ast.x.local_metas.get(&id);
+        let local = self.local(if self.module_generator.ast.x.box_vars.contains(&id) {
+            LocalType::Ref(Type::Obj)
+        } else {
+            LocalType::Type(Type::Obj)
+        });
         let prev = self.local_ids.insert(id, local);
         debug_assert!(prev.is_none());
         if let Some(ast_meta) = ast_meta {
-            self.module_generator
-                .local_metas
-                .insert((self.id, local), VarMeta {
+            self.module_generator.local_metas.insert(
+                (self.id, local),
+                VarMeta {
                     name: ast_meta.name.clone(),
-                });
+                },
+            );
         }
         local
     }
 
-    fn new_version_ast_local(&mut self, id: ast::LocalVarId) -> LocalId {
-        let ast_meta = self
-            .module_generator
-            .ast
-            .x
-            .get_ref(type_map::key::<Used>())
-            .local_metas
-            .get(&id);
-        debug_assert!(
-            !self
-                .module_generator
-                .ast
-                .x
-                .get_ref(type_map::key::<Used>())
-                .box_vars
-                .contains(&id)
-        );
+    fn new_version_ast_local(&mut self, id: LocalVarId) -> LocalId {
+        let ast_meta = self.module_generator.ast.x.local_metas.get(&id);
+        debug_assert!(!self.module_generator.ast.x.box_vars.contains(&id));
         let local = self.local(LocalType::Type(Type::Obj));
         self.local_ids.insert(id, local);
         if let Some(ast_meta) = ast_meta {
-            self.module_generator
-                .local_metas
-                .insert((self.id, local), VarMeta {
+            self.module_generator.local_metas.insert(
+                (self.id, local),
+                VarMeta {
                     name: ast_meta.name.clone(),
-                });
+                },
+            );
         }
         local
     }
 
-    fn gen_expr(&mut self, result: Option<LocalId>, ast: &ast::Expr<ast::Final>) {
-        match ast {
+    fn gen_expr(&mut self, result: Option<LocalId>, ast: &ast::LExpr<Final>) {
+        match &ast.value {
             ast::Expr::Const(_, lit) => match lit {
                 ast::Const::Bool(b) => {
                     let val_type_local = self.local(Type::Val(ValType::Bool));
-                    self.exprs.push(ExprAssign {
+                    self.exprs.push(Instr {
                         local: Some(val_type_local),
-                        expr: Expr::Bool(*b),
+                        kind: InstrKind::Bool(*b),
                     });
-                    self.exprs.push(ExprAssign {
+                    self.exprs.push(Instr {
                         local: result,
-                        expr: Expr::ToObj(ValType::Bool, val_type_local),
+                        kind: InstrKind::ToObj(ValType::Bool, val_type_local),
                     });
                 }
                 ast::Const::Int(i) => {
                     let val_type_local = self.local(Type::Val(ValType::Int));
-                    self.exprs.push(ExprAssign {
+                    self.exprs.push(Instr {
                         local: Some(val_type_local),
-                        expr: Expr::Int(*i),
+                        kind: InstrKind::Int(*i),
                     });
-                    self.exprs.push(ExprAssign {
+                    self.exprs.push(Instr {
                         local: result,
-                        expr: Expr::ToObj(ValType::Int, val_type_local),
+                        kind: InstrKind::ToObj(ValType::Int, val_type_local),
+                    });
+                }
+                ast::Const::Float(f) => {
+                    let val_type_local = self.local(Type::Val(ValType::Float));
+                    self.exprs.push(Instr {
+                        local: Some(val_type_local),
+                        kind: InstrKind::Float(*f),
+                    });
+                    self.exprs.push(Instr {
+                        local: result,
+                        kind: InstrKind::ToObj(ValType::Float, val_type_local),
+                    });
+                }
+                ast::Const::NaN => {
+                    let val_type_local = self.local(Type::Val(ValType::Float));
+                    self.exprs.push(Instr {
+                        local: Some(val_type_local),
+                        kind: InstrKind::NaN,
+                    });
+                    self.exprs.push(Instr {
+                        local: result,
+                        kind: InstrKind::ToObj(ValType::Float, val_type_local),
                     });
                 }
                 ast::Const::String(s) => {
                     let val_type_local = self.local(Type::Val(ValType::String));
-                    self.exprs.push(ExprAssign {
+                    self.exprs.push(Instr {
                         local: Some(val_type_local),
-                        expr: Expr::String(s.clone()),
+                        kind: InstrKind::String(s.clone()),
                     });
-                    self.exprs.push(ExprAssign {
+                    self.exprs.push(Instr {
                         local: result,
-                        expr: Expr::ToObj(ValType::String, val_type_local),
+                        kind: InstrKind::ToObj(ValType::String, val_type_local),
                     });
                 }
                 ast::Const::Nil => {
                     let val_type_local = self.local(Type::Val(ValType::Nil));
-                    self.exprs.push(ExprAssign {
+                    self.exprs.push(Instr {
                         local: Some(val_type_local),
-                        expr: Expr::Nil,
+                        kind: InstrKind::Nil,
                     });
-                    self.exprs.push(ExprAssign {
+                    self.exprs.push(Instr {
                         local: result,
-                        expr: Expr::ToObj(ValType::Nil, val_type_local),
+                        kind: InstrKind::ToObj(ValType::Nil, val_type_local),
                     });
                 }
                 ast::Const::Char(c) => {
                     let val_type_local = self.local(Type::Val(ValType::Char));
-                    self.exprs.push(ExprAssign {
+                    self.exprs.push(Instr {
                         local: Some(val_type_local),
-                        expr: Expr::Char(*c),
+                        kind: InstrKind::Char(*c),
                     });
-                    self.exprs.push(ExprAssign {
+                    self.exprs.push(Instr {
                         local: result,
-                        expr: Expr::ToObj(ValType::Char, val_type_local),
+                        kind: InstrKind::ToObj(ValType::Char, val_type_local),
                     });
                 }
                 ast::Const::Symbol(s) => {
                     let string = self.local(Type::Val(ValType::String));
                     let val_type_local = self.local(Type::Val(ValType::Symbol));
-                    self.exprs.push(ExprAssign {
+                    self.exprs.push(Instr {
                         local: Some(string),
-                        expr: Expr::String(s.clone()),
+                        kind: InstrKind::String(s.clone()),
                     });
-                    self.exprs.push(ExprAssign {
+                    self.exprs.push(Instr {
                         local: Some(val_type_local),
-                        expr: Expr::StringToSymbol(string),
+                        kind: InstrKind::StringToSymbol(string),
                     });
-                    self.exprs.push(ExprAssign {
+                    self.exprs.push(Instr {
                         local: result,
-                        expr: Expr::ToObj(ValType::Symbol, val_type_local),
+                        kind: InstrKind::ToObj(ValType::Symbol, val_type_local),
                     });
                 }
             },
-            ast::Expr::Define(x, _) => *x.get_ref(type_map::key::<Used>()),
+            ast::Expr::Define(x, _) => *x,
             ast::Expr::Lambda(x, lambda) => {
-                let captures = x
-                    .get_ref(type_map::key::<Used>())
-                    .captures
-                    .iter()
-                    .map(|id| *self.local_ids.get(id).unwrap())
-                    .collect::<Vec<_>>();
                 let func_id = self.module_generator.gen_func(x, lambda);
                 let func_local = self.local(LocalType::FuncRef);
                 let val_type_local = self.local(Type::Val(ValType::Closure));
-                self.exprs.push(ExprAssign {
+                self.exprs.push(Instr {
                     local: Some(func_local),
-                    expr: Expr::FuncRef(func_id),
+                    kind: InstrKind::FuncRef(func_id),
                 });
 
                 let entrypoint_table_global = self
@@ -527,61 +489,97 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     .insert(func_id, entrypoint_table_global.id);
 
                 let entrypoint_table_local = self.local(LocalType::EntrypointTable);
-                self.exprs.push(ExprAssign {
+                self.exprs.push(Instr {
                     local: Some(entrypoint_table_local),
-                    expr: Expr::GlobalGet(entrypoint_table_global.id),
+                    kind: InstrKind::GlobalGet(entrypoint_table_global.id),
                 });
 
-                self.exprs.push(ExprAssign {
+                let env_types = x
+                    .captures
+                    .iter()
+                    .map(|id| self.locals[*self.local_ids.get(id).unwrap()].typ)
+                    .collect::<Vec<_>>();
+                let mut captures = Vec::new();
+                for (i, capture) in x.captures.iter().enumerate() {
+                    if let Some(uninitialized_var_captures) =
+                        self.uninitialized_vars.get_mut(capture)
+                    {
+                        uninitialized_var_captures.push(UninitializedVarCaptureClosure {
+                            closure: val_type_local,
+                            env_index: i,
+                            env_types: env_types.clone(),
+                        });
+                        let undef_local = self.local(env_types[i]);
+                        self.exprs.push(Instr {
+                            local: Some(undef_local),
+                            kind: InstrKind::Uninitialized(env_types[i]),
+                        });
+                        captures.push(undef_local);
+                    } else {
+                        captures.push(*self.local_ids.get(capture).unwrap());
+                    }
+                }
+
+                self.exprs.push(Instr {
                     local: Some(val_type_local),
-                    expr: Expr::Closure {
+                    kind: InstrKind::Closure {
                         envs: captures,
                         func_id,
                         module_id: self.module_generator.id,
                         entrypoint_table: entrypoint_table_local,
                     },
                 });
-                self.exprs.push(ExprAssign {
+                self.exprs.push(Instr {
                     local: result,
-                    expr: Expr::ToObj(ValType::Closure, val_type_local),
+                    kind: InstrKind::ToObj(ValType::Closure, val_type_local),
                 });
             }
             ast::Expr::If(_, ast::If { cond, then, els }) => {
                 let obj_cond_local = self.local(Type::Obj);
-                self.gen_expr(Some(obj_cond_local), cond);
+                self.gen_exprs(Some(obj_cond_local), cond);
 
-                // TODO: condがboolかのチェック
-                let cond_local = self.local(Type::Val(ValType::Bool));
-                self.exprs.push(ExprAssign {
-                    local: Some(cond_local),
-                    expr: Expr::FromObj(ValType::Bool, obj_cond_local),
+                let false_local = self.local(Type::Val(ValType::Bool));
+                self.exprs.push(Instr {
+                    local: Some(false_local),
+                    kind: InstrKind::Bool(false),
+                });
+                let false_obj_local = self.local(Type::Obj);
+                self.exprs.push(Instr {
+                    local: Some(false_obj_local),
+                    kind: InstrKind::ToObj(ValType::Bool, false_local),
+                });
+
+                let cond_not_local = self.local(Type::Val(ValType::Bool));
+                self.exprs.push(Instr {
+                    local: Some(cond_not_local),
+                    kind: InstrKind::EqObj(obj_cond_local, false_obj_local),
                 });
 
                 let then_bb_id = self.bbs.allocate_key();
                 let else_bb_id = self.bbs.allocate_key();
                 let merge_bb_id = self.bbs.allocate_key();
-                self.close_bb(BasicBlockNext::If(cond_local, then_bb_id, else_bb_id));
+                self.close_bb(BasicBlockNext::If(cond_not_local, else_bb_id, then_bb_id));
 
                 let before_locals = self.local_ids.clone();
 
                 self.current_bb_id = Some(then_bb_id);
                 let then_result = self.local(Type::Obj);
-                self.gen_expr(Some(then_result), then);
+                self.gen_exprs(Some(then_result), then);
                 let then_locals = self.local_ids.clone();
                 let then_ended_bb_id = self.current_bb_id;
                 self.close_bb(BasicBlockNext::Jump(merge_bb_id));
 
                 self.current_bb_id = Some(else_bb_id);
                 let els_result = self.local(Type::Obj);
-                self.gen_expr(Some(els_result), els);
+                self.gen_exprs(Some(els_result), els);
                 let els_locals = self.local_ids.clone();
                 let els_ended_bb_id = self.current_bb_id;
                 self.close_bb(BasicBlockNext::Jump(merge_bb_id));
 
                 self.current_bb_id = Some(merge_bb_id);
-                self.exprs.push(ExprAssign {
+                self.exprs.push(Instr {
                     local: result,
-                    expr: Expr::Phi({
+                    kind: InstrKind::Phi({
                         let mut incomings = Vec::new();
                         if let Some(bb) = then_ended_bb_id {
                             incomings.push(PhiIncomingValue {
@@ -611,9 +609,9 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                             self.locals[before_local].typ,
                         );
                         let phi_local = self.new_version_ast_local(var_id);
-                        self.exprs.push(ExprAssign {
+                        self.exprs.push(Instr {
                             local: Some(phi_local),
-                            expr: Expr::Phi({
+                            kind: InstrKind::Phi({
                                 let mut incomings = Vec::new();
                                 if let Some(bb) = then_ended_bb_id {
                                     incomings.push(PhiIncomingValue {
@@ -634,129 +632,173 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 }
             }
             ast::Expr::Call(x, ast::Call { func, args }) => {
-                if let ast::Expr::Var(x, name) = func.as_ref()
-                    && let ast::UsedVarR {
-                        var_id: ast::VarId::Global(_),
-                    } = x.get_ref(type_map::key::<Used>())
+                if let [
+                    Located {
+                        value: ast::Expr::Var(x, name),
+                        ..
+                    },
+                ] = func.as_slice()
+                    && let VarId::Global(_) = x.var_id
                     && let Some(builtin) = ast::Builtin::from_name(name)
                 {
-                    let rule = BuiltinConversionRule::from_builtin(builtin);
-                    if rule.arg_count() != args.len() {
+                    let rules = BuiltinConversionRule::from_builtin(builtin)
+                        .into_iter()
+                        .filter(|rule| rule.arg_count() == args.len())
+                        .collect::<Vec<_>>();
+
+                    if rules.is_empty() {
                         let msg = self.local(Type::Val(ValType::String));
-                        self.exprs.push(ExprAssign {
+                        self.exprs.push(Instr {
                             local: Some(msg),
-                            expr: Expr::String("builtin args count mismatch\n".to_string()),
+                            kind: InstrKind::String("builtin args count mismatch\n".to_string()),
                         });
                         self.close_bb(BasicBlockNext::Terminator(BasicBlockTerminator::Error(msg)));
                     } else {
-                        let mut arg_locals = Vec::new();
-                        for (typ, arg) in rule.arg_types().iter().zip(args) {
-                            let obj_arg_local = self.local(Type::Obj);
-                            self.gen_expr(Some(obj_arg_local), arg);
-                            let arg_local = match typ {
-                                Type::Obj => obj_arg_local,
-                                Type::Val(val_type) => {
-                                    let is_result_local = self.local(Type::Val(ValType::Bool));
-                                    self.exprs.push(ExprAssign {
-                                        local: Some(is_result_local),
-                                        expr: Expr::Is(*val_type, obj_arg_local),
+                        let merge_bb_id = self.bbs.allocate_key();
+                        let mut phi_incoming_values = Vec::new();
+                        for rule in rules {
+                            let mut obj_arg_locals = Vec::new();
+                            let mut type_check_success_locals = Vec::new();
+                            for (typ, arg) in rule.arg_types().iter().zip(args) {
+                                let obj_arg_local = self.local(Type::Obj);
+                                self.gen_exprs(Some(obj_arg_local), arg);
+                                obj_arg_locals.push(obj_arg_local);
+                                if let Type::Val(val_type) = typ {
+                                    let type_check_success_local =
+                                        self.local(Type::Val(ValType::Bool));
+                                    self.exprs.push(Instr {
+                                        local: Some(type_check_success_local),
+                                        kind: InstrKind::Is(*val_type, obj_arg_local),
                                     });
-                                    let val_type_arg_local = self.local(Type::Val(*val_type));
-                                    let then_bb_id = self.bbs.allocate_key();
-                                    let else_bb_id = self.bbs.allocate_key();
-                                    let merge_bb_id = self.bbs.allocate_key();
+                                    type_check_success_locals.push(type_check_success_local);
+                                }
+                            }
 
-                                    self.close_bb(BasicBlockNext::If(
-                                        is_result_local,
-                                        then_bb_id,
-                                        else_bb_id,
-                                    ));
+                            let mut all_type_check_success_local =
+                                self.local(Type::Val(ValType::Bool));
+                            self.exprs.push(Instr {
+                                local: Some(all_type_check_success_local),
+                                kind: InstrKind::Bool(true),
+                            });
+                            for type_check_success_local in type_check_success_locals {
+                                let new_all_type_check_success_local =
+                                    self.local(Type::Val(ValType::Bool));
+                                self.exprs.push(Instr {
+                                    local: Some(new_all_type_check_success_local),
+                                    kind: InstrKind::And(
+                                        all_type_check_success_local,
+                                        type_check_success_local,
+                                    ),
+                                });
+                                all_type_check_success_local = new_all_type_check_success_local;
+                            }
 
-                                    self.current_bb_id = Some(then_bb_id);
-                                    self.exprs.push(ExprAssign {
-                                        local: Some(val_type_arg_local),
-                                        expr: Expr::FromObj(*val_type, obj_arg_local),
-                                    });
-                                    self.close_bb(BasicBlockNext::Jump(merge_bb_id));
+                            let then_bb_id = self.bbs.allocate_key();
+                            let else_bb_id = self.bbs.allocate_key();
 
-                                    self.current_bb_id = Some(else_bb_id);
-                                    let msg = self.local(Type::Val(ValType::String));
-                                    self.exprs.push(ExprAssign {
-                                        local: Some(msg),
-                                        expr: Expr::String(format!(
-                                            "{:?}: arg type mismatch\n",
-                                            builtin
-                                        )),
-                                    });
-                                    self.close_bb(BasicBlockNext::Terminator(
-                                        BasicBlockTerminator::Error(msg),
-                                    ));
+                            self.close_bb(BasicBlockNext::If(
+                                all_type_check_success_local,
+                                then_bb_id,
+                                else_bb_id,
+                            ));
 
-                                    self.current_bb_id = Some(merge_bb_id);
+                            self.current_bb_id = Some(then_bb_id);
 
-                                    val_type_arg_local
+                            let mut arg_locals = Vec::new();
+                            for (typ, obj_arg_local) in rule.arg_types().iter().zip(obj_arg_locals)
+                            {
+                                let arg_local = match typ {
+                                    Type::Obj => obj_arg_local,
+                                    Type::Val(val_type) => {
+                                        let val_type_local = self.local(Type::Val(*val_type));
+                                        self.exprs.push(Instr {
+                                            local: Some(val_type_local),
+                                            kind: InstrKind::FromObj(*val_type, obj_arg_local),
+                                        });
+                                        val_type_local
+                                    }
+                                };
+                                arg_locals.push(arg_local);
+                            }
+
+                            let ret_local = match rule.ret_type() {
+                                Type::Obj => self.local(Type::Obj),
+                                Type::Val(val_type) => self.local(Type::Val(val_type)),
+                            };
+                            let builtin_ctx = BuiltinIrGenCtx {
+                                exprs: &mut self.exprs,
+                                locals: &mut self.locals,
+                                dest: ret_local,
+                            };
+                            match rule {
+                                BuiltinConversionRule::Unary { ir_gen, .. } => {
+                                    ir_gen(builtin_ctx, arg_locals[0])
+                                }
+                                BuiltinConversionRule::Binary { ir_gen, .. } => {
+                                    ir_gen(builtin_ctx, arg_locals[0], arg_locals[1])
+                                }
+                                BuiltinConversionRule::Ternary { ir_gen, .. } => {
+                                    ir_gen(builtin_ctx, arg_locals[0], arg_locals[1], arg_locals[2])
                                 }
                             };
-                            arg_locals.push(arg_local);
+
+                            let ret_obj_local = self.local(Type::Obj);
+                            self.exprs.push(Instr {
+                                local: Some(ret_obj_local),
+                                kind: match rule.ret_type() {
+                                    Type::Obj => InstrKind::Move(ret_local),
+                                    Type::Val(val_type) => InstrKind::ToObj(val_type, ret_local),
+                                },
+                            });
+                            phi_incoming_values.push(PhiIncomingValue {
+                                bb: then_bb_id,
+                                local: ret_obj_local,
+                            });
+
+                            self.close_bb(BasicBlockNext::Jump(merge_bb_id));
+                            self.current_bb_id = Some(else_bb_id);
                         }
 
-                        let ret_local = match rule.ret_type() {
-                            Type::Obj => self.local(Type::Obj),
-                            Type::Val(val_type) => self.local(Type::Val(val_type)),
-                        };
-                        let expr = match rule {
-                            BuiltinConversionRule::Unary { to_ir, .. } => to_ir(arg_locals[0]),
-                            BuiltinConversionRule::Binary { to_ir, .. } => {
-                                to_ir(arg_locals[0], arg_locals[1])
-                            }
-                            BuiltinConversionRule::Ternary { to_ir, .. } => {
-                                to_ir(arg_locals[0], arg_locals[1], arg_locals[2])
-                            }
-                        };
-                        self.exprs.push(ExprAssign {
-                            local: Some(ret_local),
-                            expr,
+                        let msg = self.local(Type::Val(ValType::String));
+                        self.exprs.push(Instr {
+                            local: Some(msg),
+                            kind: InstrKind::String(format!(
+                                "{}: arg type mismatch\n",
+                                builtin.name()
+                            )),
                         });
-                        match rule.ret_type() {
-                            Type::Obj => {
-                                self.exprs.push(ExprAssign {
-                                    local: result,
-                                    expr: Expr::Move(ret_local),
-                                });
-                            }
-                            Type::Val(val_type) => {
-                                self.exprs.push(ExprAssign {
-                                    local: result,
-                                    expr: Expr::ToObj(val_type, ret_local),
-                                });
-                            }
-                        }
+                        self.close_bb(BasicBlockNext::Terminator(BasicBlockTerminator::Error(msg)));
+                        self.current_bb_id = Some(merge_bb_id);
+                        self.exprs.push(Instr {
+                            local: result,
+                            kind: InstrKind::Phi(phi_incoming_values),
+                        });
                     }
                 } else {
                     let obj_func_local = self.local(Type::Obj);
-                    self.gen_expr(Some(obj_func_local), func);
+                    self.gen_exprs(Some(obj_func_local), func);
 
                     // TODO: funcがクロージャかのチェック
                     let closure_local = self.local(ValType::Closure);
-                    self.exprs.push(ExprAssign {
+                    self.exprs.push(Instr {
                         local: Some(closure_local),
-                        expr: Expr::FromObj(ValType::Closure, obj_func_local),
+                        kind: InstrKind::FromObj(ValType::Closure, obj_func_local),
                     });
 
                     let args_local = self.local(LocalType::VariadicArgs);
                     let mut args_locals = Vec::new();
                     for arg in args {
                         let arg_local = self.local(Type::Obj);
-                        self.gen_expr(Some(arg_local), arg);
+                        self.gen_exprs(Some(arg_local), arg);
                         args_locals.push(arg_local);
                     }
-                    self.exprs.push(ExprAssign {
+                    self.exprs.push(Instr {
                         local: Some(args_local),
-                        expr: Expr::VariadicArgs(args_locals),
+                        kind: InstrKind::VariadicArgs(args_locals),
                     });
 
-                    let is_tail = x.get_ref(type_map::key::<TailCall>()).is_tail;
-                    let call_closure = ExprCallClosure {
+                    let is_tail = x.is_tail;
+                    let call_closure = InstrCallClosure {
                         closure: closure_local,
                         args: vec![args_local],
                         arg_types: vec![LocalType::VariadicArgs],
@@ -767,39 +809,32 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                             BasicBlockTerminator::TailCallClosure(call_closure),
                         ));
                     } else {
-                        self.exprs.push(ExprAssign {
+                        self.exprs.push(Instr {
                             local: result,
-                            expr: Expr::CallClosure(call_closure),
+                            kind: InstrKind::CallClosure(call_closure),
                         });
                     }
                 }
             }
-            ast::Expr::Var(x, _) => match &x.get_ref(type_map::key::<Used>()).var_id {
-                ast::VarId::Local(id) => {
-                    if self
-                        .module_generator
-                        .ast
-                        .x
-                        .get_ref(type_map::key::<Used>())
-                        .box_vars
-                        .contains(id)
-                    {
-                        self.exprs.push(ExprAssign {
+            ast::Expr::Var(x, _) => match &x.var_id {
+                VarId::Local(id) => {
+                    if self.module_generator.ast.x.box_vars.contains(id) {
+                        self.exprs.push(Instr {
                             local: result,
-                            expr: Expr::DerefRef(Type::Obj, *self.local_ids.get(id).unwrap()),
+                            kind: InstrKind::DerefRef(Type::Obj, *self.local_ids.get(id).unwrap()),
                         });
                     } else {
-                        self.exprs.push(ExprAssign {
+                        self.exprs.push(Instr {
                             local: result,
-                            expr: Expr::Move(*self.local_ids.get(id).unwrap()),
+                            kind: InstrKind::Move(*self.local_ids.get(id).unwrap()),
                         });
                     }
                 }
-                ast::VarId::Global(id) => {
+                VarId::Global(id) => {
                     let global = self.module_generator.global(*id);
-                    self.exprs.push(ExprAssign {
+                    self.exprs.push(Instr {
                         local: result,
-                        expr: Expr::GlobalGet(global.id),
+                        kind: InstrKind::GlobalGet(global.id),
                     });
                 }
             },
@@ -807,104 +842,196 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 self.gen_exprs(result, exprs);
             }
             ast::Expr::Set(x, ast::Set { name, expr, .. }) => {
-                match &x.get_ref(type_map::key::<Used>()).var_id {
-                    ast::VarId::Local(id) => {
-                        if self
-                            .module_generator
-                            .ast
-                            .x
-                            .get_ref(type_map::key::<Used>())
-                            .box_vars
-                            .contains(id)
-                        {
+                match &x.var_id {
+                    VarId::Local(id) => {
+                        if self.module_generator.ast.x.box_vars.contains(id) {
                             let obj_local = self.local(Type::Obj);
-                            self.gen_expr(Some(obj_local), expr);
+                            self.gen_exprs(Some(obj_local), expr);
                             let local = self.local_ids.get(id).unwrap();
-                            self.exprs.push(ExprAssign {
+                            self.exprs.push(Instr {
                                 local: None,
-                                expr: Expr::SetRef(Type::Obj, *local, obj_local),
+                                kind: InstrKind::SetRef(Type::Obj, *local, obj_local),
                             });
-                            self.exprs.push(ExprAssign {
+                            self.exprs.push(Instr {
                                 local: result,
-                                expr: Expr::Move(obj_local),
+                                kind: InstrKind::Move(obj_local),
                             });
                         } else {
                             // SSA形式のため、新しいローカルを定義して代入する
                             let local = self.new_version_ast_local(*id);
-                            self.gen_expr(Some(local), expr);
-                            self.exprs.push(ExprAssign {
+                            self.gen_exprs(Some(local), expr);
+                            self.exprs.push(Instr {
                                 local: result,
-                                expr: Expr::Move(local),
+                                kind: InstrKind::Move(local),
                             });
                         }
                     }
-                    ast::VarId::Global(id) => {
-                        if let Some(_) = ast::Builtin::from_name(name)
+                    VarId::Global(id) => {
+                        if let Some(_) = ast::Builtin::from_name(&name.value)
                             && !self.module_generator.config.allow_set_builtin
                         {
                             let msg = self.local(Type::Val(ValType::String));
-                            self.exprs.push(ExprAssign {
+                            self.exprs.push(Instr {
                                 local: Some(msg),
-                                expr: Expr::String("set! builtin is not allowed\n".to_string()),
+                                kind: InstrKind::String(
+                                    "set! builtin is not allowed\n".to_string(),
+                                ),
                             });
                             self.close_bb(BasicBlockNext::Terminator(BasicBlockTerminator::Error(
                                 msg,
                             )));
                         } else {
                             let local = self.local(Type::Obj);
-                            self.gen_expr(Some(local), expr);
+                            self.gen_exprs(Some(local), expr);
                             let global = self.module_generator.global(*id);
-                            self.exprs.push(ExprAssign {
+                            self.exprs.push(Instr {
                                 local: None,
-                                expr: Expr::GlobalSet(global.id, local),
+                                kind: InstrKind::GlobalSet(global.id, local),
                             });
-                            self.exprs.push(ExprAssign {
+                            self.exprs.push(Instr {
                                 local: result,
-                                expr: Expr::Move(local),
+                                kind: InstrKind::Move(local),
                             });
                         }
                     }
                 }
             }
-            ast::Expr::Let(x, _) => *x.get_ref(type_map::key::<Desugared>()),
+            ast::Expr::Let(x, _) => *x,
+            ast::Expr::LetStar(x, _) => *x,
+            ast::Expr::LetRec(x, _) => *x,
             ast::Expr::Vector(_, vec) => {
                 let mut vec_locals = Vec::new();
                 for sexpr in vec {
                     let obj_local = self.local(Type::Obj);
-                    self.gen_expr(Some(obj_local), sexpr);
+                    self.gen_exprs(Some(obj_local), sexpr);
                     vec_locals.push(obj_local);
                 }
                 let val_type_local = self.local(Type::Val(ValType::Vector));
-                self.exprs.push(ExprAssign {
+                self.exprs.push(Instr {
                     local: Some(val_type_local),
-                    expr: Expr::Vector(vec_locals),
+                    kind: InstrKind::Vector(vec_locals),
                 });
-                self.exprs.push(ExprAssign {
+                self.exprs.push(Instr {
                     local: result,
-                    expr: Expr::ToObj(ValType::Vector, val_type_local),
+                    kind: InstrKind::ToObj(ValType::Vector, val_type_local),
+                });
+            }
+            ast::Expr::UVector(_, uvec) => {
+                let kind = match uvec.kind {
+                    ast::UVectorKind::S64 => UVectorKind::S64,
+                    ast::UVectorKind::F64 => UVectorKind::F64,
+                };
+
+                let mut element_obj_locals = Vec::new();
+                for sexpr in &uvec.elements {
+                    let obj_local = self.local(Type::Obj);
+                    self.gen_exprs(Some(obj_local), sexpr);
+                    element_obj_locals.push(obj_local);
+                }
+                let mut type_check_all_success_local = self.local(Type::Val(ValType::Bool));
+                self.exprs.push(Instr {
+                    local: Some(type_check_all_success_local),
+                    kind: InstrKind::Bool(true),
+                });
+                for obj_local in &element_obj_locals {
+                    let type_check_success_local = self.local(Type::Val(ValType::Bool));
+                    self.exprs.push(Instr {
+                        local: Some(type_check_success_local),
+                        kind: InstrKind::Is(kind.element_type(), *obj_local),
+                    });
+                    let new_type_check_all_success_local = self.local(Type::Val(ValType::Bool));
+                    self.exprs.push(Instr {
+                        local: Some(new_type_check_all_success_local),
+                        kind: InstrKind::And(
+                            type_check_all_success_local,
+                            type_check_success_local,
+                        ),
+                    });
+                    type_check_all_success_local = new_type_check_all_success_local;
+                }
+                let then_bb_id = self.bbs.allocate_key();
+                let else_bb_id = self.bbs.allocate_key();
+
+                self.close_bb(BasicBlockNext::If(
+                    type_check_all_success_local,
+                    then_bb_id,
+                    else_bb_id,
+                ));
+
+                self.current_bb_id = Some(else_bb_id);
+                let msg = self.local(Type::Val(ValType::String));
+                self.exprs.push(Instr {
+                    local: Some(msg),
+                    kind: InstrKind::String(format!(
+                        "uvector element type mismatch: expected {:?}\n",
+                        kind.element_type()
+                    )),
+                });
+                self.close_bb(BasicBlockNext::Terminator(BasicBlockTerminator::Error(msg)));
+                self.current_bb_id = Some(then_bb_id);
+                let mut element_locals = Vec::new();
+                for obj_local in element_obj_locals {
+                    let elem_local = self.local(kind.element_type());
+                    self.exprs.push(Instr {
+                        local: Some(elem_local),
+                        kind: InstrKind::FromObj(kind.element_type(), obj_local),
+                    });
+                    element_locals.push(elem_local);
+                }
+                let uvector_local = self.local(Type::Val(ValType::UVector(kind)));
+                self.exprs.push(Instr {
+                    local: Some(uvector_local),
+                    kind: InstrKind::UVector(kind, element_locals),
+                });
+                self.exprs.push(Instr {
+                    local: result,
+                    kind: InstrKind::ToObj(ValType::UVector(kind), uvector_local),
                 });
             }
             ast::Expr::Cons(_, cons) => {
                 let car_local = self.local(Type::Obj);
-                self.gen_expr(Some(car_local), &cons.car);
+                self.gen_exprs(Some(car_local), &cons.car);
                 let cdr_local = self.local(Type::Obj);
-                self.gen_expr(Some(cdr_local), &cons.cdr);
+                self.gen_exprs(Some(cdr_local), &cons.cdr);
 
                 let val_type_local = self.local(Type::Val(ValType::Cons));
-                self.exprs.push(ExprAssign {
+                self.exprs.push(Instr {
                     local: Some(val_type_local),
-                    expr: Expr::Cons(car_local, cdr_local),
+                    kind: InstrKind::Cons(car_local, cdr_local),
                 });
-                self.exprs.push(ExprAssign {
+                self.exprs.push(Instr {
                     local: result,
-                    expr: Expr::ToObj(ValType::Cons, val_type_local),
+                    kind: InstrKind::ToObj(ValType::Cons, val_type_local),
                 });
             }
-            ast::Expr::Quote(x, _) => *x.get_ref(type_map::key::<Desugared>()),
+            ast::Expr::Quote(x, _) => *x,
+            ast::Expr::Ext(x) => match x {
+                UsedExtR::SetGroup(set_group) => {
+                    for var_id in &set_group.var_ids {
+                        let prev = self.uninitialized_vars.insert(*var_id, Vec::new());
+                        debug_assert!(prev.is_none());
+                    }
+                    self.gen_exprs(result, &set_group.exprs);
+                    for var_id in &set_group.var_ids {
+                        let captures = self.uninitialized_vars.remove(var_id).unwrap();
+                        for capture in captures {
+                            self.exprs.push(Instr {
+                                local: None,
+                                kind: InstrKind::ClosureSetEnv(
+                                    capture.env_types.clone(),
+                                    capture.closure,
+                                    capture.env_index,
+                                    *self.local_ids.get(var_id).unwrap(),
+                                ),
+                            });
+                        }
+                    }
+                }
+            },
         }
     }
 
-    fn gen_exprs(&mut self, result: Option<LocalId>, exprs: &[ast::Expr<ast::Final>]) {
+    fn gen_exprs(&mut self, result: Option<LocalId>, exprs: &[ast::LExpr<Final>]) {
         if let Some((last, rest)) = exprs.split_last() {
             for expr in rest {
                 self.gen_expr(None, expr);
@@ -912,13 +1039,13 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             self.gen_expr(result, last);
         } else {
             let val_type_local = self.local(Type::Val(ValType::Nil));
-            self.exprs.push(ExprAssign {
+            self.exprs.push(Instr {
                 local: Some(val_type_local),
-                expr: Expr::Nil,
+                kind: InstrKind::Nil,
             });
-            self.exprs.push(ExprAssign {
+            self.exprs.push(Instr {
                 local: result,
-                expr: Expr::ToObj(ValType::Nil, val_type_local),
+                kind: InstrKind::ToObj(ValType::Nil, val_type_local),
             });
         }
     }
@@ -926,11 +1053,14 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
     fn close_bb(&mut self, next: BasicBlockNext) {
         let bb_exprs = std::mem::take(&mut self.exprs);
         if let Some(id) = self.current_bb_id {
-            self.bbs.insert(self.current_bb_id.unwrap(), BasicBlock {
-                id,
-                exprs: bb_exprs,
-                next,
-            });
+            self.bbs.insert(
+                self.current_bb_id.unwrap(),
+                BasicBlock {
+                    id,
+                    instrs: bb_exprs,
+                    next,
+                },
+            );
             self.current_bb_id = None;
         } else {
             // self.current_bb_idがNoneのとき到達不能ブロックである
@@ -938,22 +1068,29 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
     }
 }
 
+#[derive(Debug)]
+pub struct BuiltinIrGenCtx<'a> {
+    exprs: &'a mut Vec<Instr>,
+    locals: &'a mut VecMap<LocalId, Local>,
+    dest: LocalId,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub enum BuiltinConversionRule {
     Unary {
         args: [Type; 1],
         ret: Type,
-        to_ir: fn(LocalId) -> Expr,
+        ir_gen: fn(BuiltinIrGenCtx, LocalId),
     },
     Binary {
         args: [Type; 2],
         ret: Type,
-        to_ir: fn(LocalId, LocalId) -> Expr,
+        ir_gen: fn(BuiltinIrGenCtx, LocalId, LocalId),
     },
     Ternary {
         args: [Type; 3],
         ret: Type,
-        to_ir: fn(LocalId, LocalId, LocalId) -> Expr,
+        ir_gen: fn(BuiltinIrGenCtx, LocalId, LocalId, LocalId),
     },
     // TODO: 可変長
 }
@@ -980,156 +1117,576 @@ impl BuiltinConversionRule {
         }
     }
 
-    pub fn from_builtin(builtin: ast::Builtin) -> BuiltinConversionRule {
+    pub fn from_builtin(builtin: ast::Builtin) -> Vec<BuiltinConversionRule> {
         use ast::Builtin;
 
         match builtin {
-            Builtin::Display => BuiltinConversionRule::Unary {
+            Builtin::Display => vec![BuiltinConversionRule::Unary {
                 // TODO: 一旦Stringのみ
                 args: [Type::Val(ValType::String)],
                 ret: Type::Val(ValType::Nil),
-                to_ir: Expr::Display,
-            },
-            Builtin::Add => BuiltinConversionRule::Binary {
+                ir_gen: |ctx, arg1| {
+                    ctx.exprs.push(Instr {
+                        local: Some(ctx.dest),
+                        kind: InstrKind::Display(arg1),
+                    });
+                },
+            }],
+            Builtin::Add => vec![
+                BuiltinConversionRule::Binary {
+                    args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
+                    ret: Type::Val(ValType::Int),
+                    ir_gen: |ctx, arg1, arg2| {
+                        ctx.exprs.push(Instr {
+                            local: Some(ctx.dest),
+                            kind: InstrKind::AddInt(arg1, arg2),
+                        });
+                    },
+                },
+                BuiltinConversionRule::Binary {
+                    args: [Type::Val(ValType::Float), Type::Val(ValType::Float)],
+                    ret: Type::Val(ValType::Float),
+                    ir_gen: |ctx, arg1, arg2| {
+                        ctx.exprs.push(Instr {
+                            local: Some(ctx.dest),
+                            kind: InstrKind::AddFloat(arg1, arg2),
+                        });
+                    },
+                },
+            ],
+            Builtin::Sub => vec![
+                BuiltinConversionRule::Binary {
+                    args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
+                    ret: Type::Val(ValType::Int),
+                    ir_gen: |ctx, arg1, arg2| {
+                        ctx.exprs.push(Instr {
+                            local: Some(ctx.dest),
+                            kind: InstrKind::SubInt(arg1, arg2),
+                        });
+                    },
+                },
+                BuiltinConversionRule::Binary {
+                    args: [Type::Val(ValType::Float), Type::Val(ValType::Float)],
+                    ret: Type::Val(ValType::Float),
+                    ir_gen: |ctx, arg1, arg2| {
+                        ctx.exprs.push(Instr {
+                            local: Some(ctx.dest),
+                            kind: InstrKind::SubFloat(arg1, arg2),
+                        });
+                    },
+                },
+            ],
+            Builtin::Mul => vec![
+                BuiltinConversionRule::Binary {
+                    args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
+                    ret: Type::Val(ValType::Int),
+                    ir_gen: |ctx, arg1, arg2| {
+                        ctx.exprs.push(Instr {
+                            local: Some(ctx.dest),
+                            kind: InstrKind::MulInt(arg1, arg2),
+                        });
+                    },
+                },
+                BuiltinConversionRule::Binary {
+                    args: [Type::Val(ValType::Float), Type::Val(ValType::Float)],
+                    ret: Type::Val(ValType::Float),
+                    ir_gen: |ctx, arg1, arg2| {
+                        ctx.exprs.push(Instr {
+                            local: Some(ctx.dest),
+                            kind: InstrKind::MulFloat(arg1, arg2),
+                        });
+                    },
+                },
+            ],
+            Builtin::Div => vec![BuiltinConversionRule::Binary {
+                args: [Type::Val(ValType::Float), Type::Val(ValType::Float)],
+                ret: Type::Val(ValType::Float),
+                ir_gen: |ctx, arg1, arg2| {
+                    ctx.exprs.push(Instr {
+                        local: Some(ctx.dest),
+                        kind: InstrKind::DivFloat(arg1, arg2),
+                    });
+                },
+            }],
+            Builtin::Quotient => vec![BuiltinConversionRule::Binary {
                 args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
                 ret: Type::Val(ValType::Int),
-                to_ir: Expr::Add,
-            },
-            Builtin::Sub => BuiltinConversionRule::Binary {
-                args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
-                ret: Type::Val(ValType::Int),
-                to_ir: Expr::Sub,
-            },
-            Builtin::Mul => BuiltinConversionRule::Binary {
-                args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
-                ret: Type::Val(ValType::Int),
-                to_ir: Expr::Mul,
-            },
-            Builtin::Div => BuiltinConversionRule::Binary {
-                args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
-                ret: Type::Val(ValType::Int),
-                to_ir: Expr::Div,
-            },
-            Builtin::WriteChar => BuiltinConversionRule::Unary {
+                ir_gen: |ctx, arg1, arg2| {
+                    ctx.exprs.push(Instr {
+                        local: Some(ctx.dest),
+                        kind: InstrKind::DivInt(arg1, arg2),
+                    });
+                },
+            }],
+
+            Builtin::WriteChar => vec![BuiltinConversionRule::Unary {
                 args: [Type::Val(ValType::Char)],
                 ret: Type::Val(ValType::Nil),
-                to_ir: Expr::WriteChar,
-            },
-            Builtin::IsPair => BuiltinConversionRule::Unary {
+                ir_gen: |ctx, arg1| {
+                    ctx.exprs.push(Instr {
+                        local: Some(ctx.dest),
+                        kind: InstrKind::WriteChar(arg1),
+                    });
+                },
+            }],
+            Builtin::IsPair => vec![BuiltinConversionRule::Unary {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
-                to_ir: |local| Expr::Is(ValType::Cons, local),
-            },
-            Builtin::IsSymbol => BuiltinConversionRule::Unary {
+                ir_gen: |ctx, arg1| {
+                    ctx.exprs.push(Instr {
+                        local: Some(ctx.dest),
+                        kind: InstrKind::Is(ValType::Cons, arg1),
+                    });
+                },
+            }],
+            Builtin::IsSymbol => vec![BuiltinConversionRule::Unary {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
-                to_ir: |local| Expr::Is(ValType::Symbol, local),
-            },
-            Builtin::IsString => BuiltinConversionRule::Unary {
+                ir_gen: |ctx, arg1| {
+                    ctx.exprs.push(Instr {
+                        local: Some(ctx.dest),
+                        kind: InstrKind::Is(ValType::Symbol, arg1),
+                    });
+                },
+            }],
+            Builtin::IsString => vec![BuiltinConversionRule::Unary {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
-                to_ir: |local| Expr::Is(ValType::String, local),
-            },
-            Builtin::IsNumber => BuiltinConversionRule::Unary {
+                ir_gen: |ctx, arg1| {
+                    ctx.exprs.push(Instr {
+                        local: Some(ctx.dest),
+                        kind: InstrKind::Is(ValType::String, arg1),
+                    });
+                },
+            }],
+            Builtin::IsNumber => vec![BuiltinConversionRule::Unary {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
-                to_ir: |local| Expr::Is(ValType::Int, local), // TODO: 一般のnumberかを判定
-            },
-            Builtin::IsBoolean => BuiltinConversionRule::Unary {
+                ir_gen: |ctx, arg1| {
+                    let is_int_local = ctx.locals.push_with(|id| Local {
+                        id,
+                        typ: ValType::Bool.into(),
+                    });
+                    let is_float_local = ctx.locals.push_with(|id| Local {
+                        id,
+                        typ: ValType::Bool.into(),
+                    });
+                    ctx.exprs.push(Instr {
+                        local: Some(is_int_local),
+                        kind: InstrKind::Is(ValType::Int, arg1),
+                    });
+                    ctx.exprs.push(Instr {
+                        local: Some(is_float_local),
+                        kind: InstrKind::Is(ValType::Float, arg1),
+                    });
+                    ctx.exprs.push(Instr {
+                        local: Some(ctx.dest),
+                        kind: InstrKind::Or(is_int_local, is_float_local),
+                    });
+                },
+            }],
+            Builtin::IsBoolean => vec![BuiltinConversionRule::Unary {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
-                to_ir: |local| Expr::Is(ValType::Bool, local),
-            },
-            Builtin::IsProcedure => BuiltinConversionRule::Unary {
+                ir_gen: |ctx, arg1| {
+                    ctx.exprs.push(Instr {
+                        local: Some(ctx.dest),
+                        kind: InstrKind::Is(ValType::Bool, arg1),
+                    });
+                },
+            }],
+            Builtin::IsProcedure => vec![BuiltinConversionRule::Unary {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
-                to_ir: |local| Expr::Is(ValType::Closure, local),
-            },
-            Builtin::IsChar => BuiltinConversionRule::Unary {
+                ir_gen: |ctx, arg1| {
+                    ctx.exprs.push(Instr {
+                        local: Some(ctx.dest),
+                        kind: InstrKind::Is(ValType::Closure, arg1),
+                    });
+                },
+            }],
+            Builtin::IsChar => vec![BuiltinConversionRule::Unary {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
-                to_ir: |local| Expr::Is(ValType::Char, local),
-            },
-            Builtin::IsVector => BuiltinConversionRule::Unary {
+                ir_gen: |ctx, arg1| {
+                    ctx.exprs.push(Instr {
+                        local: Some(ctx.dest),
+                        kind: InstrKind::Is(ValType::Char, arg1),
+                    });
+                },
+            }],
+            Builtin::IsVector => vec![BuiltinConversionRule::Unary {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
-                to_ir: |local| Expr::Is(ValType::Vector, local),
-            },
-            Builtin::VectorLength => BuiltinConversionRule::Unary {
+                ir_gen: |ctx, arg1| {
+                    ctx.exprs.push(Instr {
+                        local: Some(ctx.dest),
+                        kind: InstrKind::Is(ValType::Vector, arg1),
+                    });
+                },
+            }],
+            Builtin::VectorLength => vec![BuiltinConversionRule::Unary {
                 args: [Type::Val(ValType::Vector)],
                 ret: Type::Val(ValType::Int),
-                to_ir: Expr::VectorLength,
-            },
-            Builtin::VectorRef => BuiltinConversionRule::Binary {
+                ir_gen: |ctx, arg1| {
+                    ctx.exprs.push(Instr {
+                        local: Some(ctx.dest),
+                        kind: InstrKind::VectorLength(arg1),
+                    });
+                },
+            }],
+            Builtin::VectorRef => vec![BuiltinConversionRule::Binary {
                 args: [Type::Val(ValType::Vector), Type::Val(ValType::Int)],
                 ret: Type::Obj,
-                to_ir: Expr::VectorRef,
-            },
-            Builtin::VectorSet => BuiltinConversionRule::Ternary {
+                ir_gen: |ctx, arg1, arg2| {
+                    ctx.exprs.push(Instr {
+                        local: Some(ctx.dest),
+                        kind: InstrKind::VectorRef(arg1, arg2),
+                    });
+                },
+            }],
+            Builtin::VectorSet => vec![BuiltinConversionRule::Ternary {
                 args: [
                     Type::Val(ValType::Vector),
                     Type::Val(ValType::Int),
                     Type::Obj,
                 ],
                 ret: Type::Val(ValType::Nil),
-                to_ir: Expr::VectorSet,
-            },
-            Builtin::Eq => BuiltinConversionRule::Binary {
+                ir_gen: |ctx, arg1, arg2, arg3| {
+                    ctx.exprs.push(Instr {
+                        local: Some(ctx.dest),
+                        kind: InstrKind::VectorSet(arg1, arg2, arg3),
+                    });
+                },
+            }],
+            Builtin::IsS64Vector => vec![BuiltinConversionRule::Unary {
+                args: [Type::Obj],
+                ret: Type::Val(ValType::Bool),
+                ir_gen: |ctx, arg1| {
+                    ctx.exprs.push(Instr {
+                        local: Some(ctx.dest),
+                        kind: InstrKind::Is(ValType::UVector(UVectorKind::S64), arg1),
+                    });
+                },
+            }],
+            Builtin::IsF64Vector => vec![BuiltinConversionRule::Unary {
+                args: [Type::Obj],
+                ret: Type::Val(ValType::Bool),
+                ir_gen: |ctx, arg1| {
+                    ctx.exprs.push(Instr {
+                        local: Some(ctx.dest),
+                        kind: InstrKind::Is(ValType::UVector(UVectorKind::F64), arg1),
+                    });
+                },
+            }],
+            Builtin::IsUVector => vec![BuiltinConversionRule::Unary {
+                args: [Type::Obj],
+                ret: Type::Val(ValType::Bool),
+                ir_gen: |ctx, arg1| {
+                    let is_s64_local = ctx.locals.push_with(|id| Local {
+                        id,
+                        typ: ValType::Bool.into(),
+                    });
+                    let is_f64_local = ctx.locals.push_with(|id| Local {
+                        id,
+                        typ: ValType::Bool.into(),
+                    });
+                    ctx.exprs.push(Instr {
+                        local: Some(is_s64_local),
+                        kind: InstrKind::Is(ValType::UVector(UVectorKind::S64), arg1),
+                    });
+                    ctx.exprs.push(Instr {
+                        local: Some(is_f64_local),
+                        kind: InstrKind::Is(ValType::UVector(UVectorKind::F64), arg1),
+                    });
+                    ctx.exprs.push(Instr {
+                        local: Some(ctx.dest),
+                        kind: InstrKind::Or(is_s64_local, is_f64_local),
+                    });
+                },
+            }],
+            Builtin::MakeS64Vector => vec![BuiltinConversionRule::Unary {
+                args: [Type::Val(ValType::Int)],
+                ret: Type::Val(ValType::UVector(UVectorKind::S64)),
+                ir_gen: |ctx, arg1| {
+                    ctx.exprs.push(Instr {
+                        local: Some(ctx.dest),
+                        kind: InstrKind::MakeUVector(UVectorKind::S64, arg1),
+                    });
+                },
+            }],
+            Builtin::MakeF64Vector => vec![BuiltinConversionRule::Unary {
+                args: [Type::Val(ValType::Int)],
+                ret: Type::Val(ValType::UVector(UVectorKind::F64)),
+                ir_gen: |ctx, arg1| {
+                    ctx.exprs.push(Instr {
+                        local: Some(ctx.dest),
+                        kind: InstrKind::MakeUVector(UVectorKind::F64, arg1),
+                    });
+                },
+            }],
+            Builtin::UVectorLength => vec![
+                BuiltinConversionRule::Unary {
+                    args: [Type::Val(ValType::UVector(UVectorKind::S64))],
+                    ret: Type::Val(ValType::Int),
+                    ir_gen: |ctx, arg1| {
+                        ctx.exprs.push(Instr {
+                            local: Some(ctx.dest),
+                            kind: InstrKind::UVectorLength(UVectorKind::S64, arg1),
+                        });
+                    },
+                },
+                BuiltinConversionRule::Unary {
+                    args: [Type::Val(ValType::UVector(UVectorKind::F64))],
+                    ret: Type::Val(ValType::Int),
+                    ir_gen: |ctx, arg1| {
+                        ctx.exprs.push(Instr {
+                            local: Some(ctx.dest),
+                            kind: InstrKind::UVectorLength(UVectorKind::F64, arg1),
+                        });
+                    },
+                },
+            ],
+            Builtin::UVectorRef => vec![
+                BuiltinConversionRule::Binary {
+                    args: [
+                        Type::Val(ValType::UVector(UVectorKind::S64)),
+                        Type::Val(ValType::Int),
+                    ],
+                    ret: Type::Val(ValType::Int),
+                    ir_gen: |ctx, arg1, arg2| {
+                        ctx.exprs.push(Instr {
+                            local: Some(ctx.dest),
+                            kind: InstrKind::UVectorRef(UVectorKind::S64, arg1, arg2),
+                        });
+                    },
+                },
+                BuiltinConversionRule::Binary {
+                    args: [
+                        Type::Val(ValType::UVector(UVectorKind::F64)),
+                        Type::Val(ValType::Int),
+                    ],
+                    ret: Type::Val(ValType::Float),
+                    ir_gen: |ctx, arg1, arg2| {
+                        ctx.exprs.push(Instr {
+                            local: Some(ctx.dest),
+                            kind: InstrKind::UVectorRef(UVectorKind::F64, arg1, arg2),
+                        });
+                    },
+                },
+            ],
+            Builtin::UVectorSet => vec![
+                BuiltinConversionRule::Ternary {
+                    args: [
+                        Type::Val(ValType::UVector(UVectorKind::S64)),
+                        Type::Val(ValType::Int),
+                        Type::Val(ValType::Int),
+                    ],
+                    ret: Type::Val(ValType::Nil),
+                    ir_gen: |ctx, arg1, arg2, arg3| {
+                        ctx.exprs.push(Instr {
+                            local: Some(ctx.dest),
+                            kind: InstrKind::UVectorSet(UVectorKind::S64, arg1, arg2, arg3),
+                        });
+                    },
+                },
+                BuiltinConversionRule::Ternary {
+                    args: [
+                        Type::Val(ValType::UVector(UVectorKind::F64)),
+                        Type::Val(ValType::Int),
+                        Type::Val(ValType::Float),
+                    ],
+                    ret: Type::Val(ValType::Nil),
+                    ir_gen: |ctx, arg1, arg2, arg3| {
+                        ctx.exprs.push(Instr {
+                            local: Some(ctx.dest),
+                            kind: InstrKind::UVectorSet(UVectorKind::F64, arg1, arg2, arg3),
+                        });
+                    },
+                },
+            ],
+            Builtin::Eq => vec![BuiltinConversionRule::Binary {
                 args: [Type::Obj, Type::Obj],
                 ret: Type::Val(ValType::Bool),
-                to_ir: Expr::Eq,
-            },
-            Builtin::Cons => BuiltinConversionRule::Binary {
+                ir_gen: |ctx, arg1, arg2| {
+                    ctx.exprs.push(Instr {
+                        local: Some(ctx.dest),
+                        kind: InstrKind::EqObj(arg1, arg2),
+                    });
+                },
+            }],
+            Builtin::Cons => vec![BuiltinConversionRule::Binary {
                 args: [Type::Obj, Type::Obj],
                 ret: Type::Val(ValType::Cons),
-                to_ir: Expr::Cons,
-            },
-            Builtin::Car => BuiltinConversionRule::Unary {
+                ir_gen: |ctx, arg1, arg2| {
+                    ctx.exprs.push(Instr {
+                        local: Some(ctx.dest),
+                        kind: InstrKind::Cons(arg1, arg2),
+                    });
+                },
+            }],
+            Builtin::Car => vec![BuiltinConversionRule::Unary {
                 args: [Type::Val(ValType::Cons)],
                 ret: Type::Obj,
-                to_ir: Expr::Car,
-            },
-            Builtin::Cdr => BuiltinConversionRule::Unary {
+                ir_gen: |ctx, arg1| {
+                    ctx.exprs.push(Instr {
+                        local: Some(ctx.dest),
+                        kind: InstrKind::Car(arg1),
+                    });
+                },
+            }],
+            Builtin::Cdr => vec![BuiltinConversionRule::Unary {
                 args: [Type::Val(ValType::Cons)],
                 ret: Type::Obj,
-                to_ir: Expr::Cdr,
-            },
-            Builtin::SymbolToString => BuiltinConversionRule::Unary {
+                ir_gen: |ctx, arg1| {
+                    ctx.exprs.push(Instr {
+                        local: Some(ctx.dest),
+                        kind: InstrKind::Cdr(arg1),
+                    });
+                },
+            }],
+            Builtin::SymbolToString => vec![BuiltinConversionRule::Unary {
                 args: [Type::Val(ValType::Symbol)],
                 ret: Type::Val(ValType::String),
-                to_ir: Expr::SymbolToString,
-            },
-            Builtin::NumberToString => BuiltinConversionRule::Unary {
-                // TODO: 一般のnumberに使えるように
-                args: [Type::Val(ValType::Int)],
-                ret: Type::Val(ValType::String),
-                to_ir: Expr::NumberToString,
-            },
-            Builtin::EqNum => BuiltinConversionRule::Binary {
-                args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
-                ret: Type::Val(ValType::Bool),
-                to_ir: Expr::EqNum,
-            },
-            Builtin::Lt => BuiltinConversionRule::Binary {
-                args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
-                ret: Type::Val(ValType::Bool),
-                to_ir: Expr::Lt,
-            },
-            Builtin::Gt => BuiltinConversionRule::Binary {
-                args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
-                ret: Type::Val(ValType::Bool),
-                to_ir: Expr::Gt,
-            },
-            Builtin::Le => BuiltinConversionRule::Binary {
-                args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
-                ret: Type::Val(ValType::Bool),
-                to_ir: Expr::Le,
-            },
-            Builtin::Ge => BuiltinConversionRule::Binary {
-                args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
-                ret: Type::Val(ValType::Bool),
-                to_ir: Expr::Ge,
-            },
+                ir_gen: |ctx, arg1| {
+                    ctx.exprs.push(Instr {
+                        local: Some(ctx.dest),
+                        kind: InstrKind::SymbolToString(arg1),
+                    });
+                },
+            }],
+            Builtin::NumberToString => vec![
+                BuiltinConversionRule::Unary {
+                    args: [Type::Val(ValType::Int)],
+                    ret: Type::Val(ValType::String),
+                    ir_gen: |ctx, arg1| {
+                        ctx.exprs.push(Instr {
+                            local: Some(ctx.dest),
+                            kind: InstrKind::IntToString(arg1),
+                        });
+                    },
+                },
+                BuiltinConversionRule::Unary {
+                    args: [Type::Val(ValType::Float)],
+                    ret: Type::Val(ValType::String),
+                    ir_gen: |ctx, arg1| {
+                        ctx.exprs.push(Instr {
+                            local: Some(ctx.dest),
+                            kind: InstrKind::FloatToString(arg1),
+                        });
+                    },
+                },
+            ],
+            Builtin::EqNum => vec![
+                BuiltinConversionRule::Binary {
+                    args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
+                    ret: Type::Val(ValType::Bool),
+                    ir_gen: |ctx, arg1, arg2| {
+                        ctx.exprs.push(Instr {
+                            local: Some(ctx.dest),
+                            kind: InstrKind::EqInt(arg1, arg2),
+                        });
+                    },
+                },
+                BuiltinConversionRule::Binary {
+                    args: [Type::Val(ValType::Float), Type::Val(ValType::Float)],
+                    ret: Type::Val(ValType::Bool),
+                    ir_gen: |ctx, arg1, arg2| {
+                        ctx.exprs.push(Instr {
+                            local: Some(ctx.dest),
+                            kind: InstrKind::EqFloat(arg1, arg2),
+                        });
+                    },
+                },
+            ],
+            Builtin::Lt => vec![
+                BuiltinConversionRule::Binary {
+                    args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
+                    ret: Type::Val(ValType::Bool),
+                    ir_gen: |ctx, arg1, arg2| {
+                        ctx.exprs.push(Instr {
+                            local: Some(ctx.dest),
+                            kind: InstrKind::LtInt(arg1, arg2),
+                        });
+                    },
+                },
+                BuiltinConversionRule::Binary {
+                    args: [Type::Val(ValType::Float), Type::Val(ValType::Float)],
+                    ret: Type::Val(ValType::Bool),
+                    ir_gen: |ctx, arg1, arg2| {
+                        ctx.exprs.push(Instr {
+                            local: Some(ctx.dest),
+                            kind: InstrKind::LtFloat(arg1, arg2),
+                        });
+                    },
+                },
+            ],
+            Builtin::Gt => vec![
+                BuiltinConversionRule::Binary {
+                    args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
+                    ret: Type::Val(ValType::Bool),
+                    ir_gen: |ctx, arg1, arg2| {
+                        ctx.exprs.push(Instr {
+                            local: Some(ctx.dest),
+                            kind: InstrKind::GtInt(arg1, arg2),
+                        });
+                    },
+                },
+                BuiltinConversionRule::Binary {
+                    args: [Type::Val(ValType::Float), Type::Val(ValType::Float)],
+                    ret: Type::Val(ValType::Bool),
+                    ir_gen: |ctx, arg1, arg2| {
+                        ctx.exprs.push(Instr {
+                            local: Some(ctx.dest),
+                            kind: InstrKind::GtFloat(arg1, arg2),
+                        });
+                    },
+                },
+            ],
+            Builtin::Le => vec![
+                BuiltinConversionRule::Binary {
+                    args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
+                    ret: Type::Val(ValType::Bool),
+                    ir_gen: |ctx, arg1, arg2| {
+                        ctx.exprs.push(Instr {
+                            local: Some(ctx.dest),
+                            kind: InstrKind::LeInt(arg1, arg2),
+                        });
+                    },
+                },
+                BuiltinConversionRule::Binary {
+                    args: [Type::Val(ValType::Float), Type::Val(ValType::Float)],
+                    ret: Type::Val(ValType::Bool),
+                    ir_gen: |ctx, arg1, arg2| {
+                        ctx.exprs.push(Instr {
+                            local: Some(ctx.dest),
+                            kind: InstrKind::LeFloat(arg1, arg2),
+                        });
+                    },
+                },
+            ],
+            Builtin::Ge => vec![
+                BuiltinConversionRule::Binary {
+                    args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
+                    ret: Type::Val(ValType::Bool),
+                    ir_gen: |ctx, arg1, arg2| {
+                        ctx.exprs.push(Instr {
+                            local: Some(ctx.dest),
+                            kind: InstrKind::GeInt(arg1, arg2),
+                        });
+                    },
+                },
+                BuiltinConversionRule::Binary {
+                    args: [Type::Val(ValType::Float), Type::Val(ValType::Float)],
+                    ret: Type::Val(ValType::Bool),
+                    ir_gen: |ctx, arg1, arg2| {
+                        ctx.exprs.push(Instr {
+                            local: Some(ctx.dest),
+                            kind: InstrKind::GeFloat(arg1, arg2),
+                        });
+                    },
+                },
+            ],
         }
     }
 }

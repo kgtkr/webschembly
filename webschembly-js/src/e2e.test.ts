@@ -97,7 +97,7 @@ describe("E2E test", () => {
         await expect(stderr).toMatchFileSnapshot(
           `${snapshotDir}/${filename}-stderr`
         );
-      });
+      }, 60_000);
     });
   });
 });

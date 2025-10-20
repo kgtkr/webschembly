@@ -5,8 +5,7 @@
     make-shell.url = "github:nicknovitski/make-shell";
     rust-overlay.url = "github:oxalica/rust-overlay";
     cargo2nix = {
-      # mainが壊れている: https://github.com/cargo2nix/cargo2nix/issues/392
-      url = "github:cargo2nix/cargo2nix/8ce65922a814571dd94bd2f49910758b5b7edff2";
+      url = "github:cargo2nix/cargo2nix/release-0.12";
       inputs.rust-overlay.follows = "rust-overlay";
     };
     cargo2nix-ifd = {
@@ -14,6 +13,10 @@
       inputs.cargo2nix.follows = "cargo2nix";
     };
     napalm.url = "github:nix-community/napalm";
+    globset = {
+      url = "github:pdtpartners/globset";
+      inputs.nixpkgs-lib.follows = "nixpkgs";
+    };
   };
 
   outputs = inputs@{ flake-parts, ... }:
@@ -23,6 +26,7 @@
         inputs.make-shell.flakeModules.default
         ./rust.nix
         ./js.nix
+        ./latex.nix
         ./devcontainer.nix
       ];
       perSystem = { self', pkgs, system, ... }:
@@ -33,6 +37,7 @@
               overlays = [ inputs.cargo2nix.overlays.default inputs.napalm.overlays.default ];
             };
             cargo2nix-ifd-lib = inputs.cargo2nix-ifd.mkLib pkgs;
+            globset-lib = inputs.globset.lib;
           };
           packages = {
             default = self'.packages.webschembly-compiler-cli;
@@ -46,6 +51,8 @@
               pkgs.just
               pkgs.nil
               pkgs.gauche
+              pkgs.skopeo
+              pkgs.manifest-tool
             ];
           };
         };

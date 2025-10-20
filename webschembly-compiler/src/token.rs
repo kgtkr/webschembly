@@ -1,4 +1,6 @@
-use crate::span::Span;
+use ordered_float::NotNan;
+
+use webschembly_compiler_locate::Span;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TokenKind {
@@ -6,10 +8,14 @@ pub enum TokenKind {
     OpenParen,
     CloseParen,
     Int(i64),
+    Float(NotNan<f64>),
+    NaN,
     String(String),
     Bool(bool),
     Quote,
     VectorOpenParen,
+    UVectorS64OpenParen,
+    UVectorF64OpenParen,
     Dot,
     Eof,
     Char(char),
