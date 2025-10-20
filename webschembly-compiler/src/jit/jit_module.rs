@@ -3,7 +3,6 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use super::jit_ctx::JitCtx;
 use crate::fxbihashmap::FxBiHashMap;
 use crate::ir_generator::GlobalManager;
-use crate::ir_processor::bb_optimizer::TypedObj;
 use crate::ir_processor::cfg_analyzer::calculate_rpo;
 use crate::ir_processor::dataflow::{analyze_liveness, calc_def_use};
 use crate::ir_processor::optimizer::remove_unreachable_bb;
@@ -643,7 +642,11 @@ impl JitFunc {
                 }
             }
 
-            // この分岐で型が確定するobj
+            /*
+            Is命令によって分岐している場合、この分岐で型が確定する
+            しかし、このbb moduleにはその後に存在するはずのfrom_obj命令が存在しないためこの情報を使った最適化が行えない
+            そこで、型が確定しているならfrom_obj命令を追加して型情報を伝搬させる
+            */
             let mut typed_objs = FxHashMap::default();
             for (obj_local, typ) in types {
                 let val_local = body_func.locals.push_with(|id| Local {
@@ -654,21 +657,21 @@ impl JitFunc {
                     local: Some(val_local),
                     kind: InstrKind::FromObj(typ, obj_local),
                 });
-                typed_objs.insert(
-                    obj_local,
-                    TypedObj {
-                        typ,
-                        val_type: val_local,
-                    },
-                );
+                typed_objs.insert(obj_local, TypedObj { typ, val_local });
             }
 
             let callee_jit_bb = &mut self.jit_bbs[bb_id];
             let (locals_to_pass, type_args, index_global) = calculate_args_to_pass(
                 &callee_jit_bb.info,
-                &typed_objs,
-                &def_use_chain,
-                &body_func.bbs,
+                |obj_local| {
+                    if let Some(&InstrKind::ToObj(typ, val_local)) =
+                        def_use_chain.get_def_non_move_expr(&body_func.bbs, obj_local)
+                    {
+                        Some(TypedObj { typ, val_local })
+                    } else {
+                        typed_objs.get(&obj_local).copied()
+                    }
+                },
                 &assigned_local_to_obj,
                 &mut callee_jit_bb.bb_index_manager,
                 &mut required_stubs,
@@ -1143,12 +1146,16 @@ fn calculate_bb_info(func: &Func) -> VecMap<BasicBlockId, BBInfo> {
     bb_info
 }
 
-#[allow(clippy::too_many_arguments)]
+// 型が確定しているobj型の情報
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TypedObj {
+    pub val_local: LocalId,
+    pub typ: ValType,
+}
+
 fn calculate_args_to_pass(
     callee: &BBInfo,
-    typed_objs: &FxHashMap<LocalId, TypedObj>,
-    def_use_chain: &DefUseChain,
-    bbs: &VecMap<BasicBlockId, BasicBlock>,
+    get_typed_obj: impl Fn(LocalId) -> Option<TypedObj>,
     caller_assigned_local_to_obj: &FxBiHashMap<LocalId, LocalId>,
     bb_index_manager: &mut BBIndexManager,
     required_stubs: &mut Vec<(BasicBlockId, usize)>,
@@ -1166,16 +1173,10 @@ fn calculate_args_to_pass(
             .unwrap_or(arg);
 
         let caller_args = if let Some(&type_param_id) = callee.type_params.get_by_right(&arg)
-            && let Some(&InstrKind::ToObj(typ, val_local)) =
-                def_use_chain.get_def_non_move_expr(bbs, obj_arg)
-        {
-            type_args.insert(type_param_id, typ);
-            val_local
-        } else if let Some(&type_param_id) = callee.type_params.get_by_right(&arg)
-            && let Some(typed_obj) = typed_objs.get(&obj_arg)
+            && let Some(typed_obj) = get_typed_obj(obj_arg)
         {
             type_args.insert(type_param_id, typed_obj.typ);
-            typed_obj.val_type
+            typed_obj.val_local
         } else {
             obj_arg
         };
