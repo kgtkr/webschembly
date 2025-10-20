@@ -1156,7 +1156,7 @@ pub struct TypedObj {
 fn calculate_args_to_pass(
     callee: &BBInfo,
     get_typed_obj: impl Fn(LocalId) -> Option<TypedObj>,
-    caller_assigned_local_to_obj: &FxBiHashMap<LocalId, LocalId>,
+    caller_assigned_local_to_obj: &FxHashMap<LocalId, LocalId>,
     bb_index_manager: &mut BBIndexManager,
     required_stubs: &mut Vec<(BasicBlockId, usize)>,
     global_manager: &mut GlobalManager,
@@ -1168,7 +1168,7 @@ fn calculate_args_to_pass(
 
     for &arg in &callee.args {
         let obj_arg = caller_assigned_local_to_obj
-            .get_by_left(&arg)
+            .get(&arg)
             .copied()
             .unwrap_or(arg);
 
@@ -1408,11 +1408,11 @@ pub fn assign_type_args(
     func: &mut Func,
     type_params: &FxBiHashMap<TypeParamId, LocalId>,
     type_args: &VecMap<TypeParamId, ValType>,
-) -> FxBiHashMap<LocalId, LocalId> {
+) -> FxHashMap<LocalId, LocalId> {
     let mut entry_bb_instrs = Vec::new();
 
     // 型代入されている変数のobj版を用意(l1_objに対応)
-    let mut assigned_local_to_obj = FxBiHashMap::default();
+    let mut assigned_local_to_obj = FxHashMap::default();
 
     for (type_param_id, typ) in type_args.iter() {
         let local = *type_params.get_by_left(&type_param_id).unwrap();
@@ -1435,7 +1435,7 @@ pub fn assign_type_args(
 
     for bb in func.bbs.values_mut() {
         for (local, _) in bb.local_usages_mut() {
-            if let Some(&obj_local) = assigned_local_to_obj.get_by_left(local) {
+            if let Some(&obj_local) = assigned_local_to_obj.get(local) {
                 *local = obj_local;
             }
         }
