@@ -526,7 +526,8 @@ impl JitFunc {
             &self.jit_bbs[orig_entry_bb_id].info.type_params,
             type_args,
         );
-        remove_unreachable_bb(body_func); // これがないとSSAにならない
+        // これがないとBBの入力に代入している命令を持つBBが残るためSSAにならない
+        remove_unreachable_bb(body_func);
         if jit_ctx.config().enable_optimization {
             ssa_optimize(body_func, false);
         }
@@ -535,7 +536,7 @@ impl JitFunc {
         let mut processed_bb_ids = FxHashSet::default();
         let mut todo_bb_ids = vec![orig_entry_bb_id];
 
-        // マージはしないBBの一覧
+        // マージはしないが遅延コンパイルで呼び出すBBの一覧
         // BBに対応する関数を呼び出す
         let mut required_bbs = Vec::new();
 
