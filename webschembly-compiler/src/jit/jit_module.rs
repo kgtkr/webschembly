@@ -533,6 +533,7 @@ impl JitFunc {
         }
         let def_use_chain = DefUseChain::from_bbs(&body_func.bbs);
 
+        // マージ済みのBB ID、マージ予定のBB ID
         let mut processed_bb_ids = FxHashSet::default();
         let mut todo_bb_ids = vec![orig_entry_bb_id];
 
