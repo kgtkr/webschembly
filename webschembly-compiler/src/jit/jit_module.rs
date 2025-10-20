@@ -611,19 +611,9 @@ impl JitFunc {
                         func_type: func_types[func_id].clone(),
                     }))
                 }
-                BasicBlockNext::Terminator(BasicBlockTerminator::TailCallClosure(call_closure)) => {
-                    let call_closure = specialize_call_closure(
-                        &call_closure,
-                        &def_use_chain,
-                        &body_func.bbs,
-                        jit_ctx.closure_global_layout(),
-                        &mut required_closure_idx,
-                    )
-                    .unwrap_or_else(|| call_closure.clone());
-                    BasicBlockNext::Terminator(BasicBlockTerminator::TailCallClosure(call_closure))
-                }
                 next @ BasicBlockNext::Terminator(
                     BasicBlockTerminator::TailCallRef(_)
+                    | BasicBlockTerminator::TailCallClosure(_)
                     | BasicBlockTerminator::Return(_)
                     | BasicBlockTerminator::Error(_),
                 ) => next,
@@ -777,24 +767,6 @@ impl JitFunc {
                             kind: InstrKind::EntrypointTable(locals),
                         });
                     }
-                    Instr {
-                        local,
-                        kind: InstrKind::CallClosure(ref call_closure),
-                    } => {
-                        let call_closure = specialize_call_closure(
-                            call_closure,
-                            &def_use_chain,
-                            &body_func.bbs,
-                            jit_ctx.closure_global_layout(),
-                            &mut required_closure_idx,
-                        )
-                        .unwrap_or_else(|| call_closure.clone());
-
-                        instrs.push(Instr {
-                            local,
-                            kind: InstrKind::CallClosure(call_closure),
-                        });
-                    }
                     ref instr => {
                         instrs.push(instr.clone());
                     }
@@ -802,6 +774,46 @@ impl JitFunc {
             }
 
             body_func.bbs[bb_id].instrs = instrs;
+        }
+
+        // specialize_call_closureの最適化はPhi命令を処理した後に行う必要があるため最後に行う
+        for &bb_id in &processed_bb_ids {
+            for instr_idx in 0..body_func.bbs[bb_id].instrs.len() {
+                match &body_func.bbs[bb_id].instrs[instr_idx] {
+                    Instr {
+                        local: _,
+                        kind: InstrKind::CallClosure(call_closure),
+                    } if let Some(new_call_closure) = specialize_call_closure(
+                        call_closure,
+                        &def_use_chain,
+                        &body_func.bbs,
+                        jit_ctx.closure_global_layout(),
+                        &mut required_closure_idx,
+                    ) =>
+                    {
+                        body_func.bbs[bb_id].instrs[instr_idx].kind =
+                            InstrKind::CallClosure(new_call_closure);
+                    }
+                    _ => {}
+                }
+            }
+
+            match &body_func.bbs[bb_id].next {
+                BasicBlockNext::Terminator(BasicBlockTerminator::TailCallClosure(call_closure)) => {
+                    if let Some(new_call_closure) = specialize_call_closure(
+                        call_closure,
+                        &def_use_chain,
+                        &body_func.bbs,
+                        jit_ctx.closure_global_layout(),
+                        &mut required_closure_idx,
+                    ) {
+                        body_func.bbs[bb_id].next = BasicBlockNext::Terminator(
+                            BasicBlockTerminator::TailCallClosure(new_call_closure),
+                        );
+                    }
+                }
+                _ => {}
+            }
         }
 
         remove_unreachable_bb(body_func);

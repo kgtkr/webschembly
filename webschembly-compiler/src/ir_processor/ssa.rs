@@ -242,6 +242,9 @@ impl DefUseChain {
                 InstrKind::Move(value) => {
                     local = *value;
                 }
+                InstrKind::Phi(incomings) if incomings.len() == 1 => {
+                    local = incomings[0].local;
+                }
                 _ => {
                     return Some(expr);
                 }
