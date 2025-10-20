@@ -1,9 +1,12 @@
 (define (tak x y z)
-  (if (not (< y x))
-      z
-      (tak (tak (- x 1) y z)
-           (tak (- y 1) z x)
-           (tak (- z 1) x y))))
+  (define (tak-rec x y z)
+    (if (not (< y x))
+        z
+        (tak-rec (tak-rec (- x 1) y z)
+            (tak-rec (- y 1) z x)
+            (tak-rec (- z 1) x y))))
+  (tak-rec x y z)
+)
 (write (tak 18 12 6))(newline)
 
 (define (loop n)
