@@ -20,10 +20,6 @@ pub const DISPLAY_INDENT: &str = "  ";
 pub struct IndentLevel(pub usize);
 
 impl IndentLevel {
-    pub fn indent(&self) -> String {
-        DISPLAY_INDENT.repeat(self.0)
-    }
-
     pub fn increase(&self) -> Self {
         IndentLevel(self.0 + 1)
     }
@@ -31,6 +27,9 @@ impl IndentLevel {
 
 impl std::fmt::Display for IndentLevel {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.indent())
+        for _ in 0..self.0 {
+            write!(f, "{}", DISPLAY_INDENT)?;
+        }
+        Ok(())
     }
 }

@@ -4,11 +4,11 @@ use std::iter::from_coroutine;
 use super::display::*;
 use super::id::*;
 use super::instr::*;
+use super::local_flag::*;
 use super::meta::*;
+use super::typ::*;
 use rustc_hash::FxHashMap;
 use vec_map::{HasId, VecMap};
-use super::typ::*;
-use super::local_flag::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BasicBlock {
@@ -405,8 +405,6 @@ impl fmt::Display for Display<'_, &'_ Func> {
         Ok(())
     }
 }
-
-
 
 #[derive(Debug, Clone, Copy)]
 pub struct Global {
