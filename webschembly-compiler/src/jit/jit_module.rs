@@ -1156,6 +1156,8 @@ fn calculate_args_to_pass(
 ) -> (Vec<LocalId>, VecMap<TypeParamId, ValType>, Global) {
     let mut type_args = VecMap::new();
     let mut args_to_pass = Vec::new();
+    // BBIndexManagerが満杯だったときのためのフォールバック
+    let mut args_to_pass_fallback = Vec::new();
 
     for &arg in &callee.args {
         let obj_arg = caller_assigned_local_to_obj
@@ -1179,27 +1181,22 @@ fn calculate_args_to_pass(
         };
 
         args_to_pass.push(caller_args);
+        args_to_pass_fallback.push(obj_arg);
     }
 
-    if let Some((global, index, flag)) = bb_index_manager.idx(&type_args, global_manager) {
-        if flag == IndexFlag::NewInstance {
-            required_stubs.push((callee.bb_id, index));
-        }
-        (args_to_pass, type_args, global)
-    } else {
-        calculate_args_to_pass(
-            callee,
-            // global layoutが満杯なら型パラメータなしで再計算
-            // 型パラメータなしで呼び出すとto_idxの結果は必ずSomeになるので無限ループすることはない
-            &FxHashMap::default(),
-            &DefUseChain::new(),
-            bbs,
-            caller_assigned_local_to_obj,
-            bb_index_manager,
-            required_stubs,
-            global_manager,
-        )
+    let (type_args, args_to_pass, (global, index, flag)) = bb_index_manager
+        .idx(&type_args, global_manager)
+        .map(|x| (type_args, args_to_pass, x))
+        .unwrap_or_else(|| {
+            let type_args = VecMap::default();
+            let x = bb_index_manager.idx(&type_args, global_manager).unwrap();
+            (type_args, args_to_pass_fallback, x)
+        });
+
+    if flag == IndexFlag::NewInstance {
+        required_stubs.push((callee.bb_id, index));
     }
+    (args_to_pass, type_args, global)
 }
 
 pub const GLOBAL_LAYOUT_MAX_SIZE: usize = 32;
