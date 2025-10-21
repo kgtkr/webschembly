@@ -76,6 +76,7 @@ impl JitSpecializedFunc {
             GLOBAL_LAYOUT_DEFAULT_INDEX,
             global_manager,
             jit_ctx,
+            false,
         );
 
         let body_func_id = {
@@ -295,6 +296,7 @@ impl JitSpecializedFunc {
         index: usize,
         global_manager: &mut GlobalManager,
         jit_ctx: &mut JitCtx,
+        branch_specialization: bool,
     ) -> (Module, FuncId /* BBの実態を表す関数 */) {
         let mut required_closure_idx = Vec::new();
 
@@ -389,8 +391,29 @@ impl JitSpecializedFunc {
                             }
                         }
 
-                        required_bbs.push((orig_then_bb_id, then_types, BranchKind::Then));
-                        required_bbs.push((orig_else_bb_id, Vec::new(), BranchKind::Else));
+                        if branch_specialization {
+                            match self.jit_bbs[orig_bb_id].branch_counter.dominant_branch() {
+                                BranchKind::Then => {
+                                    todo_bb_ids.push(orig_then_bb_id);
+                                    required_bbs.push((
+                                        orig_else_bb_id,
+                                        Vec::new(),
+                                        BranchKind::Else,
+                                    ));
+                                }
+                                BranchKind::Else => {
+                                    todo_bb_ids.push(orig_else_bb_id);
+                                    required_bbs.push((
+                                        orig_then_bb_id,
+                                        then_types,
+                                        BranchKind::Then,
+                                    ));
+                                }
+                            }
+                        } else {
+                            required_bbs.push((orig_then_bb_id, then_types, BranchKind::Then));
+                            required_bbs.push((orig_else_bb_id, Vec::new(), BranchKind::Else));
+                        }
 
                         BasicBlockNext::If(cond, orig_then_bb_id, orig_else_bb_id)
                     }
@@ -439,18 +462,20 @@ impl JitSpecializedFunc {
                 }
             }
 
-            instrs.push(Instr {
-                local: None,
-                kind: InstrKind::IncrementBranchCounter(
-                    self.module_id,
-                    self.func.id,
-                    self.func_index,
-                    bb_id,
-                    branch_kind,
-                    orig_entry_bb_id,
-                    index,
-                ),
-            });
+            if !branch_specialization {
+                instrs.push(Instr {
+                    local: None,
+                    kind: InstrKind::IncrementBranchCounter(
+                        self.module_id,
+                        self.func.id,
+                        self.func_index,
+                        bb_id,
+                        branch_kind,
+                        orig_entry_bb_id,
+                        index,
+                    ),
+                });
+            }
 
             /*
             Is命令によって分岐している場合、この分岐で型が確定する
@@ -959,6 +984,14 @@ impl BranchCounter {
         match kind {
             BranchKind::Then => self.then_count += 1,
             BranchKind::Else => self.else_count += 1,
+        }
+    }
+
+    pub fn dominant_branch(&self) -> BranchKind {
+        if self.then_count >= self.else_count {
+            BranchKind::Then
+        } else {
+            BranchKind::Else
         }
     }
 }

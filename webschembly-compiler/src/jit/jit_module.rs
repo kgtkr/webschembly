@@ -229,6 +229,7 @@ impl JitModule {
             index,
             global_manager,
             jit_ctx,
+            false,
         );
         module
     }
