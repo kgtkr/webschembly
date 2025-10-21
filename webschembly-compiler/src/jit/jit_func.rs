@@ -69,7 +69,7 @@ impl JitSpecializedFunc {
         jit_ctx: &mut JitCtx,
     ) -> Module {
         // entry_bbのモジュールをベースに拡張する
-        let (mut module, bb_func_id) = self.generate_bb_module(
+        let (mut module, _ /*bb_func_id*/) = self.generate_bb_module(
             func_to_globals,
             func_types,
             self.func.bb_entry,
@@ -87,7 +87,28 @@ impl JitSpecializedFunc {
 
             let entry_bb_info = &self.jit_bbs[self.func.bb_entry].info;
 
-            let locals = self.func.locals.clone();
+            let mut locals = self.func.locals.clone();
+
+            let func_ref_local = locals.push_with(|id| Local {
+                id,
+                typ: LocalType::FuncRef,
+            });
+
+            /*
+            TODO: 本来であれば以下のほうが効率が良いが、BBの分岐の特殊化を行った際に関数も再生成する必要があり面倒なので、一旦TailCallではなくTailCallRefを使った実装を行う
+            BasicBlock {
+                id: BasicBlockId::from(0),
+                instrs: vec![],
+                next: BasicBlockNext::Terminator(BasicBlockTerminator::TailCall(InstrCall {
+                    func_id: bb_func_id,
+                    args: entry_bb_info.args.to_vec(),
+                })),
+            }
+            */
+
+            let (_, bb_global) = self.jit_bbs[self.func.bb_entry]
+                .bb_index_manager
+                .type_args(GLOBAL_LAYOUT_DEFAULT_INDEX);
 
             module.funcs.push_with(|id| Func {
                 id,
@@ -97,11 +118,20 @@ impl JitSpecializedFunc {
                 bb_entry: BasicBlockId::from(0),
                 bbs: [BasicBlock {
                     id: BasicBlockId::from(0),
-                    instrs: vec![],
-                    next: BasicBlockNext::Terminator(BasicBlockTerminator::TailCall(InstrCall {
-                        func_id: bb_func_id,
-                        args: entry_bb_info.args.to_vec(),
-                    })),
+                    instrs: vec![Instr {
+                        local: Some(func_ref_local),
+                        kind: InstrKind::GlobalGet(bb_global.id),
+                    }],
+                    next: BasicBlockNext::Terminator(BasicBlockTerminator::TailCallRef(
+                        InstrCallRef {
+                            func: func_ref_local,
+                            args: entry_bb_info.args.to_vec(),
+                            func_type: FuncType {
+                                args: entry_bb_info.arg_types(&self.func, &VecMap::default()),
+                                ret: self.func.ret_type,
+                            },
+                        },
+                    )),
                 }]
                 .into_iter()
                 .collect(),
