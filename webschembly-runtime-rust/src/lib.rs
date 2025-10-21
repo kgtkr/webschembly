@@ -417,3 +417,35 @@ pub extern "C" fn instantiate_bb(
 
     0
 }
+
+#[unsafe(no_mangle)]
+pub extern "C" fn increment_branch_counter(
+    module_id: i32,
+    func_id: i32,
+    func_index: i32,
+    bb_id: i32,
+    index: i32,
+    kind: i32, // 0: Then, 1: Else
+) {
+    log::debug!(
+        "increment_branch_counter: module_id={}, func_id={}, func_index={}, bb_id={}, index={}, kind={}",
+        module_id,
+        func_id,
+        func_index,
+        bb_id,
+        index,
+        kind
+    );
+
+    COMPILER.with(|compiler| {
+        let mut compiler = RefMut::map(compiler.borrow_mut(), |c| c.as_mut().unwrap());
+        compiler.increment_branch_counter(
+            module_id as usize,
+            func_id as usize,
+            func_index as usize,
+            bb_id as usize,
+            index as usize,
+            kind as usize,
+        )
+    });
+}

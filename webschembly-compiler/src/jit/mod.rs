@@ -9,6 +9,7 @@ use jit_ctx::JitCtx;
 use webschembly_compiler_ir::*;
 mod global_layout;
 mod jit_func;
+pub use jit_func::BranchKind;
 
 #[derive(Debug)]
 pub struct Jit {
@@ -71,5 +72,17 @@ impl Jit {
             global_manager,
             &mut self.ctx,
         )
+    }
+
+    pub fn increment_branch_counter(
+        &mut self,
+        module_id: ModuleId,
+        func_id: FuncId,
+        func_index: usize,
+        bb_id: BasicBlockId,
+        index: usize,
+        kind: BranchKind,
+    ) {
+        self.jit_module[module_id].increment_branch_counter(func_id, func_index, bb_id, index, kind)
     }
 }

@@ -3,7 +3,7 @@ use rustc_hash::FxHashMap;
 use super::global_layout::GLOBAL_LAYOUT_MAX_SIZE;
 use super::jit_ctx::JitCtx;
 use super::jit_func::JitSpecializedFunc;
-use crate::ir_generator::GlobalManager;
+use crate::{ir_generator::GlobalManager, jit::jit_func::BranchKind};
 use vec_map::{HasId, VecMap};
 use webschembly_compiler_ir::*;
 #[derive(Debug)]
@@ -231,5 +231,17 @@ impl JitModule {
             jit_ctx,
         );
         module
+    }
+
+    pub fn increment_branch_counter(
+        &mut self,
+        func_id: FuncId,
+        func_index: usize,
+        bb_id: BasicBlockId,
+        index: usize,
+        kind: BranchKind,
+    ) {
+        let jit_func = self.jit_funcs.get_mut(&(func_id, func_index)).unwrap();
+        jit_func.increment_branch_counter(bb_id, index, kind);
     }
 }

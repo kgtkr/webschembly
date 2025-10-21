@@ -203,6 +203,21 @@ pub struct PhiIncomingValue {
     pub local: LocalId,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum BranchKind {
+    Then,
+    Else,
+}
+
+impl fmt::Display for BranchKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            BranchKind::Then => write!(f, "then"),
+            BranchKind::Else => write!(f, "else"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum InstrKind {
     Nop,                        // 左辺はNoneでなければならない
@@ -211,6 +226,7 @@ pub enum InstrKind {
     InstantiateFunc(ModuleId, FuncId, usize),
     InstantiateClosureFunc(LocalId, LocalId, usize), // InstantiateFuncのModuleId/FuncIdを動的に指定する版
     InstantiateBB(ModuleId, FuncId, usize, BasicBlockId, usize),
+    IncrementBranchCounter(ModuleId, FuncId, usize, BasicBlockId, usize, BranchKind),
     Bool(bool),
     Int(i64),
     Float(NotNan<f64>),
@@ -508,6 +524,7 @@ macro_rules! impl_InstrKind_local_usages {
                         InstrKind::Nop
                         | InstrKind::InstantiateFunc(..)
                         | InstrKind::InstantiateBB(..)
+                        | InstrKind::IncrementBranchCounter(..)
                         | InstrKind::Bool(..)
                         | InstrKind::Int(..)
                         | InstrKind::Float(..)
@@ -640,6 +657,7 @@ impl InstrKind {
             InstrKind::InstantiateFunc(..)
             | InstrKind::InstantiateClosureFunc(..)
             | InstrKind::InstantiateBB(..)
+            | InstrKind::IncrementBranchCounter(..)
             | InstrKind::SetRef(..)
             | InstrKind::SetMutFuncRef(..)
             | InstrKind::Call(..)
@@ -707,6 +725,25 @@ impl fmt::Display for DisplayInFunc<'_, &'_ InstrKind> {
                     func_index,
                     bb_id.display(self.meta.meta),
                     index,
+                )
+            }
+            InstrKind::IncrementBranchCounter(
+                module_id,
+                func_id,
+                func_index,
+                bb_id,
+                index,
+                branch_kind,
+            ) => {
+                write!(
+                    f,
+                    "increment_branch_counter({}, {}, {}, {}, {}, {})",
+                    module_id.display(self.meta.meta),
+                    func_id.display(self.meta.meta),
+                    func_index,
+                    bb_id.display(self.meta.meta),
+                    index,
+                    branch_kind,
                 )
             }
             InstrKind::Bool(b) => write!(f, "{}", b),
