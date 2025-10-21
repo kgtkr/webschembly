@@ -10,7 +10,7 @@
     if_let_guard,
     impl_trait_in_assoc_type
 )]
-#![allow(clippy::vec_init_then_push)]
+#![allow(clippy::vec_init_then_push, clippy::too_many_arguments)]
 pub mod compiler;
 pub mod fxbihashmap;
 pub mod ir_generator;
