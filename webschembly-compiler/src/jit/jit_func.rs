@@ -16,14 +16,14 @@ use vec_map::{HasId, VecMap};
 use webschembly_compiler_ir::*;
 
 #[derive(Debug)]
-pub struct JitFunc {
+pub struct JitSpecializedFunc {
     module_id: ModuleId,
     func_index: usize,
     func: Func,
     jit_bbs: VecMap<BasicBlockId, JitBB>,
 }
 
-impl JitFunc {
+impl JitSpecializedFunc {
     pub fn new(
         module_id: ModuleId,
         global_manager: &mut GlobalManager,
