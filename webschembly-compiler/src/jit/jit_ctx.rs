@@ -1,7 +1,7 @@
 use rustc_hash::FxHashMap;
 
+use super::global_layout::ClosureGlobalLayout;
 use super::jit_config::JitConfig;
-use super::jit_module::ClosureGlobalLayout;
 use webschembly_compiler_ir::*;
 
 #[derive(Debug)]

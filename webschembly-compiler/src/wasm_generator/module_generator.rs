@@ -39,6 +39,7 @@ struct ModuleGenerator<'a> {
     write_char_func: u32,
     int_to_string_func: u32,
     float_to_string_func: u32,
+    increment_branch_counter_func: u32,
     throw_webassembly_exception: u32,
     // wasm section
     imports: ImportSection,
@@ -95,6 +96,7 @@ impl<'a> ModuleGenerator<'a> {
             write_char_func: 0,
             int_to_string_func: 0,
             float_to_string_func: 0,
+            increment_branch_counter_func: 0,
             throw_webassembly_exception: 0,
             imports: ImportSection::new(),
             types: TypeSection::new(),
@@ -690,6 +692,22 @@ impl<'a> ModuleGenerator<'a> {
             },
         );
 
+        self.increment_branch_counter_func = self.add_runtime_function(
+            "increment_branch_counter",
+            WasmFuncType {
+                params: vec![
+                    ValType::I32,
+                    ValType::I32,
+                    ValType::I32,
+                    ValType::I32,
+                    ValType::I32,
+                    ValType::I32,
+                    ValType::I32,
+                ],
+                results: vec![],
+            },
+        );
+
         self.throw_webassembly_exception = self.add_runtime_function(
             "throw_webassembly_exception",
             WasmFuncType {
@@ -1075,6 +1093,30 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 function.instruction(&Instruction::Call(
                     self.module_generator.instantiate_bb_func,
                 ));
+            }
+            ir::InstrKind::IncrementBranchCounter(
+                module_id,
+                func_id,
+                func_index,
+                bb_id,
+                kind,
+                source_bb_id,
+                source_index,
+            ) => {
+                function.instruction(&Instruction::I32Const(usize::from(*module_id) as i32));
+                function.instruction(&Instruction::I32Const(usize::from(*func_id) as i32));
+                function.instruction(&Instruction::I32Const(*func_index as i32));
+                function.instruction(&Instruction::I32Const(usize::from(*bb_id) as i32));
+                function.instruction(&Instruction::I32Const(match kind {
+                    ir::BranchKind::Then => 0,
+                    ir::BranchKind::Else => 1,
+                }));
+                function.instruction(&Instruction::I32Const(usize::from(*source_bb_id) as i32));
+                function.instruction(&Instruction::I32Const(*source_index as i32));
+                function.instruction(&Instruction::Call(
+                    self.module_generator.increment_branch_counter_func,
+                ));
+                function.instruction(&Instruction::I32Const(0));
             }
             ir::InstrKind::Bool(b) => {
                 function.instruction(&Instruction::I32Const(if *b { 1 } else { 0 }));

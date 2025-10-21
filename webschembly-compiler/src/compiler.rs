@@ -146,6 +146,45 @@ impl Compiler {
         postprocess(&mut module, &mut self.global_manager);
         module
     }
+
+    pub fn increment_branch_counter(
+        &mut self,
+        module_id: usize,
+        func_id: usize,
+        func_index: usize,
+        bb_id: usize,
+        kind: usize, // 0: Then, 1: Else
+        source_bb_id: usize,
+        source_index: usize,
+    ) -> Option<ir::Module> {
+        let module_id = ir::ModuleId::from(module_id);
+        let func_id = ir::FuncId::from(func_id);
+        let bb_id = ir::BasicBlockId::from(bb_id);
+        let jit = self.jit.as_mut().expect("JIT is not enabled");
+        let kind = match kind {
+            0 => ir::BranchKind::Then,
+            1 => ir::BranchKind::Else,
+            _ => panic!("Invalid branch kind"),
+        };
+        jit.increment_branch_counter(
+            &mut self.global_manager,
+            module_id,
+            func_id,
+            func_index,
+            bb_id,
+            kind,
+            ir::BasicBlockId::from(source_bb_id),
+            source_index,
+        )
+        .map(|mut module| {
+            preprocess_module(&mut module);
+            if jit.config().enable_optimization {
+                optimize_module(&mut module);
+            }
+            postprocess(&mut module, &mut self.global_manager);
+            module
+        })
+    }
 }
 
 fn preprocess_module(module: &mut ir::Module) {
