@@ -226,7 +226,7 @@ pub enum InstrKind {
     InstantiateFunc(ModuleId, FuncId, usize),
     InstantiateClosureFunc(LocalId, LocalId, usize), // InstantiateFuncのModuleId/FuncIdを動的に指定する版
     InstantiateBB(ModuleId, FuncId, usize, BasicBlockId, usize),
-    IncrementBranchCounter(ModuleId, FuncId, usize, BasicBlockId, usize, BranchKind),
+    IncrementBranchCounter(ModuleId, FuncId, usize, BasicBlockId, BranchKind),
     Bool(bool),
     Int(i64),
     Float(NotNan<f64>),
@@ -732,17 +732,15 @@ impl fmt::Display for DisplayInFunc<'_, &'_ InstrKind> {
                 func_id,
                 func_index,
                 bb_id,
-                index,
                 branch_kind,
             ) => {
                 write!(
                     f,
-                    "increment_branch_counter({}, {}, {}, {}, {}, {})",
+                    "increment_branch_counter({}, {}, {}, {}, {})",
                     module_id.display(self.meta.meta),
                     func_id.display(self.meta.meta),
                     func_index,
                     bb_id.display(self.meta.meta),
-                    index,
                     branch_kind,
                 )
             }

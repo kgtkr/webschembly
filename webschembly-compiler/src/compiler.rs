@@ -154,7 +154,6 @@ impl Compiler {
         func_id: usize,
         func_index: usize,
         bb_id: usize,
-        index: usize,
         kind: usize, // 0: Then, 1: Else
     ) {
         let module_id = ir::ModuleId::from(module_id);
@@ -166,7 +165,7 @@ impl Compiler {
             1 => BranchKind::Else,
             _ => panic!("Invalid branch kind"),
         };
-        jit.increment_branch_counter(module_id, func_id, func_index, bb_id, index, kind);
+        jit.increment_branch_counter(module_id, func_id, func_index, bb_id, kind);
     }
 }
 

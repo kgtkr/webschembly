@@ -701,7 +701,6 @@ impl<'a> ModuleGenerator<'a> {
                     ValType::I32,
                     ValType::I32,
                     ValType::I32,
-                    ValType::I32,
                 ],
                 results: vec![],
             },
@@ -1093,19 +1092,11 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     self.module_generator.instantiate_bb_func,
                 ));
             }
-            ir::InstrKind::IncrementBranchCounter(
-                module_id,
-                func_id,
-                func_index,
-                bb_id,
-                branch_id,
-                kind,
-            ) => {
+            ir::InstrKind::IncrementBranchCounter(module_id, func_id, func_index, bb_id, kind) => {
                 function.instruction(&Instruction::I32Const(usize::from(*module_id) as i32));
                 function.instruction(&Instruction::I32Const(usize::from(*func_id) as i32));
                 function.instruction(&Instruction::I32Const(*func_index as i32));
                 function.instruction(&Instruction::I32Const(usize::from(*bb_id) as i32));
-                function.instruction(&Instruction::I32Const(*branch_id as i32));
                 function.instruction(&Instruction::I32Const(match kind {
                     ir::BranchKind::Then => 0,
                     ir::BranchKind::Else => 1,

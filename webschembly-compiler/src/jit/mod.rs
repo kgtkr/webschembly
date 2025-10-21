@@ -80,9 +80,8 @@ impl Jit {
         func_id: FuncId,
         func_index: usize,
         bb_id: BasicBlockId,
-        index: usize,
         kind: BranchKind,
     ) {
-        self.jit_module[module_id].increment_branch_counter(func_id, func_index, bb_id, index, kind)
+        self.jit_module[module_id].increment_branch_counter(func_id, func_index, bb_id, kind)
     }
 }

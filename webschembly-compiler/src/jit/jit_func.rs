@@ -49,7 +49,7 @@ impl JitSpecializedFunc {
                 bb_id: bb.id,
                 info: bb_infos[bb.id].clone(),
                 bb_index_manager: BBIndexManager::new(bb_to_globals[bb.id]),
-                jit_specialized_bbs: FxHashMap::default(),
+                branch_counter: BranchCounter::default(),
             })
             .collect::<VecMap<BasicBlockId, _>>();
 
@@ -266,11 +266,6 @@ impl JitSpecializedFunc {
         global_manager: &mut GlobalManager,
         jit_ctx: &mut JitCtx,
     ) -> (Module, FuncId /* BBの実態を表す関数 */) {
-        self.jit_bbs[orig_entry_bb_id]
-            .jit_specialized_bbs
-            .entry(index)
-            .or_insert_with(JitSpecializedBB::default);
-
         let mut required_closure_idx = Vec::new();
 
         {
@@ -801,18 +796,8 @@ impl JitSpecializedFunc {
         (module, body_func_id)
     }
 
-    pub fn increment_branch_counter(
-        &mut self,
-        bb_id: BasicBlockId,
-        index: usize,
-        kind: BranchKind,
-    ) {
-        self.jit_bbs[bb_id]
-            .jit_specialized_bbs
-            .get_mut(&index)
-            .unwrap()
-            .branch_counter
-            .increment(kind);
+    pub fn increment_branch_counter(&mut self, bb_id: BasicBlockId, kind: BranchKind) {
+        self.jit_bbs[bb_id].branch_counter.increment(kind);
     }
 }
 
@@ -877,7 +862,7 @@ struct JitBB {
     bb_id: BasicBlockId,
     info: BBInfo,
     bb_index_manager: BBIndexManager,
-    jit_specialized_bbs: FxHashMap<usize, JitSpecializedBB>,
+    branch_counter: BranchCounter,
 }
 
 impl HasId for JitBB {
@@ -885,12 +870,6 @@ impl HasId for JitBB {
     fn id(&self) -> Self::Id {
         self.bb_id
     }
-}
-
-#[derive(Debug, Clone, Default)]
-struct JitSpecializedBB {
-    // BBがマージされている場合、最後のBBの値になる
-    branch_counter: BranchCounter,
 }
 
 #[derive(Debug, Clone)]

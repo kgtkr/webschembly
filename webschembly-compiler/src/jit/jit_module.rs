@@ -238,10 +238,9 @@ impl JitModule {
         func_id: FuncId,
         func_index: usize,
         bb_id: BasicBlockId,
-        index: usize,
         kind: BranchKind,
     ) {
         let jit_func = self.jit_funcs.get_mut(&(func_id, func_index)).unwrap();
-        jit_func.increment_branch_counter(bb_id, index, kind);
+        jit_func.increment_branch_counter(bb_id, kind);
     }
 }
