@@ -75,12 +75,24 @@ impl Jit {
 
     pub fn increment_branch_counter(
         &mut self,
+        global_manager: &mut GlobalManager,
         module_id: ModuleId,
         func_id: FuncId,
         func_index: usize,
         bb_id: BasicBlockId,
         kind: BranchKind,
-    ) {
-        self.jit_module[module_id].increment_branch_counter(func_id, func_index, bb_id, kind)
+        source_bb_id: BasicBlockId,
+        source_index: usize,
+    ) -> Option<Module> {
+        self.jit_module[module_id].increment_branch_counter(
+            global_manager,
+            &mut self.ctx,
+            func_id,
+            func_index,
+            bb_id,
+            kind,
+            source_bb_id,
+            source_index,
+        )
     }
 }

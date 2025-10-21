@@ -154,7 +154,9 @@ impl Compiler {
         func_index: usize,
         bb_id: usize,
         kind: usize, // 0: Then, 1: Else
-    ) {
+        source_bb_id: usize,
+        source_index: usize,
+    ) -> Option<ir::Module> {
         let module_id = ir::ModuleId::from(module_id);
         let func_id = ir::FuncId::from(func_id);
         let bb_id = ir::BasicBlockId::from(bb_id);
@@ -164,7 +166,24 @@ impl Compiler {
             1 => ir::BranchKind::Else,
             _ => panic!("Invalid branch kind"),
         };
-        jit.increment_branch_counter(module_id, func_id, func_index, bb_id, kind);
+        jit.increment_branch_counter(
+            &mut self.global_manager,
+            module_id,
+            func_id,
+            func_index,
+            bb_id,
+            kind,
+            ir::BasicBlockId::from(source_bb_id),
+            source_index,
+        )
+        .map(|mut module| {
+            preprocess_module(&mut module);
+            if jit.config().enable_optimization {
+                optimize_module(&mut module);
+            }
+            postprocess(&mut module, &mut self.global_manager);
+            module
+        })
     }
 }
 

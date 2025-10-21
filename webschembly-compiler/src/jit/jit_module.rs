@@ -236,12 +236,25 @@ impl JitModule {
 
     pub fn increment_branch_counter(
         &mut self,
+        global_manager: &mut GlobalManager,
+        jit_ctx: &mut JitCtx,
         func_id: FuncId,
         func_index: usize,
         bb_id: BasicBlockId,
         kind: BranchKind,
-    ) {
+        source_bb_id: BasicBlockId,
+        source_index: usize,
+    ) -> Option<Module> {
         let jit_func = self.jit_funcs.get_mut(&(func_id, func_index)).unwrap();
-        jit_func.increment_branch_counter(bb_id, kind);
+        jit_func.increment_branch_counter(
+            &self.func_to_globals,
+            &self.func_types,
+            global_manager,
+            jit_ctx,
+            bb_id,
+            kind,
+            source_bb_id,
+            source_index,
+        )
     }
 }

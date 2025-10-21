@@ -425,17 +425,52 @@ pub extern "C" fn increment_branch_counter(
     func_index: i32,
     bb_id: i32,
     kind: i32, // 0: Then, 1: Else
-    _source_bb_id: i32,
-    _source_index: i32,
+    source_bb_id: i32,
+    source_index: i32,
 ) {
     COMPILER.with(|compiler| {
         let mut compiler = RefMut::map(compiler.borrow_mut(), |c| c.as_mut().unwrap());
-        compiler.increment_branch_counter(
-            module_id as usize,
-            func_id as usize,
-            func_index as usize,
-            bb_id as usize,
-            kind as usize,
-        )
+        let wasm_ir = compiler
+            .increment_branch_counter(
+                module_id as usize,
+                func_id as usize,
+                func_index as usize,
+                bb_id as usize,
+                kind as usize,
+                source_bb_id as usize,
+                source_index as usize,
+            )
+            .map(|module| {
+                let wasm = webschembly_compiler::wasm_generator::generate(&module);
+                let ir = if cfg!(debug_assertions) {
+                    let ir = format!("{}", module.display());
+                    Some(ir.into_bytes())
+                } else {
+                    None
+                };
+                (wasm, ir)
+            });
+
+        if let Some((wasm, ir)) = wasm_ir {
+            log::debug!(
+                "branch specialize: module_id={}, func_id={}, func_index={}, bb_id={}, kind={}, source_bb_id={}, source_index={}",
+                module_id,
+                func_id,
+                func_index,
+                bb_id,
+                kind,
+                source_bb_id,
+                source_index
+            );
+            unsafe {
+                env::js_instantiate(
+                    wasm.as_ptr() as i32,
+                    wasm.len() as i32,
+                    ir.as_ref().map(|ir| ir.as_ptr() as i32).unwrap_or(0),
+                    ir.as_ref().map(|ir| ir.len() as i32).unwrap_or(0),
+                    0,
+                )
+            }
+        }
     });
 }

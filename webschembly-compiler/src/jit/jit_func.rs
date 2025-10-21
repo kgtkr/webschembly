@@ -865,8 +865,32 @@ impl JitSpecializedFunc {
         (module, body_func_id)
     }
 
-    pub fn increment_branch_counter(&mut self, bb_id: BasicBlockId, kind: BranchKind) {
+    pub fn increment_branch_counter(
+        &mut self,
+        func_to_globals: &VecMap<FuncId, GlobalId>,
+        func_types: &VecMap<FuncId, FuncType>,
+        global_manager: &mut GlobalManager,
+        jit_ctx: &mut JitCtx,
+        bb_id: BasicBlockId,
+        kind: BranchKind,
+        source_bb_id: BasicBlockId,
+        source_index: usize,
+    ) -> Option<Module> {
         self.jit_bbs[bb_id].branch_counter.increment(kind);
+        if self.jit_bbs[bb_id].branch_counter.should_specialize() {
+            let (module, _ /*bb_func_id*/) = self.generate_bb_module(
+                func_to_globals,
+                func_types,
+                source_bb_id,
+                source_index,
+                global_manager,
+                jit_ctx,
+                true,
+            );
+            Some(module)
+        } else {
+            None
+        }
     }
 }
 
@@ -993,6 +1017,11 @@ impl BranchCounter {
         } else {
             BranchKind::Else
         }
+    }
+
+    pub fn should_specialize(&self) -> bool {
+        let total = self.then_count + self.else_count;
+        total >= 20
     }
 }
 
