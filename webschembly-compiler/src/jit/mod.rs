@@ -7,6 +7,8 @@ use jit_module::JitModule;
 mod jit_ctx;
 use jit_ctx::JitCtx;
 use webschembly_compiler_ir::*;
+mod global_layout;
+mod jit_func;
 
 #[derive(Debug)]
 pub struct Jit {
