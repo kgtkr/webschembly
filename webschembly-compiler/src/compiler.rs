@@ -7,7 +7,6 @@ use crate::ir_processor::optimizer::remove_unreachable_bb;
 use crate::ir_processor::optimizer::remove_unused_local;
 use crate::ir_processor::ssa::{debug_assert_ssa, remove_phi};
 use crate::ir_processor::ssa_optimizer::ssa_optimize;
-use crate::jit::BranchKind;
 use crate::jit::{Jit, JitConfig};
 use crate::lexer;
 use crate::sexpr_parser;
@@ -161,8 +160,8 @@ impl Compiler {
         let bb_id = ir::BasicBlockId::from(bb_id);
         let jit = self.jit.as_mut().expect("JIT is not enabled");
         let kind = match kind {
-            0 => BranchKind::Then,
-            1 => BranchKind::Else,
+            0 => ir::BranchKind::Then,
+            1 => ir::BranchKind::Else,
             _ => panic!("Invalid branch kind"),
         };
         jit.increment_branch_counter(module_id, func_id, func_index, bb_id, kind);

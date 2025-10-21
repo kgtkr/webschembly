@@ -1116,6 +1116,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 function.instruction(&Instruction::Call(
                     self.module_generator.increment_branch_counter_func,
                 ));
+                function.instruction(&Instruction::I32Const(0));
             }
             ir::InstrKind::Bool(b) => {
                 function.instruction(&Instruction::I32Const(if *b { 1 } else { 0 }));

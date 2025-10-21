@@ -389,8 +389,8 @@ impl JitSpecializedFunc {
                             }
                         }
 
-                        required_bbs.push((orig_then_bb_id, then_types));
-                        required_bbs.push((orig_else_bb_id, Vec::new()));
+                        required_bbs.push((orig_then_bb_id, then_types, BranchKind::Then));
+                        required_bbs.push((orig_else_bb_id, Vec::new(), BranchKind::Else));
 
                         BasicBlockNext::If(cond, orig_then_bb_id, orig_else_bb_id)
                     }
@@ -429,7 +429,7 @@ impl JitSpecializedFunc {
             body_func.bbs[orig_bb_id].next = new_next;
         }
 
-        for (bb_id, types) in required_bbs {
+        for (bb_id, types, branch_kind) in required_bbs {
             let mut instrs = Vec::new();
             for instr in &body_func.bbs[bb_id].instrs {
                 // ジャンプ先のBBのPhiはここに移動
@@ -438,6 +438,19 @@ impl JitSpecializedFunc {
                     instrs.push(instr.clone());
                 }
             }
+
+            instrs.push(Instr {
+                local: None,
+                kind: InstrKind::IncrementBranchCounter(
+                    self.module_id,
+                    self.func.id,
+                    self.func_index,
+                    bb_id,
+                    branch_kind,
+                    orig_entry_bb_id,
+                    index,
+                ),
+            });
 
             /*
             Is命令によって分岐している場合、この分岐で型が確定する
@@ -893,6 +906,7 @@ struct JitBB {
     bb_id: BasicBlockId,
     info: BBInfo,
     bb_index_manager: BBIndexManager,
+    // BB Indexごとにカウンターを持つと、まとめて複数の分岐をマージできないためBBごとに持つ
     branch_counter: BranchCounter,
 }
 
@@ -932,12 +946,6 @@ impl HasId for BBInfo {
     fn id(&self) -> Self::Id {
         self.bb_id
     }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum BranchKind {
-    Then,
-    Else,
 }
 
 #[derive(Debug, Clone, Copy, Default)]

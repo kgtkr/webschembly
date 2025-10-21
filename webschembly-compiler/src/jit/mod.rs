@@ -9,7 +9,6 @@ use jit_ctx::JitCtx;
 use webschembly_compiler_ir::*;
 mod global_layout;
 mod jit_func;
-pub use jit_func::BranchKind;
 
 #[derive(Debug)]
 pub struct Jit {

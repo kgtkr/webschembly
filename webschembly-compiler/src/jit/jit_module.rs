@@ -3,7 +3,7 @@ use rustc_hash::FxHashMap;
 use super::global_layout::GLOBAL_LAYOUT_MAX_SIZE;
 use super::jit_ctx::JitCtx;
 use super::jit_func::JitSpecializedFunc;
-use crate::{ir_generator::GlobalManager, jit::jit_func::BranchKind};
+use crate::ir_generator::GlobalManager;
 use vec_map::{HasId, VecMap};
 use webschembly_compiler_ir::*;
 #[derive(Debug)]
