@@ -425,16 +425,9 @@ pub extern "C" fn increment_branch_counter(
     func_index: i32,
     bb_id: i32,
     kind: i32, // 0: Then, 1: Else
+    _source_bb_id: i32,
+    _source_index: i32,
 ) {
-    log::debug!(
-        "increment_branch_counter: module_id={}, func_id={}, func_index={}, bb_id={}, kind={}",
-        module_id,
-        func_id,
-        func_index,
-        bb_id,
-        kind
-    );
-
     COMPILER.with(|compiler| {
         let mut compiler = RefMut::map(compiler.borrow_mut(), |c| c.as_mut().unwrap());
         compiler.increment_branch_counter(
