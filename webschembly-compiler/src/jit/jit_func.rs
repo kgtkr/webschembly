@@ -508,6 +508,7 @@ impl JitSpecializedFunc {
                     } => {
                         if bb_id == orig_entry_bb_id {
                             // 削除
+                            // TODO: 前方ジャンプを考慮
                         } else {
                             // TODO: 例えば if (true) { bb1 } else { bb2 } phi(local1 from bb1, local2 from bb2) のような場合、後続の処理でincomingを消す必要がある
                             instrs.push(Instr {
