@@ -1236,7 +1236,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     }
                 }
                 function.instruction(&Instruction::StructNew(
-                    self.module_generator.closure_type_from_ir(&env_types),
+                    self.module_generator.closure_type_from_ir(env_types),
                 ));
             }
             ir::InstrKind::CallRef(call_ref) => {
