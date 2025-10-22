@@ -588,7 +588,7 @@ impl<'a> ModuleGenerator<'a> {
             self.global_count += 1;
 
             let val_type = self.convert_local_type(export_global.typ);
-            let init_expr = self.local_type_init_expr(export_global.typ);
+            let init_expr = ConstExpr::extended([self.local_type_init_expr(export_global.typ)]);
             self.globals.global(
                 GlobalType {
                     val_type,
@@ -835,46 +835,46 @@ impl<'a> ModuleGenerator<'a> {
         }
     }
 
-    fn local_type_init_expr(&mut self, ty: ir::LocalType) -> ConstExpr {
+    fn local_type_init_expr(&mut self, ty: ir::LocalType) -> Instruction<'static> {
         match ty {
-            ir::LocalType::Ref(typ) => ConstExpr::ref_null(HeapType::Concrete(self.ref_type(typ))),
-            ir::LocalType::VariadicArgs => ConstExpr::ref_null(HeapType::Concrete(self.args_type)),
+            ir::LocalType::Ref(typ) => Instruction::RefNull(HeapType::Concrete(self.ref_type(typ))),
+            ir::LocalType::VariadicArgs => Instruction::RefNull(HeapType::Concrete(self.args_type)),
             ir::LocalType::MutFuncRef => {
-                ConstExpr::ref_null(HeapType::Concrete(self.mut_func_ref_type))
+                Instruction::RefNull(HeapType::Concrete(self.mut_func_ref_type))
             }
             ir::LocalType::EntrypointTable => {
-                ConstExpr::ref_null(HeapType::Concrete(self.entrypoint_table_type))
+                Instruction::RefNull(HeapType::Concrete(self.entrypoint_table_type))
             }
-            ir::LocalType::FuncRef => ConstExpr::ref_null(HeapType::Abstract {
+            ir::LocalType::FuncRef => Instruction::RefNull(HeapType::Abstract {
                 shared: false,
                 ty: AbstractHeapType::Func,
             }),
-            ir::LocalType::Type(ir::Type::Obj) => ConstExpr::ref_null(HeapType::Abstract {
+            ir::LocalType::Type(ir::Type::Obj) => Instruction::RefNull(HeapType::Abstract {
                 shared: false,
                 ty: AbstractHeapType::Eq,
             }),
-            ir::LocalType::Type(ir::Type::Val(ir::ValType::Bool)) => ConstExpr::i32_const(0),
-            ir::LocalType::Type(ir::Type::Val(ir::ValType::Int)) => ConstExpr::i64_const(0),
-            ir::LocalType::Type(ir::Type::Val(ir::ValType::Float)) => ConstExpr::f64_const(0.0),
-            ir::LocalType::Type(ir::Type::Val(ir::ValType::Char)) => ConstExpr::i32_const(0),
+            ir::LocalType::Type(ir::Type::Val(ir::ValType::Bool)) => Instruction::I32Const(0),
+            ir::LocalType::Type(ir::Type::Val(ir::ValType::Int)) => Instruction::I64Const(0),
+            ir::LocalType::Type(ir::Type::Val(ir::ValType::Float)) => Instruction::F64Const(0.0),
+            ir::LocalType::Type(ir::Type::Val(ir::ValType::Char)) => Instruction::I32Const(0),
             ir::LocalType::Type(ir::Type::Val(ir::ValType::String)) => {
-                ConstExpr::ref_null(HeapType::Concrete(self.string_type))
+                Instruction::RefNull(HeapType::Concrete(self.string_type))
             }
             ir::LocalType::Type(ir::Type::Val(ir::ValType::Symbol)) => {
-                ConstExpr::ref_null(HeapType::Concrete(self.symbol_type))
+                Instruction::RefNull(HeapType::Concrete(self.symbol_type))
             }
-            ir::LocalType::Type(ir::Type::Val(ir::ValType::Nil)) => ConstExpr::i32_const(0),
+            ir::LocalType::Type(ir::Type::Val(ir::ValType::Nil)) => Instruction::I32Const(0),
             ir::LocalType::Type(ir::Type::Val(ir::ValType::Cons)) => {
-                ConstExpr::ref_null(HeapType::Concrete(self.cons_type))
+                Instruction::RefNull(HeapType::Concrete(self.cons_type))
             }
             ir::LocalType::Type(ir::Type::Val(ir::ValType::Closure)) => {
-                ConstExpr::ref_null(HeapType::Concrete(self.closure_type))
+                Instruction::RefNull(HeapType::Concrete(self.closure_type))
             }
             ir::LocalType::Type(ir::Type::Val(ir::ValType::Vector)) => {
-                ConstExpr::ref_null(HeapType::Concrete(self.vector_type))
+                Instruction::RefNull(HeapType::Concrete(self.vector_type))
             }
             ir::LocalType::Type(ir::Type::Val(ir::ValType::UVector(kind))) => {
-                ConstExpr::ref_null(HeapType::Concrete(self.uvector_kind_to_type_idx(kind)))
+                Instruction::RefNull(HeapType::Concrete(self.uvector_kind_to_type_idx(kind)))
             }
         }
     }
@@ -966,7 +966,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             Structured::Simple(bb_id) => {
                 let bb = &func.bbs[*bb_id];
                 for expr in &bb.instrs {
-                    self.gen_assign(function, &func.locals, expr);
+                    self.gen_assign(function, expr);
                 }
             }
             Structured::If { cond, then, else_ } => {
@@ -1024,22 +1024,13 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         }
     }
 
-    fn gen_assign(
-        &mut self,
-        function: &mut Function,
-        locals: &VecMap<ir::LocalId, ir::Local>,
-        expr: &ir::Instr,
-    ) {
+    fn gen_assign(&mut self, function: &mut Function, expr: &ir::Instr) {
         if let ir::InstrKind::Nop = expr.kind {
             // desugarである程度は削除しているが、その後の最適化で再度Nopが発生することがあるためここでも除去
             debug_assert!(expr.local.is_none());
             return;
         }
-        if let ir::InstrKind::Uninitialized(_) = expr.kind {
-            // wasmのデフォルト値をそのまま使う
-            return;
-        }
-        self.gen_expr(function, locals, &expr.kind);
+        self.gen_expr(function, &expr.kind);
         if let Some(local) = &expr.local {
             function.instruction(&Instruction::LocalSet(self.local_id_to_idx(*local)));
         } else {
@@ -1047,21 +1038,13 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         }
     }
 
-    fn gen_expr(
-        &mut self,
-        function: &mut Function,
-        locals: &VecMap<ir::LocalId, ir::Local>,
-        expr: &ir::InstrKind,
-    ) {
+    fn gen_expr(&mut self, function: &mut Function, expr: &ir::InstrKind) {
         match expr {
             ir::InstrKind::Nop => {
                 unreachable!("unexpected Nop");
             }
             ir::InstrKind::Phi(..) => {
                 unreachable!("unexpected Phi");
-            }
-            ir::InstrKind::Uninitialized(_) => {
-                unreachable!("unexpected Uninitialized");
             }
             ir::InstrKind::CallClosure(..) => {
                 unreachable!("unexpected CallClosure");
@@ -1232,6 +1215,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             }
             ir::InstrKind::Closure {
                 envs,
+                env_types,
                 module_id,
                 func_id,
                 entrypoint_table,
@@ -1241,15 +1225,18 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 function.instruction(&Instruction::LocalGet(
                     self.local_id_to_idx(*entrypoint_table),
                 ));
-                for env in envs.iter() {
-                    function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*env)));
+                for (i, typ) in env_types.iter().enumerate() {
+                    match envs[i] {
+                        Some(env) => {
+                            function.instruction(&Instruction::LocalGet(self.local_id_to_idx(env)));
+                        }
+                        None => {
+                            function.instruction(&self.module_generator.local_type_init_expr(*typ));
+                        }
+                    }
                 }
-
-                // TODO:IRにクロージャの型情報を持たせるべき
                 function.instruction(&Instruction::StructNew(
-                    self.module_generator.closure_type_from_ir(
-                        &envs.iter().map(|env| locals[*env].typ).collect::<Vec<_>>(),
-                    ),
+                    self.module_generator.closure_type_from_ir(&env_types),
                 ));
             }
             ir::InstrKind::CallRef(call_ref) => {

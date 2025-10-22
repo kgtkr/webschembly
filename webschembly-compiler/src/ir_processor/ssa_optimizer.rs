@@ -350,9 +350,9 @@ pub fn constant_folding(
                 InstrKind::ClosureEnv(_, closure, index)
                     if let Some(InstrKind::Closure { envs, .. }) =
                         def_use.get_def_non_move_expr(&func.bbs, closure)
-                        && index < envs.len() =>
+                        && let Some(Some(env)) = envs.get(index) =>
                 {
-                    func.bbs[*bb_id].instrs[expr_idx].kind = InstrKind::Move(envs[index]);
+                    func.bbs[*bb_id].instrs[expr_idx].kind = InstrKind::Move(*env);
                 }
                 InstrKind::EqObj(local1, local2)
                     if let Some(&InstrKind::ToObj(typ1, src1)) =

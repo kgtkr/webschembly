@@ -222,7 +222,6 @@ impl fmt::Display for BranchKind {
 pub enum InstrKind {
     Nop,                        // 左辺はNoneでなければならない
     Phi(Vec<PhiIncomingValue>), // BBの先頭にのみ連続して出現可能(Nopが間に入るのは可)
-    Uninitialized(LocalType), // // IR上で未初期化変数にアクセスすることを認めるとデータフロー解析などが複雑になるので、明示的に「未初期値」を表す命令を用意する
     InstantiateFunc(ModuleId, FuncId, usize),
     InstantiateClosureFunc(LocalId, LocalId, usize), // InstantiateFuncのModuleId/FuncIdを動的に指定する版
     InstantiateBB(ModuleId, FuncId, usize, BasicBlockId, usize),
@@ -255,7 +254,8 @@ pub enum InstrKind {
     Call(InstrCall),
     CallRef(InstrCallRef),
     Closure {
-        envs: Vec<LocalId>,
+        envs: Vec<Option<LocalId>>, // None: letrecなどで使われる未初期化値
+        env_types: Vec<LocalType>,
         module_id: ModuleId,
         func_id: FuncId,
         entrypoint_table: LocalId,
@@ -268,7 +268,7 @@ pub enum InstrKind {
         LocalId,        /* closure */
         usize,          /* env index */
     ),
-    // Uninitializedで初期化されたEnvに対して一度のみ値を設定できる
+    // 未初期化値で初期化されたEnvに対して一度のみ値を設定できる
     ClosureSetEnv(
         Vec<LocalType>, /* env types */
         LocalId,        /* closure */
@@ -365,7 +365,6 @@ macro_rules! impl_InstrKind_local_usages {
                                 yield (&$($mutability)? value.local, LocalUsedFlag::Phi(value.bb));
                             }
                         }
-                        InstrKind::Uninitialized(_) => {}
                         InstrKind::StringToSymbol(id) => yield (id, LocalUsedFlag::NonPhi),
                         InstrKind::Vector(ids) => {
                             for id in ids {
@@ -394,12 +393,15 @@ macro_rules! impl_InstrKind_local_usages {
                         }
                         InstrKind::Closure {
                             envs,
+                            env_types: _,
                             module_id: _,
                             func_id: _,
                             entrypoint_table,
                         } => {
                             for env in envs {
-                                yield (env, LocalUsedFlag::NonPhi);
+                                if let Some(env) = env {
+                                    yield (env, LocalUsedFlag::NonPhi);
+                                }
                             }
                             yield (entrypoint_table, LocalUsedFlag::NonPhi);
                         }
@@ -594,7 +596,6 @@ impl InstrKind {
         match self {
             InstrKind::Phi(..) => InstrKindPurelity::Phi,
             InstrKind::Nop
-            | InstrKind::Uninitialized(_)
             | InstrKind::Bool(..)
             | InstrKind::Int(..)
             | InstrKind::Float(..)
@@ -691,7 +692,6 @@ impl fmt::Display for DisplayInFunc<'_, &'_ InstrKind> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.value {
             InstrKind::Nop => write!(f, "nop"),
-            InstrKind::Uninitialized(typ) => write!(f, "uninitialized<{}>", typ),
             InstrKind::Phi(values) => {
                 write!(f, "phi(")?;
                 for (i, value) in values.iter().enumerate() {
@@ -812,19 +812,31 @@ impl fmt::Display for DisplayInFunc<'_, &'_ InstrKind> {
             }
             InstrKind::Closure {
                 envs,
+                env_types,
                 module_id,
                 func_id,
                 entrypoint_table,
             } => {
+                write!(f, "closure<")?;
+                for (i, typ) in env_types.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ",")?;
+                    }
+                    write!(f, "{}", typ)?;
+                }
                 write!(
                     f,
-                    "closure(entrypoint_table={}, module_id={}, func_id={}",
+                    ">(entrypoint_table={}, module_id={}, func_id={}",
                     entrypoint_table.display(self.meta),
                     module_id.display(self.meta.meta),
                     func_id.display(self.meta.meta)
                 )?;
                 for env in envs {
-                    write!(f, ", {}", env.display(self.meta))?;
+                    write!(f, ", ")?;
+                    match env {
+                        Some(env) => write!(f, "{}", env.display(self.meta))?,
+                        None => write!(f, "(uninitialized)")?,
+                    }
                 }
                 write!(f, ")")
             }
