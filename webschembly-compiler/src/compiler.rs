@@ -196,7 +196,7 @@ fn preprocess_module(module: &mut ir::Module) {
 
 fn optimize_module(module: &mut ir::Module) {
     for func in module.funcs.values_mut() {
-        ssa_optimize(func, true);
+        ssa_optimize(func, Default::default());
     }
 }
 

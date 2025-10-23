@@ -571,8 +571,10 @@ impl InstrKindPurelity {
     // デッドコード削除可能か
     pub fn can_dce(&self) -> bool {
         match self {
-            InstrKindPurelity::Pure | InstrKindPurelity::ImpureRead => true,
-            InstrKindPurelity::Phi | InstrKindPurelity::Effectful => false,
+            InstrKindPurelity::Pure | InstrKindPurelity::Phi | InstrKindPurelity::ImpureRead => {
+                true
+            }
+            InstrKindPurelity::Effectful => false,
         }
     }
 
@@ -580,7 +582,7 @@ impl InstrKindPurelity {
     pub fn can_cse(&self) -> bool {
         match self {
             InstrKindPurelity::Pure => true,
-            InstrKindPurelity::Phi
+            InstrKindPurelity::Phi // phiをcse対象にするとphiの間にmoveが入る可能性があるため不可
             | InstrKindPurelity::ImpureRead
             | InstrKindPurelity::Effectful => false,
         }

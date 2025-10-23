@@ -389,9 +389,22 @@ pub fn constant_folding(
     }
 }
 
-// enable_cseはもう少し汎用的な方法で渡す
-// for jit
-pub fn ssa_optimize(func: &mut Func, enable_cse: bool) {
+#[derive(Debug, Clone, Copy)]
+pub struct SsaOptimizerConfig {
+    pub enable_cse: bool,
+    pub enable_dce: bool,
+}
+
+impl Default for SsaOptimizerConfig {
+    fn default() -> Self {
+        SsaOptimizerConfig {
+            enable_cse: true,
+            enable_dce: true,
+        }
+    }
+}
+
+pub fn ssa_optimize(func: &mut Func, config: SsaOptimizerConfig) {
     let mut def_use = DefUseChain::from_bbs(&func.bbs);
     let rpo = calculate_rpo(&func.bbs, func.bb_entry);
     let predecessors = calc_predecessors(&func.bbs);
@@ -403,10 +416,12 @@ pub fn ssa_optimize(func: &mut Func, enable_cse: bool) {
         copy_propagation(func, &rpo);
         eliminate_redundant_obj(func, &def_use);
         constant_folding(func, &rpo, &def_use);
-        if enable_cse {
+        if config.enable_cse {
             common_subexpression_elimination(func, &dom_tree);
         }
     }
 
-    dead_code_elimination(func, &mut def_use);
+    if config.enable_dce {
+        dead_code_elimination(func, &mut def_use);
+    }
 }
