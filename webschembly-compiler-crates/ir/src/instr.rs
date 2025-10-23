@@ -647,7 +647,7 @@ impl InstrKind {
             | InstrKind::DerefRef(..)
             | InstrKind::VectorLength(..)
             | InstrKind::VectorRef(..)
-            | InstrKind::UVectorLength(..)
+            | InstrKind::UVectorLength(..) // vector/uvectorの長さは不変なのでpureでいいのでは？
             | InstrKind::UVectorRef(..)
             | InstrKind::Car(..)
             | InstrKind::Cdr(..)
@@ -660,7 +660,6 @@ impl InstrKind {
             | InstrKind::DerefMutFuncRef(..)
             | InstrKind::EntrypointTable(..)
             | InstrKind::EntrypointTableRef(..)
-            | InstrKind::SetEntrypointTable(..)
             // closureの環境は可変である
             | InstrKind::Closure { .. }
             | InstrKind::ClosureEnv(..) => InstrKindPurelity::ImpureRead,
@@ -676,6 +675,7 @@ impl InstrKind {
             | InstrKind::GlobalSet(..)
             | InstrKind::Display(..)
             | InstrKind::WriteChar(..)
+            | InstrKind::SetEntrypointTable(..)
             | InstrKind::VectorSet(..)
             | InstrKind::UVectorSet(..)
             | InstrKind::ClosureSetEnv(..) => InstrKindPurelity::Effectful,
