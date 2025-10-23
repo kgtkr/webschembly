@@ -425,3 +425,26 @@ pub fn ssa_optimize(func: &mut Func, config: SsaOptimizerConfig) {
         dead_code_elimination(func, &mut def_use);
     }
 }
+
+pub fn inlining(module: &mut Module) {
+    for func_id in module.funcs.keys().collect::<Vec<_>>() {
+        // TODO: 無駄なcloneではあるが一旦
+        let mut func = module.funcs[func_id].clone();
+        inlining_func(module, &mut func);
+        module.funcs[func_id] = func;
+    }
+}
+
+fn inlining_func(module: &Module, func: &mut Func) {
+    // 一旦ClosureCallの末尾呼び出しのみに対応
+    let def_use = DefUseChain::from_bbs(&func.bbs);
+    for bb_id in func.bbs.keys().collect::<Vec<_>>() {
+        if let BasicBlockNext::Terminator(BasicBlockTerminator::TailCallClosure(call_closure)) =
+            &func.bbs[bb_id].next
+            && let Some(InstrKind::Closure { func_id, .. }) =
+                def_use.get_def_non_move_expr(&func.bbs, call_closure.closure)
+        {
+            // TODO:
+        }
+    }
+}

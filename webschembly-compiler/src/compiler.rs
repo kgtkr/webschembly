@@ -6,6 +6,7 @@ use crate::ir_processor::desugar::desugar;
 use crate::ir_processor::optimizer::remove_unreachable_bb;
 use crate::ir_processor::optimizer::remove_unused_local;
 use crate::ir_processor::ssa::{debug_assert_ssa, remove_phi};
+use crate::ir_processor::ssa_optimizer::inlining;
 use crate::ir_processor::ssa_optimizer::ssa_optimize;
 use crate::jit::{Jit, JitConfig};
 use crate::lexer;
@@ -198,6 +199,8 @@ fn optimize_module(module: &mut ir::Module) {
     for func in module.funcs.values_mut() {
         ssa_optimize(func, Default::default());
     }
+    // TODO: 別の最適化と同じように繰り返し適用するようにする
+    inlining(module);
 }
 
 fn postprocess(module: &mut ir::Module, global_manager: &mut GlobalManager) {
