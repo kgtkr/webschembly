@@ -279,10 +279,10 @@ pub fn constant_folding(
                         (Some(&InstrKind::Bool(false)), _) | (_, Some(&InstrKind::Bool(false))) => {
                             func.bbs[*bb_id].instrs[expr_idx].kind = InstrKind::Bool(false);
                         }
-                        (Some(&InstrKind::Bool(true)), Some(_)) => {
+                        (Some(&InstrKind::Bool(true)), _) => {
                             func.bbs[*bb_id].instrs[expr_idx].kind = InstrKind::Move(local2);
                         }
-                        (Some(_), Some(&InstrKind::Bool(true))) => {
+                        (_, Some(&InstrKind::Bool(true))) => {
                             func.bbs[*bb_id].instrs[expr_idx].kind = InstrKind::Move(local1);
                         }
                         _ => {}
@@ -298,10 +298,10 @@ pub fn constant_folding(
                         (Some(&InstrKind::Bool(true)), _) | (_, Some(&InstrKind::Bool(true))) => {
                             func.bbs[*bb_id].instrs[expr_idx].kind = InstrKind::Bool(true);
                         }
-                        (Some(&InstrKind::Bool(false)), Some(_)) => {
+                        (Some(&InstrKind::Bool(false)), _) => {
                             func.bbs[*bb_id].instrs[expr_idx].kind = InstrKind::Move(local2);
                         }
-                        (Some(_), Some(&InstrKind::Bool(false))) => {
+                        (_, Some(&InstrKind::Bool(false))) => {
                             func.bbs[*bb_id].instrs[expr_idx].kind = InstrKind::Move(local1);
                         }
                         _ => {}
