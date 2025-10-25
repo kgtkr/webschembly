@@ -185,9 +185,7 @@ pub fn constant_folding(
     rpo_nodes.sort_by_key(|id| rpo.get(id).unwrap());
 
     for bb_id in &rpo_nodes {
-        let expr_indices = (0..func.bbs[*bb_id].instrs.len()).collect::<Vec<_>>();
-
-        for expr_idx in expr_indices {
+        for expr_idx in 0..func.bbs[*bb_id].instrs.len() {
             let instr = &func.bbs[*bb_id].instrs[expr_idx];
             match instr.kind {
                 InstrKind::AddInt(local1, local2)
