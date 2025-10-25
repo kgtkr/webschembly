@@ -179,7 +179,19 @@ pub fn constant_folding(
     func: &mut Func,
     rpo: &FxHashMap<BasicBlockId, usize>,
     def_use: &DefUseChain,
+    doms: &FxHashMap<BasicBlockId, FxHashSet<BasicBlockId>>,
 ) {
+    // ClosureSetEnvの収集
+    // ClosureSetEnvは各Closure/indexに対して一度のみしか実行されないことが保証されているため定数畳み込み可能
+    let mut closure_set_envs = FxHashMap::default();
+    for bb_id in func.bbs.keys() {
+        for (expr_idx, instr) in func.bbs[bb_id].instrs.iter().enumerate() {
+            if let InstrKind::ClosureSetEnv(_, closure_local, index, val_local) = instr.kind {
+                closure_set_envs.insert((closure_local, index), (val_local, bb_id, expr_idx));
+            }
+        }
+    }
+
     // TODO: オーバーフローを考慮
     let mut rpo_nodes = func.bbs.keys().collect::<Vec<_>>();
     rpo_nodes.sort_by_key(|id| rpo.get(id).unwrap());
@@ -347,10 +359,18 @@ pub fn constant_folding(
                 }
                 InstrKind::ClosureEnv(_, closure, index)
                     if let Some(InstrKind::Closure { envs, .. }) =
-                        def_use.get_def_non_move_expr(&func.bbs, closure)
-                        && let Some(Some(env)) = envs.get(index) =>
+                        def_use.get_def_non_move_expr(&func.bbs, closure) =>
                 {
-                    func.bbs[*bb_id].instrs[expr_idx].kind = InstrKind::Move(*env);
+                    let env = envs[index];
+                    if let Some(env) = env {
+                        func.bbs[*bb_id].instrs[expr_idx].kind = InstrKind::Move(env)
+                    } else if let Some(&(env, bb_id2, expr_idx2)) =
+                        closure_set_envs.get(&(closure, index))
+                        && doms[bb_id].contains(&bb_id2)
+                        && (bb_id2 != *bb_id || expr_idx2 < expr_idx)
+                    {
+                        func.bbs[*bb_id].instrs[expr_idx].kind = InstrKind::Move(env);
+                    }
                 }
                 InstrKind::EqObj(local1, local2)
                     if let Some(&InstrKind::ToObj(typ1, src1)) =
@@ -413,7 +433,7 @@ pub fn ssa_optimize(func: &mut Func, config: SsaOptimizerConfig) {
         debug_assert_ssa(func);
         copy_propagation(func, &rpo);
         eliminate_redundant_obj(func, &def_use);
-        constant_folding(func, &rpo, &def_use);
+        constant_folding(func, &rpo, &def_use, &doms);
         if config.enable_cse {
             common_subexpression_elimination(func, &dom_tree);
         }
