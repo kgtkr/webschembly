@@ -1,4 +1,4 @@
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::ir_processor::{
     cfg_analyzer::{DomTreeNode, build_dom_tree, calc_doms, calc_predecessors, calculate_rpo},
@@ -179,15 +179,25 @@ pub fn constant_folding(
     func: &mut Func,
     rpo: &FxHashMap<BasicBlockId, usize>,
     def_use: &DefUseChain,
+    doms: &FxHashMap<BasicBlockId, FxHashSet<BasicBlockId>>,
 ) {
+    // ClosureSetEnvの収集
+    // ClosureSetEnvは各Closure/indexに対して一度のみしか実行されないことが保証されているため定数畳み込み可能
+    let mut closure_set_envs = FxHashMap::default();
+    for bb_id in func.bbs.keys() {
+        for (expr_idx, instr) in func.bbs[bb_id].instrs.iter().enumerate() {
+            if let InstrKind::ClosureSetEnv(_, closure_local, index, val_local) = instr.kind {
+                closure_set_envs.insert((closure_local, index), (val_local, bb_id, expr_idx));
+            }
+        }
+    }
+
     // TODO: オーバーフローを考慮
     let mut rpo_nodes = func.bbs.keys().collect::<Vec<_>>();
     rpo_nodes.sort_by_key(|id| rpo.get(id).unwrap());
 
     for bb_id in &rpo_nodes {
-        let expr_indices = (0..func.bbs[*bb_id].instrs.len()).collect::<Vec<_>>();
-
-        for expr_idx in expr_indices {
+        for expr_idx in 0..func.bbs[*bb_id].instrs.len() {
             let instr = &func.bbs[*bb_id].instrs[expr_idx];
             match instr.kind {
                 InstrKind::AddInt(local1, local2)
@@ -279,10 +289,10 @@ pub fn constant_folding(
                         (Some(&InstrKind::Bool(false)), _) | (_, Some(&InstrKind::Bool(false))) => {
                             func.bbs[*bb_id].instrs[expr_idx].kind = InstrKind::Bool(false);
                         }
-                        (Some(&InstrKind::Bool(true)), Some(_)) => {
+                        (Some(&InstrKind::Bool(true)), _) => {
                             func.bbs[*bb_id].instrs[expr_idx].kind = InstrKind::Move(local2);
                         }
-                        (Some(_), Some(&InstrKind::Bool(true))) => {
+                        (_, Some(&InstrKind::Bool(true))) => {
                             func.bbs[*bb_id].instrs[expr_idx].kind = InstrKind::Move(local1);
                         }
                         _ => {}
@@ -298,10 +308,10 @@ pub fn constant_folding(
                         (Some(&InstrKind::Bool(true)), _) | (_, Some(&InstrKind::Bool(true))) => {
                             func.bbs[*bb_id].instrs[expr_idx].kind = InstrKind::Bool(true);
                         }
-                        (Some(&InstrKind::Bool(false)), Some(_)) => {
+                        (Some(&InstrKind::Bool(false)), _) => {
                             func.bbs[*bb_id].instrs[expr_idx].kind = InstrKind::Move(local2);
                         }
-                        (Some(_), Some(&InstrKind::Bool(false))) => {
+                        (_, Some(&InstrKind::Bool(false))) => {
                             func.bbs[*bb_id].instrs[expr_idx].kind = InstrKind::Move(local1);
                         }
                         _ => {}
@@ -349,10 +359,18 @@ pub fn constant_folding(
                 }
                 InstrKind::ClosureEnv(_, closure, index)
                     if let Some(InstrKind::Closure { envs, .. }) =
-                        def_use.get_def_non_move_expr(&func.bbs, closure)
-                        && index < envs.len() =>
+                        def_use.get_def_non_move_expr(&func.bbs, closure) =>
                 {
-                    func.bbs[*bb_id].instrs[expr_idx].kind = InstrKind::Move(envs[index]);
+                    let env = envs[index];
+                    if let Some(env) = env {
+                        func.bbs[*bb_id].instrs[expr_idx].kind = InstrKind::Move(env)
+                    } else if let Some(&(env, bb_id2, expr_idx2)) =
+                        closure_set_envs.get(&(closure, index))
+                        && doms[bb_id].contains(&bb_id2)
+                        && (bb_id2 != *bb_id || expr_idx2 < expr_idx)
+                    {
+                        func.bbs[*bb_id].instrs[expr_idx].kind = InstrKind::Move(env);
+                    }
                 }
                 InstrKind::EqObj(local1, local2)
                     if let Some(&InstrKind::ToObj(typ1, src1)) =
@@ -389,9 +407,24 @@ pub fn constant_folding(
     }
 }
 
-// enable_cseはもう少し汎用的な方法で渡す
-// for jit
-pub fn ssa_optimize(func: &mut Func, enable_cse: bool) {
+#[derive(Debug, Clone, Copy)]
+pub struct SsaOptimizerConfig {
+    pub enable_cse: bool,
+    pub enable_dce: bool,
+    pub enable_inlining: bool,
+}
+
+impl Default for SsaOptimizerConfig {
+    fn default() -> Self {
+        SsaOptimizerConfig {
+            enable_cse: true,
+            enable_dce: true,
+            enable_inlining: true,
+        }
+    }
+}
+
+pub fn ssa_optimize(func: &mut Func, config: SsaOptimizerConfig) {
     let mut def_use = DefUseChain::from_bbs(&func.bbs);
     let rpo = calculate_rpo(&func.bbs, func.bb_entry);
     let predecessors = calc_predecessors(&func.bbs);
@@ -402,11 +435,250 @@ pub fn ssa_optimize(func: &mut Func, enable_cse: bool) {
         debug_assert_ssa(func);
         copy_propagation(func, &rpo);
         eliminate_redundant_obj(func, &def_use);
-        constant_folding(func, &rpo, &def_use);
-        if enable_cse {
+        constant_folding(func, &rpo, &def_use, &doms);
+        if config.enable_cse {
             common_subexpression_elimination(func, &dom_tree);
         }
     }
 
-    dead_code_elimination(func, &mut def_use);
+    if config.enable_dce {
+        dead_code_elimination(func, &mut def_use);
+    }
+}
+
+pub fn inlining(module: &mut Module) {
+    let mut funcs = VecMap::new();
+    let inliner = ModuleInliner::new(module);
+    for func_id in module.funcs.keys() {
+        let func = inliner.inlining(func_id);
+        funcs.insert_node(func);
+    }
+
+    module.funcs = funcs;
+}
+
+#[derive(Debug, Clone)]
+struct ModuleInliner<'a> {
+    module: &'a Module,
+    func_inliners: FxHashMap<FuncId, FuncInliner>,
+}
+
+impl<'a> ModuleInliner<'a> {
+    fn new(module: &'a Module) -> Self {
+        let mut func_inliners = FxHashMap::default();
+        for (func_id, func) in module.funcs.iter() {
+            let def_use = DefUseChain::from_bbs(&func.bbs);
+            let mut call_funcs = FxHashMap::default();
+            for bb_id in func.bbs.keys() {
+                if let BasicBlockNext::Terminator(BasicBlockTerminator::TailCallClosure(
+                    call_closure,
+                )) = &func.bbs[bb_id].next
+                    // TODO: func_idはそのモジュール内にあるとは限らない
+                    && let Some(InstrKind::Closure {
+                        func_id: call_func_id,
+                        ..
+                    }) = def_use.get_def_non_move_expr(&func.bbs, call_closure.closure)
+                {
+                    // TODO: ここでdesugerのようなことをするのはあまりきれいではない
+                    call_funcs.insert(
+                        bb_id,
+                        InstrCall {
+                            func_id: *call_func_id,
+                            args: {
+                                let mut args = Vec::new();
+                                args.push(call_closure.closure);
+                                args.extend(&call_closure.args);
+                                args
+                            },
+                        },
+                    );
+                }
+            }
+            func_inliners.insert(func_id, FuncInliner { call_funcs });
+        }
+
+        ModuleInliner {
+            module,
+            func_inliners,
+        }
+    }
+
+    fn inlining(&self, func_id: FuncId) -> Func {
+        // インライン展開対象の関数が再帰的に依存している関数も含む
+        // 自信を呼び出している箇所がないなら、自身を含まない
+        let mut required_func_ids = {
+            let mut required_func_ids = FxHashSet::default();
+            let mut worklist = vec![func_id];
+            while let Some(current_func_id) = worklist.pop() {
+                for required_func in self.func_inliners[&current_func_id].call_funcs.values() {
+                    if required_func_ids.insert(required_func.func_id) {
+                        worklist.push(required_func.func_id);
+                    }
+                }
+            }
+            required_func_ids
+        };
+
+        if required_func_ids.is_empty() {
+            // required_func_ids={} なら自身をそのまま返すべき
+            return self.module.funcs[func_id].clone();
+        }
+
+        required_func_ids.insert(func_id);
+
+        let mut bbs = VecMap::<BasicBlockId, BasicBlock>::new();
+        let mut locals = VecMap::<LocalId, Local>::new();
+        let mut merge_func_infos = FxHashMap::default();
+
+        for &required_func_id in &required_func_ids {
+            let mut local_map = FxHashMap::default();
+            for (local_id, &local) in self.module.funcs[required_func_id].locals.iter() {
+                let new_local_id = locals.push_with(|new_local_id| Local {
+                    id: new_local_id,
+                    ..local
+                });
+                local_map.insert(local_id, new_local_id);
+            }
+            let mut bb_map = FxHashMap::default();
+            for bb_id in self.module.funcs[required_func_id].bbs.keys() {
+                let new_bb_id = bbs.allocate_key();
+                bb_map.insert(bb_id, new_bb_id);
+            }
+            let merge_func_info = MergeFuncInfo {
+                entry_bb: bbs.allocate_key(),
+                args_phi_incomings: self.module.funcs[required_func_id]
+                    .args
+                    .iter()
+                    .map(|_| vec![])
+                    .collect(),
+                local_map,
+                bb_map,
+            };
+            merge_func_infos.insert(required_func_id, merge_func_info);
+        }
+
+        for &required_func_id in &required_func_ids {
+            let func_inliner = &self.func_inliners[&required_func_id];
+            for (bb_id, bb) in self.module.funcs[required_func_id].bbs.iter() {
+                let merge_func_info = &merge_func_infos[&required_func_id];
+
+                let mut new_bb = BasicBlock {
+                    id: merge_func_info.bb_map[&bb_id],
+                    ..bb.clone()
+                };
+                for instr in &mut new_bb.instrs {
+                    if let InstrKind::Phi(incomings) = &mut instr.kind {
+                        for incoming in incomings {
+                            incoming.bb = merge_func_info.bb_map[&incoming.bb];
+                        }
+                    }
+                }
+                for bb_id in new_bb.next.bb_ids_mut() {
+                    *bb_id = merge_func_info.bb_map[bb_id];
+                }
+                for (local_id, _) in new_bb.local_usages_mut() {
+                    *local_id = merge_func_info.local_map[local_id];
+                }
+
+                if let Some(call) = func_inliner.call_funcs.get(&bb_id) {
+                    let args = call
+                        .args
+                        .iter()
+                        .map(|arg| merge_func_info.local_map[arg])
+                        .collect::<Vec<_>>();
+
+                    let call_func_entry_bb_id = merge_func_infos[&call.func_id].entry_bb;
+                    let args_phi_incomings = &mut merge_func_infos
+                        .get_mut(&call.func_id)
+                        .unwrap()
+                        .args_phi_incomings;
+                    for (i, &arg) in args.iter().enumerate() {
+                        args_phi_incomings[i].push(PhiIncomingValue {
+                            local: arg,
+                            bb: new_bb.id,
+                        });
+                    }
+
+                    new_bb.next = BasicBlockNext::Jump(call_func_entry_bb_id);
+                }
+
+                bbs.insert_node(new_bb);
+            }
+        }
+
+        // 関数全体の引数を用意
+        // 関数の引数の仮想的な生成場所であるBBを追加し、そのbb_idから引数を受け取るようなphiノードを追加
+        let entry_bb_id = bbs.push_with(|entry_bb_id| BasicBlock {
+            id: entry_bb_id,
+            instrs: vec![],
+            next: BasicBlockNext::Jump(merge_func_infos[&func_id].entry_bb),
+        });
+        let args = {
+            let mut args = Vec::new();
+            for arg_local in &self.module.funcs[func_id].args {
+                let new_local_id = locals.push_with(|new_local_id| Local {
+                    id: new_local_id,
+                    ..self.module.funcs[func_id].locals[*arg_local]
+                });
+                args.push(new_local_id);
+            }
+
+            let args_phi_incomings = &mut merge_func_infos
+                .get_mut(&func_id)
+                .unwrap()
+                .args_phi_incomings;
+            for (i, &arg) in args.iter().enumerate() {
+                args_phi_incomings[i].push(PhiIncomingValue {
+                    local: arg,
+                    bb: entry_bb_id,
+                });
+            }
+
+            args
+        };
+
+        for (merge_func_id, merge_func_info) in &merge_func_infos {
+            bbs.insert_node(BasicBlock {
+                id: merge_func_info.entry_bb,
+                instrs: merge_func_info
+                    .args_phi_incomings
+                    .iter()
+                    .enumerate()
+                    .map(|(i, incomings)| Instr {
+                        local: Some(
+                            merge_func_info.local_map[&self.module.funcs[*merge_func_id].args[i]],
+                        ),
+                        kind: InstrKind::Phi(incomings.clone()),
+                    })
+                    .collect(),
+                next: BasicBlockNext::Jump(
+                    merge_func_info.bb_map[&self.module.funcs[*merge_func_id].bb_entry],
+                ),
+            });
+        }
+
+        Func {
+            id: func_id,
+            bb_entry: entry_bb_id,
+            locals,
+            ret_type: self.module.funcs[func_id].ret_type,
+            args,
+            bbs,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct FuncInliner {
+    // あるBBの末尾がCallClosureかつ、FuncIdを静的に特定できる場合のId
+    call_funcs: FxHashMap<BasicBlockId, InstrCall>,
+}
+
+#[derive(Debug, Clone)]
+struct MergeFuncInfo {
+    // argsのphiノード用
+    entry_bb: BasicBlockId,
+    args_phi_incomings: Vec<Vec<PhiIncomingValue>>,
+    local_map: FxHashMap<LocalId, LocalId>,
+    bb_map: FxHashMap<BasicBlockId, BasicBlockId>,
 }

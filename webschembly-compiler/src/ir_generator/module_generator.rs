@@ -509,14 +509,9 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                             env_index: i,
                             env_types: env_types.clone(),
                         });
-                        let undef_local = self.local(env_types[i]);
-                        self.exprs.push(Instr {
-                            local: Some(undef_local),
-                            kind: InstrKind::Uninitialized(env_types[i]),
-                        });
-                        captures.push(undef_local);
+                        captures.push(None);
                     } else {
-                        captures.push(*self.local_ids.get(capture).unwrap());
+                        captures.push(Some(*self.local_ids.get(capture).unwrap()));
                     }
                 }
 
@@ -524,6 +519,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     local: Some(val_type_local),
                     kind: InstrKind::Closure {
                         envs: captures,
+                        env_types,
                         func_id,
                         module_id: self.module_generator.id,
                         entrypoint_table: entrypoint_table_local,

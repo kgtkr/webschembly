@@ -11,7 +11,7 @@ use crate::ir_processor::cfg_analyzer::calculate_rpo;
 use crate::ir_processor::dataflow::{analyze_liveness, calc_def_use};
 use crate::ir_processor::optimizer::remove_unreachable_bb;
 use crate::ir_processor::ssa::DefUseChain;
-use crate::ir_processor::ssa_optimizer::ssa_optimize;
+use crate::ir_processor::ssa_optimizer::{SsaOptimizerConfig, ssa_optimize};
 use vec_map::{HasId, VecMap};
 use webschembly_compiler_ir::*;
 
@@ -34,7 +34,13 @@ impl JitSpecializedFunc {
         let mut func = func.clone();
         closure_func_assign_types(&mut func, func_index, jit_ctx.closure_global_layout());
         // 共通部分式除去を行うと変数の生存期間が伸びてしまい、JITでのパフォーマンスが落ちるのでここでは行わない
-        ssa_optimize(&mut func, false);
+        ssa_optimize(
+            &mut func,
+            SsaOptimizerConfig {
+                enable_cse: false,
+                ..Default::default()
+            },
+        );
         let bb_to_globals = func
             .bbs
             .keys()
@@ -337,7 +343,14 @@ impl JitSpecializedFunc {
         // これがないとBBの入力に代入している命令を持つBBが残るためSSAにならない
         remove_unreachable_bb(body_func);
         if jit_ctx.config().enable_optimization {
-            ssa_optimize(body_func, false);
+            ssa_optimize(
+                body_func,
+                SsaOptimizerConfig {
+                    enable_cse: false, // 変数の生存期間が伸びてしまうため無効化
+                    enable_dce: false, // ここでやるとmatmulが動かない
+                    ..Default::default()
+                },
+            );
         }
         let def_use_chain = DefUseChain::from_bbs(&body_func.bbs);
 
@@ -541,25 +554,11 @@ impl JitSpecializedFunc {
                 // FuncRefとCall命令はget global命令に置き換えられる
                 match *instr {
                     Instr {
-                        local,
-                        kind: InstrKind::Phi(ref incomings),
-                    } => {
-                        if bb_id == orig_entry_bb_id {
-                            // 削除
-                            // TODO: 前方ジャンプを考慮
-                        } else {
-                            // TODO: 例えば if (true) { bb1 } else { bb2 } phi(local1 from bb1, local2 from bb2) のような場合、後続の処理でincomingを消す必要がある
-                            instrs.push(Instr {
-                                local,
-                                kind: InstrKind::Phi(
-                                    incomings
-                                        .iter()
-                                        .copied()
-                                        .filter(|incoming| /* 後方ジャンプを考慮 */ processed_bb_ids.contains(&incoming.bb))
-                                        .collect(),
-                                ),
-                            });
-                        }
+                        kind: InstrKind::Phi(_),
+                        ..
+                    } if bb_id == orig_entry_bb_id => {
+                        // 削除
+                        // TODO: 前方ジャンプを考慮
                     }
                     Instr {
                         local,
