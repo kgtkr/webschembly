@@ -52,52 +52,56 @@ describe("E2E test", () => {
         srcBuf = await fs.readFile(path.join(sourceDir, filename));
       });
 
-      test("snapshot test", async () => {
-        let exitCode = 0;
-        const stdoutBufs: Uint8Array[] = [];
-        const stderrBufs: Uint8Array[] = [];
-        const runtime = await createRuntime(
-          await createNodeRuntimeEnv({
-            runtimeName: filename,
-            exit: (code) => {
-              exitCode = code;
-            },
-            writeBuf: (fd, buf) => {
-              switch (fd) {
-                case 1:
-                  stdoutBufs.push(new Uint8Array(buf));
-                  break;
-                case 2:
-                  stderrBufs.push(new Uint8Array(buf));
-                  break;
-                default:
-                  throw new Error(`Unsupported file descriptor: ${fd}`);
-              }
-            },
-            loadRuntimeModule: async () => runtimeModule,
-          }),
-          {
-            compilerConfig,
-          }
-        );
+      test(
+        "snapshot test",
+        async () => {
+          let exitCode = 0;
+          const stdoutBufs: Uint8Array[] = [];
+          const stderrBufs: Uint8Array[] = [];
+          const runtime = await createRuntime(
+            await createNodeRuntimeEnv({
+              runtimeName: filename,
+              exit: (code) => {
+                exitCode = code;
+              },
+              writeBuf: (fd, buf) => {
+                switch (fd) {
+                  case 1:
+                    stdoutBufs.push(new Uint8Array(buf));
+                    break;
+                  case 2:
+                    stderrBufs.push(new Uint8Array(buf));
+                    break;
+                  default:
+                    throw new Error(`Unsupported file descriptor: ${fd}`);
+                }
+              },
+              loadRuntimeModule: async () => runtimeModule,
+            }),
+            {
+              compilerConfig,
+            }
+          );
 
-        runtime.loadStdlib();
-        runtime.loadSrc(srcBuf);
-        runtime.cleanup();
+          runtime.loadStdlib();
+          runtime.loadSrc(srcBuf);
+          runtime.cleanup();
 
-        const stdout = new TextDecoder().decode(concatBufs(stdoutBufs));
-        const stderr = new TextDecoder().decode(concatBufs(stderrBufs));
+          const stdout = new TextDecoder().decode(concatBufs(stdoutBufs));
+          const stderr = new TextDecoder().decode(concatBufs(stderrBufs));
 
-        await expect(exitCode).toMatchFileSnapshot(
-          `${snapshotDir}/${filename}-exitCode`
-        );
-        await expect(stdout).toMatchFileSnapshot(
-          `${snapshotDir}/${filename}-stdout`
-        );
-        await expect(stderr).toMatchFileSnapshot(
-          `${snapshotDir}/${filename}-stderr`
-        );
-      }, 60_000);
+          await expect(exitCode).toMatchFileSnapshot(
+            `${snapshotDir}/${filename}-exitCode`
+          );
+          await expect(stdout).toMatchFileSnapshot(
+            `${snapshotDir}/${filename}-stdout`
+          );
+          await expect(stderr).toMatchFileSnapshot(
+            `${snapshotDir}/${filename}-stderr`
+          );
+        },
+        3 * 6 * 1000
+      );
     });
   });
 });
