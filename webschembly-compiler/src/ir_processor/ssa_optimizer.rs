@@ -411,6 +411,7 @@ pub fn constant_folding(
 pub struct SsaOptimizerConfig {
     pub enable_cse: bool,
     pub enable_dce: bool,
+    pub enable_inlining: bool,
 }
 
 impl Default for SsaOptimizerConfig {
@@ -418,6 +419,7 @@ impl Default for SsaOptimizerConfig {
         SsaOptimizerConfig {
             enable_cse: true,
             enable_dce: true,
+            enable_inlining: true,
         }
     }
 }
