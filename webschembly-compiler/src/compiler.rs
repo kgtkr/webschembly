@@ -232,8 +232,10 @@ fn optimize_module(module: &mut ir::Module, config: SsaOptimizerConfig) {
         for func in module.funcs.values_mut() {
             ssa_optimize(func, config);
         }
-        // TODO: 別の最適化と同じように繰り返し適用するようにする
-        inlining(module);
+        if config.enable_inlining {
+            // inliningはInstrKind::Closureのfunc_idに依存しているので、JIT後のモジュールには使えない
+            inlining(module);
+        }
     }
 }
 

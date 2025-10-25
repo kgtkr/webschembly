@@ -473,6 +473,7 @@ impl<'a> ModuleInliner<'a> {
                 if let BasicBlockNext::Terminator(BasicBlockTerminator::TailCallClosure(
                     call_closure,
                 )) = &func.bbs[bb_id].next
+                    // TODO: func_idはそのモジュール内にあるとは限らない
                     && let Some(InstrKind::Closure {
                         func_id: call_func_id,
                         ..
