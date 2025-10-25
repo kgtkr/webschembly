@@ -1,7 +1,4 @@
-use crate::{
-    ir_generator::GlobalManager,
-    ir_processor::ssa_optimizer::{SsaOptimizerConfig, inlining, ssa_optimize},
-};
+use crate::ir_generator::GlobalManager;
 use vec_map::VecMap;
 mod jit_config;
 mod jit_module;
@@ -34,18 +31,8 @@ impl Jit {
     pub fn register_module(
         &mut self,
         global_manager: &mut GlobalManager,
-        mut module: Module,
+        module: Module,
     ) -> Module {
-        for func in module.funcs.values_mut() {
-            ssa_optimize(
-                func,
-                SsaOptimizerConfig {
-                    enable_cse: false,
-                    ..Default::default()
-                },
-            );
-        }
-        inlining(&mut module);
         let module_id = self
             .jit_module
             .push_with(|id| JitModule::new(global_manager, id, module));
