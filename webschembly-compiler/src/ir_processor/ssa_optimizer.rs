@@ -1,4 +1,4 @@
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::ir_processor::{
     cfg_analyzer::{DomTreeNode, build_dom_tree, calc_doms, calc_predecessors, calculate_rpo},
@@ -447,4 +447,104 @@ fn inlining_func(module: &Module, func: &mut Func) {
             // TODO:
         }
     }
+}
+
+#[derive(Debug, Clone)]
+struct ModuleInliner<'a> {
+    module: &'a Module,
+    func_inliners: FxHashMap<FuncId, FuncInliner>,
+}
+
+impl<'a> ModuleInliner<'a> {
+    fn new(module: &'a Module) -> Self {
+        let mut func_inliners = FxHashMap::default();
+        for (func_id, func) in module.funcs.iter() {
+            let def_use = DefUseChain::from_bbs(&func.bbs);
+            let mut call_funcs = FxHashMap::default();
+            for bb_id in func.bbs.keys() {
+                if let BasicBlockNext::Terminator(BasicBlockTerminator::TailCallClosure(
+                    call_closure,
+                )) = &func.bbs[bb_id].next
+                    && let Some(InstrKind::Closure {
+                        func_id: call_func_id,
+                        ..
+                    }) = def_use.get_def_non_move_expr(&func.bbs, call_closure.closure)
+                {
+                    call_funcs.insert(bb_id, *call_func_id);
+                }
+            }
+            func_inliners.insert(
+                func_id,
+                FuncInliner {
+                    def_use,
+                    call_funcs,
+                    func_id,
+                },
+            );
+        }
+
+        ModuleInliner {
+            module,
+            func_inliners,
+        }
+    }
+
+    fn inlining(&self, func_id: FuncId) {
+        // インライン展開対象の関数が再帰的に依存している関数も含む
+        // 自信を呼び出している箇所がないなら、自身を含まない
+        let required_func_ids = {
+            let mut required_func_ids = FxHashSet::default();
+            let mut worklist = vec![func_id];
+            while let Some(current_func_id) = worklist.pop() {
+                for &required_func_id in self.func_inliners[&current_func_id].call_funcs.values() {
+                    if required_func_ids.insert(required_func_id) {
+                        worklist.push(required_func_id);
+                    }
+                }
+            }
+            required_func_ids
+        };
+
+        // TODO: required_func_ids={} なら自信をそのまま返すべき
+        let mut bbs = VecMap::<BasicBlockId, BasicBlock>::new();
+        let mut locals = VecMap::<LocalId, Local>::new();
+        let mut merge_func_infos = FxHashMap::default();
+
+        for &required_func_id in &required_func_ids {
+            let mut local_map = FxHashMap::default();
+            for (local_id, &local) in self.module.funcs[required_func_id].locals.iter() {
+                let new_local_id = locals.push_with(|new_local_id| Local {
+                    id: new_local_id,
+                    ..local
+                });
+                local_map.insert(local_id, new_local_id);
+            }
+            let merge_func_info = MergeFuncInfo {
+                entry_bb: bbs.allocate_key(),
+                args_phi_incomings: FxHashMap::default(),
+                local_map,
+            };
+            merge_func_infos.insert(required_func_id, merge_func_info);
+        }
+
+        for &required_func_id in &required_func_ids {
+            // bbをコピー
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct FuncInliner {
+    def_use: DefUseChain,
+    func_id: FuncId,
+    // あるBBの末尾がCallClosureかつ、FuncIdを静的に特定できる場合のId
+    call_funcs: FxHashMap<BasicBlockId, FuncId>,
+}
+
+#[derive(Debug, Clone)]
+struct MergeFuncInfo {
+    // argsのphiノード用
+    entry_bb: BasicBlockId,
+    args_phi_incomings: FxHashMap<LocalId, PhiIncomingValue>,
+    local_map: FxHashMap<LocalId, LocalId>,
 }
