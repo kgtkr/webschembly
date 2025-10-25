@@ -348,7 +348,6 @@ impl JitSpecializedFunc {
                 SsaOptimizerConfig {
                     enable_cse: false, // 変数の生存期間が伸びてしまうため無効化
                     enable_dce: false, // ここでやるとmatmulが動かない
-                    ..Default::default()
                 },
             );
         }
