@@ -224,6 +224,8 @@ pub enum InstrKind {
     Phi(Vec<PhiIncomingValue>), // BBの先頭にのみ連続して出現可能(Nopが間に入るのは可)
     InstantiateFunc(ModuleId, FuncId, usize),
     InstantiateClosureFunc(LocalId, LocalId, usize), // InstantiateFuncのModuleId/FuncIdを動的に指定する版
+    // TODO: InstantiateBBなどはFooId型ではなくusize型を受け取るべき
+    // 理由: 副作用命令であり、BasicBlockIdの一括置換などで同時に置き換えると意味が変わってしまうため
     InstantiateBB(ModuleId, FuncId, usize, BasicBlockId, usize),
     IncrementBranchCounter(
         ModuleId,
