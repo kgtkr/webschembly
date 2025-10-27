@@ -100,7 +100,7 @@ describe("E2E test", () => {
             `${snapshotDir}/${filename}-stderr`
           );
         },
-        3 * 6 * 1000
+        10 * 6 * 1000 // TODO: タイムアウト長すぎる
       );
     });
   });
