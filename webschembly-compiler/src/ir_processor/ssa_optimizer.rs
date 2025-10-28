@@ -676,9 +676,11 @@ fn inlining_func(
             instrs: merge_func_info
                 .args_phi_incomings
                 .iter()
-                .map(|arg_info| Instr {
+                .enumerate()
+                .map(|(i, arg_info)| Instr {
                     local: Some(arg_info.local),
-                    kind: InstrKind::Phi(arg_info.incomings.clone(), !last),
+                    // i == 0は必ずクロージャであり、毎回引数は変わらない(本当？)ので、non_exhaustive=falseにしてよい
+                    kind: InstrKind::Phi(arg_info.incomings.clone(), i != 0 && !last),
                 })
                 .collect(),
             next: BasicBlockNext::Jump(merge_func_info.entry_bb_id),
