@@ -66,6 +66,20 @@ pub fn calc_doms(
     doms
 }
 
+pub fn calc_rev_doms(
+    doms: &FxHashMap<BasicBlockId, FxHashSet<BasicBlockId>>,
+) -> FxHashMap<BasicBlockId, FxHashSet<BasicBlockId>> {
+    let mut rev_doms: FxHashMap<BasicBlockId, FxHashSet<BasicBlockId>> = FxHashMap::default();
+
+    for (&node, dominated_nodes) in doms {
+        for &dominated in dominated_nodes {
+            rev_doms.entry(dominated).or_default().insert(node);
+        }
+    }
+
+    rev_doms
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DomTreeNode {
     pub id: BasicBlockId,
@@ -243,6 +257,67 @@ pub fn has_critical_edges(cfg: &VecMap<BasicBlockId, BasicBlock>) -> bool {
             if succ_pred_count > 1 {
                 return true;
             }
+        }
+    }
+
+    false
+}
+
+pub fn calc_dominance_frontiers_from_tree(
+    cfg: &VecMap<BasicBlockId, BasicBlock>,
+    dom_tree: &DomTreeNode,
+    predecessors: &FxHashMap<BasicBlockId, Vec<BasicBlockId>>,
+) -> FxHashMap<BasicBlockId, FxHashSet<BasicBlockId>> {
+    let mut dominance_frontiers: FxHashMap<BasicBlockId, FxHashSet<BasicBlockId>> =
+        FxHashMap::default();
+
+    for id in cfg.keys() {
+        dominance_frontiers.insert(id, FxHashSet::default());
+    }
+
+    calc_dominance_frontiers_recursive(dom_tree, cfg, predecessors, &mut dominance_frontiers);
+    dominance_frontiers
+}
+
+fn calc_dominance_frontiers_recursive(
+    node: &DomTreeNode,
+    cfg: &VecMap<BasicBlockId, BasicBlock>,
+    predecessors: &FxHashMap<BasicBlockId, Vec<BasicBlockId>>,
+    dominance_frontiers: &mut FxHashMap<BasicBlockId, FxHashSet<BasicBlockId>>,
+) {
+    let mut df = FxHashSet::default();
+
+    for child in &node.children {
+        calc_dominance_frontiers_recursive(child, cfg, predecessors, dominance_frontiers);
+
+        if let Some(child_df) = dominance_frontiers.get(&child.id) {
+            for &frontier_node in child_df {
+                if !dominates_in_tree(node, frontier_node) {
+                    df.insert(frontier_node);
+                }
+            }
+        }
+    }
+
+    if let Some(block) = cfg.get(node.id) {
+        for successor in block.next.successors() {
+            if !dominates_in_tree(node, successor) {
+                df.insert(successor);
+            }
+        }
+    }
+
+    dominance_frontiers.insert(node.id, df);
+}
+
+fn dominates_in_tree(node: &DomTreeNode, target: BasicBlockId) -> bool {
+    if node.id == target {
+        return true;
+    }
+
+    for child in &node.children {
+        if dominates_in_tree(child, target) {
+            return true;
         }
     }
 
