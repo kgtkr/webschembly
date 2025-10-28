@@ -6,6 +6,7 @@ use crate::ir_processor::desugar::desugar;
 use crate::ir_processor::optimizer::remove_unreachable_bb;
 use crate::ir_processor::optimizer::remove_unused_local;
 use crate::ir_processor::ssa::{debug_assert_ssa, remove_phi};
+use crate::ir_processor::ssa_optimizer::ModuleInliner;
 use crate::ir_processor::ssa_optimizer::SsaOptimizerConfig;
 use crate::ir_processor::ssa_optimizer::inlining;
 use crate::ir_processor::ssa_optimizer::ssa_optimize;
@@ -228,13 +229,15 @@ fn preprocess_module(module: &mut ir::Module) {
 }
 
 fn optimize_module(module: &mut ir::Module, config: SsaOptimizerConfig) {
-    for _ in 0..5 {
-        for func in module.funcs.values_mut() {
-            ssa_optimize(func, config);
-        }
+    let mut module_inliner = ModuleInliner::new(module);
+    let n = 5;
+    for i in 0..n {
         if config.enable_inlining {
             // inliningはInstrKind::Closureのfunc_idに依存しているので、JIT後のモジュールには使えない
-            inlining(module);
+            inlining(module, &mut module_inliner, i == n - 1);
+        }
+        for func in module.funcs.values_mut() {
+            ssa_optimize(func, config);
         }
     }
 }

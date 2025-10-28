@@ -32,7 +32,7 @@ fn remove_phi_in_bb(func: &mut Func, bb_id: BasicBlockId) {
 
     // 先行ブロックごとの並列コピーリストを収集
     for instr in &func.bbs[bb_id].instrs {
-        if let InstrKind::Phi(incomings) = &instr.kind
+        if let InstrKind::Phi(incomings, _) = &instr.kind
             && let Some(result) = instr.local
         {
             for incoming in incomings {
@@ -59,7 +59,7 @@ fn remove_phi_in_bb(func: &mut Func, bb_id: BasicBlockId) {
 
     // 対象ブロックのPHI命令を削除
     for instr in &mut func.bbs[bb_id].instrs {
-        if let InstrKind::Phi(_) = &instr.kind {
+        if let InstrKind::Phi(_, _) = &instr.kind {
             instr.kind = InstrKind::Nop;
             instr.local = None;
         }
@@ -126,12 +126,12 @@ fn assert_ssa(func: &Func) {
             }
 
             if phi_area {
-                if let InstrKind::Phi(_) | InstrKind::Nop = expr.kind {
+                if let InstrKind::Phi(_, _) | InstrKind::Nop = expr.kind {
                     // do nothing
                 } else {
                     phi_area = false;
                 }
-            } else if let InstrKind::Phi(_) = expr.kind {
+            } else if let InstrKind::Phi(_, _) = expr.kind {
                 panic!("phi instruction must be at the beginning of a basic block");
             }
         }
@@ -242,7 +242,9 @@ impl DefUseChain {
                 InstrKind::Move(value) => {
                     local = *value;
                 }
-                InstrKind::Phi(incomings) if incomings.len() == 1 => {
+                InstrKind::Phi(incomings, non_exhaustive)
+                    if incomings.len() == 1 && !*non_exhaustive =>
+                {
                     local = incomings[0].local;
                 }
                 _ => {

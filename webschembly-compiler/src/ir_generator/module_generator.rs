@@ -575,22 +575,25 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 self.current_bb_id = Some(merge_bb_id);
                 self.exprs.push(Instr {
                     local: result,
-                    kind: InstrKind::Phi({
-                        let mut incomings = Vec::new();
-                        if let Some(bb) = then_ended_bb_id {
-                            incomings.push(PhiIncomingValue {
-                                bb,
-                                local: then_result,
-                            });
-                        }
-                        if let Some(bb) = els_ended_bb_id {
-                            incomings.push(PhiIncomingValue {
-                                bb,
-                                local: els_result,
-                            });
-                        }
-                        incomings
-                    }),
+                    kind: InstrKind::Phi(
+                        {
+                            let mut incomings = Vec::new();
+                            if let Some(bb) = then_ended_bb_id {
+                                incomings.push(PhiIncomingValue {
+                                    bb,
+                                    local: then_result,
+                                });
+                            }
+                            if let Some(bb) = els_ended_bb_id {
+                                incomings.push(PhiIncomingValue {
+                                    bb,
+                                    local: els_result,
+                                });
+                            }
+                            incomings
+                        },
+                        false,
+                    ),
                 });
 
                 // thenとelseでset!された変数をphiノードで結合
@@ -607,22 +610,25 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                         let phi_local = self.new_version_ast_local(var_id);
                         self.exprs.push(Instr {
                             local: Some(phi_local),
-                            kind: InstrKind::Phi({
-                                let mut incomings = Vec::new();
-                                if let Some(bb) = then_ended_bb_id {
-                                    incomings.push(PhiIncomingValue {
-                                        bb,
-                                        local: then_local,
-                                    });
-                                }
-                                if let Some(bb) = els_ended_bb_id {
-                                    incomings.push(PhiIncomingValue {
-                                        bb,
-                                        local: els_local,
-                                    });
-                                }
-                                incomings
-                            }),
+                            kind: InstrKind::Phi(
+                                {
+                                    let mut incomings = Vec::new();
+                                    if let Some(bb) = then_ended_bb_id {
+                                        incomings.push(PhiIncomingValue {
+                                            bb,
+                                            local: then_local,
+                                        });
+                                    }
+                                    if let Some(bb) = els_ended_bb_id {
+                                        incomings.push(PhiIncomingValue {
+                                            bb,
+                                            local: els_local,
+                                        });
+                                    }
+                                    incomings
+                                },
+                                false,
+                            ),
                         });
                     }
                 }
@@ -767,7 +773,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                         self.current_bb_id = Some(merge_bb_id);
                         self.exprs.push(Instr {
                             local: result,
-                            kind: InstrKind::Phi(phi_incoming_values),
+                            kind: InstrKind::Phi(phi_incoming_values, false),
                         });
                     }
                 } else {

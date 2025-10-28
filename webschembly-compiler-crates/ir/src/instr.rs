@@ -220,8 +220,8 @@ impl fmt::Display for BranchKind {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum InstrKind {
-    Nop,                        // 左辺はNoneでなければならない
-    Phi(Vec<PhiIncomingValue>), // BBの先頭にのみ連続して出現可能(Nopが間に入るのは可)
+    Nop,                                                   // 左辺はNoneでなければならない
+    Phi(Vec<PhiIncomingValue>, bool /* non exhaustive */), // BBの先頭にのみ連続して出現可能(Nopが間に入るのは可)。non_exhaustive=trueの時incomings.length=1でもコピー伝播などの最適化を行ってはならない(inline化のためのフラグ)
     InstantiateFunc(ModuleId, FuncId, usize),
     InstantiateClosureFunc(LocalId, LocalId, usize), // InstantiateFuncのModuleId/FuncIdを動的に指定する版
     // TODO: InstantiateBBなどはFooId型ではなくusize型を受け取るべき
@@ -362,7 +362,7 @@ macro_rules! impl_InstrKind_local_usages {
                 from_coroutine(
                     #[coroutine]
                     move || match self {
-                        InstrKind::Phi(values) => {
+                        InstrKind::Phi(values, _) => {
                             for value in values.[<iter $($suffix)?>]() {
                                 yield (&$($mutability)? value.local, LocalUsedFlag::Phi(value.bb));
                             }
@@ -696,7 +696,7 @@ impl fmt::Display for DisplayInFunc<'_, &'_ InstrKind> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.value {
             InstrKind::Nop => write!(f, "nop"),
-            InstrKind::Phi(values) => {
+            InstrKind::Phi(values, non_exhaustive) => {
                 write!(f, "phi(")?;
                 for (i, value) in values.iter().enumerate() {
                     if i > 0 {
@@ -708,6 +708,12 @@ impl fmt::Display for DisplayInFunc<'_, &'_ InstrKind> {
                         value.local.display(self.meta),
                         value.bb.display(self.meta.meta),
                     )?;
+                }
+                if *non_exhaustive {
+                    if !values.is_empty() {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "...")?;
                 }
                 write!(f, ")")
             }
