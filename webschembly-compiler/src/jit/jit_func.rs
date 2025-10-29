@@ -335,140 +335,21 @@ impl JitSpecializedFunc {
             body_func.id = id;
             body_func.args = self.jit_bbs[orig_entry_bb_id].info.args.clone();
             body_func.bb_entry = orig_entry_bb_id;
+
             body_func
         });
+
         let body_func = &mut funcs[body_func_id];
+        // これがないとBBの入力に代入している命令を持つBBが残るためSSAにならない
+        remove_unreachable_bb(body_func);
+        // fix_args_assign(body_func);
+
         let assigned_local_to_obj = assign_type_args(
             body_func,
             &self.jit_bbs[orig_entry_bb_id].info.type_params,
             type_args,
         );
-        // これがないとBBの入力に代入している命令を持つBBが残るためSSAにならない
-        remove_unreachable_bb(body_func);
 
-        // 引数に代入している命令がある場合の処理
-        // 引数の受け取る仮想的なBB
-        body_func.bb_entry = body_func.bbs.push_with(|id| BasicBlock {
-            id,
-            instrs: vec![],
-            next: BasicBlockNext::Jump(body_func.bb_entry),
-        });
-
-        let predecessors = calc_predecessors(&body_func.bbs);
-        let rpo = calculate_rpo(&body_func.bbs, body_func.bb_entry);
-        let doms = calc_doms(&body_func.bbs, &rpo, body_func.bb_entry, &predecessors);
-        let rev_doms = calc_rev_doms(&doms);
-        let dom_tree = build_dom_tree(&body_func.bbs, &rpo, body_func.bb_entry, &doms);
-        let dominance_frontiers =
-            calc_dominance_frontiers_from_tree(&body_func.bbs, &dom_tree, &predecessors);
-
-        let arg_set = body_func.args.iter().copied().collect::<FxHashSet<_>>();
-        // 元の引数->(代入用の変数, 引数用の変数)
-        let mut arg_map = FxHashMap::default();
-        let mut local_replacement_by_bb: FxHashMap<BasicBlockId, FxHashMap<LocalId, LocalId>> =
-            FxHashMap::default();
-        let mut phis: FxHashMap<BasicBlockId, Vec<Instr>> = FxHashMap::default();
-
-        for bb in body_func.bbs.values_mut() {
-            // このブロック内の変数置換情報
-            let mut local_replacement = FxHashMap::default();
-
-            for instr in bb.instrs.iter_mut() {
-                for (local, _) in instr.local_usages_mut() {
-                    if let Some(&new_local) = local_replacement.get(local) {
-                        *local = new_local;
-                    }
-                }
-
-                if let Some(local_id) = instr.local {
-                    if arg_set.contains(&local_id) {
-                        log::debug!("Processing instr {:?} {:?}", local_id, instr);
-
-                        let arg_local = body_func.locals[local_id];
-                        let new_local = body_func.locals.push_with(|id| Local { id, ..arg_local });
-                        let new_arg_local =
-                            body_func.locals.push_with(|id| Local { id, ..arg_local });
-                        instr.local = Some(new_local);
-
-                        arg_map.insert(local_id, (new_local, new_arg_local));
-                        local_replacement.insert(local_id, new_local);
-                        for &bb_id in rev_doms.get(&bb.id).unwrap().iter() {
-                            if bb_id != bb.id {
-                                local_replacement_by_bb
-                                    .entry(bb_id)
-                                    .or_default()
-                                    .insert(local_id, new_local);
-                            }
-                        }
-                        let dfs = dominance_frontiers.get(&bb.id).unwrap();
-                        debug_assert_eq!(dfs.len(), 1);
-                        for &df_bb_id in dfs {
-                            let phi_instrs = phis.entry(df_bb_id).or_default();
-                            phi_instrs.push(Instr {
-                                local: Some(local_id),
-                                kind: InstrKind::Phi(
-                                    vec![
-                                        // TODO: incomingsは先行ブロックのみを対象にする必要がある
-                                        PhiIncomingValue {
-                                            bb: body_func.bb_entry,
-                                            local: new_arg_local,
-                                        },
-                                        PhiIncomingValue {
-                                            bb: bb.id,
-                                            local: new_local,
-                                        },
-                                    ],
-                                    false,
-                                ),
-                            });
-                        }
-                    }
-                }
-            }
-
-            for local in bb.next.local_ids_mut() {
-                if let Some(&new_local) = local_replacement.get(local) {
-                    *local = new_local;
-                }
-            }
-        }
-
-        for bb in body_func.bbs.values_mut() {
-            let Some(local_replacement) = local_replacement_by_bb.get(&bb.id) else {
-                continue;
-            };
-
-            for (local, _) in bb.local_usages_mut() {
-                if let Some(&new_local) = local_replacement.get(local) {
-                    *local = new_local;
-                }
-            }
-        }
-
-        for (bb_id, phi_instrs) in phis {
-            let bb = &mut body_func.bbs[bb_id];
-            bb.instrs.splice(0..0, phi_instrs);
-        }
-
-        body_func.args = body_func
-            .args
-            .iter()
-            .map(|&arg| {
-                arg_map
-                    .get(&arg)
-                    .map(|&(_, new_arg)| new_arg)
-                    .unwrap_or(arg)
-            })
-            .collect::<Vec<_>>();
-
-        /*
-         log::debug!(
-             "bb_id {:?}\n{}",
-             orig_entry_bb_id,
-             body_func.display(&Meta::default())
-         );
-
-        */
         if jit_ctx.config().enable_optimization {
             ssa_optimize(
                 body_func,
@@ -592,6 +473,10 @@ impl JitSpecializedFunc {
             body_func.bbs[orig_bb_id].next = new_next;
         }
 
+        let required_bb_set = required_bbs
+            .iter()
+            .map(|(bb_id, _, _)| *bb_id)
+            .collect::<FxHashSet<BasicBlockId>>();
         for (bb_id, types, branch_kind) in required_bbs {
             let mut instrs = Vec::new();
             for instr in &body_func.bbs[bb_id].instrs {
@@ -680,11 +565,18 @@ impl JitSpecializedFunc {
                 // FuncRefとCall命令はget global命令に置き換えられる
                 match *instr {
                     Instr {
-                        kind: InstrKind::Phi(_, _),
+                        kind: InstrKind::Phi(ref incomings, non_exhaustive),
                         ..
-                    } if bb_id == orig_entry_bb_id => {
-                        // 削除
-                        // TODO: 前方ジャンプを考慮
+                    } => {
+                        let new_incomings = incomings
+                            .iter()
+                            .filter(|incoming| !required_bb_set.contains(&incoming.bb))
+                            .cloned()
+                            .collect::<Vec<_>>();
+                        instrs.push(Instr {
+                            local: instr.local,
+                            kind: InstrKind::Phi(new_incomings, non_exhaustive),
+                        });
                     }
                     Instr {
                         local,
@@ -1372,4 +1264,152 @@ pub fn assign_type_args(
         })
     });
     assigned_local_to_obj
+}
+
+fn fix_args_assign(body_func: &mut Func) {
+    // 引数に代入している命令がある場合の処理
+    /*
+        // 引数の受け取る仮想的なBB
+        let new_bb_entry_id = body_func.bbs.allocate_key();
+        let prev_bb_entry_id = body_func.bb_entry;
+
+        for bb in body_func.bbs.values_mut() {
+            for instr in bb.instrs.iter_mut() {
+                if let InstrKind::Phi(incomings, _) = &mut instr.kind {
+                    for incoming in incomings.iter_mut() {
+                        if incoming.bb == prev_bb_entry_id {
+                            // incoming.bb = new_bb_entry_id;
+                        }
+                    }
+                }
+            }
+            for bb_id in bb.next.bb_ids_mut() {
+                if *bb_id == prev_bb_entry_id {
+                    *bb_id = new_bb_entry_id;
+                }
+            }
+        }
+
+        body_func.bbs.insert_node(BasicBlock {
+            id: new_bb_entry_id,
+            instrs: vec![],
+            next: BasicBlockNext::Jump(prev_bb_entry_id),
+        });
+
+        body_func.bb_entry = new_bb_entry_id;
+    */
+
+    let predecessors = calc_predecessors(&body_func.bbs);
+    let rpo = calculate_rpo(&body_func.bbs, body_func.bb_entry);
+    let doms = calc_doms(&body_func.bbs, &rpo, body_func.bb_entry, &predecessors);
+    let rev_doms = calc_rev_doms(&doms);
+    let dom_tree = build_dom_tree(&body_func.bbs, &rpo, body_func.bb_entry, &doms);
+    let dominance_frontiers =
+        calc_dominance_frontiers_from_tree(&body_func.bbs, &dom_tree, &predecessors);
+
+    let arg_set = body_func.args.iter().copied().collect::<FxHashSet<_>>();
+    // 元の引数->(代入用の変数, 引数用の変数)
+    let mut arg_map = FxHashMap::default();
+    let mut local_replacement_by_bb: FxHashMap<BasicBlockId, FxHashMap<LocalId, LocalId>> =
+        FxHashMap::default();
+    let mut phis: FxHashMap<BasicBlockId, Vec<Instr>> = FxHashMap::default();
+
+    for bb in body_func.bbs.values_mut() {
+        // このブロック内の変数置換情報
+        let mut local_replacement = FxHashMap::default();
+
+        for instr in bb.instrs.iter_mut() {
+            for (local, _) in instr.local_usages_mut() {
+                if let Some(&new_local) = local_replacement.get(local) {
+                    *local = new_local;
+                }
+            }
+
+            if let Some(local_id) = instr.local
+                && arg_set.contains(&local_id)
+            {
+                let arg_local = body_func.locals[local_id];
+                let new_local = body_func.locals.push_with(|id| Local { id, ..arg_local });
+
+                let new_arg_local = local_id;
+                //let new_arg_local = body_func.locals.push_with(|id| Local { id, ..arg_local });
+
+                instr.local = Some(new_local);
+
+                arg_map.insert(local_id, (new_local, new_arg_local));
+                local_replacement.insert(local_id, new_local);
+                for &bb_id in rev_doms.get(&bb.id).unwrap().iter() {
+                    if bb_id != bb.id {
+                        local_replacement_by_bb
+                            .entry(bb_id)
+                            .or_default()
+                            .insert(local_id, new_local);
+                    }
+                }
+                let dfs = dominance_frontiers.get(&bb.id).unwrap();
+
+                for &df_bb_id in dfs {
+                    let new_dest = body_func.locals.push_with(|id| Local { id, ..arg_local });
+                    let phi_instrs = phis.entry(df_bb_id).or_default();
+                    phi_instrs.push(Instr {
+                        local: Some(new_dest),
+                        kind: InstrKind::Phi(
+                            vec![
+                                // TODO: incomingsは先行ブロックのみを対象にする必要がある
+                                PhiIncomingValue {
+                                    bb: body_func.bb_entry,
+                                    local: new_arg_local,
+                                },
+                                PhiIncomingValue {
+                                    bb: bb.id,
+                                    local: new_local,
+                                },
+                            ],
+                            false,
+                        ),
+                    });
+                    for df_dom_bb_id in rev_doms.get(&df_bb_id).unwrap().iter() {
+                        local_replacement_by_bb
+                            .entry(*df_dom_bb_id)
+                            .or_default()
+                            .insert(local_id, new_dest);
+                    }
+                }
+            }
+        }
+
+        for local in bb.next.local_ids_mut() {
+            if let Some(&new_local) = local_replacement.get(local) {
+                *local = new_local;
+            }
+        }
+    }
+
+    for bb in body_func.bbs.values_mut() {
+        let Some(local_replacement) = local_replacement_by_bb.get(&bb.id) else {
+            continue;
+        };
+
+        for (local, _) in bb.local_usages_mut() {
+            if let Some(&new_local) = local_replacement.get(local) {
+                *local = new_local;
+            }
+        }
+    }
+
+    for (bb_id, phi_instrs) in phis {
+        let bb = &mut body_func.bbs[bb_id];
+        bb.instrs.splice(0..0, phi_instrs);
+    }
+
+    body_func.args = body_func
+        .args
+        .iter()
+        .map(|&arg| {
+            arg_map
+                .get(&arg)
+                .map(|&(_, new_arg)| new_arg)
+                .unwrap_or(arg)
+        })
+        .collect::<Vec<_>>();
 }
