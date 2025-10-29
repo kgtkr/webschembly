@@ -252,6 +252,26 @@ macro_rules! impl_BasicBlockNext_func_ids {
     };
 }
 
+macro_rules! impl_BasicBlockNext_bb_ids {
+    ($($suffix: ident)?,$($mutability: tt)?) => {
+        paste::paste! {
+            pub fn [<bb_ids $($suffix)?>](&$($mutability)? self) -> impl Iterator<Item = &$($mutability)? BasicBlockId> {
+                from_coroutine(
+                    #[coroutine]
+                    move || match self {
+                        BasicBlockNext::If(_, bb1, bb2) => {
+                            yield bb1;
+                            yield bb2;
+                        }
+                        BasicBlockNext::Jump(bb) => yield bb,
+                        BasicBlockNext::Terminator(_) => {}
+                    },
+                )
+            }
+        }
+    };
+}
+
 impl BasicBlockNext {
     pub fn display<'a>(&self, meta: MetaInFunc<'a>) -> DisplayInFunc<'a, &BasicBlockNext> {
         DisplayInFunc { value: self, meta }
@@ -262,6 +282,14 @@ impl BasicBlockNext {
 
     impl_BasicBlockNext_func_ids!(_mut, mut);
     impl_BasicBlockNext_func_ids!(,);
+
+    impl_BasicBlockNext_bb_ids!(_mut, mut);
+    impl_BasicBlockNext_bb_ids!(,);
+
+    // TODO: bb_idsと同じ内容なので移行する
+    pub fn successors(&self) -> impl Iterator<Item = BasicBlockId> {
+        self.bb_ids().copied()
+    }
 }
 
 impl fmt::Display for DisplayInFunc<'_, &BasicBlockNext> {
@@ -281,24 +309,6 @@ impl fmt::Display for DisplayInFunc<'_, &BasicBlockNext> {
                 write!(f, "{}", terminator.display(self.meta))
             }
         }
-    }
-}
-
-impl BasicBlockNext {
-    pub fn successors(&self) -> impl Iterator<Item = BasicBlockId> {
-        from_coroutine(
-            #[coroutine]
-            move || match self {
-                BasicBlockNext::If(_, t, f) => {
-                    yield *t;
-                    yield *f;
-                }
-                BasicBlockNext::Jump(bb) => {
-                    yield *bb;
-                }
-                BasicBlockNext::Terminator(_) => {}
-            },
-        )
     }
 }
 

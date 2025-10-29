@@ -6,6 +6,9 @@ use crate::ir_processor::desugar::desugar;
 use crate::ir_processor::optimizer::remove_unreachable_bb;
 use crate::ir_processor::optimizer::remove_unused_local;
 use crate::ir_processor::ssa::{debug_assert_ssa, remove_phi};
+use crate::ir_processor::ssa_optimizer::ModuleInliner;
+use crate::ir_processor::ssa_optimizer::SsaOptimizerConfig;
+use crate::ir_processor::ssa_optimizer::inlining;
 use crate::ir_processor::ssa_optimizer::ssa_optimize;
 use crate::jit::{Jit, JitConfig};
 use crate::lexer;
@@ -86,15 +89,28 @@ impl Compiler {
 
         preprocess_module(&mut module);
         if let Some(jit) = &mut self.jit {
+            optimize_module(
+                &mut module,
+                SsaOptimizerConfig {
+                    enable_cse: false,
+                    ..Default::default()
+                },
+            );
             let mut stub_module = jit.register_module(&mut self.global_manager, module);
             preprocess_module(&mut stub_module);
             if jit.config().enable_optimization {
-                optimize_module(&mut stub_module);
+                optimize_module(
+                    &mut stub_module,
+                    SsaOptimizerConfig {
+                        enable_inlining: false,
+                        ..Default::default()
+                    },
+                );
             }
             postprocess(&mut stub_module, &mut self.global_manager);
             Ok(stub_module)
         } else {
-            optimize_module(&mut module);
+            optimize_module(&mut module, Default::default());
             postprocess(&mut module, &mut self.global_manager);
             Ok(module)
         }
@@ -113,7 +129,13 @@ impl Compiler {
             jit.instantiate_func(&mut self.global_manager, module_id, func_id, func_index);
         preprocess_module(&mut module);
         if jit.config().enable_optimization {
-            optimize_module(&mut module);
+            optimize_module(
+                &mut module,
+                SsaOptimizerConfig {
+                    enable_inlining: false,
+                    ..Default::default()
+                },
+            );
         }
         postprocess(&mut module, &mut self.global_manager);
         module
@@ -141,7 +163,13 @@ impl Compiler {
         );
         preprocess_module(&mut module);
         if jit.config().enable_optimization {
-            optimize_module(&mut module);
+            optimize_module(
+                &mut module,
+                SsaOptimizerConfig {
+                    enable_inlining: false,
+                    ..Default::default()
+                },
+            );
         }
         postprocess(&mut module, &mut self.global_manager);
         module
@@ -179,7 +207,13 @@ impl Compiler {
         .map(|mut module| {
             preprocess_module(&mut module);
             if jit.config().enable_optimization {
-                optimize_module(&mut module);
+                optimize_module(
+                    &mut module,
+                    SsaOptimizerConfig {
+                        enable_inlining: false,
+                        ..Default::default()
+                    },
+                );
             }
             postprocess(&mut module, &mut self.global_manager);
             module
@@ -194,9 +228,17 @@ fn preprocess_module(module: &mut ir::Module) {
     }
 }
 
-fn optimize_module(module: &mut ir::Module) {
-    for func in module.funcs.values_mut() {
-        ssa_optimize(func, true);
+fn optimize_module(module: &mut ir::Module, config: SsaOptimizerConfig) {
+    let mut module_inliner = ModuleInliner::new(module);
+    let n = 5;
+    for i in 0..n {
+        if config.enable_inlining {
+            // inliningはInstrKind::Closureのfunc_idに依存しているので、JIT後のモジュールには使えない
+            // inlining(module, &mut module_inliner, i == n - 1);
+        }
+        for func in module.funcs.values_mut() {
+            ssa_optimize(func, config);
+        }
     }
 }
 

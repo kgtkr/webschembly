@@ -2,11 +2,12 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use vec_map::{HasId, VecMap};
 use webschembly_compiler_ir::*;
 
-use crate::ir_processor::cfg_analyzer::has_critical_edges;
+use crate::ir_processor::cfg_analyzer::{calc_predecessors, has_critical_edges};
 
 // 前提条件: クリティカルエッジが存在しない
 pub fn remove_phi(func: &mut Func) {
     debug_assert_no_critical_edge(func);
+    debug_assert_phi_rules(func);
     let bb_ids = func.bbs.keys().collect::<Vec<_>>();
 
     for bb_id in bb_ids {
@@ -17,6 +18,54 @@ pub fn remove_phi(func: &mut Func) {
 fn debug_assert_no_critical_edge(func: &Func) {
     if cfg!(debug_assertions) && has_critical_edges(&func.bbs) {
         panic!("Function has critical edges");
+    }
+}
+
+fn debug_assert_phi_rules(func: &Func) {
+    if cfg!(debug_assertions) {
+        assert_phi_rules(func);
+    }
+}
+
+/*
+phiのルール:
+- 基本ブロックの先頭にまとめて置く(NOPが間に入ってもよい)
+- fromで指定できるBBは必ず先行ブロックである
+- non exhaustive: falseでなければならない
+*/
+fn assert_phi_rules(func: &Func) {
+    let predecessors = calc_predecessors(&func.bbs);
+
+    for bb in func.bbs.values() {
+        let mut phi_area = true;
+
+        for expr in bb.instrs.iter() {
+            if phi_area {
+                match &expr.kind {
+                    InstrKind::Phi(incomings, non_exhaustive) => {
+                        if *non_exhaustive {
+                            panic!("Phi instruction must be exhaustive");
+                        }
+                        for incoming in incomings {
+                            if !predecessors[&bb.id].contains(&incoming.bb) {
+                                panic!(
+                                    "Phi instruction incoming bb {:?} is not a predecessor of bb {:?}",
+                                    incoming.bb, bb.id
+                                );
+                            }
+                        }
+                    }
+                    InstrKind::Nop => {
+                        // do nothing
+                    }
+                    _ => {
+                        phi_area = false;
+                    }
+                }
+            } else if let InstrKind::Phi(_, _) = expr.kind {
+                panic!("phi instruction must be at the beginning of a basic block");
+            }
+        }
     }
 }
 
@@ -32,7 +81,7 @@ fn remove_phi_in_bb(func: &mut Func, bb_id: BasicBlockId) {
 
     // 先行ブロックごとの並列コピーリストを収集
     for instr in &func.bbs[bb_id].instrs {
-        if let InstrKind::Phi(incomings) = &instr.kind
+        if let InstrKind::Phi(incomings, _) = &instr.kind
             && let Some(result) = instr.local
         {
             for incoming in incomings {
@@ -59,7 +108,7 @@ fn remove_phi_in_bb(func: &mut Func, bb_id: BasicBlockId) {
 
     // 対象ブロックのPHI命令を削除
     for instr in &mut func.bbs[bb_id].instrs {
-        if let InstrKind::Phi(_) = &instr.kind {
+        if let InstrKind::Phi(_, _) = &instr.kind {
             instr.kind = InstrKind::Nop;
             instr.local = None;
         }
@@ -126,12 +175,12 @@ fn assert_ssa(func: &Func) {
             }
 
             if phi_area {
-                if let InstrKind::Phi(_) | InstrKind::Nop = expr.kind {
+                if let InstrKind::Phi(_, _) | InstrKind::Nop = expr.kind {
                     // do nothing
                 } else {
                     phi_area = false;
                 }
-            } else if let InstrKind::Phi(_) = expr.kind {
+            } else if let InstrKind::Phi(_, _) = expr.kind {
                 panic!("phi instruction must be at the beginning of a basic block");
             }
         }
@@ -242,7 +291,9 @@ impl DefUseChain {
                 InstrKind::Move(value) => {
                     local = *value;
                 }
-                InstrKind::Phi(incomings) if incomings.len() == 1 => {
+                InstrKind::Phi(incomings, non_exhaustive)
+                    if incomings.len() == 1 && !*non_exhaustive =>
+                {
                     local = incomings[0].local;
                 }
                 _ => {

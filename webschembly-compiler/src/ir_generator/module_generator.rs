@@ -509,14 +509,9 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                             env_index: i,
                             env_types: env_types.clone(),
                         });
-                        let undef_local = self.local(env_types[i]);
-                        self.exprs.push(Instr {
-                            local: Some(undef_local),
-                            kind: InstrKind::Uninitialized(env_types[i]),
-                        });
-                        captures.push(undef_local);
+                        captures.push(None);
                     } else {
-                        captures.push(*self.local_ids.get(capture).unwrap());
+                        captures.push(Some(*self.local_ids.get(capture).unwrap()));
                     }
                 }
 
@@ -524,6 +519,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     local: Some(val_type_local),
                     kind: InstrKind::Closure {
                         envs: captures,
+                        env_types,
                         func_id,
                         module_id: self.module_generator.id,
                         entrypoint_table: entrypoint_table_local,
@@ -579,22 +575,25 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 self.current_bb_id = Some(merge_bb_id);
                 self.exprs.push(Instr {
                     local: result,
-                    kind: InstrKind::Phi({
-                        let mut incomings = Vec::new();
-                        if let Some(bb) = then_ended_bb_id {
-                            incomings.push(PhiIncomingValue {
-                                bb,
-                                local: then_result,
-                            });
-                        }
-                        if let Some(bb) = els_ended_bb_id {
-                            incomings.push(PhiIncomingValue {
-                                bb,
-                                local: els_result,
-                            });
-                        }
-                        incomings
-                    }),
+                    kind: InstrKind::Phi(
+                        {
+                            let mut incomings = Vec::new();
+                            if let Some(bb) = then_ended_bb_id {
+                                incomings.push(PhiIncomingValue {
+                                    bb,
+                                    local: then_result,
+                                });
+                            }
+                            if let Some(bb) = els_ended_bb_id {
+                                incomings.push(PhiIncomingValue {
+                                    bb,
+                                    local: els_result,
+                                });
+                            }
+                            incomings
+                        },
+                        false,
+                    ),
                 });
 
                 // thenとelseでset!された変数をphiノードで結合
@@ -611,22 +610,25 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                         let phi_local = self.new_version_ast_local(var_id);
                         self.exprs.push(Instr {
                             local: Some(phi_local),
-                            kind: InstrKind::Phi({
-                                let mut incomings = Vec::new();
-                                if let Some(bb) = then_ended_bb_id {
-                                    incomings.push(PhiIncomingValue {
-                                        bb,
-                                        local: then_local,
-                                    });
-                                }
-                                if let Some(bb) = els_ended_bb_id {
-                                    incomings.push(PhiIncomingValue {
-                                        bb,
-                                        local: els_local,
-                                    });
-                                }
-                                incomings
-                            }),
+                            kind: InstrKind::Phi(
+                                {
+                                    let mut incomings = Vec::new();
+                                    if let Some(bb) = then_ended_bb_id {
+                                        incomings.push(PhiIncomingValue {
+                                            bb,
+                                            local: then_local,
+                                        });
+                                    }
+                                    if let Some(bb) = els_ended_bb_id {
+                                        incomings.push(PhiIncomingValue {
+                                            bb,
+                                            local: els_local,
+                                        });
+                                    }
+                                    incomings
+                                },
+                                false,
+                            ),
                         });
                     }
                 }
@@ -771,7 +773,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                         self.current_bb_id = Some(merge_bb_id);
                         self.exprs.push(Instr {
                             local: result,
-                            kind: InstrKind::Phi(phi_incoming_values),
+                            kind: InstrKind::Phi(phi_incoming_values, false),
                         });
                     }
                 } else {
