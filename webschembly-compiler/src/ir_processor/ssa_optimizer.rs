@@ -425,6 +425,8 @@ impl Default for SsaOptimizerConfig {
 }
 
 pub fn ssa_optimize(func: &mut Func, config: SsaOptimizerConfig) {
+    debug_assert_ssa(func);
+
     let mut def_use = DefUseChain::from_bbs(&func.bbs);
     let rpo = calculate_rpo(&func.bbs, func.bb_entry);
     let predecessors = calc_predecessors(&func.bbs);
