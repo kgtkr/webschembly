@@ -2,7 +2,10 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use vec_map::{HasId, VecMap};
 use webschembly_compiler_ir::*;
 
-use crate::ir_processor::cfg_analyzer::{calc_predecessors, has_critical_edges};
+use crate::ir_processor::cfg_analyzer::{
+    build_dom_tree, calc_dominance_frontiers_from_tree, calc_doms, calc_predecessors,
+    calc_rev_doms, calculate_rpo, has_critical_edges,
+};
 
 // 前提条件: クリティカルエッジが存在しない
 pub fn remove_phi(func: &mut Func) {
@@ -303,4 +306,14 @@ impl DefUseChain {
         }
         None
     }
+}
+
+pub fn build_ssa(func: &mut Func) {
+    let predecessors = calc_predecessors(&func.bbs);
+    let rpo = calculate_rpo(&func.bbs, func.bb_entry);
+    let doms = calc_doms(&func.bbs, &rpo, func.bb_entry, &predecessors);
+    let rev_doms = calc_rev_doms(&doms);
+    let dom_tree = build_dom_tree(&func.bbs, &rpo, func.bb_entry, &doms);
+    let dominance_frontiers =
+        calc_dominance_frontiers_from_tree(&func.bbs, &dom_tree, &predecessors);
 }
