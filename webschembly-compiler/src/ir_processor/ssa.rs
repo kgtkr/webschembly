@@ -4,7 +4,7 @@ use webschembly_compiler_ir::*;
 
 use crate::ir_processor::cfg_analyzer::{
     build_dom_tree, calc_dominance_frontiers_from_tree, calc_doms, calc_predecessors,
-    calc_rev_doms, calculate_rpo, has_critical_edges,
+    calculate_rpo, has_critical_edges,
 };
 
 // 前提条件: クリティカルエッジが存在しない
@@ -309,11 +309,222 @@ impl DefUseChain {
 }
 
 pub fn build_ssa(func: &mut Func) {
+    use crate::ir_processor::cfg_analyzer::DomTreeNode;
+
+    // Step 1: CFG/dominance setup
     let predecessors = calc_predecessors(&func.bbs);
     let rpo = calculate_rpo(&func.bbs, func.bb_entry);
     let doms = calc_doms(&func.bbs, &rpo, func.bb_entry, &predecessors);
-    let rev_doms = calc_rev_doms(&doms);
     let dom_tree = build_dom_tree(&func.bbs, &rpo, func.bb_entry, &doms);
     let dominance_frontiers =
         calc_dominance_frontiers_from_tree(&func.bbs, &dom_tree, &predecessors);
+
+    // Step 2: collect definition sites for each original local
+    let mut def_blocks: FxHashMap<LocalId, Vec<BasicBlockId>> = FxHashMap::default();
+    for (bb_id, bb) in func.bbs.iter() {
+        for instr in &bb.instrs {
+            if let Some(local) = instr.local {
+                def_blocks.entry(local).or_default().push(bb_id);
+            }
+        }
+    }
+
+    // Step 3: place PHI nodes using dominance frontiers (Cytron algorithm)
+    let mut has_phi: FxHashSet<(BasicBlockId, LocalId)> = FxHashSet::default();
+    for (&var, blocks) in def_blocks.iter() {
+        let mut worklist: Vec<BasicBlockId> = blocks.clone();
+        let mut visited: FxHashSet<BasicBlockId> = FxHashSet::default();
+
+        while let Some(bb_id) = worklist.pop() {
+            for &df in dominance_frontiers
+                .get(&bb_id)
+                .unwrap_or(&FxHashSet::default())
+            {
+                if has_phi.insert((df, var)) {
+                    // insert phi at beginning of df block
+                    let phi_instr = Instr {
+                        local: Some(var),
+                        kind: InstrKind::Phi(Vec::new(), false),
+                    };
+                    let bb = &mut func.bbs[df];
+                    // insert at first position after any existing phi/nop
+                    let mut insert_idx = 0usize;
+                    for (i, instr) in bb.instrs.iter().enumerate() {
+                        match &instr.kind {
+                            InstrKind::Phi(_, _) | InstrKind::Nop => insert_idx = i + 1,
+                            _ => break,
+                        }
+                    }
+                    bb.instrs.insert(insert_idx, phi_instr);
+
+                    if visited.insert(df) {
+                        // newly created phi is considered a def site for this var
+                        worklist.push(df);
+                    }
+                }
+            }
+        }
+    }
+
+    // Step 4: renaming using dominator tree
+    // prepare stacks for each original local
+    let mut stacks: FxHashMap<LocalId, Vec<LocalId>> = FxHashMap::default();
+    for local in func.locals.keys() {
+        stacks.insert(local, Vec::new());
+    }
+
+    // initialize argument names
+    for &arg in &func.args {
+        stacks.get_mut(&arg).unwrap().push(arg);
+    }
+
+    // Map to track which new locals correspond to which original locals
+    let mut original_of: FxHashMap<LocalId, LocalId> = FxHashMap::default();
+
+    // Recursive renaming function
+    fn rename_block(
+        node: &DomTreeNode,
+        func: &mut Func,
+        stacks: &mut FxHashMap<LocalId, Vec<LocalId>>,
+        original_of: &mut FxHashMap<LocalId, LocalId>,
+    ) {
+        let bb_id = node.id;
+
+        // Track definitions made in this block for cleanup
+        let mut local_defs: Vec<LocalId> = Vec::new();
+
+        // Phase A: Process PHI instructions - create new names for phi defs
+        let mut phi_updates: Vec<(usize, LocalId)> = Vec::new();
+        for (idx, instr) in func.bbs[bb_id].instrs.iter().enumerate() {
+            if let InstrKind::Phi(_, _) = instr.kind {
+                if let Some(orig) = instr.local {
+                    let typ = func.locals[orig].typ;
+                    let new_local = func.locals.push_with(|id| Local { id, typ });
+                    original_of.insert(new_local, orig);
+                    stacks.get_mut(&orig).unwrap().push(new_local);
+                    local_defs.push(orig);
+                    phi_updates.push((idx, new_local));
+                }
+            }
+        }
+
+        // Apply phi def updates
+        for (idx, new_local) in phi_updates {
+            func.bbs[bb_id].instrs[idx].local = Some(new_local);
+        }
+
+        // Phase B: Process non-phi instructions - replace uses and create new defs
+        let num_instrs = func.bbs[bb_id].instrs.len();
+        for idx in 0..num_instrs {
+            let instr = &func.bbs[bb_id].instrs[idx];
+            if let InstrKind::Phi(_, _) = instr.kind {
+                continue;
+            }
+
+            // Collect replacements needed for this instruction
+            let mut use_replacements: Vec<(usize, LocalId)> = Vec::new();
+            let mut def_replacement: Option<LocalId> = None;
+
+            for (i, (local_ref, flag)) in instr.local_usages().enumerate() {
+                match flag {
+                    LocalFlag::Used(_) => {
+                        if let Some(&top) = stacks.get(local_ref).and_then(|s| s.last()) {
+                            use_replacements.push((i, top));
+                        }
+                    }
+                    LocalFlag::Defined => {
+                        let orig = *local_ref;
+                        let typ = func.locals[orig].typ;
+                        let new_local = func.locals.push_with(|id| Local { id, typ });
+                        original_of.insert(new_local, orig);
+                        stacks.get_mut(&orig).unwrap().push(new_local);
+                        local_defs.push(orig);
+                        def_replacement = Some(new_local);
+                    }
+                }
+            }
+
+            // Apply replacements to this instruction
+            let instr_mut = &mut func.bbs[bb_id].instrs[idx];
+            let usage_iter = instr_mut.local_usages_mut();
+            for (i, (local_ref, _flag)) in usage_iter.enumerate() {
+                if let Some(&(_idx, new_val)) = use_replacements.iter().find(|(idx, _)| *idx == i) {
+                    *local_ref = new_val;
+                }
+            }
+
+            // Apply def replacement
+            if let Some(new_def) = def_replacement {
+                func.bbs[bb_id].instrs[idx].local = Some(new_def);
+            }
+        }
+
+        // Recurse to children
+        for child in &node.children {
+            rename_block(child, func, stacks, original_of);
+        }
+
+        // Pop all definitions made in this block
+        for orig in local_defs.into_iter().rev() {
+            stacks.get_mut(&orig).unwrap().pop();
+        }
+    }
+
+    rename_block(&dom_tree, func, &mut stacks, &mut original_of);
+
+    // Step 5: fill phi incoming values
+    // For each phi instruction, set incoming values based on predecessor blocks
+    let predecessors = calc_predecessors(&func.bbs);
+
+    // Collect all phi info first to avoid borrowing issues
+    let mut phi_info: Vec<(BasicBlockId, usize, LocalId)> = Vec::new();
+    for (bb_id, bb) in func.bbs.iter() {
+        for (idx, instr) in bb.instrs.iter().enumerate() {
+            if let InstrKind::Phi(_, _) = instr.kind {
+                if let Some(dest) = instr.local {
+                    phi_info.push((bb_id, idx, dest));
+                }
+            }
+        }
+    }
+
+    // Now fill in the incoming values
+    for (bb_id, idx, dest) in phi_info {
+        let preds = predecessors.get(&bb_id).cloned().unwrap_or_default();
+        let orig = original_of.get(&dest).copied().unwrap_or(dest);
+
+        let mut incomings = Vec::new();
+        for &pred in &preds {
+            // Find the value of 'orig' at the end of predecessor block
+            // Scan instructions in pred from end to find last def of a local with same original
+            let mut value = None;
+            for instr in func.bbs[pred].instrs.iter().rev() {
+                if let Some(local) = instr.local {
+                    let local_orig = original_of.get(&local).copied().unwrap_or(local);
+                    if local_orig == orig {
+                        value = Some(local);
+                        break;
+                    }
+                }
+            }
+
+            // If no value found, use the argument if orig is an arg, else use dest
+            let val = value.unwrap_or_else(|| {
+                if func.args.contains(&orig) {
+                    orig
+                } else {
+                    dest
+                }
+            });
+
+            incomings.push(PhiIncomingValue {
+                bb: pred,
+                local: val,
+            });
+        }
+
+        if let InstrKind::Phi(ref mut inc, _) = func.bbs[bb_id].instrs[idx].kind {
+            *inc = incomings;
+        }
+    }
 }
