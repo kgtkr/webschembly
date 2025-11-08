@@ -101,7 +101,7 @@ impl JitModule {
                             kind: InstrKind::GlobalGet(self.func_to_globals[func.id]),
                         },
                     ],
-                    next: TerminatorInstr::Exit(BasicBlockTerminator::TailCallRef(InstrCallRef {
+                    next: TerminatorInstr::Exit(ExitInstr::TailCallRef(InstrCallRef {
                         func: f0_ref_local,
                         args: func.args.clone(),
                         func_type: func.func_type(),
@@ -166,7 +166,7 @@ impl JitModule {
                 bbs: [BasicBlock {
                     id: BasicBlockId::from(0),
                     instrs: exprs,
-                    next: TerminatorInstr::Exit(BasicBlockTerminator::TailCall(InstrCall {
+                    next: TerminatorInstr::Exit(ExitInstr::TailCall(InstrCall {
                         func_id: stub_func_ids[&self.module.entry],
                         args: vec![],
                     })),

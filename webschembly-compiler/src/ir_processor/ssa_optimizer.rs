@@ -606,7 +606,7 @@ fn inlining_func(
             let new_bb = &mut bbs[new_bb_id];
             debug_assert!(matches!(
                 new_bb.next,
-                TerminatorInstr::Exit(BasicBlockTerminator::TailCallClosure(_))
+                TerminatorInstr::Exit(ExitInstr::TailCallClosure(_))
             ));
             new_bb.next = TerminatorInstr::Jump(call_merge_func_info.args_phi_bb);
 
@@ -710,7 +710,7 @@ impl FuncAnalyzeResult {
         let def_use = DefUseChain::from_bbs(&func.bbs);
         let mut call_funcs = FxHashMap::default();
         for bb_id in func.bbs.keys() {
-            if let TerminatorInstr::Exit(BasicBlockTerminator::TailCallClosure(
+            if let TerminatorInstr::Exit(ExitInstr::TailCallClosure(
                     call_closure,
                 )) = &func.bbs[bb_id].next
                     // TODO: func_idはそのモジュール内にあるとは限らない

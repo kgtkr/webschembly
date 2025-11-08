@@ -219,9 +219,212 @@ impl fmt::Display for BranchKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ExitInstr {
+    Return(LocalId),
+    TailCall(InstrCall),
+    TailCallRef(InstrCallRef),
+    TailCallClosure(InstrCallClosure),
+    Error(LocalId),
+}
+macro_rules! impl_ExitInstr_local_ids {
+    ($($suffix: ident)?,$($mutability: tt)?) => {
+        paste::paste! {
+            pub fn [<local_ids $($suffix)?>](&$($mutability)? self) -> impl Iterator<Item = &$($mutability)? LocalId> {
+                from_coroutine(
+                    #[coroutine]
+                    move || match self {
+                        ExitInstr::Return(local) => yield local,
+                        ExitInstr::TailCall(call) => {
+                            for id in call.[<local_ids $($suffix)?>]() {
+                                yield id;
+                            }
+                        }
+                        ExitInstr::TailCallRef(call_ref) => {
+                            for id in call_ref.[<local_ids $($suffix)?>]() {
+                                yield id;
+                            }
+                        }
+                        ExitInstr::TailCallClosure(call_closure) => {
+                            for id in call_closure.[<local_ids $($suffix)?>]() {
+                                yield id;
+                            }
+                        }
+                        ExitInstr::Error(local) => yield local,
+                    },
+                )
+            }
+        }
+    };
+}
+
+macro_rules! impl_ExitInstr_func_ids {
+    ($($suffix: ident)?,$($mutability: tt)?) => {
+        paste::paste! {
+            pub fn [<func_ids $($suffix)?>](&$($mutability)? self) -> impl Iterator<Item = &$($mutability)? FuncId> {
+                from_coroutine(
+                    #[coroutine]
+                    move || match self {
+                        ExitInstr::Return(_)
+                        | ExitInstr::TailCallRef(_)
+                        | ExitInstr::TailCallClosure(_)
+                        | ExitInstr::Error(_) => {}
+                        ExitInstr::TailCall(call) => {
+                            for id in call.[<func_ids $($suffix)?>]() {
+                                yield id;
+                            }
+                        }
+                    },
+                )
+            }
+        }
+    };
+}
+
+impl ExitInstr {
+    pub fn display<'a>(&self, meta: MetaInFunc<'a>) -> DisplayInFunc<'a, &ExitInstr> {
+        DisplayInFunc { value: self, meta }
+    }
+
+    impl_ExitInstr_local_ids!(_mut, mut);
+    impl_ExitInstr_local_ids!(,);
+
+    impl_ExitInstr_func_ids!(_mut, mut);
+    impl_ExitInstr_func_ids!(,);
+}
+
+impl fmt::Display for DisplayInFunc<'_, &ExitInstr> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.value {
+            ExitInstr::Return(local) => write!(f, "return {}", local.display(self.meta)),
+            ExitInstr::TailCall(call) => {
+                write!(f, "tail_call {}", call.display(self.meta))
+            }
+            ExitInstr::TailCallRef(call_ref) => {
+                write!(f, "tail_call_ref {}", call_ref.display(self.meta))
+            }
+            ExitInstr::TailCallClosure(call_closure) => {
+                write!(f, "tail_call_closure {}", call_closure.display(self.meta))
+            }
+            ExitInstr::Error(local) => write!(f, "error {}", local.display(self.meta)),
+        }
+    }
+}
+
+// 閉路を作ってはいけない
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum TerminatorInstr {
+    If(LocalId, BasicBlockId, BasicBlockId),
+    Jump(BasicBlockId),
+    Exit(ExitInstr),
+}
+
+macro_rules! impl_TerminatorInstr_local_ids {
+    ($($suffix: ident)?,$($mutability: tt)?) => {
+        paste::paste! {
+            pub fn [<local_ids $($suffix)?>](&$($mutability)? self) -> impl Iterator<Item = &$($mutability)? LocalId> {
+                from_coroutine(
+                    #[coroutine]
+                    move || match self {
+                        TerminatorInstr::If(cond, _, _) => yield cond,
+                        TerminatorInstr::Jump(_) => {}
+                        TerminatorInstr::Exit(exit) => {
+                            for id in exit.[<local_ids $($suffix)?>]() {
+                                yield id;
+                            }
+                        }
+                    },
+                )
+            }
+        }
+    };
+}
+
+macro_rules! impl_TerminatorInstr_func_ids {
+    ($($suffix: ident)?,$($mutability: tt)?) => {
+        paste::paste! {
+            pub fn [<func_ids $($suffix)?>](&$($mutability)? self) -> impl Iterator<Item = &$($mutability)? FuncId> {
+                from_coroutine(
+                    #[coroutine]
+                    move || match self {
+                        TerminatorInstr::If(_, _, _)
+                        | TerminatorInstr::Jump(_) => {}
+                        TerminatorInstr::Exit(exit) => {
+                            for id in exit.[<func_ids $($suffix)?>]() {
+                                yield id;
+                            }
+                        }
+                    },
+                )
+            }
+        }
+    };
+}
+
+macro_rules! impl_TerminatorInstr_bb_ids {
+    ($($suffix: ident)?,$($mutability: tt)?) => {
+        paste::paste! {
+            pub fn [<bb_ids $($suffix)?>](&$($mutability)? self) -> impl Iterator<Item = &$($mutability)? BasicBlockId> {
+                from_coroutine(
+                    #[coroutine]
+                    move || match self {
+                        TerminatorInstr::If(_, bb1, bb2) => {
+                            yield bb1;
+                            yield bb2;
+                        }
+                        TerminatorInstr::Jump(bb) => yield bb,
+                        TerminatorInstr::Exit(_) => {}
+                    },
+                )
+            }
+        }
+    };
+}
+
+impl TerminatorInstr {
+    pub fn display<'a>(&self, meta: MetaInFunc<'a>) -> DisplayInFunc<'a, &TerminatorInstr> {
+        DisplayInFunc { value: self, meta }
+    }
+
+    impl_TerminatorInstr_local_ids!(_mut, mut);
+    impl_TerminatorInstr_local_ids!(,);
+
+    impl_TerminatorInstr_func_ids!(_mut, mut);
+    impl_TerminatorInstr_func_ids!(,);
+
+    impl_TerminatorInstr_bb_ids!(_mut, mut);
+    impl_TerminatorInstr_bb_ids!(,);
+
+    // TODO: bb_idsと同じ内容なので移行する
+    pub fn successors(&self) -> impl Iterator<Item = BasicBlockId> {
+        self.bb_ids().copied()
+    }
+}
+
+impl fmt::Display for DisplayInFunc<'_, &TerminatorInstr> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.value {
+            TerminatorInstr::If(cond, bb1, bb2) => {
+                write!(
+                    f,
+                    "if {} then {} else {}",
+                    cond.display(self.meta),
+                    bb1.display(self.meta.meta),
+                    bb2.display(self.meta.meta)
+                )
+            }
+            TerminatorInstr::Jump(bb) => write!(f, "jump {}", bb.display(self.meta.meta)),
+            TerminatorInstr::Exit(exit) => {
+                write!(f, "{}", exit.display(self.meta))
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum InstrKind {
     Nop,                                                   // 左辺はNoneでなければならない
     Phi(Vec<PhiIncomingValue>, bool /* non exhaustive */), // BBの先頭にのみ連続して出現可能(Nopが間に入るのは可)。non_exhaustive=trueの時incomings.length=1でもコピー伝播などの最適化を行ってはならない(inline化のためのフラグ)
+    Terminator(TerminatorInstr), // 左辺はNoneでなければならない。また、BasicBlockの最後にのみ出現可能
     InstantiateFunc(JitModuleId, JitFuncId, usize),
     InstantiateClosureFunc(LocalId, LocalId, usize), // InstantiateFuncのModuleId/FuncIdを動的に指定する版
     // TODO: InstantiateBBなどはFooId型ではなくusize型を受け取るべき
@@ -365,6 +568,11 @@ macro_rules! impl_InstrKind_local_usages {
                         InstrKind::Phi(values, _) => {
                             for value in values.[<iter $($suffix)?>]() {
                                 yield (&$($mutability)? value.local, LocalUsedFlag::Phi(value.bb));
+                            }
+                        }
+                        InstrKind::Terminator(terminator) => {
+                            for id in terminator.[<local_ids $($suffix)?>]() {
+                                yield (id, LocalUsedFlag::NonPhi);
                             }
                         }
                         InstrKind::StringToSymbol(id) => yield (id, LocalUsedFlag::NonPhi),
@@ -667,7 +875,8 @@ impl InstrKind {
             // closureの環境は可変である
             | InstrKind::Closure { .. }
             | InstrKind::ClosureEnv(..) => InstrKindPurelity::ImpureRead,
-            InstrKind::InstantiateFunc(..)
+            InstrKind::Terminator(..)
+            | InstrKind::InstantiateFunc(..)
             | InstrKind::InstantiateClosureFunc(..)
             | InstrKind::InstantiateBB(..)
             | InstrKind::IncrementBranchCounter(..)
@@ -716,6 +925,9 @@ impl fmt::Display for DisplayInFunc<'_, &'_ InstrKind> {
                     write!(f, "...")?;
                 }
                 write!(f, ")")
+            }
+            InstrKind::Terminator(terminator) => {
+                write!(f, "{}", terminator.display(self.meta))
             }
             InstrKind::InstantiateFunc(module_id, func_id, func_index) => {
                 write!(

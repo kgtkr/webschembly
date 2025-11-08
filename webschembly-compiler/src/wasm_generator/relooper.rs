@@ -9,7 +9,7 @@ use crate::ir_processor::cfg_analyzer::{
 };
 use vec_map::VecMap;
 use webschembly_compiler_ir::{
-    BasicBlock, BasicBlockId, TerminatorInstr, BasicBlockTerminator, Func, LocalId,
+    BasicBlock, BasicBlockId, TerminatorInstr, ExitInstr, Func, LocalId,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -27,7 +27,7 @@ pub enum Structured {
         body: Vec<Structured>,
     },
     Break(usize),
-    Exit(BasicBlockTerminator),
+    Exit(ExitInstr),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -221,7 +221,7 @@ mod tests {
             (0, TerminatorInstr::Jump(BasicBlockId::from(1))),
             (
                 1,
-                TerminatorInstr::Exit(BasicBlockTerminator::Return(LocalId::from(500))),
+                TerminatorInstr::Exit(ExitInstr::Return(LocalId::from(500))),
             ),
         ]);
 
@@ -230,7 +230,7 @@ mod tests {
         let expected = vec![
             Structured::Simple(BasicBlockId::from(0)),
             Structured::Simple(BasicBlockId::from(1)),
-            Structured::Exit(BasicBlockTerminator::Return(LocalId::from(500))),
+            Structured::Exit(ExitInstr::Return(LocalId::from(500))),
         ];
 
         assert_eq!(result, expected);
@@ -251,7 +251,7 @@ mod tests {
             (2, TerminatorInstr::Jump(BasicBlockId::from(3))),
             (
                 3,
-                TerminatorInstr::Exit(BasicBlockTerminator::Return(LocalId::from(500))),
+                TerminatorInstr::Exit(ExitInstr::Return(LocalId::from(500))),
             ),
         ]);
 
@@ -275,7 +275,7 @@ mod tests {
                 ],
             },
             Structured::Simple(BasicBlockId::from(3)),
-            Structured::Exit(BasicBlockTerminator::Return(LocalId::from(500))),
+            Structured::Exit(ExitInstr::Return(LocalId::from(500))),
         ];
 
         assert_eq!(result, expected);
@@ -305,7 +305,7 @@ mod tests {
             (4, TerminatorInstr::Jump(BasicBlockId::from(5))),
             (
                 5,
-                TerminatorInstr::Exit(BasicBlockTerminator::Return(LocalId::from(500))),
+                TerminatorInstr::Exit(ExitInstr::Return(LocalId::from(500))),
             ),
         ]);
 
@@ -339,7 +339,7 @@ mod tests {
                 ],
             },
             Structured::Simple(BasicBlockId::from(5)),
-            Structured::Exit(BasicBlockTerminator::Return(LocalId::from(500))),
+            Structured::Exit(ExitInstr::Return(LocalId::from(500))),
         ];
 
         assert_eq!(result, expected);
@@ -360,7 +360,7 @@ mod tests {
             (2, TerminatorInstr::Jump(BasicBlockId::from(1))),
             (
                 3,
-                TerminatorInstr::Exit(BasicBlockTerminator::Return(LocalId::from(500))),
+                TerminatorInstr::Exit(ExitInstr::Return(LocalId::from(500))),
             ),
         ]);
 
@@ -379,7 +379,7 @@ mod tests {
                         ],
                         else_: vec![
                             Structured::Simple(BasicBlockId::from(3)),
-                            Structured::Exit(BasicBlockTerminator::Return(LocalId::from(500))), // ループ脱出
+                            Structured::Exit(ExitInstr::Return(LocalId::from(500))), // ループ脱出
                         ],
                     },
                 ],
@@ -430,7 +430,7 @@ mod tests {
             ),
             (
                 2,
-                TerminatorInstr::Exit(BasicBlockTerminator::Return(LocalId::from(500))),
+                TerminatorInstr::Exit(ExitInstr::Return(LocalId::from(500))),
             ),
         ]);
 
@@ -457,7 +457,7 @@ mod tests {
                 ],
             },
             Structured::Simple(BasicBlockId::from(2)),
-            Structured::Exit(BasicBlockTerminator::Return(LocalId::from(500))),
+            Structured::Exit(ExitInstr::Return(LocalId::from(500))),
         ];
 
         assert_eq!(result, expected);
@@ -532,7 +532,7 @@ mod tests {
             (4, TerminatorInstr::Jump(BasicBlockId::from(5))), // E (Merge Node)
             (
                 5,
-                TerminatorInstr::Exit(BasicBlockTerminator::Return(LocalId::from(500))),
+                TerminatorInstr::Exit(ExitInstr::Return(LocalId::from(500))),
             ), // F (Merge Node)
         ]);
 
@@ -573,7 +573,7 @@ mod tests {
                 ],
             },
             Structured::Simple(BasicBlockId::from(5)), // F
-            Structured::Exit(BasicBlockTerminator::Return(LocalId::from(500))),
+            Structured::Exit(ExitInstr::Return(LocalId::from(500))),
         ];
 
         assert_eq!(result, expected);
@@ -587,7 +587,7 @@ mod tests {
             (1, TerminatorInstr::Jump(BasicBlockId::from(2))),
             (
                 2,
-                TerminatorInstr::Exit(BasicBlockTerminator::Return(LocalId::from(500))),
+                TerminatorInstr::Exit(ExitInstr::Return(LocalId::from(500))),
             ),
         ]);
 

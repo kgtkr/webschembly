@@ -36,9 +36,9 @@ fn desugar_bb(bb: &mut BasicBlock, locals: &mut VecMap<LocalId, Local>) {
 
     let dummy_next = TerminatorInstr::Jump(BasicBlockId::from(0));
     bb.next = match mem::replace(&mut bb.next, dummy_next) {
-        TerminatorInstr::Exit(BasicBlockTerminator::TailCallClosure(call_closure)) => {
+        TerminatorInstr::Exit(ExitInstr::TailCallClosure(call_closure)) => {
             let call_ref = desugar_call_closure(call_closure, locals, &mut new_instrs);
-            TerminatorInstr::Exit(BasicBlockTerminator::TailCallRef(call_ref))
+            TerminatorInstr::Exit(ExitInstr::TailCallRef(call_ref))
         }
         next => next,
     };

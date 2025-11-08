@@ -132,7 +132,7 @@ impl JitSpecializedFunc {
                         local: Some(func_ref_local),
                         kind: InstrKind::GlobalGet(bb_global.id),
                     }],
-                    next: TerminatorInstr::Exit(BasicBlockTerminator::TailCallRef(InstrCallRef {
+                    next: TerminatorInstr::Exit(ExitInstr::TailCallRef(InstrCallRef {
                         func: func_ref_local,
                         args: entry_bb_info.args.to_vec(),
                         func_type: FuncType {
@@ -255,7 +255,7 @@ impl JitSpecializedFunc {
                             kind: InstrKind::GlobalGet(index_global.id),
                         },
                     ],
-                    next: TerminatorInstr::Exit(BasicBlockTerminator::TailCallRef(InstrCallRef {
+                    next: TerminatorInstr::Exit(ExitInstr::TailCallRef(InstrCallRef {
                         func: func_ref_local,
                         args: jit_bb.info.args.clone(),
                         func_type: FuncType {
@@ -439,10 +439,7 @@ impl JitSpecializedFunc {
                     todo_bb_ids.push(orig_next_bb_id);
                     TerminatorInstr::Jump(orig_next_bb_id)
                 }
-                TerminatorInstr::Exit(BasicBlockTerminator::TailCall(InstrCall {
-                    func_id,
-                    args,
-                })) => {
+                TerminatorInstr::Exit(ExitInstr::TailCall(InstrCall { func_id, args })) => {
                     let func_ref_local = body_func.locals.push_with(|id| Local {
                         id,
                         typ: LocalType::FuncRef,
@@ -452,17 +449,17 @@ impl JitSpecializedFunc {
                         local: Some(func_ref_local),
                         kind: InstrKind::GlobalGet(func_to_globals[func_id]),
                     });
-                    TerminatorInstr::Exit(BasicBlockTerminator::TailCallRef(InstrCallRef {
+                    TerminatorInstr::Exit(ExitInstr::TailCallRef(InstrCallRef {
                         func: func_ref_local,
                         args,
                         func_type: func_types[func_id].clone(),
                     }))
                 }
                 next @ TerminatorInstr::Exit(
-                    BasicBlockTerminator::TailCallRef(_)
-                    | BasicBlockTerminator::TailCallClosure(_)
-                    | BasicBlockTerminator::Return(_)
-                    | BasicBlockTerminator::Error(_),
+                    ExitInstr::TailCallRef(_)
+                    | ExitInstr::TailCallClosure(_)
+                    | ExitInstr::Return(_)
+                    | ExitInstr::Error(_),
                 ) => next,
             };
 
@@ -546,7 +543,7 @@ impl JitSpecializedFunc {
 
             body_func.bbs[bb_id].instrs = instrs;
             body_func.bbs[bb_id].next =
-                TerminatorInstr::Exit(BasicBlockTerminator::TailCallRef(InstrCallRef {
+                TerminatorInstr::Exit(ExitInstr::TailCallRef(InstrCallRef {
                     func: func_ref_local,
                     args: locals_to_pass,
                     func_type: FuncType {
@@ -657,7 +654,7 @@ impl JitSpecializedFunc {
                 }
             }
 
-            if let TerminatorInstr::Exit(BasicBlockTerminator::TailCallClosure(call_closure)) =
+            if let TerminatorInstr::Exit(ExitInstr::TailCallClosure(call_closure)) =
                 &body_func.bbs[bb_id].next
                 && let Some(new_call_closure) = specialize_call_closure(
                     call_closure,
@@ -668,7 +665,7 @@ impl JitSpecializedFunc {
                 )
             {
                 body_func.bbs[bb_id].next =
-                    TerminatorInstr::Exit(BasicBlockTerminator::TailCallClosure(new_call_closure));
+                    TerminatorInstr::Exit(ExitInstr::TailCallClosure(new_call_closure));
             }
         }
 
@@ -777,14 +774,12 @@ impl JitSpecializedFunc {
                     bbs: [BasicBlock {
                         id: BasicBlockId::from(0),
                         instrs: exprs,
-                        next: TerminatorInstr::Exit(BasicBlockTerminator::TailCallClosure(
-                            InstrCallClosure {
-                                closure: closure_local,
-                                args: arg_locals,
-                                arg_types,
-                                func_index: closure_idx,
-                            },
-                        )),
+                        next: TerminatorInstr::Exit(ExitInstr::TailCallClosure(InstrCallClosure {
+                            closure: closure_local,
+                            args: arg_locals,
+                            arg_types,
+                            func_index: closure_idx,
+                        })),
                     }]
                     .into_iter()
                     .collect(),
@@ -845,7 +840,7 @@ impl JitSpecializedFunc {
                 BasicBlock {
                     id: BasicBlockId::from(0),
                     instrs: exprs,
-                    next: TerminatorInstr::Exit(BasicBlockTerminator::Return(func_ref_local)),
+                    next: TerminatorInstr::Exit(ExitInstr::Return(func_ref_local)),
                 }
             });
 

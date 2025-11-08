@@ -199,7 +199,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         let bb_entry = self.bbs.allocate_key();
         self.current_bb_id = Some(bb_entry);
         self.gen_exprs(Some(obj_local), &self.module_generator.ast.exprs);
-        self.close_bb(TerminatorInstr::Exit(BasicBlockTerminator::Return(
+        self.close_bb(TerminatorInstr::Exit(ExitInstr::Return(
             obj_local,
         )));
 
@@ -249,7 +249,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             local: Some(msg),
             kind: InstrKind::String("args count mismatch\n".to_string()),
         });
-        self.close_bb(TerminatorInstr::Exit(BasicBlockTerminator::Error(msg)));
+        self.close_bb(TerminatorInstr::Exit(ExitInstr::Error(msg)));
         self.current_bb_id = Some(merge_bb_id);
 
         for (arg_idx, arg) in x.args.iter().enumerate() {
@@ -302,7 +302,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
 
         let ret = self.local(Type::Obj);
         self.gen_exprs(Some(ret), &lambda.body);
-        self.close_bb(TerminatorInstr::Exit(BasicBlockTerminator::Return(ret)));
+        self.close_bb(TerminatorInstr::Exit(ExitInstr::Return(ret)));
         Func {
             id: self.id,
             args: vec![self_closure, args],
@@ -652,7 +652,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                             local: Some(msg),
                             kind: InstrKind::String("builtin args count mismatch\n".to_string()),
                         });
-                        self.close_bb(TerminatorInstr::Exit(BasicBlockTerminator::Error(msg)));
+                        self.close_bb(TerminatorInstr::Exit(ExitInstr::Error(msg)));
                     } else {
                         let merge_bb_id = self.bbs.allocate_key();
                         let mut phi_incoming_values = Vec::new();
@@ -767,7 +767,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                                 builtin.name()
                             )),
                         });
-                        self.close_bb(TerminatorInstr::Exit(BasicBlockTerminator::Error(msg)));
+                        self.close_bb(TerminatorInstr::Exit(ExitInstr::Error(msg)));
                         self.current_bb_id = Some(merge_bb_id);
                         self.exprs.push(Instr {
                             local: result,
@@ -806,7 +806,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     };
                     if is_tail {
                         self.close_bb(TerminatorInstr::Exit(
-                            BasicBlockTerminator::TailCallClosure(call_closure),
+                            ExitInstr::TailCallClosure(call_closure),
                         ));
                     } else {
                         self.exprs.push(Instr {
@@ -877,7 +877,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                                     "set! builtin is not allowed\n".to_string(),
                                 ),
                             });
-                            self.close_bb(TerminatorInstr::Exit(BasicBlockTerminator::Error(msg)));
+                            self.close_bb(TerminatorInstr::Exit(ExitInstr::Error(msg)));
                         } else {
                             let local = self.local(Type::Obj);
                             self.gen_exprs(Some(local), expr);
@@ -965,7 +965,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                         kind.element_type()
                     )),
                 });
-                self.close_bb(TerminatorInstr::Exit(BasicBlockTerminator::Error(msg)));
+                self.close_bb(TerminatorInstr::Exit(ExitInstr::Error(msg)));
                 self.current_bb_id = Some(then_bb_id);
                 let mut element_locals = Vec::new();
                 for obj_local in element_obj_locals {

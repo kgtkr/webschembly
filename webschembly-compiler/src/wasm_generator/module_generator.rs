@@ -999,20 +999,20 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 function.instruction(&Instruction::Br(*index as u32));
             }
             Structured::Exit(exit) => match exit {
-                ir::BasicBlockTerminator::Return(local) => {
+                ir::ExitInstr::Return(local) => {
                     function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*local)));
                     function.instruction(&Instruction::Return);
                 }
-                ir::BasicBlockTerminator::TailCall(call) => {
+                ir::ExitInstr::TailCall(call) => {
                     self.gen_call(function, true, call);
                 }
-                ir::BasicBlockTerminator::TailCallRef(call_ref) => {
+                ir::ExitInstr::TailCallRef(call_ref) => {
                     self.gen_call_ref(function, true, call_ref);
                 }
-                ir::BasicBlockTerminator::TailCallClosure(..) => {
+                ir::ExitInstr::TailCallClosure(..) => {
                     unreachable!("unexpected TailCallClosure");
                 }
-                ir::BasicBlockTerminator::Error(msg) => {
+                ir::ExitInstr::Error(msg) => {
                     function.instruction(&Instruction::I32Const(2));
                     function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*msg)));
                     function.instruction(&Instruction::Call(self.module_generator.display_fd_func));
@@ -1045,6 +1045,9 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             }
             ir::InstrKind::Phi(..) => {
                 unreachable!("unexpected Phi");
+            }
+            ir::InstrKind::Terminator(_) => {
+                unreachable!("unexpected Terminator");
             }
             ir::InstrKind::CallClosure(..) => {
                 unreachable!("unexpected CallClosure");
