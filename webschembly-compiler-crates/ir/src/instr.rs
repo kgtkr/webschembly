@@ -222,19 +222,19 @@ impl fmt::Display for BranchKind {
 pub enum InstrKind {
     Nop,                                                   // 左辺はNoneでなければならない
     Phi(Vec<PhiIncomingValue>, bool /* non exhaustive */), // BBの先頭にのみ連続して出現可能(Nopが間に入るのは可)。non_exhaustive=trueの時incomings.length=1でもコピー伝播などの最適化を行ってはならない(inline化のためのフラグ)
-    InstantiateFunc(ModuleId, FuncId, usize),
+    InstantiateFunc(JitModuleId, JitFuncId, usize),
     InstantiateClosureFunc(LocalId, LocalId, usize), // InstantiateFuncのModuleId/FuncIdを動的に指定する版
     // TODO: InstantiateBBなどはFooId型ではなくusize型を受け取るべき
     // 理由: 副作用命令であり、BasicBlockIdの一括置換などで同時に置き換えると意味が変わってしまうため
-    InstantiateBB(ModuleId, FuncId, usize, BasicBlockId, usize),
+    InstantiateBB(JitModuleId, JitFuncId, usize, JitBasicBlockId, usize),
     IncrementBranchCounter(
-        ModuleId,
-        FuncId,
+        JitModuleId,
+        JitFuncId,
         usize,
-        BasicBlockId,
+        JitBasicBlockId,
         BranchKind,
         // 以下は呼び出し元のBBとindex
-        BasicBlockId,
+        JitBasicBlockId,
         usize,
     ),
     Bool(bool),
@@ -258,8 +258,8 @@ pub enum InstrKind {
     Closure {
         envs: Vec<Option<LocalId>>, // None: letrecなどで使われる未初期化値
         env_types: Vec<LocalType>,
-        module_id: ModuleId,
-        func_id: FuncId,
+        module_id: JitModuleId,
+        func_id: JitFuncId,
         entrypoint_table: LocalId,
     },
     Move(LocalId),

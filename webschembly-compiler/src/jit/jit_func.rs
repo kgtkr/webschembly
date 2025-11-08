@@ -20,7 +20,7 @@ use webschembly_compiler_ir::*;
 
 #[derive(Debug)]
 pub struct JitSpecializedFunc {
-    module_id: ModuleId,
+    module_id: JitModuleId,
     func_index: usize,
     func: Func,
     jit_bbs: VecMap<BasicBlockId, JitBB>,
@@ -28,7 +28,7 @@ pub struct JitSpecializedFunc {
 
 impl JitSpecializedFunc {
     pub fn new(
-        module_id: ModuleId,
+        module_id: JitModuleId,
         global_manager: &mut GlobalManager,
         func: &Func,
         func_index: usize,
@@ -207,7 +207,7 @@ impl JitSpecializedFunc {
 
     fn add_bb_stub_func(
         &self,
-        module_id: ModuleId,
+        module_id: JitModuleId,
         bb_id: BasicBlockId,
         index: usize,
         module: &mut Module,
@@ -246,9 +246,9 @@ impl JitSpecializedFunc {
                             local: None,
                             kind: InstrKind::InstantiateBB(
                                 module_id,
-                                self.func.id,
+                                JitFuncId::from(self.func.id),
                                 self.func_index,
-                                jit_bb.bb_id,
+                                JitBasicBlockId::from(jit_bb.bb_id),
                                 index,
                             ),
                         },
@@ -492,11 +492,11 @@ impl JitSpecializedFunc {
                     local: None,
                     kind: InstrKind::IncrementBranchCounter(
                         self.module_id,
-                        self.func.id,
+                        JitFuncId::from(self.func.id),
                         self.func_index,
-                        bb_id,
+                        JitBasicBlockId::from(bb_id),
                         branch_kind,
-                        orig_entry_bb_id,
+                        JitBasicBlockId::from(orig_entry_bb_id),
                         index,
                     ),
                 });

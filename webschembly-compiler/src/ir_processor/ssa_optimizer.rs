@@ -723,7 +723,7 @@ impl FuncAnalyzeResult {
                 call_funcs.insert(
                     bb_id,
                     InstrCall {
-                        func_id: *call_func_id,
+                        func_id: FuncId::from(*call_func_id),
                         args: {
                             let mut args = Vec::new();
                             args.push(call_closure.closure);

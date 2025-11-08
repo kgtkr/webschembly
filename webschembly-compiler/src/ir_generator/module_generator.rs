@@ -14,7 +14,7 @@ pub struct Config {
 }
 
 pub fn generate_module(
-    id: ModuleId,
+    id: JitModuleId,
     global_manager: &mut GlobalManager,
     ast: &ast::Ast<Final>,
     config: Config,
@@ -26,7 +26,7 @@ pub fn generate_module(
 
 #[derive(Debug)]
 struct ModuleGenerator<'a> {
-    id: ModuleId,
+    id: JitModuleId,
     global_manager: &'a mut GlobalManager,
     ast: &'a ast::Ast<Final>,
     funcs: VecMap<FuncId, Func>,
@@ -40,7 +40,7 @@ struct ModuleGenerator<'a> {
 
 impl<'a> ModuleGenerator<'a> {
     fn new(
-        id: ModuleId,
+        id: JitModuleId,
         config: Config,
         ir_generator: &'a mut GlobalManager,
         ast: &'a ast::Ast<Final>,
@@ -520,7 +520,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     kind: InstrKind::Closure {
                         envs: captures,
                         env_types,
-                        func_id,
+                        func_id: JitFuncId::from(func_id),
                         module_id: self.module_generator.id,
                         entrypoint_table: entrypoint_table_local,
                     },

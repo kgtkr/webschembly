@@ -76,7 +76,7 @@ impl Compiler {
             sexpr_parser::parse(tokens.as_slice()).map_err(|e| compiler_error!("{}", e))?;
         let ast = self.ast_generator.gen_ast(sexprs)?;
         // TODO: ここで生成するべきではない
-        let module_id = ir::ModuleId::from(self.module_count);
+        let module_id = ir::JitModuleId::from(self.module_count);
         self.module_count += 1;
         let mut module = ir_generator::generate_module(
             module_id,
@@ -122,7 +122,7 @@ impl Compiler {
         func_id: usize,
         func_index: usize,
     ) -> ir::Module {
-        let module_id = ir::ModuleId::from(module_id);
+        let module_id = ir::JitModuleId::from(module_id);
         let func_id = ir::FuncId::from(func_id);
         let jit = self.jit.as_mut().expect("JIT is not enabled");
         let mut module =
@@ -149,7 +149,7 @@ impl Compiler {
         bb_id: usize,
         index: usize,
     ) -> ir::Module {
-        let module_id = ir::ModuleId::from(module_id);
+        let module_id = ir::JitModuleId::from(module_id);
         let func_id = ir::FuncId::from(func_id);
         let bb_id = ir::BasicBlockId::from(bb_id);
         let jit = self.jit.as_mut().expect("JIT is not enabled");
@@ -185,7 +185,7 @@ impl Compiler {
         source_bb_id: usize,
         source_index: usize,
     ) -> Option<ir::Module> {
-        let module_id = ir::ModuleId::from(module_id);
+        let module_id = ir::JitModuleId::from(module_id);
         let func_id = ir::FuncId::from(func_id);
         let bb_id = ir::BasicBlockId::from(bb_id);
         let jit = self.jit.as_mut().expect("JIT is not enabled");
