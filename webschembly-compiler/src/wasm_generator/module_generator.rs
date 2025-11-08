@@ -998,7 +998,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             Structured::Break(index) => {
                 function.instruction(&Instruction::Br(*index as u32));
             }
-            Structured::Terminator(terminator) => match terminator {
+            Structured::Exit(exit) => match exit {
                 ir::BasicBlockTerminator::Return(local) => {
                     function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*local)));
                     function.instruction(&Instruction::Return);

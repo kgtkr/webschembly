@@ -606,9 +606,9 @@ fn inlining_func(
             let new_bb = &mut bbs[new_bb_id];
             debug_assert!(matches!(
                 new_bb.next,
-                BasicBlockNext::Terminator(BasicBlockTerminator::TailCallClosure(_))
+                TerminatorInstr::Exit(BasicBlockTerminator::TailCallClosure(_))
             ));
-            new_bb.next = BasicBlockNext::Jump(call_merge_func_info.args_phi_bb);
+            new_bb.next = TerminatorInstr::Jump(call_merge_func_info.args_phi_bb);
 
             for (i, &arg) in args.iter().enumerate() {
                 func_inliner
@@ -634,7 +634,7 @@ fn inlining_func(
         let entry_bb_id = bbs.push_with(|entry_bb_id| BasicBlock {
             id: entry_bb_id,
             instrs: vec![],
-            next: BasicBlockNext::Jump(func_inliner.merge_func_infos[&func_id].args_phi_bb),
+            next: TerminatorInstr::Jump(func_inliner.merge_func_infos[&func_id].args_phi_bb),
         });
         func_inliner.entry_bb_id = Some(entry_bb_id);
         entry_bb_id
@@ -685,7 +685,7 @@ fn inlining_func(
                     kind: InstrKind::Phi(arg_info.incomings.clone(), i != 0 && !last),
                 })
                 .collect(),
-            next: BasicBlockNext::Jump(merge_func_info.entry_bb_id),
+            next: TerminatorInstr::Jump(merge_func_info.entry_bb_id),
         });
     }
 
@@ -710,7 +710,7 @@ impl FuncAnalyzeResult {
         let def_use = DefUseChain::from_bbs(&func.bbs);
         let mut call_funcs = FxHashMap::default();
         for bb_id in func.bbs.keys() {
-            if let BasicBlockNext::Terminator(BasicBlockTerminator::TailCallClosure(
+            if let TerminatorInstr::Exit(BasicBlockTerminator::TailCallClosure(
                     call_closure,
                 )) = &func.bbs[bb_id].next
                     // TODO: func_idはそのモジュール内にあるとは限らない

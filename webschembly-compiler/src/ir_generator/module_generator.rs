@@ -112,7 +112,7 @@ impl<'a> ModuleGenerator<'a> {
         let new_bb_entry = entry_func.bbs.push_with(|bb_id| BasicBlock {
             id: bb_id,
             instrs: entry_exprs,
-            next: BasicBlockNext::Jump(prev_bb_entry),
+            next: TerminatorInstr::Jump(prev_bb_entry),
         });
         entry_func.bb_entry = new_bb_entry;
 
@@ -199,7 +199,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         let bb_entry = self.bbs.allocate_key();
         self.current_bb_id = Some(bb_entry);
         self.gen_exprs(Some(obj_local), &self.module_generator.ast.exprs);
-        self.close_bb(BasicBlockNext::Terminator(BasicBlockTerminator::Return(
+        self.close_bb(TerminatorInstr::Exit(BasicBlockTerminator::Return(
             obj_local,
         )));
 
@@ -238,7 +238,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
 
         let error_bb_id = self.bbs.allocate_key();
         let merge_bb_id = self.bbs.allocate_key();
-        self.close_bb(BasicBlockNext::If(
+        self.close_bb(TerminatorInstr::If(
             args_len_check_success_local,
             merge_bb_id,
             error_bb_id,
@@ -249,7 +249,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             local: Some(msg),
             kind: InstrKind::String("args count mismatch\n".to_string()),
         });
-        self.close_bb(BasicBlockNext::Terminator(BasicBlockTerminator::Error(msg)));
+        self.close_bb(TerminatorInstr::Exit(BasicBlockTerminator::Error(msg)));
         self.current_bb_id = Some(merge_bb_id);
 
         for (arg_idx, arg) in x.args.iter().enumerate() {
@@ -302,9 +302,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
 
         let ret = self.local(Type::Obj);
         self.gen_exprs(Some(ret), &lambda.body);
-        self.close_bb(BasicBlockNext::Terminator(BasicBlockTerminator::Return(
-            ret,
-        )));
+        self.close_bb(TerminatorInstr::Exit(BasicBlockTerminator::Return(ret)));
         Func {
             id: self.id,
             args: vec![self_closure, args],
@@ -554,7 +552,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 let then_bb_id = self.bbs.allocate_key();
                 let else_bb_id = self.bbs.allocate_key();
                 let merge_bb_id = self.bbs.allocate_key();
-                self.close_bb(BasicBlockNext::If(cond_not_local, else_bb_id, then_bb_id));
+                self.close_bb(TerminatorInstr::If(cond_not_local, else_bb_id, then_bb_id));
 
                 let before_locals = self.local_ids.clone();
 
@@ -563,14 +561,14 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 self.gen_exprs(Some(then_result), then);
                 let then_locals = self.local_ids.clone();
                 let then_ended_bb_id = self.current_bb_id;
-                self.close_bb(BasicBlockNext::Jump(merge_bb_id));
+                self.close_bb(TerminatorInstr::Jump(merge_bb_id));
 
                 self.current_bb_id = Some(else_bb_id);
                 let els_result = self.local(Type::Obj);
                 self.gen_exprs(Some(els_result), els);
                 let els_locals = self.local_ids.clone();
                 let els_ended_bb_id = self.current_bb_id;
-                self.close_bb(BasicBlockNext::Jump(merge_bb_id));
+                self.close_bb(TerminatorInstr::Jump(merge_bb_id));
 
                 self.current_bb_id = Some(merge_bb_id);
                 self.exprs.push(Instr {
@@ -654,7 +652,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                             local: Some(msg),
                             kind: InstrKind::String("builtin args count mismatch\n".to_string()),
                         });
-                        self.close_bb(BasicBlockNext::Terminator(BasicBlockTerminator::Error(msg)));
+                        self.close_bb(TerminatorInstr::Exit(BasicBlockTerminator::Error(msg)));
                     } else {
                         let merge_bb_id = self.bbs.allocate_key();
                         let mut phi_incoming_values = Vec::new();
@@ -698,7 +696,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                             let then_bb_id = self.bbs.allocate_key();
                             let else_bb_id = self.bbs.allocate_key();
 
-                            self.close_bb(BasicBlockNext::If(
+                            self.close_bb(TerminatorInstr::If(
                                 all_type_check_success_local,
                                 then_bb_id,
                                 else_bb_id,
@@ -757,7 +755,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                                 local: ret_obj_local,
                             });
 
-                            self.close_bb(BasicBlockNext::Jump(merge_bb_id));
+                            self.close_bb(TerminatorInstr::Jump(merge_bb_id));
                             self.current_bb_id = Some(else_bb_id);
                         }
 
@@ -769,7 +767,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                                 builtin.name()
                             )),
                         });
-                        self.close_bb(BasicBlockNext::Terminator(BasicBlockTerminator::Error(msg)));
+                        self.close_bb(TerminatorInstr::Exit(BasicBlockTerminator::Error(msg)));
                         self.current_bb_id = Some(merge_bb_id);
                         self.exprs.push(Instr {
                             local: result,
@@ -807,7 +805,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                         func_index: 0,
                     };
                     if is_tail {
-                        self.close_bb(BasicBlockNext::Terminator(
+                        self.close_bb(TerminatorInstr::Exit(
                             BasicBlockTerminator::TailCallClosure(call_closure),
                         ));
                     } else {
@@ -879,9 +877,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                                     "set! builtin is not allowed\n".to_string(),
                                 ),
                             });
-                            self.close_bb(BasicBlockNext::Terminator(BasicBlockTerminator::Error(
-                                msg,
-                            )));
+                            self.close_bb(TerminatorInstr::Exit(BasicBlockTerminator::Error(msg)));
                         } else {
                             let local = self.local(Type::Obj);
                             self.gen_exprs(Some(local), expr);
@@ -954,7 +950,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 let then_bb_id = self.bbs.allocate_key();
                 let else_bb_id = self.bbs.allocate_key();
 
-                self.close_bb(BasicBlockNext::If(
+                self.close_bb(TerminatorInstr::If(
                     type_check_all_success_local,
                     then_bb_id,
                     else_bb_id,
@@ -969,7 +965,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                         kind.element_type()
                     )),
                 });
-                self.close_bb(BasicBlockNext::Terminator(BasicBlockTerminator::Error(msg)));
+                self.close_bb(TerminatorInstr::Exit(BasicBlockTerminator::Error(msg)));
                 self.current_bb_id = Some(then_bb_id);
                 let mut element_locals = Vec::new();
                 for obj_local in element_obj_locals {
@@ -1052,7 +1048,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         }
     }
 
-    fn close_bb(&mut self, next: BasicBlockNext) {
+    fn close_bb(&mut self, next: TerminatorInstr) {
         let bb_exprs = std::mem::take(&mut self.exprs);
         if let Some(id) = self.current_bb_id {
             self.bbs.insert(
