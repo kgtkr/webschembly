@@ -1,11 +1,11 @@
-use rustc_hash::{FxHashMap, FxHashSet};
-use vec_map::{HasId, VecMap};
-use webschembly_compiler_ir::*;
-
+use crate::ir_processor::cfg_analyzer::DomTreeNode;
 use crate::ir_processor::cfg_analyzer::{
     build_dom_tree, calc_dominance_frontiers_from_tree, calc_doms, calc_predecessors,
     calculate_rpo, has_critical_edges,
 };
+use rustc_hash::{FxHashMap, FxHashSet};
+use vec_map::{HasId, VecMap};
+use webschembly_compiler_ir::*;
 
 // 前提条件: クリティカルエッジが存在しない
 pub fn remove_phi(func: &mut Func) {
@@ -309,9 +309,6 @@ impl DefUseChain {
 }
 
 pub fn build_ssa(func: &mut Func) {
-    use crate::ir_processor::cfg_analyzer::DomTreeNode;
-
-    // Step 1: CFG/dominance setup
     let predecessors = calc_predecessors(&func.bbs);
     let rpo = calculate_rpo(&func.bbs, func.bb_entry);
     let doms = calc_doms(&func.bbs, &rpo, func.bb_entry, &predecessors);
@@ -319,7 +316,6 @@ pub fn build_ssa(func: &mut Func) {
     let dominance_frontiers =
         calc_dominance_frontiers_from_tree(&func.bbs, &dom_tree, &predecessors);
 
-    // Step 2: collect definition sites for each original local
     let mut def_blocks: FxHashMap<LocalId, Vec<BasicBlockId>> = FxHashMap::default();
     for (bb_id, bb) in func.bbs.iter() {
         for instr in &bb.instrs {
@@ -329,7 +325,6 @@ pub fn build_ssa(func: &mut Func) {
         }
     }
 
-    // Step 3: place PHI nodes using dominance frontiers (Cytron algorithm)
     let mut has_phi: FxHashSet<(BasicBlockId, LocalId)> = FxHashSet::default();
     for (&var, blocks) in def_blocks.iter() {
         let mut worklist: Vec<BasicBlockId> = blocks.clone();
@@ -459,12 +454,27 @@ pub fn build_ssa(func: &mut Func) {
             }
         }
 
-        // Recurse to children
+        let bb_next = &mut func.bbs[bb_id].next;
+        let mut next_use_replacements: Vec<(usize, LocalId)> = Vec::new();
+
+        for (i, local_ref) in bb_next.local_ids_mut().enumerate() {
+            if let Some(&top) = stacks.get(local_ref).and_then(|s| s.last()) {
+                next_use_replacements.push((i, top));
+            }
+        }
+
+        let bb_next_mut = &mut func.bbs[bb_id].next;
+        for (i, local_ref) in bb_next_mut.local_ids_mut().enumerate() {
+            if let Some(&(_idx, new_val)) = next_use_replacements.iter().find(|(idx, _)| *idx == i)
+            {
+                *local_ref = new_val;
+            }
+        }
+
         for child in &node.children {
             rename_block(child, func, stacks, original_of);
         }
 
-        // Pop all definitions made in this block
         for orig in local_defs.into_iter().rev() {
             stacks.get_mut(&orig).unwrap().pop();
         }
@@ -495,36 +505,42 @@ pub fn build_ssa(func: &mut Func) {
 
         let mut incomings = Vec::new();
         for &pred in &preds {
-            // Find the value of 'orig' at the end of predecessor block
-            // Scan instructions in pred from end to find last def of a local with same original
-            let mut value = None;
+            // 先行ブロックの末尾で該当変数の最新の値を検索
+            let mut current_value = None;
+
+            // 先行ブロックの命令を逆順で検索して、元変数の最新の定義を見つける
             for instr in func.bbs[pred].instrs.iter().rev() {
                 if let Some(local) = instr.local {
-                    let local_orig = original_of.get(&local).copied().unwrap_or(local);
-                    if local_orig == orig {
-                        value = Some(local);
+                    let original = original_of.get(&local).copied().unwrap_or(local);
+                    if original == orig {
+                        current_value = Some(local);
                         break;
                     }
                 }
             }
 
-            // If no value found, use the argument if orig is an arg, else use dest
-            let val = value.unwrap_or_else(|| {
-                if func.args.contains(&orig) {
-                    orig
-                } else {
-                    dest
+            // 見つからない場合は引数かもしれない
+            if current_value.is_none() {
+                for &arg in &func.args {
+                    let original = original_of.get(&arg).copied().unwrap_or(arg);
+                    if original == orig {
+                        current_value = Some(arg);
+                        break;
+                    }
                 }
-            });
+            }
 
-            incomings.push(PhiIncomingValue {
-                bb: pred,
-                local: val,
-            });
+            if let Some(value) = current_value {
+                incomings.push(PhiIncomingValue {
+                    bb: pred,
+                    local: value,
+                });
+            }
         }
 
-        if let InstrKind::Phi(ref mut inc, _) = func.bbs[bb_id].instrs[idx].kind {
-            *inc = incomings;
+        // Phi命令を更新
+        if let InstrKind::Phi(_, non_exhaustive) = &func.bbs[bb_id].instrs[idx].kind {
+            func.bbs[bb_id].instrs[idx].kind = InstrKind::Phi(incomings, *non_exhaustive);
         }
     }
 }
