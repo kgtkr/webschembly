@@ -109,10 +109,13 @@ impl<'a> ModuleGenerator<'a> {
                 kind: InstrKind::GlobalSet(entrypoint_table_global_id, entrypoint_table_local),
             });
         }
+        entry_exprs.push(Instr {
+            local: None,
+            kind: InstrKind::Terminator(TerminatorInstr::Jump(prev_bb_entry)),
+        });
         let new_bb_entry = entry_func.bbs.push_with(|bb_id| BasicBlock {
             id: bb_id,
             instrs: entry_exprs,
-            next: TerminatorInstr::Jump(prev_bb_entry),
         });
         entry_func.bb_entry = new_bb_entry;
 
@@ -199,9 +202,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         let bb_entry = self.bbs.allocate_key();
         self.current_bb_id = Some(bb_entry);
         self.gen_exprs(Some(obj_local), &self.module_generator.ast.exprs);
-        self.close_bb(TerminatorInstr::Exit(ExitInstr::Return(
-            obj_local,
-        )));
+        self.close_bb(TerminatorInstr::Exit(ExitInstr::Return(obj_local)));
 
         Func {
             id: self.id,
@@ -805,9 +806,9 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                         func_index: 0,
                     };
                     if is_tail {
-                        self.close_bb(TerminatorInstr::Exit(
-                            ExitInstr::TailCallClosure(call_closure),
-                        ));
+                        self.close_bb(TerminatorInstr::Exit(ExitInstr::TailCallClosure(
+                            call_closure,
+                        )));
                     } else {
                         self.exprs.push(Instr {
                             local: result,
@@ -1048,7 +1049,11 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         }
     }
 
-    fn close_bb(&mut self, next: TerminatorInstr) {
+    fn close_bb(&mut self, terminator: TerminatorInstr) {
+        self.exprs.push(Instr {
+            local: None,
+            kind: InstrKind::Terminator(terminator),
+        });
         let bb_exprs = std::mem::take(&mut self.exprs);
         if let Some(id) = self.current_bb_id {
             self.bbs.insert(
@@ -1056,7 +1061,6 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 BasicBlock {
                     id,
                     instrs: bb_exprs,
-                    next,
                 },
             );
             self.current_bb_id = None;

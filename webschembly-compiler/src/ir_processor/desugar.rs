@@ -28,20 +28,26 @@ fn desugar_bb(bb: &mut BasicBlock, locals: &mut VecMap<LocalId, Local>) {
                     kind: InstrKind::CallRef(call_ref),
                 });
             }
+            Instr {
+                local,
+                kind:
+                    InstrKind::Terminator(TerminatorInstr::Exit(ExitInstr::TailCallClosure(
+                        call_closure,
+                    ))),
+            } => {
+                let call_ref = desugar_call_closure(call_closure, locals, &mut new_instrs);
+                new_instrs.push(Instr {
+                    local,
+                    kind: InstrKind::Terminator(TerminatorInstr::Exit(ExitInstr::TailCallRef(
+                        call_ref,
+                    ))),
+                });
+            }
             instr => {
                 new_instrs.push(instr);
             }
         }
     }
-
-    let dummy_next = TerminatorInstr::Jump(BasicBlockId::from(0));
-    bb.next = match mem::replace(&mut bb.next, dummy_next) {
-        TerminatorInstr::Exit(ExitInstr::TailCallClosure(call_closure)) => {
-            let call_ref = desugar_call_closure(call_closure, locals, &mut new_instrs);
-            TerminatorInstr::Exit(ExitInstr::TailCallRef(call_ref))
-        }
-        next => next,
-    };
 
     bb.instrs = new_instrs;
 }

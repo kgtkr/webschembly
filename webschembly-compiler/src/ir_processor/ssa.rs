@@ -101,12 +101,10 @@ fn remove_phi_in_bb(func: &mut Func, bb_id: BasicBlockId) {
         let sequential_copies = sequentialize_parallel_copies(func, parallel_copies);
         let bb = &mut func.bbs[block_id];
 
-        for copy in sequential_copies {
-            bb.instrs.push(Instr {
-                local: Some(copy.dest),
-                kind: InstrKind::Move(copy.src),
-            });
-        }
+        bb.insert_instrs_before_terminator(sequential_copies.iter().map(|copy| Instr {
+            local: Some(copy.dest),
+            kind: InstrKind::Move(copy.src),
+        }));
     }
 
     // 対象ブロックのPHI命令を削除
@@ -451,23 +449,6 @@ pub fn build_ssa(func: &mut Func) {
             // Apply def replacement
             if let Some(new_def) = def_replacement {
                 func.bbs[bb_id].instrs[idx].local = Some(new_def);
-            }
-        }
-
-        let bb_next = &mut func.bbs[bb_id].next;
-        let mut next_use_replacements: Vec<(usize, LocalId)> = Vec::new();
-
-        for (i, local_ref) in bb_next.local_ids_mut().enumerate() {
-            if let Some(&top) = stacks.get(local_ref).and_then(|s| s.last()) {
-                next_use_replacements.push((i, top));
-            }
-        }
-
-        let bb_next_mut = &mut func.bbs[bb_id].next;
-        for (i, local_ref) in bb_next_mut.local_ids_mut().enumerate() {
-            if let Some(&(_idx, new_val)) = next_use_replacements.iter().find(|(idx, _)| *idx == i)
-            {
-                *local_ref = new_val;
             }
         }
 

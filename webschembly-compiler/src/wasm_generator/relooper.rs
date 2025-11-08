@@ -9,7 +9,7 @@ use crate::ir_processor::cfg_analyzer::{
 };
 use vec_map::VecMap;
 use webschembly_compiler_ir::{
-    BasicBlock, BasicBlockId, TerminatorInstr, ExitInstr, Func, LocalId,
+    BasicBlock, BasicBlockId, ExitInstr, Func, LocalId, TerminatorInstr,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -111,7 +111,7 @@ impl Translator<'_> {
             let mut result = Vec::new();
             result.push(Structured::Simple(block.id));
 
-            match &block.next {
+            match block.terminator() {
                 TerminatorInstr::Jump(target) => {
                     result.extend(self.do_branch(x, *target, context));
                 }
@@ -202,13 +202,16 @@ mod tests {
     use super::*;
 
     fn setup_cfg(data: &[(usize, TerminatorInstr)]) -> VecMap<BasicBlockId, BasicBlock> {
+        use webschembly_compiler_ir::{Instr, InstrKind};
         data.iter()
             .map(|&(id, ref next)| {
                 let block_id = BasicBlockId::from(id);
                 let block = BasicBlock {
                     id: block_id,
-                    instrs: vec![],
-                    next: next.clone(),
+                    instrs: vec![Instr {
+                        local: None,
+                        kind: InstrKind::Terminator(next.clone()),
+                    }],
                 };
                 (block_id, block)
             })

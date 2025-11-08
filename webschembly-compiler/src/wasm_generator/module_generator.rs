@@ -1030,6 +1030,10 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             debug_assert!(expr.local.is_none());
             return;
         }
+        if let ir::InstrKind::Terminator(..) = expr.kind {
+            debug_assert!(expr.local.is_none());
+            return;
+        }
         self.gen_expr(function, &expr.kind);
         if let Some(local) = &expr.local {
             function.instruction(&Instruction::LocalSet(self.local_id_to_idx(*local)));

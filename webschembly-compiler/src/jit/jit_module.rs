@@ -100,12 +100,17 @@ impl JitModule {
                             local: Some(f0_ref_local),
                             kind: InstrKind::GlobalGet(self.func_to_globals[func.id]),
                         },
+                        Instr {
+                            local: None,
+                            kind: InstrKind::Terminator(TerminatorInstr::Exit(
+                                ExitInstr::TailCallRef(InstrCallRef {
+                                    func: f0_ref_local,
+                                    args: func.args.clone(),
+                                    func_type: func.func_type(),
+                                }),
+                            )),
+                        },
                     ],
-                    next: TerminatorInstr::Exit(ExitInstr::TailCallRef(InstrCallRef {
-                        func: f0_ref_local,
-                        args: func.args.clone(),
-                        func_type: func.func_type(),
-                    })),
                 }]
                 .into_iter()
                 .collect(),
@@ -157,6 +162,16 @@ impl JitModule {
                 jit_ctx.init_instantiated(stub_globals, instantiate_func_global);
             };
 
+            exprs.push(Instr {
+                local: None,
+                kind: InstrKind::Terminator(TerminatorInstr::Exit(ExitInstr::TailCall(
+                    InstrCall {
+                        func_id: stub_func_ids[&self.module.entry],
+                        args: vec![],
+                    },
+                ))),
+            });
+
             funcs.push_with(|id| Func {
                 id,
                 args: vec![],
@@ -166,10 +181,6 @@ impl JitModule {
                 bbs: [BasicBlock {
                     id: BasicBlockId::from(0),
                     instrs: exprs,
-                    next: TerminatorInstr::Exit(ExitInstr::TailCall(InstrCall {
-                        func_id: stub_func_ids[&self.module.entry],
-                        args: vec![],
-                    })),
                 }]
                 .into_iter()
                 .collect(),

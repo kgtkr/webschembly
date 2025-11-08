@@ -112,6 +112,7 @@ impl Compiler {
         } else {
             optimize_module(&mut module, Default::default());
             postprocess(&mut module, &mut self.global_manager);
+
             Ok(module)
         }
     }
@@ -127,6 +128,7 @@ impl Compiler {
         let jit = self.jit.as_mut().expect("JIT is not enabled");
         let mut module =
             jit.instantiate_func(&mut self.global_manager, module_id, func_id, func_index);
+
         preprocess_module(&mut module);
         if jit.config().enable_optimization {
             optimize_module(

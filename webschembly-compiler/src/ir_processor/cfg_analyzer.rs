@@ -7,7 +7,7 @@ pub fn calc_predecessors(
 ) -> FxHashMap<BasicBlockId, Vec<BasicBlockId>> {
     let mut predecessors: FxHashMap<BasicBlockId, Vec<BasicBlockId>> = FxHashMap::default();
     for (id, block) in cfg.iter() {
-        for successor in block.next.successors() {
+        for successor in block.terminator().successors() {
             predecessors.entry(successor).or_default().push(id);
         }
     }
@@ -162,7 +162,7 @@ fn dfs_postorder(
     visited.insert(current_id);
     let node = cfg.get(current_id).unwrap();
 
-    for successor in node.next.successors() {
+    for successor in node.terminator().successors() {
         if !visited.contains(&successor) {
             dfs_postorder(successor, cfg, visited, postorder);
         }
@@ -178,7 +178,7 @@ pub fn find_loop_headers(
 ) -> FxHashSet<BasicBlockId> {
     let mut headers = FxHashSet::default();
     for (source_id, block) in cfg.iter() {
-        for target_id in block.next.successors() {
+        for target_id in block.terminator().successors() {
             let source_rpo = rpo.get(&source_id).unwrap();
             let target_rpo = rpo.get(&target_id).unwrap();
 
@@ -222,7 +222,7 @@ pub fn find_reachable_nodes(
     while let Some(id) = worklist.pop() {
         let node = cfg.get(id).unwrap();
 
-        for successor in node.next.successors() {
+        for successor in node.terminator().successors() {
             if reachable.insert(successor) {
                 worklist.push(successor);
             }
@@ -237,7 +237,7 @@ pub fn has_critical_edges(cfg: &VecMap<BasicBlockId, BasicBlock>) -> bool {
 
     for (bb_id, bb) in cfg.iter() {
         let mut succ_count = 0;
-        for succ_id in bb.next.successors() {
+        for succ_id in bb.terminator().successors() {
             *pred_counts.entry(succ_id).or_insert(0) += 1;
             succ_count += 1;
         }
@@ -251,7 +251,7 @@ pub fn has_critical_edges(cfg: &VecMap<BasicBlockId, BasicBlock>) -> bool {
             continue;
         }
 
-        for succ_id in pred_bb.next.successors() {
+        for succ_id in pred_bb.terminator().successors() {
             let succ_pred_count = *pred_counts.get(&succ_id).unwrap_or(&0);
 
             if succ_pred_count > 1 {
@@ -300,7 +300,7 @@ fn calc_dominance_frontiers_recursive(
     }
 
     if let Some(block) = cfg.get(node.id) {
-        for successor in block.next.successors() {
+        for successor in block.terminator().successors() {
             if !dominates_in_tree(node, successor) {
                 df.insert(successor);
             }

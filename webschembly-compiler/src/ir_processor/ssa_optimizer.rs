@@ -549,9 +549,6 @@ fn inlining_func(
                     }
                 }
             }
-            for bb_id in new_bb.next.bb_ids_mut() {
-                *bb_id = bb_map[bb_id];
-            }
             for (local_id, _) in new_bb.local_usages_mut() {
                 *local_id = local_map[local_id];
             }
@@ -605,10 +602,10 @@ fn inlining_func(
             let call_merge_func_info = func_inliner.merge_func_infos.get(&call.func_id).unwrap();
             let new_bb = &mut bbs[new_bb_id];
             debug_assert!(matches!(
-                new_bb.next,
+                new_bb.terminator(),
                 TerminatorInstr::Exit(ExitInstr::TailCallClosure(_))
             ));
-            new_bb.next = TerminatorInstr::Jump(call_merge_func_info.args_phi_bb);
+            *new_bb.terminator_mut() = TerminatorInstr::Jump(call_merge_func_info.args_phi_bb);
 
             for (i, &arg) in args.iter().enumerate() {
                 func_inliner
@@ -633,8 +630,12 @@ fn inlining_func(
     } else {
         let entry_bb_id = bbs.push_with(|entry_bb_id| BasicBlock {
             id: entry_bb_id,
-            instrs: vec![],
-            next: TerminatorInstr::Jump(func_inliner.merge_func_infos[&func_id].args_phi_bb),
+            instrs: vec![Instr {
+                local: None,
+                kind: InstrKind::Terminator(TerminatorInstr::Jump(
+                    func_inliner.merge_func_infos[&func_id].args_phi_bb,
+                )),
+            }],
         });
         func_inliner.entry_bb_id = Some(entry_bb_id);
         entry_bb_id
@@ -673,19 +674,25 @@ fn inlining_func(
     };
 
     for merge_func_info in func_inliner.merge_func_infos.values() {
+        let mut instrs = merge_func_info
+            .args_phi_incomings
+            .iter()
+            .enumerate()
+            .map(|(i, arg_info)| Instr {
+                local: Some(arg_info.local),
+                // i == 0は必ずクロージャであり、毎回引数は変わらない(本当？)ので、non_exhaustive=falseにしてよい
+                kind: InstrKind::Phi(arg_info.incomings.clone(), i != 0 && !last),
+            })
+            .collect::<Vec<_>>();
+
+        instrs.push(Instr {
+            local: None,
+            kind: InstrKind::Terminator(TerminatorInstr::Jump(merge_func_info.entry_bb_id)),
+        });
+
         bbs.insert_node(BasicBlock {
             id: merge_func_info.args_phi_bb,
-            instrs: merge_func_info
-                .args_phi_incomings
-                .iter()
-                .enumerate()
-                .map(|(i, arg_info)| Instr {
-                    local: Some(arg_info.local),
-                    // i == 0は必ずクロージャであり、毎回引数は変わらない(本当？)ので、non_exhaustive=falseにしてよい
-                    kind: InstrKind::Phi(arg_info.incomings.clone(), i != 0 && !last),
-                })
-                .collect(),
-            next: TerminatorInstr::Jump(merge_func_info.entry_bb_id),
+            instrs,
         });
     }
 
@@ -712,7 +719,7 @@ impl FuncAnalyzeResult {
         for bb_id in func.bbs.keys() {
             if let TerminatorInstr::Exit(ExitInstr::TailCallClosure(
                     call_closure,
-                )) = &func.bbs[bb_id].next
+                )) = func.bbs[bb_id].terminator()
                     // TODO: func_idはそのモジュール内にあるとは限らない
                     && let Some(InstrKind::Closure {
                         func_id: call_func_id,

@@ -14,7 +14,6 @@ use vec_map::{HasId, VecMap};
 pub struct BasicBlock {
     pub id: BasicBlockId,
     pub instrs: Vec<Instr>,
-    pub next: TerminatorInstr,
 }
 
 macro_rules! impl_BasicBlock_local_usages {
@@ -28,9 +27,6 @@ macro_rules! impl_BasicBlock_local_usages {
                             for usage in instr.[<local_usages $($suffix)?>]() {
                                 yield usage;
                             }
-                        }
-                        for id in self.next.[<local_ids $($suffix)?>]() {
-                            yield (id, LocalFlag::Used(LocalUsedFlag::NonPhi));
                         }
                     },
                 )
@@ -51,9 +47,6 @@ macro_rules! impl_BasicBlock_func_ids {
                                 yield id;
                             }
                         }
-                        for id in self.next.[<func_ids $($suffix)?>]() {
-                            yield id;
-                        }
                     },
                 )
             }
@@ -71,6 +64,35 @@ impl BasicBlock {
 
     impl_BasicBlock_func_ids!(_mut, mut);
     impl_BasicBlock_func_ids!(,);
+
+    pub fn terminator(&self) -> &TerminatorInstr {
+        match &self
+            .instrs
+            .last()
+            .expect("BasicBlock has no instructions")
+            .kind
+        {
+            InstrKind::Terminator(term) => term,
+            _ => panic!("BasicBlock does not end with a Terminator instruction"),
+        }
+    }
+
+    pub fn terminator_mut(&mut self) -> &mut TerminatorInstr {
+        match &mut self
+            .instrs
+            .last_mut()
+            .expect("BasicBlock has no instructions")
+            .kind
+        {
+            InstrKind::Terminator(term) => term,
+            _ => panic!("BasicBlock does not end with a Terminator instruction"),
+        }
+    }
+
+    pub fn insert_instrs_before_terminator(&mut self, instrs: impl Iterator<Item = Instr>) {
+        let len = self.instrs.len();
+        self.instrs.splice(len - 1..len - 1, instrs);
+    }
 }
 
 impl HasId for BasicBlock {
@@ -99,13 +121,6 @@ impl fmt::Display for DisplayInFunc<'_, &'_ BasicBlock> {
                 instr.display(self.meta)
             )?;
         }
-        writeln!(
-            f,
-            "{}{}{}",
-            DISPLAY_INDENT,
-            DISPLAY_INDENT,
-            self.value.next.display(self.meta)
-        )?;
         Ok(())
     }
 }
