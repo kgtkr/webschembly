@@ -307,6 +307,7 @@ impl DefUseChain {
 }
 
 pub fn build_ssa(func: &mut Func) {
+    // ステップ1: 支配木と支配辺境の計算に必要な情報を準備
     let predecessors = calc_predecessors(&func.bbs);
     let rpo = calculate_rpo(&func.bbs, func.bb_entry);
     let doms = calc_doms(&func.bbs, &rpo, func.bb_entry, &predecessors);
@@ -314,6 +315,7 @@ pub fn build_ssa(func: &mut Func) {
     let dominance_frontiers =
         calc_dominance_frontiers_from_tree(&func.bbs, &dom_tree, &predecessors);
 
+    // ステップ2: 各変数が定義されているブロックを収集
     let mut def_blocks: FxHashMap<LocalId, Vec<BasicBlockId>> = FxHashMap::default();
     for (bb_id, bb) in func.bbs.iter() {
         for instr in &bb.instrs {
@@ -323,6 +325,7 @@ pub fn build_ssa(func: &mut Func) {
         }
     }
 
+    // ステップ3: Phi命令の挿入 (Iterated Dominance Frontier)
     let mut has_phi: FxHashSet<(BasicBlockId, LocalId)> = FxHashSet::default();
     for (&var, blocks) in def_blocks.iter() {
         let mut worklist: Vec<BasicBlockId> = blocks.clone();
@@ -337,7 +340,7 @@ pub fn build_ssa(func: &mut Func) {
                     // insert phi at beginning of df block
                     let phi_instr = Instr {
                         local: Some(var),
-                        kind: InstrKind::Phi(Vec::new(), false),
+                        kind: InstrKind::Phi(Vec::new(), false), // 引数は後で充填
                     };
                     let bb = &mut func.bbs[df];
                     // insert at first position after any existing phi/nop
@@ -359,22 +362,22 @@ pub fn build_ssa(func: &mut Func) {
         }
     }
 
-    // Step 4: renaming using dominator tree
-    // prepare stacks for each original local
+    // ステップ4: 変数のリネーム (支配木を使用)
+    // 各「元の」変数ID用のスタックを準備
     let mut stacks: FxHashMap<LocalId, Vec<LocalId>> = FxHashMap::default();
     for local in func.locals.keys() {
         stacks.insert(local, Vec::new());
     }
 
-    // initialize argument names
+    // 関数の引数をスタックの初期値としてプッシュ
     for &arg in &func.args {
         stacks.get_mut(&arg).unwrap().push(arg);
     }
 
-    // Map to track which new locals correspond to which original locals
+    // 新しいLocalIdがどの「元の」LocalIdに対応するかを追跡
     let mut original_of: FxHashMap<LocalId, LocalId> = FxHashMap::default();
 
-    // Recursive renaming function
+    // 再帰的なリネーム関数
     fn rename_block(
         node: &DomTreeNode,
         func: &mut Func,
@@ -383,10 +386,10 @@ pub fn build_ssa(func: &mut Func) {
     ) {
         let bb_id = node.id;
 
-        // Track definitions made in this block for cleanup
+        // このブロックで作成された定義を追跡し、関数の最後でポップするため
         let mut local_defs: Vec<LocalId> = Vec::new();
 
-        // Phase A: Process PHI instructions - create new names for phi defs
+        // Phase A: PHI命令を処理 (新しい定義を作成)
         let mut phi_updates: Vec<(usize, LocalId)> = Vec::new();
         for (idx, instr) in func.bbs[bb_id].instrs.iter().enumerate() {
             if let InstrKind::Phi(_, _) = instr.kind {
@@ -395,49 +398,43 @@ pub fn build_ssa(func: &mut Func) {
                     let new_local = func.locals.push_with(|id| Local { id, typ });
                     original_of.insert(new_local, orig);
                     stacks.get_mut(&orig).unwrap().push(new_local);
-                    local_defs.push(orig);
+                    local_defs.push(orig); // 後でポップするために元の変数を記録
                     phi_updates.push((idx, new_local));
                 }
+            } else {
+                // PHIはブロックの先頭にあるはず
+                break;
             }
         }
 
-        // Apply phi def updates
+        // PHI命令の定義側(local)を新しいIDに更新
         for (idx, new_local) in phi_updates {
             func.bbs[bb_id].instrs[idx].local = Some(new_local);
         }
 
-        // Phase B: Process non-phi instructions - replace uses and create new defs
+        // Phase B: 通常の命令を処理 (使用側をリネームし、新しい定義を作成)
         let num_instrs = func.bbs[bb_id].instrs.len();
         for idx in 0..num_instrs {
             let instr = &func.bbs[bb_id].instrs[idx];
             if let InstrKind::Phi(_, _) = instr.kind {
-                continue;
+                continue; // PHIはPhase Aで処理済み
             }
 
-            // Collect replacements needed for this instruction
+            // この命令の「使用(use)」をリネーム
+            // (借用チェッカのため、一旦変更内容を収集)
             let mut use_replacements: Vec<(usize, LocalId)> = Vec::new();
-            let mut def_replacement: Option<LocalId> = None;
-
             for (i, (local_ref, flag)) in instr.local_usages().enumerate() {
-                match flag {
-                    LocalFlag::Used(_) => {
-                        if let Some(&top) = stacks.get(local_ref).and_then(|s| s.last()) {
-                            use_replacements.push((i, top));
-                        }
+                if let LocalFlag::Used(_) = flag {
+                    // スタックのトップにある最新のローカルIDで置換
+                    if let Some(&top) = stacks.get(local_ref).and_then(|s| s.last()) {
+                        use_replacements.push((i, top));
                     }
-                    LocalFlag::Defined => {
-                        let orig = *local_ref;
-                        let typ = func.locals[orig].typ;
-                        let new_local = func.locals.push_with(|id| Local { id, typ });
-                        original_of.insert(new_local, orig);
-                        stacks.get_mut(&orig).unwrap().push(new_local);
-                        local_defs.push(orig);
-                        def_replacement = Some(new_local);
-                    }
+                    // else: スタックが空 (未定義変数の使用)。
+                    // 本来はエラーだが、ここでは何もしない (IR検証で検出)
                 }
             }
 
-            // Apply replacements to this instruction
+            // 収集した変更を適用
             let instr_mut = &mut func.bbs[bb_id].instrs[idx];
             let usage_iter = instr_mut.local_usages_mut();
             for (i, (local_ref, _flag)) in usage_iter.enumerate() {
@@ -446,12 +443,63 @@ pub fn build_ssa(func: &mut Func) {
                 }
             }
 
-            // Apply def replacement
+            // この命令の「定義(def)」をリネーム (instr.local)
+            // (借用チェッカのため、instrのイテレートと分離)
+            let mut def_replacement: Option<LocalId> = None;
+            if let Some(orig) = func.bbs[bb_id].instrs[idx].local {
+                // PHI以外の命令は `local_usages` で "Defined" を返さない設計と仮定
+                // (もし `local_usages` で "Defined" を扱うなら、ここのロジックは
+                //  上の `local_usages` ループ内に移動する必要がある)
+
+                // ここでは、`instr.local` が定義スロットであると仮定する
+                let typ = func.locals[orig].typ;
+                let new_local = func.locals.push_with(|id| Local { id, typ });
+                original_of.insert(new_local, orig);
+                stacks.get_mut(&orig).unwrap().push(new_local);
+                local_defs.push(orig); // 後でポップするために元の変数を記録
+                def_replacement = Some(new_local);
+            }
+
             if let Some(new_def) = def_replacement {
                 func.bbs[bb_id].instrs[idx].local = Some(new_def);
             }
         }
 
+        // Phase C: CFGの後続ブロック (Successors) のPHI引数を充填
+        // (このブロックのリネームがすべて完了し、スタックが最新の状態で実行)
+        //
+
+        // 借用チェッカを通過するため、後続IDを先に収集
+        // (func.bbs[bb_id]のイミュータブルな参照とfunc.bbs[succ_id]のミュータブルな参照が衝突するため)
+        let successors: Vec<BasicBlockId> = func.bbs[bb_id].terminator().successors().collect();
+
+        for &succ_id in &successors {
+            let succ_bb = &mut func.bbs[succ_id];
+            for instr in succ_bb.instrs.iter_mut() {
+                if let InstrKind::Phi(incomings, _) = &mut instr.kind {
+                    if let Some(dest_local) = instr.local {
+                        // このPHIが対応する「元の」変数を探す
+                        if let Some(&orig) = original_of.get(&dest_local) {
+                            // このブロック(bb_id)を抜ける時点での「元の」変数の
+                            // 最新の値 (スタックのトップ) を取得
+                            if let Some(&current_val) = stacks.get(&orig).and_then(|s| s.last()) {
+                                // (bb_id から来た場合, 値は current_val) を追加
+                                incomings.push(PhiIncomingValue {
+                                    bb: bb_id, // bb_id = この現在のブロック
+                                    local: current_val,
+                                });
+                            }
+                            // else: スタックが空 (未定義パス)。
+                            // これは通常、エントリーブロックに到達するパスで
+                            // 引数でも定義されていなかった場合など。
+                        }
+                    }
+                } else {
+                    // PHI命令はブロックの先頭に固まっているはず
+                    break;
+                }
+            }
+        }
         for child in &node.children {
             rename_block(child, func, stacks, original_of);
         }
@@ -462,66 +510,4 @@ pub fn build_ssa(func: &mut Func) {
     }
 
     rename_block(&dom_tree, func, &mut stacks, &mut original_of);
-
-    // Step 5: fill phi incoming values
-    // For each phi instruction, set incoming values based on predecessor blocks
-    let predecessors = calc_predecessors(&func.bbs);
-
-    // Collect all phi info first to avoid borrowing issues
-    let mut phi_info: Vec<(BasicBlockId, usize, LocalId)> = Vec::new();
-    for (bb_id, bb) in func.bbs.iter() {
-        for (idx, instr) in bb.instrs.iter().enumerate() {
-            if let InstrKind::Phi(_, _) = instr.kind {
-                if let Some(dest) = instr.local {
-                    phi_info.push((bb_id, idx, dest));
-                }
-            }
-        }
-    }
-
-    // Now fill in the incoming values
-    for (bb_id, idx, dest) in phi_info {
-        let preds = predecessors.get(&bb_id).cloned().unwrap_or_default();
-        let orig = original_of.get(&dest).copied().unwrap_or(dest);
-
-        let mut incomings = Vec::new();
-        for &pred in &preds {
-            // 先行ブロックの末尾で該当変数の最新の値を検索
-            let mut current_value = None;
-
-            // 先行ブロックの命令を逆順で検索して、元変数の最新の定義を見つける
-            for instr in func.bbs[pred].instrs.iter().rev() {
-                if let Some(local) = instr.local {
-                    let original = original_of.get(&local).copied().unwrap_or(local);
-                    if original == orig {
-                        current_value = Some(local);
-                        break;
-                    }
-                }
-            }
-
-            // 見つからない場合は引数かもしれない
-            if current_value.is_none() {
-                for &arg in &func.args {
-                    let original = original_of.get(&arg).copied().unwrap_or(arg);
-                    if original == orig {
-                        current_value = Some(arg);
-                        break;
-                    }
-                }
-            }
-
-            if let Some(value) = current_value {
-                incomings.push(PhiIncomingValue {
-                    bb: pred,
-                    local: value,
-                });
-            }
-        }
-
-        // Phi命令を更新
-        if let InstrKind::Phi(_, non_exhaustive) = &func.bbs[bb_id].instrs[idx].kind {
-            func.bbs[bb_id].instrs[idx].kind = InstrKind::Phi(incomings, *non_exhaustive);
-        }
-    }
 }
