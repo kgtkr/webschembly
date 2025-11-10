@@ -13,7 +13,7 @@ use crate::ir_processor::cfg_analyzer::{
 };
 use crate::ir_processor::dataflow::{analyze_liveness, calc_def_use};
 use crate::ir_processor::optimizer::remove_unreachable_bb;
-use crate::ir_processor::ssa::DefUseChain;
+use crate::ir_processor::ssa::{DefUseChain, build_ssa};
 use crate::ir_processor::ssa_optimizer::{SsaOptimizerConfig, ssa_optimize};
 use vec_map::{HasId, VecMap};
 use webschembly_compiler_ir::*;
@@ -355,7 +355,7 @@ impl JitSpecializedFunc {
         let body_func = &mut funcs[body_func_id];
         // これがないとBBの入力に代入している命令を持つBBが残るためSSAにならない
         remove_unreachable_bb(body_func);
-        // fix_args_assign(body_func);
+        let new_ids = build_ssa(body_func);
 
         let assigned_local_to_obj = assign_type_args(
             body_func,
@@ -542,6 +542,7 @@ impl JitSpecializedFunc {
                     }
                 },
                 &assigned_local_to_obj,
+                &new_ids,
                 &mut callee_jit_bb.bb_index_manager,
                 &mut required_stubs,
                 global_manager,
@@ -1117,6 +1118,7 @@ fn calculate_args_to_pass(
     callee: &BBInfo,
     get_typed_obj: impl Fn(LocalId) -> Option<TypedObj>,
     caller_assigned_local_to_obj: &FxHashMap<LocalId, LocalId>,
+    new_ids: &FxHashMap<(BasicBlockId, LocalId), LocalId>,
     bb_index_manager: &mut BBIndexManager,
     required_stubs: &mut Vec<(BasicBlockId, usize)>,
     global_manager: &mut GlobalManager,
@@ -1127,6 +1129,7 @@ fn calculate_args_to_pass(
     let mut args_to_pass_fallback = Vec::new();
 
     for &arg in &callee.args {
+        let arg = *new_ids.get(&(callee.bb_id, arg)).unwrap();
         let obj_arg = caller_assigned_local_to_obj
             .get(&arg)
             .copied()

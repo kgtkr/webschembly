@@ -306,11 +306,7 @@ impl DefUseChain {
     }
 }
 
-pub fn build_ssa(func: &mut Func) {
-    log::debug!(
-        "Building SSA for function\n{}",
-        func.display(&Default::default())
-    );
+pub fn build_ssa(func: &mut Func) -> FxHashMap<(BasicBlockId, LocalId), LocalId> {
     // ステップ1: 支配木と支配辺境の計算に必要な情報を準備
     let predecessors = calc_predecessors(&func.bbs);
     let rpo = calculate_rpo(&func.bbs, func.bb_entry);
@@ -391,6 +387,8 @@ pub fn build_ssa(func: &mut Func) {
         stacks: &mut FxHashMap<LocalId, Vec<LocalId>>,
         original_of: &mut FxHashMap<LocalId, LocalId>,
         inserted_phis: &FxHashSet<(BasicBlockId, usize)>,
+        // 既にあるphi命令含め、phi areaが終わった後の新しいlocal id
+        new_ids: &mut FxHashMap<(BasicBlockId, LocalId), LocalId>,
     ) {
         let bb_id = node.id;
 
@@ -424,6 +422,7 @@ pub fn build_ssa(func: &mut Func) {
 
         // Phase B: 通常の命令を処理 (使用側をリネームし、新しい定義を作成)
         let num_instrs = func.bbs[bb_id].instrs.len();
+        let mut phi_area = true;
         for idx in 0..num_instrs {
             let instr = &func.bbs[bb_id].instrs[idx];
             if inserted_phis.contains(&(bb_id, idx)) {
@@ -431,6 +430,20 @@ pub fn build_ssa(func: &mut Func) {
                     unreachable!()
                 };
                 continue; // PHIはPhase Aで処理済み
+            }
+
+            if phi_area {
+                match &instr.kind {
+                    InstrKind::Phi(_, _) | InstrKind::Nop => {}
+                    _ => {
+                        phi_area = false;
+                        for (orig, stack) in stacks.iter() {
+                            if let Some(top) = stack.last() {
+                                new_ids.insert((bb_id, *orig), *top);
+                            }
+                        }
+                    }
+                }
             }
 
             // この命令の「使用(use)」をリネーム
@@ -488,7 +501,7 @@ pub fn build_ssa(func: &mut Func) {
         }
 
         for child in &node.children {
-            rename_block(child, func, stacks, original_of, inserted_phis);
+            rename_block(child, func, stacks, original_of, inserted_phis, new_ids);
         }
 
         for &orig in local_defs.iter().rev() {
@@ -496,12 +509,14 @@ pub fn build_ssa(func: &mut Func) {
         }
     }
 
+    let mut new_ids = FxHashMap::default();
     rename_block(
         &dom_tree,
         func,
         &mut stacks,
         &mut original_of,
         &inserted_phis,
+        &mut new_ids,
     );
 
     /*
@@ -537,9 +552,5 @@ pub fn build_ssa(func: &mut Func) {
             }
         }
     }
-
-    log::debug!(
-        "Build SSA for function\n{}",
-        func.display(&Default::default())
-    );
+    new_ids
 }
