@@ -307,6 +307,10 @@ impl DefUseChain {
 }
 
 pub fn build_ssa(func: &mut Func) {
+    log::debug!(
+        "Building SSA for function\n{}",
+        func.display(&Default::default())
+    );
     // ステップ1: 支配木と支配辺境の計算に必要な情報を準備
     let predecessors = calc_predecessors(&func.bbs);
     let rpo = calculate_rpo(&func.bbs, func.bb_entry);
@@ -327,6 +331,7 @@ pub fn build_ssa(func: &mut Func) {
 
     // ステップ3: Phi命令の挿入 (Iterated Dominance Frontier)
     let mut has_phi: FxHashSet<(BasicBlockId, LocalId)> = FxHashSet::default();
+    let mut insert_phis: FxHashMap<BasicBlockId, Vec<_>> = FxHashMap::default();
     for (&var, blocks) in def_blocks.iter() {
         let mut worklist: Vec<BasicBlockId> = blocks.clone();
         let mut visited: FxHashSet<BasicBlockId> = FxHashSet::default();
@@ -337,29 +342,27 @@ pub fn build_ssa(func: &mut Func) {
                 .unwrap_or(&FxHashSet::default())
             {
                 if has_phi.insert((df, var)) {
-                    // insert phi at beginning of df block
-                    let phi_instr = Instr {
+                    insert_phis.entry(df).or_default().push(Instr {
                         local: Some(var),
-                        kind: InstrKind::Phi(Vec::new(), false), // 引数は後で充填
-                    };
-                    let bb = &mut func.bbs[df];
-                    // insert at first position after any existing phi/nop
-                    let mut insert_idx = 0usize;
-                    for (i, instr) in bb.instrs.iter().enumerate() {
-                        match &instr.kind {
-                            InstrKind::Phi(_, _) | InstrKind::Nop => insert_idx = i + 1,
-                            _ => break,
-                        }
-                    }
-                    bb.instrs.insert(insert_idx, phi_instr);
+                        kind: InstrKind::Phi(Vec::new(), false),
+                    });
 
                     if visited.insert(df) {
-                        // newly created phi is considered a def site for this var
                         worklist.push(df);
                     }
                 }
             }
         }
+    }
+
+    let mut inserted_phis: FxHashSet<(BasicBlockId, usize)> = FxHashSet::default();
+    for (bb_id, phis) in insert_phis {
+        for (i, _) in phis.iter().enumerate() {
+            inserted_phis.insert((bb_id, i));
+        }
+
+        let bb = &mut func.bbs[bb_id];
+        bb.instrs.splice(0..0, phis);
     }
 
     // ステップ4: 変数のリネーム (支配木を使用)
@@ -377,30 +380,37 @@ pub fn build_ssa(func: &mut Func) {
     // 新しいLocalIdがどの「元の」LocalIdに対応するかを追跡
     let mut original_of: FxHashMap<LocalId, LocalId> = FxHashMap::default();
 
+    for local in func.locals.keys() {
+        original_of.insert(local, local);
+    }
+
     // 再帰的なリネーム関数
     fn rename_block(
         node: &DomTreeNode,
         func: &mut Func,
         stacks: &mut FxHashMap<LocalId, Vec<LocalId>>,
         original_of: &mut FxHashMap<LocalId, LocalId>,
+        inserted_phis: &FxHashSet<(BasicBlockId, usize)>,
     ) {
         let bb_id = node.id;
 
         // このブロックで作成された定義を追跡し、関数の最後でポップするため
-        let mut local_defs: Vec<LocalId> = Vec::new();
+        let mut local_defs = Vec::new();
 
         // Phase A: PHI命令を処理 (新しい定義を作成)
         let mut phi_updates: Vec<(usize, LocalId)> = Vec::new();
         for (idx, instr) in func.bbs[bb_id].instrs.iter().enumerate() {
-            if let InstrKind::Phi(_, _) = instr.kind {
-                if let Some(orig) = instr.local {
-                    let typ = func.locals[orig].typ;
-                    let new_local = func.locals.push_with(|id| Local { id, typ });
-                    original_of.insert(new_local, orig);
-                    stacks.get_mut(&orig).unwrap().push(new_local);
-                    local_defs.push(orig); // 後でポップするために元の変数を記録
-                    phi_updates.push((idx, new_local));
-                }
+            if inserted_phis.contains(&(bb_id, idx)) {
+                let InstrKind::Phi(..) = instr.kind else {
+                    unreachable!()
+                };
+                let orig = instr.local.unwrap();
+                let typ = func.locals[orig].typ;
+                let new_local = func.locals.push_with(|id| Local { id, typ });
+                original_of.insert(new_local, orig);
+                stacks.get_mut(&orig).unwrap().push(new_local);
+                local_defs.push(orig); // 後でポップするために元の変数を記録
+                phi_updates.push((idx, new_local));
             } else {
                 // PHIはブロックの先頭にあるはず
                 break;
@@ -416,83 +426,59 @@ pub fn build_ssa(func: &mut Func) {
         let num_instrs = func.bbs[bb_id].instrs.len();
         for idx in 0..num_instrs {
             let instr = &func.bbs[bb_id].instrs[idx];
-            if let InstrKind::Phi(_, _) = instr.kind {
+            if inserted_phis.contains(&(bb_id, idx)) {
+                let InstrKind::Phi(..) = instr.kind else {
+                    unreachable!()
+                };
                 continue; // PHIはPhase Aで処理済み
             }
 
             // この命令の「使用(use)」をリネーム
-            // (借用チェッカのため、一旦変更内容を収集)
-            let mut use_replacements: Vec<(usize, LocalId)> = Vec::new();
-            for (i, (local_ref, flag)) in instr.local_usages().enumerate() {
+            let instr = &mut func.bbs[bb_id].instrs[idx];
+            for (local_ref, flag) in instr.local_usages_mut() {
                 if let LocalFlag::Used(_) = flag {
-                    // スタックのトップにある最新のローカルIDで置換
-                    if let Some(&top) = stacks.get(local_ref).and_then(|s| s.last()) {
-                        use_replacements.push((i, top));
-                    }
-                    // else: スタックが空 (未定義変数の使用)。
-                    // 本来はエラーだが、ここでは何もしない (IR検証で検出)
-                }
-            }
-
-            // 収集した変更を適用
-            let instr_mut = &mut func.bbs[bb_id].instrs[idx];
-            let usage_iter = instr_mut.local_usages_mut();
-            for (i, (local_ref, _flag)) in usage_iter.enumerate() {
-                if let Some(&(_idx, new_val)) = use_replacements.iter().find(|(idx, _)| *idx == i) {
-                    *local_ref = new_val;
+                    let top = *stacks.get(local_ref).unwrap().last().unwrap();
+                    *local_ref = top;
                 }
             }
 
             // この命令の「定義(def)」をリネーム (instr.local)
-            // (借用チェッカのため、instrのイテレートと分離)
-            let mut def_replacement: Option<LocalId> = None;
             if let Some(orig) = func.bbs[bb_id].instrs[idx].local {
-                // PHI以外の命令は `local_usages` で "Defined" を返さない設計と仮定
-                // (もし `local_usages` で "Defined" を扱うなら、ここのロジックは
-                //  上の `local_usages` ループ内に移動する必要がある)
-
-                // ここでは、`instr.local` が定義スロットであると仮定する
                 let typ = func.locals[orig].typ;
                 let new_local = func.locals.push_with(|id| Local { id, typ });
                 original_of.insert(new_local, orig);
                 stacks.get_mut(&orig).unwrap().push(new_local);
-                local_defs.push(orig); // 後でポップするために元の変数を記録
-                def_replacement = Some(new_local);
-            }
-
-            if let Some(new_def) = def_replacement {
-                func.bbs[bb_id].instrs[idx].local = Some(new_def);
+                local_defs.push(orig);
+                func.bbs[bb_id].instrs[idx].local = Some(new_local);
             }
         }
 
         // Phase C: CFGの後続ブロック (Successors) のPHI引数を充填
         // (このブロックのリネームがすべて完了し、スタックが最新の状態で実行)
         //
-
-        // 借用チェッカを通過するため、後続IDを先に収集
-        // (func.bbs[bb_id]のイミュータブルな参照とfunc.bbs[succ_id]のミュータブルな参照が衝突するため)
+        let local_def_set = local_defs.iter().cloned().collect::<FxHashSet<_>>();
         let successors: Vec<BasicBlockId> = func.bbs[bb_id].terminator().successors().collect();
 
         for &succ_id in &successors {
             let succ_bb = &mut func.bbs[succ_id];
-            for instr in succ_bb.instrs.iter_mut() {
-                if let InstrKind::Phi(incomings, _) = &mut instr.kind {
-                    if let Some(dest_local) = instr.local {
-                        // このPHIが対応する「元の」変数を探す
-                        if let Some(&orig) = original_of.get(&dest_local) {
-                            // このブロック(bb_id)を抜ける時点での「元の」変数の
-                            // 最新の値 (スタックのトップ) を取得
-                            if let Some(&current_val) = stacks.get(&orig).and_then(|s| s.last()) {
-                                // (bb_id から来た場合, 値は current_val) を追加
-                                incomings.push(PhiIncomingValue {
-                                    bb: bb_id, // bb_id = この現在のブロック
-                                    local: current_val,
-                                });
-                            }
-                            // else: スタックが空 (未定義パス)。
-                            // これは通常、エントリーブロックに到達するパスで
-                            // 引数でも定義されていなかった場合など。
-                        }
+            for (idx, instr) in succ_bb.instrs.iter_mut().enumerate() {
+                if inserted_phis.contains(&(succ_id, idx)) {
+                    let InstrKind::Phi(incomings, ..) = &mut instr.kind else {
+                        unreachable!()
+                    };
+                    let dest_local = instr.local.unwrap();
+
+                    // このPHIが対応する「元の」変数を探す
+                    let orig = *original_of.get(&dest_local).unwrap();
+                    if local_def_set.contains(&orig) {
+                        // このブロック(bb_id)を抜ける時点での「元の」変数の
+                        // 最新の値 (スタックのトップ) を取得
+                        let current_val = *stacks.get(&orig).unwrap().last().unwrap();
+                        // (bb_id から来た場合, 値は current_val) を追加
+                        incomings.push(PhiIncomingValue {
+                            bb: bb_id, // bb_id = この現在のブロック
+                            local: current_val,
+                        });
                     }
                 } else {
                     // PHI命令はブロックの先頭に固まっているはず
@@ -500,14 +486,60 @@ pub fn build_ssa(func: &mut Func) {
                 }
             }
         }
+
         for child in &node.children {
-            rename_block(child, func, stacks, original_of);
+            rename_block(child, func, stacks, original_of, inserted_phis);
         }
 
-        for orig in local_defs.into_iter().rev() {
+        for &orig in local_defs.iter().rev() {
             stacks.get_mut(&orig).unwrap().pop();
         }
     }
 
-    rename_block(&dom_tree, func, &mut stacks, &mut original_of);
+    rename_block(
+        &dom_tree,
+        func,
+        &mut stacks,
+        &mut original_of,
+        &inserted_phis,
+    );
+
+    /*
+    // 新たに挿入されたPhi
+    l123 = phi(l119: bb17)
+    l125 = phi(l117: bb19)
+    // 元々あったPhi
+    l127 = phi(l123: bb17, l125: bb19)
+    を
+    l127 = phi(l119: bb17, l117: bb19)
+    に書き換える
+    */
+    for bb in func.bbs.values_mut() {
+        let mut local_to_incomings = FxHashMap::default();
+        for (idx, instr) in bb.instrs.iter_mut().enumerate() {
+            if inserted_phis.contains(&(bb.id, idx)) {
+                let InstrKind::Phi(incomings, _) = &instr.kind else {
+                    unreachable!()
+                };
+                local_to_incomings.insert(instr.local.unwrap(), incomings);
+            } else if let InstrKind::Phi(incomings, _) = &mut instr.kind {
+                let mut new_incomings = Vec::new();
+                for incoming in incomings.iter() {
+                    if let Some(inserted_incomings) = local_to_incomings.get(&incoming.local) {
+                        for original_incoming in inserted_incomings.iter() {
+                            new_incomings.push(*original_incoming);
+                        }
+                    } else {
+                        new_incomings.push(*incoming);
+                    }
+                }
+                *incomings = new_incomings;
+            }
+        }
+    }
+
+    log::debug!(
+        "Build SSA for function\n{}",
+        func.display(&Default::default())
+    );
 }
