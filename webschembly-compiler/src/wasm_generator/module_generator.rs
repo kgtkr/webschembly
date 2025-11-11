@@ -965,8 +965,13 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         match structured_bb {
             Structured::Simple(bb_id) => {
                 let bb = &func.bbs[*bb_id];
-                for expr in &bb.instrs {
-                    self.gen_assign(function, expr);
+                for (i, expr) in bb.instrs.iter().enumerate() {
+                    if let ir::InstrKind::Terminator(..) = expr.kind {
+                        debug_assert!(expr.local.is_none());
+                        debug_assert_eq!(i, bb.instrs.len() - 1);
+                    } else {
+                        self.gen_assign(function, expr);
+                    }
                 }
             }
             Structured::If { cond, then, else_ } => {
@@ -1027,10 +1032,6 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
     fn gen_assign(&mut self, function: &mut Function, expr: &ir::Instr) {
         if let ir::InstrKind::Nop = expr.kind {
             // desugarである程度は削除しているが、その後の最適化で再度Nopが発生することがあるためここでも除去
-            debug_assert!(expr.local.is_none());
-            return;
-        }
-        if let ir::InstrKind::Terminator(..) = expr.kind {
             debug_assert!(expr.local.is_none());
             return;
         }
