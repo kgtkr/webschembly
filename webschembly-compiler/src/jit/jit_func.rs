@@ -7,10 +7,7 @@ use super::global_layout::{
 use super::jit_ctx::JitCtx;
 use crate::fxbihashmap::FxBiHashMap;
 use crate::ir_generator::GlobalManager;
-use crate::ir_processor::cfg_analyzer::{
-    build_dom_tree, calc_dominance_frontiers_from_tree, calc_doms, calc_predecessors,
-    calc_rev_doms, calculate_rpo,
-};
+use crate::ir_processor::cfg_analyzer::calculate_rpo;
 use crate::ir_processor::dataflow::{analyze_liveness, calc_def_use};
 use crate::ir_processor::optimizer::remove_unreachable_bb;
 use crate::ir_processor::ssa::{DefUseChain, build_ssa};

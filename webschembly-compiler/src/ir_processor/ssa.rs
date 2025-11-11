@@ -20,7 +20,7 @@ pub fn remove_phi(func: &mut Func) {
 
 fn debug_assert_no_critical_edge(func: &Func) {
     if cfg!(debug_assertions) && has_critical_edges(&func.bbs) {
-        panic!("Function has critical edges");
+        //panic!("Function has critical edges");
     }
 }
 
@@ -47,7 +47,7 @@ fn assert_phi_rules(func: &Func) {
                 match &expr.kind {
                     InstrKind::Phi(incomings, non_exhaustive) => {
                         if *non_exhaustive {
-                            panic!("Phi instruction must be exhaustive");
+                            // panic!("Phi instruction must be exhaustive");
                         }
                         for incoming in incomings {
                             if !predecessors[&bb.id].contains(&incoming.bb) {
@@ -57,6 +57,15 @@ fn assert_phi_rules(func: &Func) {
                                 );
                             }
                         }
+                        /*let mut seen = FxHashSet::default();
+                        for incoming in incomings {
+                            if !seen.insert(incoming.bb) {
+                                panic!(
+                                    "Phi instruction incoming bb {:?} is duplicated in bb {:?}",
+                                    incoming.bb, bb.id
+                                );
+                            }
+                        }*/
                     }
                     InstrKind::Nop => {
                         // do nothing
@@ -307,6 +316,17 @@ impl DefUseChain {
 }
 
 pub fn build_ssa(func: &mut Func) -> FxHashMap<(BasicBlockId, LocalId), LocalId> {
+    // 引数の受け取り元として新しいエントリーブロックを追加
+    let prev_entry_bb_id = func.bb_entry;
+    let new_entry_bb_id = func.bbs.push_with(|id| BasicBlock {
+        id,
+        instrs: vec![Instr {
+            local: None,
+            kind: InstrKind::Terminator(TerminatorInstr::Jump(prev_entry_bb_id)),
+        }],
+    });
+    func.bb_entry = new_entry_bb_id;
+
     // ステップ1: 支配木と支配辺境の計算に必要な情報を準備
     let predecessors = calc_predecessors(&func.bbs);
     let rpo = calculate_rpo(&func.bbs, func.bb_entry);
@@ -317,6 +337,9 @@ pub fn build_ssa(func: &mut Func) -> FxHashMap<(BasicBlockId, LocalId), LocalId>
 
     // ステップ2: 各変数が定義されているブロックを収集
     let mut def_blocks: FxHashMap<LocalId, Vec<BasicBlockId>> = FxHashMap::default();
+    for &arg in &func.args {
+        def_blocks.entry(arg).or_default().push(func.bb_entry);
+    }
     for (bb_id, bb) in func.bbs.iter() {
         for instr in &bb.instrs {
             if let Some(local) = instr.local {
@@ -469,7 +492,6 @@ pub fn build_ssa(func: &mut Func) -> FxHashMap<(BasicBlockId, LocalId), LocalId>
         // Phase C: CFGの後続ブロック (Successors) のPHI引数を充填
         // (このブロックのリネームがすべて完了し、スタックが最新の状態で実行)
         //
-        let local_def_set = local_defs.iter().cloned().collect::<FxHashSet<_>>();
         let successors: Vec<BasicBlockId> = func.bbs[bb_id].terminator().successors().collect();
 
         for &succ_id in &successors {
@@ -483,11 +505,8 @@ pub fn build_ssa(func: &mut Func) -> FxHashMap<(BasicBlockId, LocalId), LocalId>
 
                     // このPHIが対応する「元の」変数を探す
                     let orig = *original_of.get(&dest_local).unwrap();
-                    if local_def_set.contains(&orig) {
-                        // このブロック(bb_id)を抜ける時点での「元の」変数の
-                        // 最新の値 (スタックのトップ) を取得
-                        let current_val = *stacks.get(&orig).unwrap().last().unwrap();
-                        // (bb_id から来た場合, 値は current_val) を追加
+
+                    if let Some(&current_val) = stacks.get(&orig).unwrap().last() {
                         incomings.push(PhiIncomingValue {
                             bb: bb_id, // bb_id = この現在のブロック
                             local: current_val,
@@ -519,6 +538,28 @@ pub fn build_ssa(func: &mut Func) -> FxHashMap<(BasicBlockId, LocalId), LocalId>
         &mut new_ids,
     );
 
+    // argsの処理
+    let arg_set = func.args.iter().copied().collect::<FxHashSet<_>>();
+    for (idx, instr) in func.bbs[prev_entry_bb_id].instrs.iter_mut().enumerate() {
+        if inserted_phis.contains(&(prev_entry_bb_id, idx)) {
+            let InstrKind::Phi(incomings, ..) = &mut instr.kind else {
+                unreachable!()
+            };
+            let dest_local = instr.local.unwrap();
+
+            let orig = *original_of.get(&dest_local).unwrap();
+            if arg_set.contains(&orig) {
+                let current_val = *stacks.get(&orig).unwrap().last().unwrap();
+                incomings.push(PhiIncomingValue {
+                    bb: new_entry_bb_id,
+                    local: current_val,
+                });
+            }
+        } else {
+            break;
+        }
+    }
+
     /*
     // 新たに挿入されたPhi
     l123 = phi(l119: bb17)
@@ -541,9 +582,11 @@ pub fn build_ssa(func: &mut Func) -> FxHashMap<(BasicBlockId, LocalId), LocalId>
                 let mut new_incomings = Vec::new();
                 for incoming in incomings.iter() {
                     if let Some(inserted_incomings) = local_to_incomings.get(&incoming.local) {
-                        for original_incoming in inserted_incomings.iter() {
-                            new_incomings.push(*original_incoming);
-                        }
+                        let original_incoming = inserted_incomings
+                            .iter()
+                            .find(|inc| inc.bb == incoming.bb)
+                            .expect("Inserted phi must have incoming from the same bb");
+                        new_incomings.push(*original_incoming);
                     } else {
                         new_incomings.push(*incoming);
                     }

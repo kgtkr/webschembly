@@ -236,7 +236,7 @@ fn optimize_module(module: &mut ir::Module, config: SsaOptimizerConfig) {
     for i in 0..n {
         if config.enable_inlining {
             // inliningはInstrKind::Closureのfunc_idに依存しているので、JIT後のモジュールには使えない
-            // inlining(module, &mut module_inliner, i == n - 1);
+            inlining(module, &mut module_inliner, i == n - 1);
         }
         for func in module.funcs.values_mut() {
             ssa_optimize(func, config);
