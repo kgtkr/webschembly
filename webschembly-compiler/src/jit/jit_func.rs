@@ -345,7 +345,15 @@ impl JitSpecializedFunc {
             body_func.id = id;
             body_func.args = self.jit_bbs[orig_entry_bb_id].info.args.clone();
             body_func.bb_entry = orig_entry_bb_id;
+            body_func
+        });
 
+        let body_func = &mut funcs[body_func_id];
+        // これがないとBBの入力に代入している命令を持つBBが残るためSSAにならない
+        remove_unreachable_bb(body_func);
+        let new_ids = build_ssa(body_func);
+
+        {
             // クリティカルエッジを作らないようにジャンクションBBを追加
             let mut phi_bb_map = FxHashMap::default();
             let mut additional_bbs = body_func.bbs.to_empty();
@@ -368,26 +376,18 @@ impl JitSpecializedFunc {
                     phi_bb_map.insert(bb_id, junction_bb_id);
                 }
             }
-            for bb in body_func.bbs.values_mut() {
-                for instr in &mut bb.instrs {
-                    if let InstrKind::Phi(..) = &mut instr.kind {
-                        for bb_id in instr.kind.bb_ids_mut() {
-                            if let Some(&junction_bb_id) = phi_bb_map.get(bb_id) {
-                                *bb_id = junction_bb_id;
-                            }
+
+            for instr in &mut body_func.bbs[orig_entry_bb_id].instrs {
+                if let InstrKind::Phi(..) = &mut instr.kind {
+                    for bb_id in instr.kind.bb_ids_mut() {
+                        if let Some(&junction_bb_id) = phi_bb_map.get(bb_id) {
+                            *bb_id = junction_bb_id;
                         }
                     }
                 }
             }
             body_func.bbs.extend(additional_bbs);
-
-            body_func
-        });
-
-        let body_func = &mut funcs[body_func_id];
-        // これがないとBBの入力に代入している命令を持つBBが残るためSSAにならない
-        remove_unreachable_bb(body_func);
-        let new_ids = build_ssa(body_func);
+        }
 
         let assigned_local_to_obj = assign_type_args(
             body_func,
