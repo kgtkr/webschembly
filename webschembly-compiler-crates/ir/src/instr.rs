@@ -763,6 +763,31 @@ macro_rules! impl_InstrKind_local_usages {
     };
 }
 
+macro_rules! impl_InstrKind_bb_ids {
+    ($($suffix: ident)?,$($mutability: tt)?) => {
+        paste::paste! {
+            pub fn [<bb_ids $($suffix)?>](&$($mutability)? self) -> impl Iterator<Item = &$($mutability)? BasicBlockId> {
+                from_coroutine(
+                    #[coroutine]
+                    move || match self {
+                        InstrKind::Phi(values, _) => {
+                            for value in values.[<iter $($suffix)?>]() {
+                                yield &$($mutability)? value.bb;
+                            }
+                        }
+                        InstrKind::Terminator(terminator) => {
+                            for bb_id in terminator.[<bb_ids $($suffix)?>]() {
+                                yield bb_id;
+                            }
+                        }
+                        _ => {}
+                    },
+                )
+            }
+        }
+    };
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum InstrKindPurelity {
     Phi,
@@ -899,6 +924,8 @@ impl InstrKind {
     impl_InstrKind_func_ids!(,);
     impl_InstrKind_local_usages!(_mut, mut);
     impl_InstrKind_local_usages!(,);
+    impl_InstrKind_bb_ids!(_mut, mut);
+    impl_InstrKind_bb_ids!(,);
 }
 
 impl fmt::Display for DisplayInFunc<'_, &'_ InstrKind> {

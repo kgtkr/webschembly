@@ -546,16 +546,8 @@ fn inlining_func(
                 ..bb.clone()
             };
             for instr in &mut new_bb.instrs {
-                // TODO: InstrKindにbb_ids_mutを実装
-                if let InstrKind::Phi(incomings, _) = &mut instr.kind {
-                    for incoming in incomings {
-                        incoming.bb = bb_map[&incoming.bb];
-                    }
-                }
-                if let InstrKind::Terminator(term) = &mut instr.kind {
-                    for bb_id in term.bb_ids_mut() {
-                        *bb_id = bb_map[bb_id];
-                    }
+                for bb_id in instr.kind.bb_ids_mut() {
+                    *bb_id = bb_map[bb_id];
                 }
             }
             for (local_id, _) in new_bb.local_usages_mut() {
