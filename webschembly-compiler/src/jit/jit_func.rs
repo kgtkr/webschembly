@@ -346,6 +346,41 @@ impl JitSpecializedFunc {
             body_func.args = self.jit_bbs[orig_entry_bb_id].info.args.clone();
             body_func.bb_entry = orig_entry_bb_id;
 
+            // クリティカルエッジを作らないようにジャンクションBBを追加
+            let mut phi_bb_map = FxHashMap::default();
+            let mut additional_bbs = body_func.bbs.to_empty();
+            for bb in body_func.bbs.values_mut() {
+                let bb_id = bb.id;
+                let term = bb.terminator_mut();
+                for succ_bb_id in term.bb_ids_mut() {
+                    if succ_bb_id != &orig_entry_bb_id {
+                        // entry bbへのジャンプ以外はクリティカルエッジを作ることはない
+                        continue;
+                    }
+                    let junction_bb_id = additional_bbs.push_with(|id| BasicBlock {
+                        id,
+                        instrs: vec![Instr {
+                            local: None,
+                            kind: InstrKind::Terminator(TerminatorInstr::Jump(*succ_bb_id)),
+                        }],
+                    });
+                    *succ_bb_id = junction_bb_id;
+                    phi_bb_map.insert(bb_id, junction_bb_id);
+                }
+            }
+            for bb in body_func.bbs.values_mut() {
+                for instr in &mut bb.instrs {
+                    if let InstrKind::Phi(..) = &mut instr.kind {
+                        for bb_id in instr.kind.bb_ids_mut() {
+                            if let Some(&junction_bb_id) = phi_bb_map.get(bb_id) {
+                                *bb_id = junction_bb_id;
+                            }
+                        }
+                    }
+                }
+            }
+            body_func.bbs.extend(additional_bbs);
+
             body_func
         });
 
