@@ -13,7 +13,7 @@
           fromImage = pkgs.dockerTools.pullImage {
             imageName = "mcr.microsoft.com/vscode/devcontainers/base";
             imageDigest = "sha256:ea0615c10a5f04649532bf84aca5e1d987357bc76f29d490ac3890f45f7fbf37";
-            hash = "sha256-kopW8mc6zf4mBmVI2J7z50KCpsltwNIoPoltmk0J53I=";
+            hash = "sha256-Jp6HCycHNTCkuaX4wG+1O9Mo+28PUXHTS/oEkiU1/dc=";
             finalImageName = "mcr.microsoft.com/vscode/devcontainers/base";
             finalImageTag = "2.0.4-ubuntu-22.04";
           };
