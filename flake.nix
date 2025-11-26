@@ -53,6 +53,7 @@
               pkgs.gauche
               pkgs.skopeo
               pkgs.manifest-tool
+              pkgs.nix-prefetch-docker
             ];
           };
         };
