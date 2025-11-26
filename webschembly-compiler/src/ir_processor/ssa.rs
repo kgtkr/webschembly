@@ -20,7 +20,7 @@ pub fn remove_phi(func: &mut Func) {
 
 fn debug_assert_no_critical_edge(func: &Func) {
     if cfg!(debug_assertions) && has_critical_edges(&func.bbs) {
-        //panic!("Function has critical edges");
+        panic!("Function has critical edges");
     }
 }
 
