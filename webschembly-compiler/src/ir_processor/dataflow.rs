@@ -83,7 +83,7 @@ pub fn analyze_liveness(
 
             // live_out[B] = ∪ live_in[S]
             let mut new_live_out = FxHashSet::default();
-            for successor in block.next.successors() {
+            for successor in block.terminator().successors() {
                 new_live_out.extend(&live_in[&successor]);
                 let successor_block = &cfg[successor];
                 for (id, flag) in successor_block.local_usages() {

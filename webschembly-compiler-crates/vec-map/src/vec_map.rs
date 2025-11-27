@@ -32,6 +32,15 @@ where
         }
     }
 
+    pub fn to_empty(&self) -> Self {
+        Self {
+            vec: std::iter::repeat_with(|| None)
+                .take(self.vec.len())
+                .collect(),
+            _marker: PhantomData,
+        }
+    }
+
     pub fn entry(&mut self, key: K) -> Entry<'_, K, V> {
         if self.get(key).is_some() {
             Entry::Occupied(OccupiedEntry { key, map: self })

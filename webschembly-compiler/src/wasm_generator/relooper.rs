@@ -9,7 +9,7 @@ use crate::ir_processor::cfg_analyzer::{
 };
 use vec_map::VecMap;
 use webschembly_compiler_ir::{
-    BasicBlock, BasicBlockId, BasicBlockNext, BasicBlockTerminator, Func, LocalId,
+    BasicBlock, BasicBlockId, ExitInstr, Func, LocalId, TerminatorInstr,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -27,7 +27,7 @@ pub enum Structured {
         body: Vec<Structured>,
     },
     Break(usize),
-    Terminator(BasicBlockTerminator),
+    Exit(ExitInstr),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -111,11 +111,11 @@ impl Translator<'_> {
             let mut result = Vec::new();
             result.push(Structured::Simple(block.id));
 
-            match &block.next {
-                BasicBlockNext::Jump(target) => {
+            match block.terminator() {
+                TerminatorInstr::Jump(target) => {
                     result.extend(self.do_branch(x, *target, context));
                 }
-                BasicBlockNext::If(condition, then_block, else_block) => {
+                TerminatorInstr::If(condition, then_block, else_block) => {
                     let mut new_context = context.to_vec();
                     new_context.insert(0, ContainingSyntax::IfThenElse);
 
@@ -128,8 +128,8 @@ impl Translator<'_> {
                         else_: else_branch,
                     });
                 }
-                BasicBlockNext::Terminator(terminator) => {
-                    result.push(Structured::Terminator(terminator.clone()));
+                TerminatorInstr::Exit(exit) => {
+                    result.push(Structured::Exit(exit.clone()));
                 }
             }
             result
@@ -201,14 +201,17 @@ fn reloop_cfg(cfg: &VecMap<BasicBlockId, BasicBlock>, entry_id: BasicBlockId) ->
 mod tests {
     use super::*;
 
-    fn setup_cfg(data: &[(usize, BasicBlockNext)]) -> VecMap<BasicBlockId, BasicBlock> {
+    fn setup_cfg(data: &[(usize, TerminatorInstr)]) -> VecMap<BasicBlockId, BasicBlock> {
+        use webschembly_compiler_ir::{Instr, InstrKind};
         data.iter()
             .map(|&(id, ref next)| {
                 let block_id = BasicBlockId::from(id);
                 let block = BasicBlock {
                     id: block_id,
-                    instrs: vec![],
-                    next: next.clone(),
+                    instrs: vec![Instr {
+                        local: None,
+                        kind: InstrKind::Terminator(next.clone()),
+                    }],
                 };
                 (block_id, block)
             })
@@ -218,10 +221,10 @@ mod tests {
     #[test]
     fn test_linear() {
         let cfg = setup_cfg(&[
-            (0, BasicBlockNext::Jump(BasicBlockId::from(1))),
+            (0, TerminatorInstr::Jump(BasicBlockId::from(1))),
             (
                 1,
-                BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(500))),
+                TerminatorInstr::Exit(ExitInstr::Return(LocalId::from(500))),
             ),
         ]);
 
@@ -230,7 +233,7 @@ mod tests {
         let expected = vec![
             Structured::Simple(BasicBlockId::from(0)),
             Structured::Simple(BasicBlockId::from(1)),
-            Structured::Terminator(BasicBlockTerminator::Return(LocalId::from(500))),
+            Structured::Exit(ExitInstr::Return(LocalId::from(500))),
         ];
 
         assert_eq!(result, expected);
@@ -241,17 +244,17 @@ mod tests {
         let cfg = setup_cfg(&[
             (
                 0,
-                BasicBlockNext::If(
+                TerminatorInstr::If(
                     LocalId::from(100),
                     BasicBlockId::from(1),
                     BasicBlockId::from(2),
                 ),
             ),
-            (1, BasicBlockNext::Jump(BasicBlockId::from(3))),
-            (2, BasicBlockNext::Jump(BasicBlockId::from(3))),
+            (1, TerminatorInstr::Jump(BasicBlockId::from(3))),
+            (2, TerminatorInstr::Jump(BasicBlockId::from(3))),
             (
                 3,
-                BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(500))),
+                TerminatorInstr::Exit(ExitInstr::Return(LocalId::from(500))),
             ),
         ]);
 
@@ -275,7 +278,7 @@ mod tests {
                 ],
             },
             Structured::Simple(BasicBlockId::from(3)),
-            Structured::Terminator(BasicBlockTerminator::Return(LocalId::from(500))),
+            Structured::Exit(ExitInstr::Return(LocalId::from(500))),
         ];
 
         assert_eq!(result, expected);
@@ -286,7 +289,7 @@ mod tests {
         let cfg = setup_cfg(&[
             (
                 0,
-                BasicBlockNext::If(
+                TerminatorInstr::If(
                     LocalId::from(100),
                     BasicBlockId::from(1),
                     BasicBlockId::from(4),
@@ -294,18 +297,18 @@ mod tests {
             ),
             (
                 1,
-                BasicBlockNext::If(
+                TerminatorInstr::If(
                     LocalId::from(101),
                     BasicBlockId::from(2),
                     BasicBlockId::from(3),
                 ),
             ),
-            (2, BasicBlockNext::Jump(BasicBlockId::from(5))),
-            (3, BasicBlockNext::Jump(BasicBlockId::from(5))),
-            (4, BasicBlockNext::Jump(BasicBlockId::from(5))),
+            (2, TerminatorInstr::Jump(BasicBlockId::from(5))),
+            (3, TerminatorInstr::Jump(BasicBlockId::from(5))),
+            (4, TerminatorInstr::Jump(BasicBlockId::from(5))),
             (
                 5,
-                BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(500))),
+                TerminatorInstr::Exit(ExitInstr::Return(LocalId::from(500))),
             ),
         ]);
 
@@ -339,7 +342,7 @@ mod tests {
                 ],
             },
             Structured::Simple(BasicBlockId::from(5)),
-            Structured::Terminator(BasicBlockTerminator::Return(LocalId::from(500))),
+            Structured::Exit(ExitInstr::Return(LocalId::from(500))),
         ];
 
         assert_eq!(result, expected);
@@ -348,19 +351,19 @@ mod tests {
     #[test]
     fn test_simple_loop() {
         let cfg = setup_cfg(&[
-            (0, BasicBlockNext::Jump(BasicBlockId::from(1))),
+            (0, TerminatorInstr::Jump(BasicBlockId::from(1))),
             (
                 1,
-                BasicBlockNext::If(
+                TerminatorInstr::If(
                     LocalId::from(101),
                     BasicBlockId::from(2),
                     BasicBlockId::from(3),
                 ),
             ),
-            (2, BasicBlockNext::Jump(BasicBlockId::from(1))),
+            (2, TerminatorInstr::Jump(BasicBlockId::from(1))),
             (
                 3,
-                BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(500))),
+                TerminatorInstr::Exit(ExitInstr::Return(LocalId::from(500))),
             ),
         ]);
 
@@ -379,9 +382,7 @@ mod tests {
                         ],
                         else_: vec![
                             Structured::Simple(BasicBlockId::from(3)),
-                            Structured::Terminator(BasicBlockTerminator::Return(LocalId::from(
-                                500,
-                            ))), // ループ脱出
+                            Structured::Exit(ExitInstr::Return(LocalId::from(500))), // ループ脱出
                         ],
                     },
                 ],
@@ -394,8 +395,8 @@ mod tests {
     #[test]
     fn test_simple_infinite_loop() {
         let cfg = setup_cfg(&[
-            (0, BasicBlockNext::Jump(BasicBlockId::from(1))),
-            (1, BasicBlockNext::Jump(BasicBlockId::from(0))),
+            (0, TerminatorInstr::Jump(BasicBlockId::from(1))),
+            (1, TerminatorInstr::Jump(BasicBlockId::from(0))),
         ]);
 
         let result = reloop_cfg(&cfg, BasicBlockId::from(0));
@@ -416,7 +417,7 @@ mod tests {
         let cfg = setup_cfg(&[
             (
                 0,
-                BasicBlockNext::If(
+                TerminatorInstr::If(
                     LocalId::from(100),
                     BasicBlockId::from(1),
                     BasicBlockId::from(2),
@@ -424,7 +425,7 @@ mod tests {
             ),
             (
                 1,
-                BasicBlockNext::If(
+                TerminatorInstr::If(
                     LocalId::from(101),
                     BasicBlockId::from(1),
                     BasicBlockId::from(2),
@@ -432,7 +433,7 @@ mod tests {
             ),
             (
                 2,
-                BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(500))),
+                TerminatorInstr::Exit(ExitInstr::Return(LocalId::from(500))),
             ),
         ]);
 
@@ -459,7 +460,7 @@ mod tests {
                 ],
             },
             Structured::Simple(BasicBlockId::from(2)),
-            Structured::Terminator(BasicBlockTerminator::Return(LocalId::from(500))),
+            Structured::Exit(ExitInstr::Return(LocalId::from(500))),
         ];
 
         assert_eq!(result, expected);
@@ -467,7 +468,7 @@ mod tests {
 
     #[test]
     fn test_self_infinite_loop() {
-        let cfg = setup_cfg(&[(0, BasicBlockNext::Jump(BasicBlockId::from(0)))]);
+        let cfg = setup_cfg(&[(0, TerminatorInstr::Jump(BasicBlockId::from(0)))]);
 
         let result = reloop_cfg(&cfg, BasicBlockId::from(0));
 
@@ -489,14 +490,14 @@ mod tests {
         let cfg = setup_cfg(&[
             (
                 0,
-                BasicBlockNext::If(
+                TerminatorInstr::If(
                     LocalId::from(100),
                     BasicBlockId::from(1),
                     BasicBlockId::from(2),
                 ),
             ),
-            (1, BasicBlockNext::Jump(BasicBlockId::from(2))),
-            (2, BasicBlockNext::Jump(BasicBlockId::from(1))),
+            (1, TerminatorInstr::Jump(BasicBlockId::from(2))),
+            (2, TerminatorInstr::Jump(BasicBlockId::from(1))),
         ]);
 
         reloop_cfg(&cfg, BasicBlockId::from(0));
@@ -508,7 +509,7 @@ mod tests {
         let cfg = setup_cfg(&[
             (
                 0,
-                BasicBlockNext::If(
+                TerminatorInstr::If(
                     LocalId::from(100),
                     BasicBlockId::from(1),
                     BasicBlockId::from(3),
@@ -516,25 +517,25 @@ mod tests {
             ), // A
             (
                 1,
-                BasicBlockNext::If(
+                TerminatorInstr::If(
                     LocalId::from(101),
                     BasicBlockId::from(2),
                     BasicBlockId::from(4),
                 ),
             ), // B
-            (2, BasicBlockNext::Jump(BasicBlockId::from(5))), // C
+            (2, TerminatorInstr::Jump(BasicBlockId::from(5))), // C
             (
                 3,
-                BasicBlockNext::If(
+                TerminatorInstr::If(
                     LocalId::from(102),
                     BasicBlockId::from(4),
                     BasicBlockId::from(5),
                 ),
             ), // D
-            (4, BasicBlockNext::Jump(BasicBlockId::from(5))), // E (Merge Node)
+            (4, TerminatorInstr::Jump(BasicBlockId::from(5))), // E (Merge Node)
             (
                 5,
-                BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(500))),
+                TerminatorInstr::Exit(ExitInstr::Return(LocalId::from(500))),
             ), // F (Merge Node)
         ]);
 
@@ -575,7 +576,7 @@ mod tests {
                 ],
             },
             Structured::Simple(BasicBlockId::from(5)), // F
-            Structured::Terminator(BasicBlockTerminator::Return(LocalId::from(500))),
+            Structured::Exit(ExitInstr::Return(LocalId::from(500))),
         ];
 
         assert_eq!(result, expected);
@@ -585,11 +586,11 @@ mod tests {
     #[should_panic(expected = "RPO must contain all nodes")]
     fn test_unreadable_bb() {
         let cfg = setup_cfg(&[
-            (0, BasicBlockNext::Jump(BasicBlockId::from(2))),
-            (1, BasicBlockNext::Jump(BasicBlockId::from(2))),
+            (0, TerminatorInstr::Jump(BasicBlockId::from(2))),
+            (1, TerminatorInstr::Jump(BasicBlockId::from(2))),
             (
                 2,
-                BasicBlockNext::Terminator(BasicBlockTerminator::Return(LocalId::from(500))),
+                TerminatorInstr::Exit(ExitInstr::Return(LocalId::from(500))),
             ),
         ]);
 
