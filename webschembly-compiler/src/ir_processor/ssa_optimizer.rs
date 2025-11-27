@@ -498,7 +498,7 @@ fn inlining_func(
 
     required_func_ids.insert(func_id);
 
-    let mut bbs = VecMap::<BasicBlockId, BasicBlock>::new();
+    let mut bbs = module.funcs[func_id].bbs.to_empty(); // to_emptyを使うのは遅い
     let mut locals = VecMap::<LocalId, Local>::new();
 
     // マージ済み関数の復元
@@ -509,7 +509,7 @@ fn inlining_func(
         for &bb in merge_func_info.bb_map.values() {
             bbs.insert_node(module.funcs[func_id].bbs[bb].clone());
         }
-        for &bb in merge_func_info.other_bbs.iter() {
+        for (_, &bb) in merge_func_info.junction_bb_ids.iter() {
             bbs.insert_node(module.funcs[func_id].bbs[bb].clone());
         }
     }
@@ -572,7 +572,7 @@ fn inlining_func(
                 entry_bb_id: bb_map[&module.funcs[required_func_id].bb_entry],
                 local_map,
                 bb_map,
-                other_bbs: FxHashSet::default(),
+                junction_bb_ids: FxHashMap::default(),
             },
         );
     }
@@ -601,21 +601,30 @@ fn inlining_func(
                 call.args.clone()
             };
 
-            let junction_bb_id = bbs.allocate_key();
-            merge_func_info.other_bbs.insert(junction_bb_id);
+            let junction_bb_id =
+                if let Some(&junction_bb_id) = merge_func_info.junction_bb_ids.get(&new_bb_id) {
+                    junction_bb_id
+                } else {
+                    let junction_bb_id = bbs.allocate_key();
 
-            let call_merge_func_info = func_inliner.merge_func_infos.get(&call.func_id).unwrap();
+                    merge_func_info
+                        .junction_bb_ids
+                        .insert(new_bb_id, junction_bb_id);
+                    let call_merge_func_info =
+                        func_inliner.merge_func_infos.get(&call.func_id).unwrap();
 
-            // クリティカルエッジができないように、ジャンクションBBを追加
-            bbs.insert_node(BasicBlock {
-                id: junction_bb_id,
-                instrs: vec![Instr {
-                    local: None,
-                    kind: InstrKind::Terminator(TerminatorInstr::Jump(
-                        call_merge_func_info.args_phi_bb,
-                    )),
-                }],
-            });
+                    bbs.insert_node(BasicBlock {
+                        id: junction_bb_id,
+                        instrs: vec![Instr {
+                            local: None,
+                            kind: InstrKind::Terminator(TerminatorInstr::Jump(
+                                call_merge_func_info.args_phi_bb,
+                            )),
+                        }],
+                    });
+
+                    junction_bb_id
+                };
 
             let new_bb = &mut bbs[new_bb_id];
             debug_assert!(matches!(
@@ -654,6 +663,7 @@ fn inlining_func(
                 )),
             }],
         });
+
         func_inliner.entry_bb_id = Some(entry_bb_id);
         entry_bb_id
     };
@@ -771,7 +781,8 @@ struct MergeFuncInfo {
     args_phi_incomings: Vec<ArgInfo>,
     local_map: FxHashMap<LocalId, LocalId>,
     bb_map: FxHashMap<BasicBlockId, BasicBlockId>,
-    other_bbs: FxHashSet<BasicBlockId>,
+    // キーは呼び出し元
+    junction_bb_ids: FxHashMap<BasicBlockId, BasicBlockId>,
 }
 
 #[derive(Debug, Clone)]
