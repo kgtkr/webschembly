@@ -8,7 +8,7 @@ use vec_map::{HasId, VecMap};
 use webschembly_compiler_ir::*;
 #[derive(Debug)]
 pub struct JitModule {
-    module_id: ModuleId,
+    module_id: JitModuleId,
     module: Module,
     jit_funcs: FxHashMap<(FuncId, usize), JitSpecializedFunc>,
     func_to_globals: VecMap<FuncId, GlobalId>,
@@ -16,14 +16,14 @@ pub struct JitModule {
 }
 
 impl HasId for JitModule {
-    type Id = ModuleId;
+    type Id = JitModuleId;
     fn id(&self) -> Self::Id {
         self.module_id
     }
 }
 
 impl JitModule {
-    pub fn new(global_manager: &mut GlobalManager, module_id: ModuleId, module: Module) -> Self {
+    pub fn new(global_manager: &mut GlobalManager, module_id: JitModuleId, module: Module) -> Self {
         let func_to_globals = module
             .funcs
             .keys()
@@ -90,20 +90,27 @@ impl JitModule {
                     instrs: vec![
                         Instr {
                             local: None,
-                            kind: InstrKind::InstantiateFunc(self.module_id, func.id, 0),
+                            kind: InstrKind::InstantiateFunc(
+                                self.module_id,
+                                JitFuncId::from(func.id),
+                                0,
+                            ),
                         },
                         Instr {
                             local: Some(f0_ref_local),
                             kind: InstrKind::GlobalGet(self.func_to_globals[func.id]),
                         },
-                    ],
-                    next: BasicBlockNext::Terminator(BasicBlockTerminator::TailCallRef(
-                        InstrCallRef {
-                            func: f0_ref_local,
-                            args: func.args.clone(),
-                            func_type: func.func_type(),
+                        Instr {
+                            local: None,
+                            kind: InstrKind::Terminator(TerminatorInstr::Exit(
+                                ExitInstr::TailCallRef(InstrCallRef {
+                                    func: f0_ref_local,
+                                    args: func.args.clone(),
+                                    func_type: func.func_type(),
+                                }),
+                            )),
                         },
-                    )),
+                    ],
                 }]
                 .into_iter()
                 .collect(),
@@ -155,6 +162,16 @@ impl JitModule {
                 jit_ctx.init_instantiated(stub_globals, instantiate_func_global);
             };
 
+            exprs.push(Instr {
+                local: None,
+                kind: InstrKind::Terminator(TerminatorInstr::Exit(ExitInstr::TailCall(
+                    InstrCall {
+                        func_id: stub_func_ids[&self.module.entry],
+                        args: vec![],
+                    },
+                ))),
+            });
+
             funcs.push_with(|id| Func {
                 id,
                 args: vec![],
@@ -164,10 +181,6 @@ impl JitModule {
                 bbs: [BasicBlock {
                     id: BasicBlockId::from(0),
                     instrs: exprs,
-                    next: BasicBlockNext::Terminator(BasicBlockTerminator::TailCall(InstrCall {
-                        func_id: stub_func_ids[&self.module.entry],
-                        args: vec![],
-                    })),
                 }]
                 .into_iter()
                 .collect(),
