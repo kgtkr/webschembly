@@ -603,10 +603,9 @@ pub fn split_critical_edges(func: &mut Func) {
     let bb_ids = func.bbs.keys().collect::<Vec<_>>();
 
     for bb_id in bb_ids {
-        let predecessors_of_bb = &predecessors[&bb_id];
-        if predecessors_of_bb.len() <= 1 {
+        let Some(predecessors_of_bb) = predecessors.get(&bb_id).filter(|v| v.len() > 1) else {
             continue;
-        }
+        };
 
         for &pred_bb_id in predecessors_of_bb {
             let pred_bb = &func.bbs[pred_bb_id];

@@ -5,6 +5,7 @@ use crate::ir_generator::GlobalManager;
 use crate::ir_processor::desugar::desugar;
 use crate::ir_processor::optimizer::remove_unreachable_bb;
 use crate::ir_processor::optimizer::remove_unused_local;
+use crate::ir_processor::ssa::split_critical_edges;
 use crate::ir_processor::ssa::{debug_assert_ssa, remove_phi};
 use crate::ir_processor::ssa_optimizer::ModuleInliner;
 use crate::ir_processor::ssa_optimizer::SsaOptimizerConfig;
@@ -250,7 +251,7 @@ fn postprocess(module: &mut ir::Module, global_manager: &mut GlobalManager) {
 
         desugar(func);
 
-        // TODO: クリティカルエッジの分割
+        split_critical_edges(func);
         remove_phi(func);
         // TODO: レジスタ割り付け
 
