@@ -509,9 +509,6 @@ fn inlining_func(
         for &bb in merge_func_info.bb_map.values() {
             bbs.insert_node(module.funcs[func_id].bbs[bb].clone());
         }
-        for (_, &bb) in merge_func_info.junction_bb_ids.iter() {
-            bbs.insert_node(module.funcs[func_id].bbs[bb].clone());
-        }
     }
 
     let mut new_merge_func_ids = FxHashSet::default();
@@ -572,7 +569,6 @@ fn inlining_func(
                 entry_bb_id: bb_map[&module.funcs[required_func_id].bb_entry],
                 local_map,
                 bb_map,
-                junction_bb_ids: FxHashMap::default(),
             },
         );
     }
@@ -601,37 +597,18 @@ fn inlining_func(
                 call.args.clone()
             };
 
-            let junction_bb_id =
-                if let Some(&junction_bb_id) = merge_func_info.junction_bb_ids.get(&new_bb_id) {
-                    junction_bb_id
-                } else {
-                    let junction_bb_id = bbs.allocate_key();
-
-                    merge_func_info
-                        .junction_bb_ids
-                        .insert(new_bb_id, junction_bb_id);
-                    let call_merge_func_info =
-                        func_inliner.merge_func_infos.get(&call.func_id).unwrap();
-
-                    bbs.insert_node(BasicBlock {
-                        id: junction_bb_id,
-                        instrs: vec![Instr {
-                            local: None,
-                            kind: InstrKind::Terminator(TerminatorInstr::Jump(
-                                call_merge_func_info.args_phi_bb,
-                            )),
-                        }],
-                    });
-
-                    junction_bb_id
-                };
+            let args_phi_bb = func_inliner
+                .merge_func_infos
+                .get(&call.func_id)
+                .unwrap()
+                .args_phi_bb;
 
             let new_bb = &mut bbs[new_bb_id];
             debug_assert!(matches!(
                 new_bb.terminator(),
                 TerminatorInstr::Exit(ExitInstr::TailCallClosure(_))
             ));
-            *new_bb.terminator_mut() = TerminatorInstr::Jump(junction_bb_id);
+            *new_bb.terminator_mut() = TerminatorInstr::Jump(args_phi_bb);
 
             for (i, &arg) in args.iter().enumerate() {
                 func_inliner
@@ -642,7 +619,7 @@ fn inlining_func(
                     .incomings
                     .push(PhiIncomingValue {
                         local: arg,
-                        bb: junction_bb_id,
+                        bb: new_bb_id,
                     });
             }
         }
@@ -781,8 +758,6 @@ struct MergeFuncInfo {
     args_phi_incomings: Vec<ArgInfo>,
     local_map: FxHashMap<LocalId, LocalId>,
     bb_map: FxHashMap<BasicBlockId, BasicBlockId>,
-    // キーは呼び出し元
-    junction_bb_ids: FxHashMap<BasicBlockId, BasicBlockId>,
 }
 
 #[derive(Debug, Clone)]
