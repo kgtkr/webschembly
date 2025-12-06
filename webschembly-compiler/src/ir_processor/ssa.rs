@@ -597,3 +597,48 @@ pub fn build_ssa(func: &mut Func) -> FxHashMap<(BasicBlockId, LocalId), LocalId>
     }
     new_ids
 }
+
+pub fn split_critical_edges(func: &mut Func) {
+    let predecessors = calc_predecessors(&func.bbs);
+    let bb_ids = func.bbs.keys().collect::<Vec<_>>();
+
+    for bb_id in bb_ids {
+        let predecessors_of_bb = &predecessors[&bb_id];
+        if predecessors_of_bb.len() <= 1 {
+            continue;
+        }
+
+        for &pred_bb_id in predecessors_of_bb {
+            let pred_bb = &func.bbs[pred_bb_id];
+            let terminator = pred_bb.terminator();
+            let succs = terminator.successors().collect::<Vec<_>>();
+            if succs.len() <= 1 {
+                continue;
+            }
+
+            let new_bb_id = func.bbs.push_with(|id| BasicBlock {
+                id,
+                instrs: vec![Instr {
+                    local: None,
+                    kind: InstrKind::Terminator(TerminatorInstr::Jump(bb_id)),
+                }],
+            });
+
+            for bb_id2 in func.bbs[pred_bb_id].terminator_mut().bb_ids_mut() {
+                if *bb_id2 == bb_id {
+                    *bb_id2 = new_bb_id;
+                }
+            }
+
+            for instr in &mut func.bbs[bb_id].instrs {
+                if let InstrKind::Phi(incomings, _) = &mut instr.kind {
+                    for incoming in incomings.iter_mut() {
+                        if incoming.bb == pred_bb_id {
+                            incoming.bb = new_bb_id;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
