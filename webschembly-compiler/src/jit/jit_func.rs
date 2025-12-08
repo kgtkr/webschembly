@@ -656,8 +656,9 @@ impl JitSpecializedFunc {
             body_func.bbs[bb_id].instrs = instrs;
         }
 
+        remove_unreachable_bb(body_func);
         // specialize_call_closureの最適化はPhi命令を処理した後に行う必要があるため最後に行う
-        for &bb_id in &processed_bb_ids {
+        for bb_id in body_func.bbs.keys().collect::<Vec<_>>() {
             for instr_idx in 0..body_func.bbs[bb_id].instrs.len() {
                 match &body_func.bbs[bb_id].instrs[instr_idx] {
                     Instr {
