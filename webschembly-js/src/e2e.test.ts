@@ -28,7 +28,7 @@ const filenames = fsLegacy
 
 const compilerConfigs: CompilerConfig[] = [
   {},
-  { enableJitOptimization: false },
+  //{ enableJitOptimization: false },
   { enableJit: false },
 ];
 
