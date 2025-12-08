@@ -351,7 +351,12 @@ impl JitSpecializedFunc {
         let body_func = &mut funcs[body_func_id];
         // これがないとBBの入力に代入している命令を持つBBが残るためSSAにならない
         remove_unreachable_bb(body_func);
-        let new_ids = build_ssa(body_func);
+
+        let new_ids = {
+            let args = body_func.args.iter().copied().collect::<FxHashSet<_>>();
+
+            build_ssa(body_func, &args)
+        };
 
         let assigned_local_to_obj = assign_type_args(
             body_func,
@@ -1125,7 +1130,7 @@ fn calculate_args_to_pass(
     let mut args_to_pass_fallback = Vec::new();
 
     for &arg in &callee.args {
-        let arg = *new_ids.get(&(callee.bb_id, arg)).unwrap();
+        let arg = new_ids.get(&(callee.bb_id, arg)).copied().unwrap_or(arg);
         let obj_arg = caller_assigned_local_to_obj
             .get(&arg)
             .copied()

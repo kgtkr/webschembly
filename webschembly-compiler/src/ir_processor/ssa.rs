@@ -315,7 +315,11 @@ impl DefUseChain {
     }
 }
 
-pub fn build_ssa(func: &mut Func) -> FxHashMap<(BasicBlockId, LocalId), LocalId> {
+pub fn build_ssa(
+    func: &mut Func,
+    // 再代入される可能性のあるローカル変数の集合
+    target_locals: &FxHashSet<LocalId>,
+) -> FxHashMap<(BasicBlockId, LocalId), LocalId> {
     // 引数の受け取り元として新しいエントリーブロックを追加
     let prev_entry_bb_id = func.bb_entry;
     let new_entry_bb_id = func.bbs.push_with(|id| BasicBlock {
@@ -338,11 +342,15 @@ pub fn build_ssa(func: &mut Func) -> FxHashMap<(BasicBlockId, LocalId), LocalId>
     // ステップ2: 各変数が定義されているブロックを収集
     let mut def_blocks: FxHashMap<LocalId, Vec<BasicBlockId>> = FxHashMap::default();
     for &arg in &func.args {
-        def_blocks.entry(arg).or_default().push(func.bb_entry);
+        if target_locals.contains(&arg) {
+            def_blocks.entry(arg).or_default().push(func.bb_entry);
+        }
     }
     for (bb_id, bb) in func.bbs.iter() {
         for instr in &bb.instrs {
-            if let Some(local) = instr.local {
+            if let Some(local) = instr.local
+                && target_locals.contains(&local)
+            {
                 def_blocks.entry(local).or_default().push(bb_id);
             }
         }
@@ -387,13 +395,15 @@ pub fn build_ssa(func: &mut Func) -> FxHashMap<(BasicBlockId, LocalId), LocalId>
     // ステップ4: 変数のリネーム (支配木を使用)
     // 各「元の」変数ID用のスタックを準備
     let mut stacks: FxHashMap<LocalId, Vec<LocalId>> = FxHashMap::default();
-    for local in func.locals.keys() {
+    for &local in target_locals {
         stacks.insert(local, Vec::new());
     }
 
     // 関数の引数をスタックの初期値としてプッシュ
     for &arg in &func.args {
-        stacks.get_mut(&arg).unwrap().push(arg);
+        if target_locals.contains(&arg) {
+            stacks.get_mut(&arg).unwrap().push(arg);
+        }
     }
 
     // 新しいLocalIdがどの「元の」LocalIdに対応するかを追跡
@@ -426,12 +436,14 @@ pub fn build_ssa(func: &mut Func) -> FxHashMap<(BasicBlockId, LocalId), LocalId>
                     unreachable!()
                 };
                 let orig = instr.local.unwrap();
-                let typ = func.locals[orig].typ;
-                let new_local = func.locals.push_with(|id| Local { id, typ });
-                original_of.insert(new_local, orig);
-                stacks.get_mut(&orig).unwrap().push(new_local);
-                local_defs.push(orig); // 後でポップするために元の変数を記録
-                phi_updates.push((idx, new_local));
+                if let Some(stack) = stacks.get_mut(&orig) {
+                    let typ = func.locals[orig].typ;
+                    let new_local = func.locals.push_with(|id| Local { id, typ });
+                    original_of.insert(new_local, orig);
+                    stack.push(new_local);
+                    local_defs.push(orig); // 後でポップするために元の変数を記録
+                    phi_updates.push((idx, new_local));
+                }
             } else {
                 // PHIはブロックの先頭にあるはず
                 break;
@@ -472,18 +484,22 @@ pub fn build_ssa(func: &mut Func) -> FxHashMap<(BasicBlockId, LocalId), LocalId>
             // この命令の「使用(use)」をリネーム
             let instr = &mut func.bbs[bb_id].instrs[idx];
             for (local_ref, flag) in instr.local_usages_mut() {
-                if let LocalFlag::Used(_) = flag {
-                    let top = *stacks.get(local_ref).unwrap().last().unwrap();
+                if let LocalFlag::Used(_) = flag
+                    && let Some(stack) = stacks.get(local_ref)
+                {
+                    let top = *stack.last().unwrap();
                     *local_ref = top;
                 }
             }
 
             // この命令の「定義(def)」をリネーム (instr.local)
-            if let Some(orig) = func.bbs[bb_id].instrs[idx].local {
+            if let Some(orig) = func.bbs[bb_id].instrs[idx].local
+                && let Some(stack) = stacks.get_mut(&orig)
+            {
                 let typ = func.locals[orig].typ;
                 let new_local = func.locals.push_with(|id| Local { id, typ });
                 original_of.insert(new_local, orig);
-                stacks.get_mut(&orig).unwrap().push(new_local);
+                stack.push(new_local);
                 local_defs.push(orig);
                 func.bbs[bb_id].instrs[idx].local = Some(new_local);
             }
@@ -506,7 +522,9 @@ pub fn build_ssa(func: &mut Func) -> FxHashMap<(BasicBlockId, LocalId), LocalId>
                     // このPHIが対応する「元の」変数を探す
                     let orig = *original_of.get(&dest_local).unwrap();
 
-                    if let Some(&current_val) = stacks.get(&orig).unwrap().last() {
+                    if let Some(stack) = stacks.get(&orig)
+                        && let Some(&current_val) = stack.last()
+                    {
                         incomings.push(PhiIncomingValue {
                             bb: bb_id, // bb_id = この現在のブロック
                             local: current_val,
@@ -548,8 +566,10 @@ pub fn build_ssa(func: &mut Func) -> FxHashMap<(BasicBlockId, LocalId), LocalId>
             let dest_local = instr.local.unwrap();
 
             let orig = *original_of.get(&dest_local).unwrap();
-            if arg_set.contains(&orig) {
-                let current_val = *stacks.get(&orig).unwrap().last().unwrap();
+            if arg_set.contains(&orig)
+                && let Some(stacks) = stacks.get(&orig)
+            {
+                let current_val = *stacks.last().unwrap();
                 incomings.push(PhiIncomingValue {
                     bb: new_entry_bb_id,
                     local: current_val,
