@@ -57,15 +57,16 @@ fn assert_phi_rules(func: &Func) {
                                 );
                             }
                         }
-                        /*let mut seen = FxHashSet::default();
+                        let mut seen = FxHashSet::default();
                         for incoming in incomings {
                             if !seen.insert(incoming.bb) {
+                                log::debug!("incoming: {:?}", incomings);
                                 panic!(
                                     "Phi instruction incoming bb {:?} is duplicated in bb {:?}",
                                     incoming.bb, bb.id
                                 );
                             }
-                        }*/
+                        }
                     }
                     InstrKind::Nop => {
                         // do nothing
@@ -555,30 +556,6 @@ pub fn build_ssa(
         &inserted_phis,
         &mut new_ids,
     );
-
-    // argsの処理
-    let arg_set = func.args.iter().copied().collect::<FxHashSet<_>>();
-    for (idx, instr) in func.bbs[prev_entry_bb_id].instrs.iter_mut().enumerate() {
-        if inserted_phis.contains(&(prev_entry_bb_id, idx)) {
-            let InstrKind::Phi(incomings, ..) = &mut instr.kind else {
-                unreachable!()
-            };
-            let dest_local = instr.local.unwrap();
-
-            let orig = *original_of.get(&dest_local).unwrap();
-            if arg_set.contains(&orig)
-                && let Some(stacks) = stacks.get(&orig)
-            {
-                let current_val = *stacks.last().unwrap();
-                incomings.push(PhiIncomingValue {
-                    bb: new_entry_bb_id,
-                    local: current_val,
-                });
-            }
-        } else {
-            break;
-        }
-    }
 
     /*
     // 新たに挿入されたPhi
