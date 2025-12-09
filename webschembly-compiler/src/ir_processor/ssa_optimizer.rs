@@ -491,8 +491,8 @@ fn inlining_func(
         required_func_ids
     };
 
-    if required_func_ids.is_empty() && func_inliner.merge_func_infos.is_empty()
-    /* これがないとnon_exhaustiveなphiが残る */
+    if required_func_ids.is_empty()
+    // && func_inliner.merge_func_infos.is_empty() /* これがないとnon_exhaustiveなphiが残る */ TODO: コメント解除すると matmul-64.b.scm で無限ループする
     {
         // required_func_ids={} なら自身をそのまま返すべき
         return module.funcs[func_id].clone();
