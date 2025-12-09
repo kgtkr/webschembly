@@ -47,7 +47,7 @@ fn assert_phi_rules(func: &Func) {
                 match &expr.kind {
                     InstrKind::Phi(incomings, non_exhaustive) => {
                         if *non_exhaustive {
-                            // panic!("Phi instruction must be exhaustive");
+                            panic!("Phi instruction must be exhaustive");
                         }
                         for incoming in incomings {
                             if !predecessors[&bb.id].contains(&incoming.bb) {
