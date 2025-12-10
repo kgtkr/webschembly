@@ -240,7 +240,13 @@ fn optimize_module(module: &mut ir::Module, config: SsaOptimizerConfig) {
             inlining(module, &mut module_inliner, i == n - 1);
         }
         for func in module.funcs.values_mut() {
-            ssa_optimize(func, config);
+            ssa_optimize(
+                func,
+                SsaOptimizerConfig {
+                    iterations: 1,
+                    ..config
+                },
+            );
         }
     }
 }

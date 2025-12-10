@@ -412,6 +412,7 @@ pub struct SsaOptimizerConfig {
     pub enable_cse: bool,
     pub enable_dce: bool,
     pub enable_inlining: bool,
+    pub iterations: usize,
 }
 
 impl Default for SsaOptimizerConfig {
@@ -419,7 +420,8 @@ impl Default for SsaOptimizerConfig {
         SsaOptimizerConfig {
             enable_cse: true,
             enable_dce: true,
-            enable_inlining: true,
+            enable_inlining: false, // true,
+            iterations: 5,
         }
     }
 }
@@ -433,7 +435,7 @@ pub fn ssa_optimize(func: &mut Func, config: SsaOptimizerConfig) {
     let doms = calc_doms(&func.bbs, &rpo, func.bb_entry, &predecessors);
     let dom_tree = build_dom_tree(&func.bbs, &rpo, func.bb_entry, &doms);
 
-    for _ in 0..5 {
+    for _ in 0..config.iterations {
         debug_assert_ssa(func);
         copy_propagation(func, &rpo);
         eliminate_redundant_obj(func, &def_use);

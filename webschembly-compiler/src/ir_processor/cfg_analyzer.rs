@@ -266,7 +266,6 @@ pub fn has_critical_edges(cfg: &VecMap<BasicBlockId, BasicBlock>) -> bool {
 pub fn calc_dominance_frontiers_from_tree(
     cfg: &VecMap<BasicBlockId, BasicBlock>,
     dom_tree: &DomTreeNode,
-    predecessors: &FxHashMap<BasicBlockId, Vec<BasicBlockId>>,
 ) -> FxHashMap<BasicBlockId, FxHashSet<BasicBlockId>> {
     let mut dominance_frontiers: FxHashMap<BasicBlockId, FxHashSet<BasicBlockId>> =
         FxHashMap::default();
@@ -275,20 +274,19 @@ pub fn calc_dominance_frontiers_from_tree(
         dominance_frontiers.insert(id, FxHashSet::default());
     }
 
-    calc_dominance_frontiers_recursive(dom_tree, cfg, predecessors, &mut dominance_frontiers);
+    calc_dominance_frontiers_recursive(dom_tree, cfg, &mut dominance_frontiers);
     dominance_frontiers
 }
 
 fn calc_dominance_frontiers_recursive(
     node: &DomTreeNode,
     cfg: &VecMap<BasicBlockId, BasicBlock>,
-    predecessors: &FxHashMap<BasicBlockId, Vec<BasicBlockId>>,
     dominance_frontiers: &mut FxHashMap<BasicBlockId, FxHashSet<BasicBlockId>>,
 ) {
     let mut df = FxHashSet::default();
 
     for child in &node.children {
-        calc_dominance_frontiers_recursive(child, cfg, predecessors, dominance_frontiers);
+        calc_dominance_frontiers_recursive(child, cfg, dominance_frontiers);
 
         if let Some(child_df) = dominance_frontiers.get(&child.id) {
             for &frontier_node in child_df {

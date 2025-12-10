@@ -47,7 +47,7 @@ fn assert_phi_rules(func: &Func) {
                 match &expr.kind {
                     InstrKind::Phi(incomings, non_exhaustive) => {
                         if *non_exhaustive {
-                            //panic!("Phi instruction must be exhaustive");
+                            panic!("Phi instruction must be exhaustive");
                         }
                         for incoming in incomings {
                             if !predecessors[&bb.id].contains(&incoming.bb) {
@@ -337,8 +337,7 @@ pub fn build_ssa(
     let rpo = calculate_rpo(&func.bbs, func.bb_entry);
     let doms = calc_doms(&func.bbs, &rpo, func.bb_entry, &predecessors);
     let dom_tree = build_dom_tree(&func.bbs, &rpo, func.bb_entry, &doms);
-    let dominance_frontiers =
-        calc_dominance_frontiers_from_tree(&func.bbs, &dom_tree, &predecessors);
+    let dominance_frontiers = calc_dominance_frontiers_from_tree(&func.bbs, &dom_tree);
 
     // ステップ2: 各変数が定義されているブロックを収集
     let mut def_blocks: FxHashMap<LocalId, Vec<BasicBlockId>> = FxHashMap::default();
