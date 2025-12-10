@@ -45,7 +45,10 @@ fn assert_phi_rules(func: &Func) {
         for expr in bb.instrs.iter() {
             if phi_area {
                 match &expr.kind {
-                    InstrKind::Phi(incomings, non_exhaustive) => {
+                    InstrKind::Phi {
+                        incomings,
+                        non_exhaustive,
+                    } => {
                         if *non_exhaustive {
                             panic!("Phi instruction must be exhaustive");
                         }
@@ -75,7 +78,7 @@ fn assert_phi_rules(func: &Func) {
                         phi_area = false;
                     }
                 }
-            } else if let InstrKind::Phi(_, _) = expr.kind {
+            } else if let InstrKind::Phi { .. } = expr.kind {
                 panic!("phi instruction must be at the beginning of a basic block");
             }
         }
@@ -94,7 +97,7 @@ fn remove_phi_in_bb(func: &mut Func, bb_id: BasicBlockId) {
 
     // 先行ブロックごとの並列コピーリストを収集
     for instr in &func.bbs[bb_id].instrs {
-        if let InstrKind::Phi(incomings, _) = &instr.kind
+        if let InstrKind::Phi { incomings, .. } = &instr.kind
             && let Some(result) = instr.local
         {
             for incoming in incomings {
@@ -119,7 +122,7 @@ fn remove_phi_in_bb(func: &mut Func, bb_id: BasicBlockId) {
 
     // 対象ブロックのPHI命令を削除
     for instr in &mut func.bbs[bb_id].instrs {
-        if let InstrKind::Phi(_, _) = &instr.kind {
+        if let InstrKind::Phi { .. } = &instr.kind {
             instr.kind = InstrKind::Nop;
             instr.local = None;
         }
@@ -201,12 +204,12 @@ fn assert_ssa(func: &Func) {
             }
 
             if phi_area {
-                if let InstrKind::Phi(_, _) | InstrKind::Nop = expr.kind {
+                if let InstrKind::Phi { .. } | InstrKind::Nop = expr.kind {
                     // do nothing
                 } else {
                     phi_area = false;
                 }
-            } else if let InstrKind::Phi(_, _) = expr.kind {
+            } else if let InstrKind::Phi { .. } = expr.kind {
                 panic!("phi instruction must be at the beginning of a basic block");
             }
         }
@@ -317,9 +320,10 @@ impl DefUseChain {
                 InstrKind::Move(value) => {
                     local = *value;
                 }
-                InstrKind::Phi(incomings, non_exhaustive)
-                    if incomings.len() == 1 && !*non_exhaustive =>
-                {
+                InstrKind::Phi {
+                    incomings,
+                    non_exhaustive,
+                } if incomings.len() == 1 && !*non_exhaustive => {
                     local = incomings[0].local;
                 }
                 _ => {
@@ -389,7 +393,10 @@ pub fn build_ssa(func: &mut Func) -> FxHashMap<(BasicBlockId, LocalId), LocalId>
                 if has_phi.insert((df, var)) {
                     insert_phis.entry(df).or_default().push(Instr {
                         local: Some(var),
-                        kind: InstrKind::Phi(Vec::new(), false),
+                        kind: InstrKind::Phi {
+                            incomings: Vec::new(),
+                            non_exhaustive: false,
+                        },
                     });
 
                     if visited.insert(df) {
@@ -450,7 +457,7 @@ pub fn build_ssa(func: &mut Func) -> FxHashMap<(BasicBlockId, LocalId), LocalId>
         let mut phi_updates: Vec<(usize, LocalId)> = Vec::new();
         for (idx, instr) in func.bbs[bb_id].instrs.iter().enumerate() {
             if inserted_phis.contains(&(bb_id, idx)) {
-                let InstrKind::Phi(..) = instr.kind else {
+                let InstrKind::Phi { .. } = instr.kind else {
                     unreachable!()
                 };
                 let orig = instr.local.unwrap();
@@ -479,7 +486,7 @@ pub fn build_ssa(func: &mut Func) -> FxHashMap<(BasicBlockId, LocalId), LocalId>
         for idx in 0..num_instrs {
             let instr = &func.bbs[bb_id].instrs[idx];
             if inserted_phis.contains(&(bb_id, idx)) {
-                let InstrKind::Phi(..) = instr.kind else {
+                let InstrKind::Phi { .. } = instr.kind else {
                     unreachable!()
                 };
                 continue; // PHIはPhase Aで処理済み
@@ -487,7 +494,7 @@ pub fn build_ssa(func: &mut Func) -> FxHashMap<(BasicBlockId, LocalId), LocalId>
 
             if phi_area {
                 match &instr.kind {
-                    InstrKind::Phi(_, _) | InstrKind::Nop => {}
+                    InstrKind::Phi { .. } | InstrKind::Nop => {}
                     _ => {
                         phi_area = false;
                         for (orig, stack) in stacks.iter() {
@@ -532,7 +539,7 @@ pub fn build_ssa(func: &mut Func) -> FxHashMap<(BasicBlockId, LocalId), LocalId>
             let succ_bb = &mut func.bbs[succ_id];
             for (idx, instr) in succ_bb.instrs.iter_mut().enumerate() {
                 if inserted_phis.contains(&(succ_id, idx)) {
-                    let InstrKind::Phi(incomings, ..) = &mut instr.kind else {
+                    let InstrKind::Phi { incomings, .. } = &mut instr.kind else {
                         unreachable!()
                     };
                     let dest_local = instr.local.unwrap();
@@ -588,11 +595,11 @@ pub fn build_ssa(func: &mut Func) -> FxHashMap<(BasicBlockId, LocalId), LocalId>
         let mut local_to_incomings = FxHashMap::default();
         for (idx, instr) in bb.instrs.iter_mut().enumerate() {
             if inserted_phis.contains(&(bb.id, idx)) {
-                let InstrKind::Phi(incomings, _) = &instr.kind else {
+                let InstrKind::Phi { incomings, .. } = &instr.kind else {
                     unreachable!()
                 };
                 local_to_incomings.insert(instr.local.unwrap(), incomings);
-            } else if let InstrKind::Phi(incomings, _) = &mut instr.kind {
+            } else if let InstrKind::Phi { incomings, .. } = &mut instr.kind {
                 let mut new_incomings = Vec::new();
                 for incoming in incomings.iter() {
                     if let Some(inserted_incomings) = local_to_incomings.get(&incoming.local) {
@@ -644,7 +651,7 @@ pub fn split_critical_edges(func: &mut Func) {
             }
 
             for instr in &mut func.bbs[bb_id].instrs {
-                if let InstrKind::Phi(incomings, _) = &mut instr.kind {
+                if let InstrKind::Phi { incomings, .. } = &mut instr.kind {
                     for incoming in incomings.iter_mut() {
                         if incoming.bb == pred_bb_id {
                             incoming.bb = new_bb_id;

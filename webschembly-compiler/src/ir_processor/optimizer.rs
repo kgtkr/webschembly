@@ -9,7 +9,7 @@ pub fn remove_unreachable_bb(func: &mut Func) {
     func.bbs.retain(|id, _| reachable.contains(&id));
     for bb in func.bbs.values_mut() {
         for instr in bb.instrs.iter_mut() {
-            if let InstrKind::Phi(incomings, _) = &mut instr.kind {
+            if let InstrKind::Phi { incomings, .. } = &mut instr.kind {
                 incomings.retain(|incoming| reachable.contains(&incoming.bb));
             }
         }

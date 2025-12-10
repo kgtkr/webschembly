@@ -70,7 +70,11 @@ pub fn copy_propagation(func: &mut Func, rpo: &FxHashMap<BasicBlockId, usize>) {
                 }
                 Instr {
                     local: Some(dest),
-                    kind: InstrKind::Phi(ref incomings, non_exhaustive),
+                    kind:
+                        InstrKind::Phi {
+                            ref incomings,
+                            non_exhaustive,
+                        },
                 } if !non_exhaustive => {
                     let mut all_same = true;
                     let mut first = None;
@@ -689,7 +693,10 @@ fn inlining_func(
             .map(|(i, arg_info)| Instr {
                 local: Some(arg_info.local),
                 // i == 0は必ずクロージャであり、毎回引数は変わらない(本当？)ので、non_exhaustive=falseにしてよい
-                kind: InstrKind::Phi(arg_info.incomings.clone(), i != 0 && !last),
+                kind: InstrKind::Phi {
+                    incomings: arg_info.incomings.clone(),
+                    non_exhaustive: i != 0 && !last,
+                },
             })
             .collect::<Vec<_>>();
 

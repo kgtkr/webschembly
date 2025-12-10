@@ -488,7 +488,7 @@ impl JitSpecializedFunc {
             for instr in &body_func.bbs[bb_id].instrs {
                 // ジャンプ先のBBのPhiはここに移動
                 // TODO: 型代入を考慮しなくてよい理由を明記
-                if let InstrKind::Phi(_, _) = instr.kind {
+                if let InstrKind::Phi { .. } = instr.kind {
                     instrs.push(instr.clone());
                 }
             }
@@ -578,7 +578,11 @@ impl JitSpecializedFunc {
                 // FuncRefとCall命令はget global命令に置き換えられる
                 match *instr {
                     Instr {
-                        kind: InstrKind::Phi(ref incomings, non_exhaustive),
+                        kind:
+                            InstrKind::Phi {
+                                ref incomings,
+                                non_exhaustive,
+                            },
                         ..
                     } => {
                         let new_incomings = incomings
@@ -588,7 +592,10 @@ impl JitSpecializedFunc {
                             .collect::<Vec<_>>();
                         instrs.push(Instr {
                             local: instr.local,
-                            kind: InstrKind::Phi(new_incomings, non_exhaustive),
+                            kind: InstrKind::Phi {
+                                incomings: new_incomings,
+                                non_exhaustive,
+                            },
                         });
                     }
                     Instr {

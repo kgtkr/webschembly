@@ -574,8 +574,8 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 self.current_bb_id = Some(merge_bb_id);
                 self.exprs.push(Instr {
                     local: result,
-                    kind: InstrKind::Phi(
-                        {
+                    kind: InstrKind::Phi {
+                        incomings: {
                             let mut incomings = Vec::new();
                             if let Some(bb) = then_ended_bb_id {
                                 incomings.push(PhiIncomingValue {
@@ -591,8 +591,8 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                             }
                             incomings
                         },
-                        false,
-                    ),
+                        non_exhaustive: false,
+                    },
                 });
 
                 // thenとelseでset!された変数をphiノードで結合
@@ -609,8 +609,8 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                         let phi_local = self.new_version_ast_local(var_id);
                         self.exprs.push(Instr {
                             local: Some(phi_local),
-                            kind: InstrKind::Phi(
-                                {
+                            kind: InstrKind::Phi {
+                                incomings: {
                                     let mut incomings = Vec::new();
                                     if let Some(bb) = then_ended_bb_id {
                                         incomings.push(PhiIncomingValue {
@@ -626,8 +626,8 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                                     }
                                     incomings
                                 },
-                                false,
-                            ),
+                                non_exhaustive: false,
+                            },
                         });
                     }
                 }
@@ -772,7 +772,10 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                         self.current_bb_id = Some(merge_bb_id);
                         self.exprs.push(Instr {
                             local: result,
-                            kind: InstrKind::Phi(phi_incoming_values, false),
+                            kind: InstrKind::Phi {
+                                incomings: phi_incoming_values,
+                                non_exhaustive: false,
+                            },
                         });
                     }
                 } else {

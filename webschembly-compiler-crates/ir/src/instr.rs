@@ -422,8 +422,11 @@ impl fmt::Display for DisplayInFunc<'_, &TerminatorInstr> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum InstrKind {
-    Nop,                                                   // 左辺はNoneでなければならない
-    Phi(Vec<PhiIncomingValue>, bool /* non exhaustive */), // BBの先頭にのみ連続して出現可能(Nopが間に入るのは可)。non_exhaustive=trueの時incomings.length=1でもコピー伝播などの最適化を行ってはならない(inline化のためのフラグ)
+    Nop, // 左辺はNoneでなければならない
+    Phi {
+        incomings: Vec<PhiIncomingValue>,
+        non_exhaustive: bool,
+    }, // BBの先頭にのみ連続して出現可能(Nopが間に入るのは可)。non_exhaustive=trueの時incomings.length=1でもコピー伝播などの最適化を行ってはならない(inline化のためのフラグ)
     Terminator(TerminatorInstr), // 左辺はNoneでなければならない。また、BasicBlockの最後にのみ出現可能
     InstantiateFunc(JitModuleId, JitFuncId, usize),
     InstantiateClosureFunc(LocalId, LocalId, usize), // InstantiateFuncのModuleId/FuncIdを動的に指定する版
@@ -565,8 +568,8 @@ macro_rules! impl_InstrKind_local_usages {
                 from_coroutine(
                     #[coroutine]
                     move || match self {
-                        InstrKind::Phi(values, _) => {
-                            for value in values.[<iter $($suffix)?>]() {
+                        InstrKind::Phi { incomings, .. } => {
+                            for value in incomings.[<iter $($suffix)?>]() {
                                 yield (&$($mutability)? value.local, LocalUsedFlag::Phi(value.bb));
                             }
                         }
@@ -770,8 +773,8 @@ macro_rules! impl_InstrKind_bb_ids {
                 from_coroutine(
                     #[coroutine]
                     move || match self {
-                        InstrKind::Phi(values, _) => {
-                            for value in values.[<iter $($suffix)?>]() {
+                        InstrKind::Phi { incomings, .. } => {
+                            for value in incomings.[<iter $($suffix)?>]() {
                                 yield &$($mutability)? value.bb;
                             }
                         }
@@ -831,7 +834,7 @@ impl InstrKind {
 
     pub fn purelity(&self) -> InstrKindPurelity {
         match self {
-            InstrKind::Phi(..) => InstrKindPurelity::Phi,
+            InstrKind::Phi { .. } => InstrKindPurelity::Phi,
             InstrKind::Nop
             | InstrKind::Bool(..)
             | InstrKind::Int(..)
@@ -932,9 +935,12 @@ impl fmt::Display for DisplayInFunc<'_, &'_ InstrKind> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.value {
             InstrKind::Nop => write!(f, "nop"),
-            InstrKind::Phi(values, non_exhaustive) => {
+            InstrKind::Phi {
+                incomings,
+                non_exhaustive,
+            } => {
                 write!(f, "phi(")?;
-                for (i, value) in values.iter().enumerate() {
+                for (i, value) in incomings.iter().enumerate() {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
@@ -946,7 +952,7 @@ impl fmt::Display for DisplayInFunc<'_, &'_ InstrKind> {
                     )?;
                 }
                 if *non_exhaustive {
-                    if !values.is_empty() {
+                    if !incomings.is_empty() {
                         write!(f, ", ")?;
                     }
                     write!(f, "...")?;
