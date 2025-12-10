@@ -10,14 +10,14 @@ use crate::ir_generator::GlobalManager;
 use crate::ir_processor::cfg_analyzer::calculate_rpo;
 use crate::ir_processor::dataflow::{analyze_liveness, calc_def_use};
 use crate::ir_processor::optimizer::remove_unreachable_bb;
-use crate::ir_processor::ssa::DefUseChain;
-use crate::ir_processor::ssa_optimizer::ssa_optimize;
+use crate::ir_processor::ssa::{DefUseChain, build_ssa};
+use crate::ir_processor::ssa_optimizer::{SsaOptimizerConfig, ssa_optimize};
 use vec_map::{HasId, VecMap};
 use webschembly_compiler_ir::*;
 
 #[derive(Debug)]
 pub struct JitSpecializedFunc {
-    module_id: ModuleId,
+    module_id: JitModuleId,
     func_index: usize,
     func: Func,
     jit_bbs: VecMap<BasicBlockId, JitBB>,
@@ -25,7 +25,7 @@ pub struct JitSpecializedFunc {
 
 impl JitSpecializedFunc {
     pub fn new(
-        module_id: ModuleId,
+        module_id: JitModuleId,
         global_manager: &mut GlobalManager,
         func: &Func,
         func_index: usize,
@@ -34,7 +34,13 @@ impl JitSpecializedFunc {
         let mut func = func.clone();
         closure_func_assign_types(&mut func, func_index, jit_ctx.closure_global_layout());
         // 共通部分式除去を行うと変数の生存期間が伸びてしまい、JITでのパフォーマンスが落ちるのでここでは行わない
-        ssa_optimize(&mut func, false);
+        ssa_optimize(
+            &mut func,
+            SsaOptimizerConfig {
+                enable_cse: false,
+                ..Default::default()
+            },
+        );
         let bb_to_globals = func
             .bbs
             .keys()
@@ -100,7 +106,7 @@ impl JitSpecializedFunc {
             BasicBlock {
                 id: BasicBlockId::from(0),
                 instrs: vec![],
-                next: BasicBlockNext::Terminator(BasicBlockTerminator::TailCall(InstrCall {
+                next: TerminatorInstr::Terminator(BasicBlockTerminator::TailCall(InstrCall {
                     func_id: bb_func_id,
                     args: entry_bb_info.args.to_vec(),
                 })),
@@ -119,20 +125,26 @@ impl JitSpecializedFunc {
                 bb_entry: BasicBlockId::from(0),
                 bbs: [BasicBlock {
                     id: BasicBlockId::from(0),
-                    instrs: vec![Instr {
-                        local: Some(func_ref_local),
-                        kind: InstrKind::GlobalGet(bb_global.id),
-                    }],
-                    next: BasicBlockNext::Terminator(BasicBlockTerminator::TailCallRef(
-                        InstrCallRef {
-                            func: func_ref_local,
-                            args: entry_bb_info.args.to_vec(),
-                            func_type: FuncType {
-                                args: entry_bb_info.arg_types(&self.func, &VecMap::default()),
-                                ret: self.func.ret_type,
-                            },
+                    instrs: vec![
+                        Instr {
+                            local: Some(func_ref_local),
+                            kind: InstrKind::GlobalGet(bb_global.id),
                         },
-                    )),
+                        Instr {
+                            local: None,
+                            kind: InstrKind::Terminator(TerminatorInstr::Exit(
+                                ExitInstr::TailCallRef(InstrCallRef {
+                                    func: func_ref_local,
+                                    args: entry_bb_info.args.to_vec(),
+                                    func_type: FuncType {
+                                        args: entry_bb_info
+                                            .arg_types(&self.func, &VecMap::default()),
+                                        ret: self.func.ret_type,
+                                    },
+                                }),
+                            )),
+                        },
+                    ],
                 }]
                 .into_iter()
                 .collect(),
@@ -176,11 +188,12 @@ impl JitSpecializedFunc {
                     });
                 }
 
-                BasicBlock {
-                    id,
-                    instrs: exprs,
-                    next,
-                }
+                exprs.push(Instr {
+                    local: None,
+                    kind: InstrKind::Terminator(next),
+                });
+
+                BasicBlock { id, instrs: exprs }
             })
         });
 
@@ -198,7 +211,7 @@ impl JitSpecializedFunc {
 
     fn add_bb_stub_func(
         &self,
-        module_id: ModuleId,
+        module_id: JitModuleId,
         bb_id: BasicBlockId,
         index: usize,
         module: &mut Module,
@@ -237,9 +250,9 @@ impl JitSpecializedFunc {
                             local: None,
                             kind: InstrKind::InstantiateBB(
                                 module_id,
-                                self.func.id,
+                                JitFuncId::from(self.func.id),
                                 self.func_index,
-                                jit_bb.bb_id,
+                                JitBasicBlockId::from(jit_bb.bb_id),
                                 index,
                             ),
                         },
@@ -247,17 +260,20 @@ impl JitSpecializedFunc {
                             local: Some(func_ref_local),
                             kind: InstrKind::GlobalGet(index_global.id),
                         },
-                    ],
-                    next: BasicBlockNext::Terminator(BasicBlockTerminator::TailCallRef(
-                        InstrCallRef {
-                            func: func_ref_local,
-                            args: jit_bb.info.args.clone(),
-                            func_type: FuncType {
-                                args: jit_bb.info.arg_types(&self.func, type_args),
-                                ret: self.func.ret_type,
-                            },
+                        Instr {
+                            local: None,
+                            kind: InstrKind::Terminator(TerminatorInstr::Exit(
+                                ExitInstr::TailCallRef(InstrCallRef {
+                                    func: func_ref_local,
+                                    args: jit_bb.info.args.clone(),
+                                    func_type: FuncType {
+                                        args: jit_bb.info.arg_types(&self.func, type_args),
+                                        ret: self.func.ret_type,
+                                    },
+                                }),
+                            )),
                         },
-                    )),
+                    ],
                 }]
                 .into_iter()
                 .collect(),
@@ -282,8 +298,11 @@ impl JitSpecializedFunc {
                         local: None,
                         kind: InstrKind::GlobalSet(index_global.id, func_ref_local),
                     },
+                    Instr {
+                        local: None,
+                        kind: InstrKind::Terminator(next),
+                    },
                 ],
-                next,
             })
         });
     }
@@ -328,16 +347,28 @@ impl JitSpecializedFunc {
             body_func.bb_entry = orig_entry_bb_id;
             body_func
         });
+
         let body_func = &mut funcs[body_func_id];
+        // これがないとBBの入力に代入している命令を持つBBが残るためSSAにならない
+        remove_unreachable_bb(body_func);
+
+        let new_ids = build_ssa(body_func);
+
         let assigned_local_to_obj = assign_type_args(
             body_func,
             &self.jit_bbs[orig_entry_bb_id].info.type_params,
             type_args,
         );
-        // これがないとBBの入力に代入している命令を持つBBが残るためSSAにならない
-        remove_unreachable_bb(body_func);
+
         if jit_ctx.config().enable_optimization {
-            ssa_optimize(body_func, false);
+            ssa_optimize(
+                body_func,
+                SsaOptimizerConfig {
+                    enable_cse: false, // 変数の生存期間が伸びてしまうため無効化
+                    enable_dce: false, // ここでやるとmatmulが動かない
+                    ..Default::default()
+                },
+            );
         }
         let def_use_chain = DefUseChain::from_bbs(&body_func.bbs);
 
@@ -356,10 +387,10 @@ impl JitSpecializedFunc {
             processed_bb_ids.insert(orig_bb_id);
 
             let new_next = match std::mem::replace(
-                &mut body_func.bbs[orig_bb_id].next,
-                BasicBlockNext::Jump(BasicBlockId::from(0)), // dummy
+                body_func.bbs[orig_bb_id].terminator_mut(),
+                TerminatorInstr::Jump(BasicBlockId::from(0)), // dummy
             ) {
-                BasicBlockNext::If(cond, orig_then_bb_id, orig_else_bb_id) => {
+                TerminatorInstr::If(cond, orig_then_bb_id, orig_else_bb_id) => {
                     let cond_expr = def_use_chain.get_def_non_move_expr(&body_func.bbs, cond);
                     let const_cond = if let Some(&InstrKind::Bool(b)) = cond_expr {
                         Some(b)
@@ -374,7 +405,7 @@ impl JitSpecializedFunc {
                             orig_else_bb_id
                         };
                         todo_bb_ids.push(orig_next_bb_id);
-                        BasicBlockNext::Jump(orig_next_bb_id)
+                        TerminatorInstr::Jump(orig_next_bb_id)
                     } else {
                         let mut then_types = Vec::new();
                         let mut todo_cond_locals = vec![cond];
@@ -415,17 +446,14 @@ impl JitSpecializedFunc {
                             required_bbs.push((orig_else_bb_id, Vec::new(), BranchKind::Else));
                         }
 
-                        BasicBlockNext::If(cond, orig_then_bb_id, orig_else_bb_id)
+                        TerminatorInstr::If(cond, orig_then_bb_id, orig_else_bb_id)
                     }
                 }
-                BasicBlockNext::Jump(orig_next_bb_id) => {
+                TerminatorInstr::Jump(orig_next_bb_id) => {
                     todo_bb_ids.push(orig_next_bb_id);
-                    BasicBlockNext::Jump(orig_next_bb_id)
+                    TerminatorInstr::Jump(orig_next_bb_id)
                 }
-                BasicBlockNext::Terminator(BasicBlockTerminator::TailCall(InstrCall {
-                    func_id,
-                    args,
-                })) => {
+                TerminatorInstr::Exit(ExitInstr::TailCall(InstrCall { func_id, args })) => {
                     let func_ref_local = body_func.locals.push_with(|id| Local {
                         id,
                         typ: LocalType::FuncRef,
@@ -435,29 +463,32 @@ impl JitSpecializedFunc {
                         local: Some(func_ref_local),
                         kind: InstrKind::GlobalGet(func_to_globals[func_id]),
                     });
-                    BasicBlockNext::Terminator(BasicBlockTerminator::TailCallRef(InstrCallRef {
+                    TerminatorInstr::Exit(ExitInstr::TailCallRef(InstrCallRef {
                         func: func_ref_local,
                         args,
                         func_type: func_types[func_id].clone(),
                     }))
                 }
-                next @ BasicBlockNext::Terminator(
-                    BasicBlockTerminator::TailCallRef(_)
-                    | BasicBlockTerminator::TailCallClosure(_)
-                    | BasicBlockTerminator::Return(_)
-                    | BasicBlockTerminator::Error(_),
+                next @ TerminatorInstr::Exit(
+                    ExitInstr::TailCallRef(_)
+                    | ExitInstr::TailCallClosure(_)
+                    | ExitInstr::Return(_)
+                    | ExitInstr::Error(_),
                 ) => next,
             };
-
-            body_func.bbs[orig_bb_id].next = new_next;
+            *body_func.bbs[orig_bb_id].terminator_mut() = new_next;
         }
 
+        let required_bb_set = required_bbs
+            .iter()
+            .map(|(bb_id, _, _)| *bb_id)
+            .collect::<FxHashSet<BasicBlockId>>();
         for (bb_id, types, branch_kind) in required_bbs {
             let mut instrs = Vec::new();
             for instr in &body_func.bbs[bb_id].instrs {
                 // ジャンプ先のBBのPhiはここに移動
                 // TODO: 型代入を考慮しなくてよい理由を明記
-                if let InstrKind::Phi(_) = instr.kind {
+                if let InstrKind::Phi(_, _) = instr.kind {
                     instrs.push(instr.clone());
                 }
             }
@@ -467,11 +498,11 @@ impl JitSpecializedFunc {
                     local: None,
                     kind: InstrKind::IncrementBranchCounter(
                         self.module_id,
-                        self.func.id,
+                        JitFuncId::from(self.func.id),
                         self.func_index,
-                        bb_id,
+                        JitBasicBlockId::from(bb_id),
                         branch_kind,
-                        orig_entry_bb_id,
+                        JitBasicBlockId::from(orig_entry_bb_id),
                         index,
                     ),
                 });
@@ -508,6 +539,7 @@ impl JitSpecializedFunc {
                     }
                 },
                 &assigned_local_to_obj,
+                &new_ids,
                 &mut callee_jit_bb.bb_index_manager,
                 &mut required_stubs,
                 global_manager,
@@ -518,48 +550,46 @@ impl JitSpecializedFunc {
                 typ: LocalType::FuncRef,
             });
 
-            instrs.extend([Instr {
-                local: Some(func_ref_local),
-                kind: InstrKind::GlobalGet(index_global.id),
-            }]);
+            instrs.extend([
+                Instr {
+                    local: Some(func_ref_local),
+                    kind: InstrKind::GlobalGet(index_global.id),
+                },
+                Instr {
+                    local: None,
+                    kind: InstrKind::Terminator(TerminatorInstr::Exit(ExitInstr::TailCallRef(
+                        InstrCallRef {
+                            func: func_ref_local,
+                            args: locals_to_pass,
+                            func_type: FuncType {
+                                args: self.jit_bbs[bb_id].info.arg_types(&self.func, &type_args),
+                                ret: body_func.ret_type,
+                            },
+                        },
+                    ))),
+                },
+            ]);
 
             body_func.bbs[bb_id].instrs = instrs;
-            body_func.bbs[bb_id].next =
-                BasicBlockNext::Terminator(BasicBlockTerminator::TailCallRef(InstrCallRef {
-                    func: func_ref_local,
-                    args: locals_to_pass,
-                    func_type: FuncType {
-                        args: self.jit_bbs[bb_id].info.arg_types(&self.func, &type_args),
-                        ret: body_func.ret_type,
-                    },
-                }));
         }
-
         for &bb_id in &processed_bb_ids {
             let mut instrs = Vec::new();
             for instr in &body_func.bbs[bb_id].instrs {
                 // FuncRefとCall命令はget global命令に置き換えられる
                 match *instr {
                     Instr {
-                        local,
-                        kind: InstrKind::Phi(ref incomings),
+                        kind: InstrKind::Phi(ref incomings, non_exhaustive),
+                        ..
                     } => {
-                        if bb_id == orig_entry_bb_id {
-                            // 削除
-                            // TODO: 前方ジャンプを考慮
-                        } else {
-                            // TODO: 例えば if (true) { bb1 } else { bb2 } phi(local1 from bb1, local2 from bb2) のような場合、後続の処理でincomingを消す必要がある
-                            instrs.push(Instr {
-                                local,
-                                kind: InstrKind::Phi(
-                                    incomings
-                                        .iter()
-                                        .copied()
-                                        .filter(|incoming| /* 後方ジャンプを考慮 */ processed_bb_ids.contains(&incoming.bb))
-                                        .collect(),
-                                ),
-                            });
-                        }
+                        let new_incomings = incomings
+                            .iter()
+                            .filter(|incoming| !required_bb_set.contains(&incoming.bb))
+                            .cloned()
+                            .collect::<Vec<_>>();
+                        instrs.push(Instr {
+                            local: instr.local,
+                            kind: InstrKind::Phi(new_incomings, non_exhaustive),
+                        });
                     }
                     Instr {
                         local,
@@ -622,8 +652,9 @@ impl JitSpecializedFunc {
             body_func.bbs[bb_id].instrs = instrs;
         }
 
+        remove_unreachable_bb(body_func);
         // specialize_call_closureの最適化はPhi命令を処理した後に行う必要があるため最後に行う
-        for &bb_id in &processed_bb_ids {
+        for bb_id in body_func.bbs.keys().collect::<Vec<_>>() {
             for instr_idx in 0..body_func.bbs[bb_id].instrs.len() {
                 match &body_func.bbs[bb_id].instrs[instr_idx] {
                     Instr {
@@ -640,23 +671,27 @@ impl JitSpecializedFunc {
                         body_func.bbs[bb_id].instrs[instr_idx].kind =
                             InstrKind::CallClosure(new_call_closure);
                     }
+                    Instr {
+                        local: _,
+                        kind:
+                            InstrKind::Terminator(TerminatorInstr::Exit(ExitInstr::TailCallClosure(
+                                call_closure,
+                            ))),
+                    } if let Some(new_call_closure) = specialize_call_closure(
+                        call_closure,
+                        &def_use_chain,
+                        &body_func.bbs,
+                        jit_ctx.closure_global_layout(),
+                        &mut required_closure_idx,
+                    ) =>
+                    {
+                        body_func.bbs[bb_id].instrs[instr_idx].kind = InstrKind::Terminator(
+                            TerminatorInstr::Exit(ExitInstr::TailCallClosure(new_call_closure)),
+                        );
+                    }
+
                     _ => {}
                 }
-            }
-
-            if let BasicBlockNext::Terminator(BasicBlockTerminator::TailCallClosure(call_closure)) =
-                &body_func.bbs[bb_id].next
-                && let Some(new_call_closure) = specialize_call_closure(
-                    call_closure,
-                    &def_use_chain,
-                    &body_func.bbs,
-                    jit_ctx.closure_global_layout(),
-                    &mut required_closure_idx,
-                )
-            {
-                body_func.bbs[bb_id].next = BasicBlockNext::Terminator(
-                    BasicBlockTerminator::TailCallClosure(new_call_closure),
-                );
             }
         }
 
@@ -756,6 +791,18 @@ impl JitSpecializedFunc {
                 });
 
                 let arg_types = arg_locals.iter().map(|&local| locals[local].typ).collect();
+                exprs.push(Instr {
+                    local: None,
+                    kind: InstrKind::Terminator(TerminatorInstr::Exit(ExitInstr::TailCallClosure(
+                        InstrCallClosure {
+                            closure: closure_local,
+                            args: arg_locals,
+                            arg_types,
+                            func_index: closure_idx,
+                        },
+                    ))),
+                });
+
                 let stub_func_id = funcs.push_with(|id| Func {
                     id,
                     args,
@@ -765,14 +812,6 @@ impl JitSpecializedFunc {
                     bbs: [BasicBlock {
                         id: BasicBlockId::from(0),
                         instrs: exprs,
-                        next: BasicBlockNext::Terminator(BasicBlockTerminator::TailCallClosure(
-                            InstrCallClosure {
-                                closure: closure_local,
-                                args: arg_locals,
-                                arg_types,
-                                func_index: closure_idx,
-                            },
-                        )),
                     }]
                     .into_iter()
                     .collect(),
@@ -830,10 +869,16 @@ impl JitSpecializedFunc {
                     });
                 }
 
+                exprs.push(Instr {
+                    local: None,
+                    kind: InstrKind::Terminator(TerminatorInstr::Exit(ExitInstr::Return(
+                        func_ref_local,
+                    ))),
+                });
+
                 BasicBlock {
                     id: BasicBlockId::from(0),
                     instrs: exprs,
-                    next: BasicBlockNext::Terminator(BasicBlockTerminator::Return(func_ref_local)),
                 }
             });
 
@@ -1071,6 +1116,7 @@ fn calculate_args_to_pass(
     callee: &BBInfo,
     get_typed_obj: impl Fn(LocalId) -> Option<TypedObj>,
     caller_assigned_local_to_obj: &FxHashMap<LocalId, LocalId>,
+    new_ids: &FxHashMap<(BasicBlockId, LocalId), LocalId>,
     bb_index_manager: &mut BBIndexManager,
     required_stubs: &mut Vec<(BasicBlockId, usize)>,
     global_manager: &mut GlobalManager,
@@ -1081,6 +1127,7 @@ fn calculate_args_to_pass(
     let mut args_to_pass_fallback = Vec::new();
 
     for &arg in &callee.args {
+        let arg = new_ids.get(&(callee.bb_id, arg)).copied().unwrap_or(arg);
         let obj_arg = caller_assigned_local_to_obj
             .get(&arg)
             .copied()
@@ -1174,10 +1221,14 @@ fn closure_func_assign_types(
             kind: InstrKind::VariadicArgs(obj_locals),
         });
 
+        exprs.push(Instr {
+            local: None,
+            kind: InstrKind::Terminator(TerminatorInstr::Jump(prev_entry)),
+        });
+
         BasicBlock {
             id: bb_id,
             instrs: exprs,
-            next: BasicBlockNext::Jump(prev_entry),
         }
     });
 
@@ -1189,16 +1240,16 @@ fn closure_func_assign_types(
 // ir.rsに置くべきかも？
 fn extend_entry_func(
     module: &mut Module,
-    f: impl FnOnce(&mut Func, BasicBlockNext) -> BasicBlockId,
+    f: impl FnOnce(&mut Func, TerminatorInstr) -> BasicBlockId,
 ) {
     let entry_func = &mut module.funcs[module.entry];
 
     extend_entry_bb(entry_func, f);
 }
 
-fn extend_entry_bb(func: &mut Func, f: impl FnOnce(&mut Func, BasicBlockNext) -> BasicBlockId) {
+fn extend_entry_bb(func: &mut Func, f: impl FnOnce(&mut Func, TerminatorInstr) -> BasicBlockId) {
     let prev_entry_bb_id = func.bb_entry;
-    let new_entry_bb_id = f(func, BasicBlockNext::Jump(prev_entry_bb_id));
+    let new_entry_bb_id = f(func, TerminatorInstr::Jump(prev_entry_bb_id));
     func.bb_entry = new_entry_bb_id;
 }
 
@@ -1240,10 +1291,13 @@ pub fn assign_type_args(
     }
 
     extend_entry_bb(func, |func, next| {
+        entry_bb_instrs.push(Instr {
+            local: None,
+            kind: InstrKind::Terminator(next),
+        });
         func.bbs.push_with(|bb_id| BasicBlock {
             id: bb_id,
             instrs: entry_bb_instrs,
-            next,
         })
     });
     assigned_local_to_obj

@@ -1,12 +1,19 @@
 use super::cfg_analyzer::find_reachable_nodes;
 use vec_map::VecMap;
-use webschembly_compiler_ir::Func;
+use webschembly_compiler_ir::{Func, InstrKind};
 
 // SSA関係なく可能な最適化関数の一覧
 
 pub fn remove_unreachable_bb(func: &mut Func) {
     let reachable = find_reachable_nodes(&func.bbs, func.bb_entry);
     func.bbs.retain(|id, _| reachable.contains(&id));
+    for bb in func.bbs.values_mut() {
+        for instr in bb.instrs.iter_mut() {
+            if let InstrKind::Phi(incomings, _) = &mut instr.kind {
+                incomings.retain(|incoming| reachable.contains(&incoming.bb));
+            }
+        }
+    }
 }
 
 pub fn remove_unused_local(func: &mut Func) {

@@ -85,17 +85,17 @@ impl fmt::Display for Display<'_, BasicBlockId> {
 }
 
 #[derive(Debug, Clone, Copy, From, Into, Hash, PartialEq, Eq)]
-pub struct ModuleId(usize);
+pub struct JitModuleId(usize);
 
-impl ModuleId {
-    pub fn display<'a>(&self, meta: &'a Meta) -> Display<'a, ModuleId> {
+impl JitModuleId {
+    pub fn display<'a>(&self, meta: &'a Meta) -> Display<'a, JitModuleId> {
         Display { value: *self, meta }
     }
 }
 
-impl fmt::Display for Display<'_, ModuleId> {
+impl fmt::Display for Display<'_, JitModuleId> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "module{}", self.value.0)?;
+        write!(f, "jit_module{}", self.value.0)?;
 
         Ok(())
     }
@@ -104,3 +104,60 @@ impl fmt::Display for Display<'_, ModuleId> {
 // TODO: ここに置くべきじゃない
 #[derive(Debug, Clone, Copy, From, Into, Hash, PartialEq, Eq, Ord, PartialOrd)]
 pub struct TypeParamId(usize);
+
+#[derive(Debug, Clone, Copy, From, Into, Hash, PartialEq, Eq)]
+pub struct JitFuncId(usize);
+
+impl JitFuncId {
+    pub fn display<'a>(&self, meta: &'a Meta) -> Display<'a, JitFuncId> {
+        Display { value: *self, meta }
+    }
+}
+
+impl From<FuncId> for JitFuncId {
+    fn from(func_id: FuncId) -> Self {
+        JitFuncId(func_id.0)
+    }
+}
+
+impl From<JitFuncId> for FuncId {
+    fn from(jit_func_id: JitFuncId) -> Self {
+        FuncId(jit_func_id.0)
+    }
+}
+
+impl fmt::Display for Display<'_, JitFuncId> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "jit_func{}", self.value.0)?;
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Copy, From, Into, Hash, PartialEq, Eq)]
+pub struct JitBasicBlockId(usize);
+impl JitBasicBlockId {
+    pub fn display<'a>(&self, meta: &'a Meta) -> Display<'a, JitBasicBlockId> {
+        Display { value: *self, meta }
+    }
+}
+
+impl From<BasicBlockId> for JitBasicBlockId {
+    fn from(bb_id: BasicBlockId) -> Self {
+        JitBasicBlockId(bb_id.0)
+    }
+}
+
+impl From<JitBasicBlockId> for BasicBlockId {
+    fn from(jit_bb_id: JitBasicBlockId) -> Self {
+        BasicBlockId(jit_bb_id.0)
+    }
+}
+
+impl fmt::Display for Display<'_, JitBasicBlockId> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "jit_bb{}", self.value.0)?;
+
+        Ok(())
+    }
+}

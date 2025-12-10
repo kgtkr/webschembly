@@ -5,7 +5,11 @@ use crate::ir_generator::GlobalManager;
 use crate::ir_processor::desugar::desugar;
 use crate::ir_processor::optimizer::remove_unreachable_bb;
 use crate::ir_processor::optimizer::remove_unused_local;
+use crate::ir_processor::ssa::split_critical_edges;
 use crate::ir_processor::ssa::{debug_assert_ssa, remove_phi};
+use crate::ir_processor::ssa_optimizer::ModuleInliner;
+use crate::ir_processor::ssa_optimizer::SsaOptimizerConfig;
+use crate::ir_processor::ssa_optimizer::inlining;
 use crate::ir_processor::ssa_optimizer::ssa_optimize;
 use crate::jit::{Jit, JitConfig};
 use crate::lexer;
@@ -73,7 +77,7 @@ impl Compiler {
             sexpr_parser::parse(tokens.as_slice()).map_err(|e| compiler_error!("{}", e))?;
         let ast = self.ast_generator.gen_ast(sexprs)?;
         // TODO: ここで生成するべきではない
-        let module_id = ir::ModuleId::from(self.module_count);
+        let module_id = ir::JitModuleId::from(self.module_count);
         self.module_count += 1;
         let mut module = ir_generator::generate_module(
             module_id,
@@ -86,16 +90,30 @@ impl Compiler {
 
         preprocess_module(&mut module);
         if let Some(jit) = &mut self.jit {
+            optimize_module(
+                &mut module,
+                SsaOptimizerConfig {
+                    enable_cse: false,
+                    ..Default::default()
+                },
+            );
             let mut stub_module = jit.register_module(&mut self.global_manager, module);
             preprocess_module(&mut stub_module);
             if jit.config().enable_optimization {
-                optimize_module(&mut stub_module);
+                optimize_module(
+                    &mut stub_module,
+                    SsaOptimizerConfig {
+                        enable_inlining: false,
+                        ..Default::default()
+                    },
+                );
             }
             postprocess(&mut stub_module, &mut self.global_manager);
             Ok(stub_module)
         } else {
-            optimize_module(&mut module);
+            optimize_module(&mut module, Default::default());
             postprocess(&mut module, &mut self.global_manager);
+
             Ok(module)
         }
     }
@@ -106,14 +124,21 @@ impl Compiler {
         func_id: usize,
         func_index: usize,
     ) -> ir::Module {
-        let module_id = ir::ModuleId::from(module_id);
+        let module_id = ir::JitModuleId::from(module_id);
         let func_id = ir::FuncId::from(func_id);
         let jit = self.jit.as_mut().expect("JIT is not enabled");
         let mut module =
             jit.instantiate_func(&mut self.global_manager, module_id, func_id, func_index);
+
         preprocess_module(&mut module);
         if jit.config().enable_optimization {
-            optimize_module(&mut module);
+            optimize_module(
+                &mut module,
+                SsaOptimizerConfig {
+                    enable_inlining: false,
+                    ..Default::default()
+                },
+            );
         }
         postprocess(&mut module, &mut self.global_manager);
         module
@@ -127,7 +152,7 @@ impl Compiler {
         bb_id: usize,
         index: usize,
     ) -> ir::Module {
-        let module_id = ir::ModuleId::from(module_id);
+        let module_id = ir::JitModuleId::from(module_id);
         let func_id = ir::FuncId::from(func_id);
         let bb_id = ir::BasicBlockId::from(bb_id);
         let jit = self.jit.as_mut().expect("JIT is not enabled");
@@ -141,7 +166,13 @@ impl Compiler {
         );
         preprocess_module(&mut module);
         if jit.config().enable_optimization {
-            optimize_module(&mut module);
+            optimize_module(
+                &mut module,
+                SsaOptimizerConfig {
+                    enable_inlining: false,
+                    ..Default::default()
+                },
+            );
         }
         postprocess(&mut module, &mut self.global_manager);
         module
@@ -157,7 +188,7 @@ impl Compiler {
         source_bb_id: usize,
         source_index: usize,
     ) -> Option<ir::Module> {
-        let module_id = ir::ModuleId::from(module_id);
+        let module_id = ir::JitModuleId::from(module_id);
         let func_id = ir::FuncId::from(func_id);
         let bb_id = ir::BasicBlockId::from(bb_id);
         let jit = self.jit.as_mut().expect("JIT is not enabled");
@@ -179,7 +210,13 @@ impl Compiler {
         .map(|mut module| {
             preprocess_module(&mut module);
             if jit.config().enable_optimization {
-                optimize_module(&mut module);
+                optimize_module(
+                    &mut module,
+                    SsaOptimizerConfig {
+                        enable_inlining: false,
+                        ..Default::default()
+                    },
+                );
             }
             postprocess(&mut module, &mut self.global_manager);
             module
@@ -194,9 +231,23 @@ fn preprocess_module(module: &mut ir::Module) {
     }
 }
 
-fn optimize_module(module: &mut ir::Module) {
-    for func in module.funcs.values_mut() {
-        ssa_optimize(func, true);
+fn optimize_module(module: &mut ir::Module, config: SsaOptimizerConfig) {
+    let mut module_inliner = ModuleInliner::new(module);
+    let n = 5;
+    for i in 0..n {
+        if config.enable_inlining {
+            // inliningはInstrKind::Closureのfunc_idに依存しているので、JIT後のモジュールには使えない
+            inlining(module, &mut module_inliner, i == n - 1);
+        }
+        for func in module.funcs.values_mut() {
+            ssa_optimize(
+                func,
+                SsaOptimizerConfig {
+                    iterations: 1,
+                    ..config
+                },
+            );
+        }
     }
 }
 
@@ -206,7 +257,7 @@ fn postprocess(module: &mut ir::Module, global_manager: &mut GlobalManager) {
 
         desugar(func);
 
-        // TODO: クリティカルエッジの分割
+        split_critical_edges(func);
         remove_phi(func);
         // TODO: レジスタ割り付け
 

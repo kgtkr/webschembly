@@ -14,7 +14,6 @@ use vec_map::{HasId, VecMap};
 pub struct BasicBlock {
     pub id: BasicBlockId,
     pub instrs: Vec<Instr>,
-    pub next: BasicBlockNext,
 }
 
 macro_rules! impl_BasicBlock_local_usages {
@@ -28,9 +27,6 @@ macro_rules! impl_BasicBlock_local_usages {
                             for usage in instr.[<local_usages $($suffix)?>]() {
                                 yield usage;
                             }
-                        }
-                        for id in self.next.[<local_ids $($suffix)?>]() {
-                            yield (id, LocalFlag::Used(LocalUsedFlag::NonPhi));
                         }
                     },
                 )
@@ -51,9 +47,6 @@ macro_rules! impl_BasicBlock_func_ids {
                                 yield id;
                             }
                         }
-                        for id in self.next.[<func_ids $($suffix)?>]() {
-                            yield id;
-                        }
                     },
                 )
             }
@@ -71,6 +64,35 @@ impl BasicBlock {
 
     impl_BasicBlock_func_ids!(_mut, mut);
     impl_BasicBlock_func_ids!(,);
+
+    pub fn terminator(&self) -> &TerminatorInstr {
+        match &self
+            .instrs
+            .last()
+            .expect("BasicBlock has no instructions")
+            .kind
+        {
+            InstrKind::Terminator(term) => term,
+            _ => panic!("BasicBlock does not end with a Terminator instruction"),
+        }
+    }
+
+    pub fn terminator_mut(&mut self) -> &mut TerminatorInstr {
+        match &mut self
+            .instrs
+            .last_mut()
+            .expect("BasicBlock has no instructions")
+            .kind
+        {
+            InstrKind::Terminator(term) => term,
+            _ => panic!("BasicBlock does not end with a Terminator instruction"),
+        }
+    }
+
+    pub fn insert_instrs_before_terminator(&mut self, instrs: impl Iterator<Item = Instr>) {
+        let len = self.instrs.len();
+        self.instrs.splice(len - 1..len - 1, instrs);
+    }
 }
 
 impl HasId for BasicBlock {
@@ -99,206 +121,7 @@ impl fmt::Display for DisplayInFunc<'_, &'_ BasicBlock> {
                 instr.display(self.meta)
             )?;
         }
-        writeln!(
-            f,
-            "{}{}{}",
-            DISPLAY_INDENT,
-            DISPLAY_INDENT,
-            self.value.next.display(self.meta)
-        )?;
         Ok(())
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum BasicBlockTerminator {
-    Return(LocalId),
-    TailCall(InstrCall),
-    TailCallRef(InstrCallRef),
-    TailCallClosure(InstrCallClosure),
-    Error(LocalId),
-}
-macro_rules! impl_BasicBlockTerminator_local_ids {
-    ($($suffix: ident)?,$($mutability: tt)?) => {
-        paste::paste! {
-            pub fn [<local_ids $($suffix)?>](&$($mutability)? self) -> impl Iterator<Item = &$($mutability)? LocalId> {
-                from_coroutine(
-                    #[coroutine]
-                    move || match self {
-                        BasicBlockTerminator::Return(local) => yield local,
-                        BasicBlockTerminator::TailCall(call) => {
-                            for id in call.[<local_ids $($suffix)?>]() {
-                                yield id;
-                            }
-                        }
-                        BasicBlockTerminator::TailCallRef(call_ref) => {
-                            for id in call_ref.[<local_ids $($suffix)?>]() {
-                                yield id;
-                            }
-                        }
-                        BasicBlockTerminator::TailCallClosure(call_closure) => {
-                            for id in call_closure.[<local_ids $($suffix)?>]() {
-                                yield id;
-                            }
-                        }
-                        BasicBlockTerminator::Error(local) => yield local,
-                    },
-                )
-            }
-        }
-    };
-}
-
-macro_rules! impl_BasicBlockTerminator_func_ids {
-    ($($suffix: ident)?,$($mutability: tt)?) => {
-        paste::paste! {
-            pub fn [<func_ids $($suffix)?>](&$($mutability)? self) -> impl Iterator<Item = &$($mutability)? FuncId> {
-                from_coroutine(
-                    #[coroutine]
-                    move || match self {
-                        BasicBlockTerminator::Return(_)
-                        | BasicBlockTerminator::TailCallRef(_)
-                        | BasicBlockTerminator::TailCallClosure(_)
-                        | BasicBlockTerminator::Error(_) => {}
-                        BasicBlockTerminator::TailCall(call) => {
-                            for id in call.[<func_ids $($suffix)?>]() {
-                                yield id;
-                            }
-                        }
-                    },
-                )
-            }
-        }
-    };
-}
-
-impl BasicBlockTerminator {
-    pub fn display<'a>(&self, meta: MetaInFunc<'a>) -> DisplayInFunc<'a, &BasicBlockTerminator> {
-        DisplayInFunc { value: self, meta }
-    }
-
-    impl_BasicBlockTerminator_local_ids!(_mut, mut);
-    impl_BasicBlockTerminator_local_ids!(,);
-
-    impl_BasicBlockTerminator_func_ids!(_mut, mut);
-    impl_BasicBlockTerminator_func_ids!(,);
-}
-
-impl fmt::Display for DisplayInFunc<'_, &BasicBlockTerminator> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.value {
-            BasicBlockTerminator::Return(local) => write!(f, "return {}", local.display(self.meta)),
-            BasicBlockTerminator::TailCall(call) => {
-                write!(f, "tail_call {}", call.display(self.meta))
-            }
-            BasicBlockTerminator::TailCallRef(call_ref) => {
-                write!(f, "tail_call_ref {}", call_ref.display(self.meta))
-            }
-            BasicBlockTerminator::TailCallClosure(call_closure) => {
-                write!(f, "tail_call_closure {}", call_closure.display(self.meta))
-            }
-            BasicBlockTerminator::Error(local) => write!(f, "error {}", local.display(self.meta)),
-        }
-    }
-}
-
-// 閉路を作ってはいけない
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum BasicBlockNext {
-    If(LocalId, BasicBlockId, BasicBlockId),
-    Jump(BasicBlockId),
-    Terminator(BasicBlockTerminator),
-}
-
-macro_rules! impl_BasicBlockNext_local_ids {
-    ($($suffix: ident)?,$($mutability: tt)?) => {
-        paste::paste! {
-            pub fn [<local_ids $($suffix)?>](&$($mutability)? self) -> impl Iterator<Item = &$($mutability)? LocalId> {
-                from_coroutine(
-                    #[coroutine]
-                    move || match self {
-                        BasicBlockNext::If(cond, _, _) => yield cond,
-                        BasicBlockNext::Jump(_) => {}
-                        BasicBlockNext::Terminator(terminator) => {
-                            for id in terminator.[<local_ids $($suffix)?>]() {
-                                yield id;
-                            }
-                        }
-                    },
-                )
-            }
-        }
-    };
-}
-
-macro_rules! impl_BasicBlockNext_func_ids {
-    ($($suffix: ident)?,$($mutability: tt)?) => {
-        paste::paste! {
-            pub fn [<func_ids $($suffix)?>](&$($mutability)? self) -> impl Iterator<Item = &$($mutability)? FuncId> {
-                from_coroutine(
-                    #[coroutine]
-                    move || match self {
-                        BasicBlockNext::If(_, _, _)
-                        | BasicBlockNext::Jump(_) => {}
-                        BasicBlockNext::Terminator(terminator) => {
-                            for id in terminator.[<func_ids $($suffix)?>]() {
-                                yield id;
-                            }
-                        }
-                    },
-                )
-            }
-        }
-    };
-}
-
-impl BasicBlockNext {
-    pub fn display<'a>(&self, meta: MetaInFunc<'a>) -> DisplayInFunc<'a, &BasicBlockNext> {
-        DisplayInFunc { value: self, meta }
-    }
-
-    impl_BasicBlockNext_local_ids!(_mut, mut);
-    impl_BasicBlockNext_local_ids!(,);
-
-    impl_BasicBlockNext_func_ids!(_mut, mut);
-    impl_BasicBlockNext_func_ids!(,);
-}
-
-impl fmt::Display for DisplayInFunc<'_, &BasicBlockNext> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.value {
-            BasicBlockNext::If(cond, bb1, bb2) => {
-                write!(
-                    f,
-                    "if {} then {} else {}",
-                    cond.display(self.meta),
-                    bb1.display(self.meta.meta),
-                    bb2.display(self.meta.meta)
-                )
-            }
-            BasicBlockNext::Jump(bb) => write!(f, "jump {}", bb.display(self.meta.meta)),
-            BasicBlockNext::Terminator(terminator) => {
-                write!(f, "{}", terminator.display(self.meta))
-            }
-        }
-    }
-}
-
-impl BasicBlockNext {
-    pub fn successors(&self) -> impl Iterator<Item = BasicBlockId> {
-        from_coroutine(
-            #[coroutine]
-            move || match self {
-                BasicBlockNext::If(_, t, f) => {
-                    yield *t;
-                    yield *f;
-                }
-                BasicBlockNext::Jump(bb) => {
-                    yield *bb;
-                }
-                BasicBlockNext::Terminator(_) => {}
-            },
-        )
     }
 }
 

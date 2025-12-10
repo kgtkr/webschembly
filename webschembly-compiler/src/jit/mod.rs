@@ -12,7 +12,7 @@ mod jit_func;
 
 #[derive(Debug)]
 pub struct Jit {
-    jit_module: VecMap<ModuleId, JitModule>,
+    jit_module: VecMap<JitModuleId, JitModule>,
     ctx: JitCtx,
 }
 
@@ -42,7 +42,7 @@ impl Jit {
     pub fn instantiate_func(
         &mut self,
         global_manager: &mut GlobalManager,
-        module_id: ModuleId,
+        module_id: JitModuleId,
         func_id: FuncId,
         func_index: usize,
     ) -> Module {
@@ -56,7 +56,7 @@ impl Jit {
 
     pub fn instantiate_bb(
         &mut self,
-        module_id: ModuleId,
+        module_id: JitModuleId,
         func_id: FuncId,
         func_index: usize,
         bb_id: BasicBlockId,
@@ -76,7 +76,7 @@ impl Jit {
     pub fn increment_branch_counter(
         &mut self,
         global_manager: &mut GlobalManager,
-        module_id: ModuleId,
+        module_id: JitModuleId,
         func_id: FuncId,
         func_index: usize,
         bb_id: BasicBlockId,

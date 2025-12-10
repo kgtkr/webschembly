@@ -219,21 +219,225 @@ impl fmt::Display for BranchKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ExitInstr {
+    Return(LocalId),
+    TailCall(InstrCall),
+    TailCallRef(InstrCallRef),
+    TailCallClosure(InstrCallClosure),
+    Error(LocalId),
+}
+macro_rules! impl_ExitInstr_local_ids {
+    ($($suffix: ident)?,$($mutability: tt)?) => {
+        paste::paste! {
+            pub fn [<local_ids $($suffix)?>](&$($mutability)? self) -> impl Iterator<Item = &$($mutability)? LocalId> {
+                from_coroutine(
+                    #[coroutine]
+                    move || match self {
+                        ExitInstr::Return(local) => yield local,
+                        ExitInstr::TailCall(call) => {
+                            for id in call.[<local_ids $($suffix)?>]() {
+                                yield id;
+                            }
+                        }
+                        ExitInstr::TailCallRef(call_ref) => {
+                            for id in call_ref.[<local_ids $($suffix)?>]() {
+                                yield id;
+                            }
+                        }
+                        ExitInstr::TailCallClosure(call_closure) => {
+                            for id in call_closure.[<local_ids $($suffix)?>]() {
+                                yield id;
+                            }
+                        }
+                        ExitInstr::Error(local) => yield local,
+                    },
+                )
+            }
+        }
+    };
+}
+
+macro_rules! impl_ExitInstr_func_ids {
+    ($($suffix: ident)?,$($mutability: tt)?) => {
+        paste::paste! {
+            pub fn [<func_ids $($suffix)?>](&$($mutability)? self) -> impl Iterator<Item = &$($mutability)? FuncId> {
+                from_coroutine(
+                    #[coroutine]
+                    move || match self {
+                        ExitInstr::Return(_)
+                        | ExitInstr::TailCallRef(_)
+                        | ExitInstr::TailCallClosure(_)
+                        | ExitInstr::Error(_) => {}
+                        ExitInstr::TailCall(call) => {
+                            for id in call.[<func_ids $($suffix)?>]() {
+                                yield id;
+                            }
+                        }
+                    },
+                )
+            }
+        }
+    };
+}
+
+impl ExitInstr {
+    pub fn display<'a>(&self, meta: MetaInFunc<'a>) -> DisplayInFunc<'a, &ExitInstr> {
+        DisplayInFunc { value: self, meta }
+    }
+
+    impl_ExitInstr_local_ids!(_mut, mut);
+    impl_ExitInstr_local_ids!(,);
+
+    impl_ExitInstr_func_ids!(_mut, mut);
+    impl_ExitInstr_func_ids!(,);
+}
+
+impl fmt::Display for DisplayInFunc<'_, &ExitInstr> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.value {
+            ExitInstr::Return(local) => write!(f, "return {}", local.display(self.meta)),
+            ExitInstr::TailCall(call) => {
+                write!(f, "tail_call {}", call.display(self.meta))
+            }
+            ExitInstr::TailCallRef(call_ref) => {
+                write!(f, "tail_call_ref {}", call_ref.display(self.meta))
+            }
+            ExitInstr::TailCallClosure(call_closure) => {
+                write!(f, "tail_call_closure {}", call_closure.display(self.meta))
+            }
+            ExitInstr::Error(local) => write!(f, "error {}", local.display(self.meta)),
+        }
+    }
+}
+
+// 閉路を作ってはいけない
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum TerminatorInstr {
+    If(LocalId, BasicBlockId, BasicBlockId),
+    Jump(BasicBlockId),
+    Exit(ExitInstr),
+}
+
+macro_rules! impl_TerminatorInstr_local_ids {
+    ($($suffix: ident)?,$($mutability: tt)?) => {
+        paste::paste! {
+            pub fn [<local_ids $($suffix)?>](&$($mutability)? self) -> impl Iterator<Item = &$($mutability)? LocalId> {
+                from_coroutine(
+                    #[coroutine]
+                    move || match self {
+                        TerminatorInstr::If(cond, _, _) => yield cond,
+                        TerminatorInstr::Jump(_) => {}
+                        TerminatorInstr::Exit(exit) => {
+                            for id in exit.[<local_ids $($suffix)?>]() {
+                                yield id;
+                            }
+                        }
+                    },
+                )
+            }
+        }
+    };
+}
+
+macro_rules! impl_TerminatorInstr_func_ids {
+    ($($suffix: ident)?,$($mutability: tt)?) => {
+        paste::paste! {
+            pub fn [<func_ids $($suffix)?>](&$($mutability)? self) -> impl Iterator<Item = &$($mutability)? FuncId> {
+                from_coroutine(
+                    #[coroutine]
+                    move || match self {
+                        TerminatorInstr::If(_, _, _)
+                        | TerminatorInstr::Jump(_) => {}
+                        TerminatorInstr::Exit(exit) => {
+                            for id in exit.[<func_ids $($suffix)?>]() {
+                                yield id;
+                            }
+                        }
+                    },
+                )
+            }
+        }
+    };
+}
+
+macro_rules! impl_TerminatorInstr_bb_ids {
+    ($($suffix: ident)?,$($mutability: tt)?) => {
+        paste::paste! {
+            pub fn [<bb_ids $($suffix)?>](&$($mutability)? self) -> impl Iterator<Item = &$($mutability)? BasicBlockId> {
+                from_coroutine(
+                    #[coroutine]
+                    move || match self {
+                        TerminatorInstr::If(_, bb1, bb2) => {
+                            yield bb1;
+                            yield bb2;
+                        }
+                        TerminatorInstr::Jump(bb) => yield bb,
+                        TerminatorInstr::Exit(_) => {}
+                    },
+                )
+            }
+        }
+    };
+}
+
+impl TerminatorInstr {
+    pub fn display<'a>(&self, meta: MetaInFunc<'a>) -> DisplayInFunc<'a, &TerminatorInstr> {
+        DisplayInFunc { value: self, meta }
+    }
+
+    impl_TerminatorInstr_local_ids!(_mut, mut);
+    impl_TerminatorInstr_local_ids!(,);
+
+    impl_TerminatorInstr_func_ids!(_mut, mut);
+    impl_TerminatorInstr_func_ids!(,);
+
+    impl_TerminatorInstr_bb_ids!(_mut, mut);
+    impl_TerminatorInstr_bb_ids!(,);
+
+    // TODO: bb_idsと同じ内容なので移行する
+    pub fn successors(&self) -> impl Iterator<Item = BasicBlockId> {
+        self.bb_ids().copied()
+    }
+}
+
+impl fmt::Display for DisplayInFunc<'_, &TerminatorInstr> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.value {
+            TerminatorInstr::If(cond, bb1, bb2) => {
+                write!(
+                    f,
+                    "if {} then {} else {}",
+                    cond.display(self.meta),
+                    bb1.display(self.meta.meta),
+                    bb2.display(self.meta.meta)
+                )
+            }
+            TerminatorInstr::Jump(bb) => write!(f, "jump {}", bb.display(self.meta.meta)),
+            TerminatorInstr::Exit(exit) => {
+                write!(f, "{}", exit.display(self.meta))
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum InstrKind {
-    Nop,                        // 左辺はNoneでなければならない
-    Phi(Vec<PhiIncomingValue>), // BBの先頭にのみ連続して出現可能(Nopが間に入るのは可)
-    Uninitialized(LocalType), // // IR上で未初期化変数にアクセスすることを認めるとデータフロー解析などが複雑になるので、明示的に「未初期値」を表す命令を用意する
-    InstantiateFunc(ModuleId, FuncId, usize),
+    Nop,                                                   // 左辺はNoneでなければならない
+    Phi(Vec<PhiIncomingValue>, bool /* non exhaustive */), // BBの先頭にのみ連続して出現可能(Nopが間に入るのは可)。non_exhaustive=trueの時incomings.length=1でもコピー伝播などの最適化を行ってはならない(inline化のためのフラグ)
+    Terminator(TerminatorInstr), // 左辺はNoneでなければならない。また、BasicBlockの最後にのみ出現可能
+    InstantiateFunc(JitModuleId, JitFuncId, usize),
     InstantiateClosureFunc(LocalId, LocalId, usize), // InstantiateFuncのModuleId/FuncIdを動的に指定する版
-    InstantiateBB(ModuleId, FuncId, usize, BasicBlockId, usize),
+    // TODO: InstantiateBBなどはFooId型ではなくusize型を受け取るべき
+    // 理由: 副作用命令であり、BasicBlockIdの一括置換などで同時に置き換えると意味が変わってしまうため
+    InstantiateBB(JitModuleId, JitFuncId, usize, JitBasicBlockId, usize),
     IncrementBranchCounter(
-        ModuleId,
-        FuncId,
+        JitModuleId,
+        JitFuncId,
         usize,
-        BasicBlockId,
+        JitBasicBlockId,
         BranchKind,
         // 以下は呼び出し元のBBとindex
-        BasicBlockId,
+        JitBasicBlockId,
         usize,
     ),
     Bool(bool),
@@ -255,9 +459,10 @@ pub enum InstrKind {
     Call(InstrCall),
     CallRef(InstrCallRef),
     Closure {
-        envs: Vec<LocalId>,
-        module_id: ModuleId,
-        func_id: FuncId,
+        envs: Vec<Option<LocalId>>, // None: letrecなどで使われる未初期化値
+        env_types: Vec<LocalType>,
+        module_id: JitModuleId,
+        func_id: JitFuncId,
         entrypoint_table: LocalId,
     },
     Move(LocalId),
@@ -268,7 +473,7 @@ pub enum InstrKind {
         LocalId,        /* closure */
         usize,          /* env index */
     ),
-    // Uninitializedで初期化されたEnvに対して一度のみ値を設定できる
+    // 未初期化値で初期化されたEnvに対して一度のみ値を設定できる
     ClosureSetEnv(
         Vec<LocalType>, /* env types */
         LocalId,        /* closure */
@@ -360,12 +565,16 @@ macro_rules! impl_InstrKind_local_usages {
                 from_coroutine(
                     #[coroutine]
                     move || match self {
-                        InstrKind::Phi(values) => {
+                        InstrKind::Phi(values, _) => {
                             for value in values.[<iter $($suffix)?>]() {
                                 yield (&$($mutability)? value.local, LocalUsedFlag::Phi(value.bb));
                             }
                         }
-                        InstrKind::Uninitialized(_) => {}
+                        InstrKind::Terminator(terminator) => {
+                            for id in terminator.[<local_ids $($suffix)?>]() {
+                                yield (id, LocalUsedFlag::NonPhi);
+                            }
+                        }
                         InstrKind::StringToSymbol(id) => yield (id, LocalUsedFlag::NonPhi),
                         InstrKind::Vector(ids) => {
                             for id in ids {
@@ -394,12 +603,15 @@ macro_rules! impl_InstrKind_local_usages {
                         }
                         InstrKind::Closure {
                             envs,
+                            env_types: _,
                             module_id: _,
                             func_id: _,
                             entrypoint_table,
                         } => {
                             for env in envs {
-                                yield (env, LocalUsedFlag::NonPhi);
+                                if let Some(env) = env {
+                                    yield (env, LocalUsedFlag::NonPhi);
+                                }
                             }
                             yield (entrypoint_table, LocalUsedFlag::NonPhi);
                         }
@@ -551,6 +763,31 @@ macro_rules! impl_InstrKind_local_usages {
     };
 }
 
+macro_rules! impl_InstrKind_bb_ids {
+    ($($suffix: ident)?,$($mutability: tt)?) => {
+        paste::paste! {
+            pub fn [<bb_ids $($suffix)?>](&$($mutability)? self) -> impl Iterator<Item = &$($mutability)? BasicBlockId> {
+                from_coroutine(
+                    #[coroutine]
+                    move || match self {
+                        InstrKind::Phi(values, _) => {
+                            for value in values.[<iter $($suffix)?>]() {
+                                yield &$($mutability)? value.bb;
+                            }
+                        }
+                        InstrKind::Terminator(terminator) => {
+                            for bb_id in terminator.[<bb_ids $($suffix)?>]() {
+                                yield bb_id;
+                            }
+                        }
+                        _ => {}
+                    },
+                )
+            }
+        }
+    };
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum InstrKindPurelity {
     Phi,
@@ -569,8 +806,10 @@ impl InstrKindPurelity {
     // デッドコード削除可能か
     pub fn can_dce(&self) -> bool {
         match self {
-            InstrKindPurelity::Pure | InstrKindPurelity::ImpureRead => true,
-            InstrKindPurelity::Phi | InstrKindPurelity::Effectful => false,
+            InstrKindPurelity::Pure | InstrKindPurelity::Phi | InstrKindPurelity::ImpureRead => {
+                true
+            }
+            InstrKindPurelity::Effectful => false,
         }
     }
 
@@ -578,7 +817,7 @@ impl InstrKindPurelity {
     pub fn can_cse(&self) -> bool {
         match self {
             InstrKindPurelity::Pure => true,
-            InstrKindPurelity::Phi
+            InstrKindPurelity::Phi // phiをcse対象にするとphiの間にmoveが入る可能性があるため不可
             | InstrKindPurelity::ImpureRead
             | InstrKindPurelity::Effectful => false,
         }
@@ -594,7 +833,6 @@ impl InstrKind {
         match self {
             InstrKind::Phi(..) => InstrKindPurelity::Phi,
             InstrKind::Nop
-            | InstrKind::Uninitialized(_)
             | InstrKind::Bool(..)
             | InstrKind::Int(..)
             | InstrKind::Float(..)
@@ -646,7 +884,7 @@ impl InstrKind {
             | InstrKind::DerefRef(..)
             | InstrKind::VectorLength(..)
             | InstrKind::VectorRef(..)
-            | InstrKind::UVectorLength(..)
+            | InstrKind::UVectorLength(..) // vector/uvectorの長さは不変なのでpureでいいのでは？
             | InstrKind::UVectorRef(..)
             | InstrKind::Car(..)
             | InstrKind::Cdr(..)
@@ -659,11 +897,11 @@ impl InstrKind {
             | InstrKind::DerefMutFuncRef(..)
             | InstrKind::EntrypointTable(..)
             | InstrKind::EntrypointTableRef(..)
-            | InstrKind::SetEntrypointTable(..)
             // closureの環境は可変である
             | InstrKind::Closure { .. }
             | InstrKind::ClosureEnv(..) => InstrKindPurelity::ImpureRead,
-            InstrKind::InstantiateFunc(..)
+            InstrKind::Terminator(..)
+            | InstrKind::InstantiateFunc(..)
             | InstrKind::InstantiateClosureFunc(..)
             | InstrKind::InstantiateBB(..)
             | InstrKind::IncrementBranchCounter(..)
@@ -675,6 +913,7 @@ impl InstrKind {
             | InstrKind::GlobalSet(..)
             | InstrKind::Display(..)
             | InstrKind::WriteChar(..)
+            | InstrKind::SetEntrypointTable(..)
             | InstrKind::VectorSet(..)
             | InstrKind::UVectorSet(..)
             | InstrKind::ClosureSetEnv(..) => InstrKindPurelity::Effectful,
@@ -685,14 +924,15 @@ impl InstrKind {
     impl_InstrKind_func_ids!(,);
     impl_InstrKind_local_usages!(_mut, mut);
     impl_InstrKind_local_usages!(,);
+    impl_InstrKind_bb_ids!(_mut, mut);
+    impl_InstrKind_bb_ids!(,);
 }
 
 impl fmt::Display for DisplayInFunc<'_, &'_ InstrKind> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.value {
             InstrKind::Nop => write!(f, "nop"),
-            InstrKind::Uninitialized(typ) => write!(f, "uninitialized<{}>", typ),
-            InstrKind::Phi(values) => {
+            InstrKind::Phi(values, non_exhaustive) => {
                 write!(f, "phi(")?;
                 for (i, value) in values.iter().enumerate() {
                     if i > 0 {
@@ -705,7 +945,16 @@ impl fmt::Display for DisplayInFunc<'_, &'_ InstrKind> {
                         value.bb.display(self.meta.meta),
                     )?;
                 }
+                if *non_exhaustive {
+                    if !values.is_empty() {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "...")?;
+                }
                 write!(f, ")")
+            }
+            InstrKind::Terminator(terminator) => {
+                write!(f, "{}", terminator.display(self.meta))
             }
             InstrKind::InstantiateFunc(module_id, func_id, func_index) => {
                 write!(
@@ -812,19 +1061,31 @@ impl fmt::Display for DisplayInFunc<'_, &'_ InstrKind> {
             }
             InstrKind::Closure {
                 envs,
+                env_types,
                 module_id,
                 func_id,
                 entrypoint_table,
             } => {
+                write!(f, "closure<")?;
+                for (i, typ) in env_types.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ",")?;
+                    }
+                    write!(f, "{}", typ)?;
+                }
                 write!(
                     f,
-                    "closure(entrypoint_table={}, module_id={}, func_id={}",
+                    ">(entrypoint_table={}, module_id={}, func_id={}",
                     entrypoint_table.display(self.meta),
                     module_id.display(self.meta.meta),
                     func_id.display(self.meta.meta)
                 )?;
                 for env in envs {
-                    write!(f, ", {}", env.display(self.meta))?;
+                    write!(f, ", ")?;
+                    match env {
+                        Some(env) => write!(f, "{}", env.display(self.meta))?,
+                        None => write!(f, "(uninitialized)")?,
+                    }
                 }
                 write!(f, ")")
             }
