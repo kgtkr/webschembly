@@ -166,6 +166,21 @@ fn sequentialize_parallel_copies(func: &mut Func, parallel_copies: Vec<Copy>) ->
     result
 }
 
+pub fn count_assigns(func: &Func) -> FxHashMap<LocalId, usize> {
+    let mut counts = FxHashMap::default();
+    for arg in &func.args {
+        counts.insert(*arg, 1);
+    }
+    for bb in func.bbs.values() {
+        for instr in &bb.instrs {
+            if let Some(local) = instr.local {
+                *counts.entry(local).or_default() += 1;
+            }
+        }
+    }
+    counts
+}
+
 fn assert_ssa(func: &Func) {
     let mut assigned = VecMap::new();
     for local_id in func.locals.keys() {
@@ -316,11 +331,14 @@ impl DefUseChain {
     }
 }
 
-pub fn build_ssa(
-    func: &mut Func,
-    // 再代入される可能性のあるローカル変数の集合
-    target_locals: &FxHashSet<LocalId>,
-) -> FxHashMap<(BasicBlockId, LocalId), LocalId> {
+pub fn build_ssa(func: &mut Func) -> FxHashMap<(BasicBlockId, LocalId), LocalId> {
+    // 再代入されているローカル変数の集合
+    let target_locals = count_assigns(func)
+        .into_iter()
+        .filter(|(_, count)| *count > 1)
+        .map(|(local, _)| local)
+        .collect::<FxHashSet<_>>();
+
     // 引数の受け取り元として新しいエントリーブロックを追加
     let prev_entry_bb_id = func.bb_entry;
     let new_entry_bb_id = func.bbs.push_with(|id| BasicBlock {
@@ -395,7 +413,7 @@ pub fn build_ssa(
     // ステップ4: 変数のリネーム (支配木を使用)
     // 各「元の」変数ID用のスタックを準備
     let mut stacks: FxHashMap<LocalId, Vec<LocalId>> = FxHashMap::default();
-    for &local in target_locals {
+    for &local in &target_locals {
         stacks.insert(local, Vec::new());
     }
 

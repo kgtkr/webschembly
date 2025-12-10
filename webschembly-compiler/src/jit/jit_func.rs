@@ -352,11 +352,7 @@ impl JitSpecializedFunc {
         // これがないとBBの入力に代入している命令を持つBBが残るためSSAにならない
         remove_unreachable_bb(body_func);
 
-        let new_ids = {
-            let args = body_func.args.iter().copied().collect::<FxHashSet<_>>();
-
-            build_ssa(body_func, &args)
-        };
+        let new_ids = build_ssa(body_func);
 
         let assigned_local_to_obj = assign_type_args(
             body_func,
