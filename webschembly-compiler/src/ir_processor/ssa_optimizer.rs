@@ -2,6 +2,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::ir_processor::{
     cfg_analyzer::{DomTreeNode, build_dom_tree, calc_doms, calc_predecessors, calculate_rpo},
+    optimizer::remove_unreachable_bb,
     ssa::{DefUseChain, debug_assert_ssa},
 };
 use vec_map::VecMap;
@@ -70,7 +71,11 @@ pub fn copy_propagation(func: &mut Func, rpo: &FxHashMap<BasicBlockId, usize>) {
                 }
                 Instr {
                     local: Some(dest),
-                    kind: InstrKind::Phi(ref incomings, non_exhaustive),
+                    kind:
+                        InstrKind::Phi {
+                            ref incomings,
+                            non_exhaustive,
+                        },
                 } if !non_exhaustive => {
                     let mut all_same = true;
                     let mut first = None;
@@ -401,6 +406,18 @@ pub fn constant_folding(
                         }
                     }
                 }
+                InstrKind::Terminator(TerminatorInstr::If(cond, then_bb, else_bb))
+                    if let Some(&InstrKind::Bool(value)) =
+                        def_use.get_def_non_move_expr(&func.bbs, cond) =>
+                {
+                    if value {
+                        func.bbs[*bb_id].instrs[expr_idx].kind =
+                            InstrKind::Terminator(TerminatorInstr::Jump(then_bb));
+                    } else {
+                        func.bbs[*bb_id].instrs[expr_idx].kind =
+                            InstrKind::Terminator(TerminatorInstr::Jump(else_bb));
+                    }
+                }
                 _ => {}
             }
         }
@@ -440,14 +457,16 @@ pub fn ssa_optimize(func: &mut Func, config: SsaOptimizerConfig) {
         copy_propagation(func, &rpo);
         eliminate_redundant_obj(func, &def_use);
         constant_folding(func, &rpo, &def_use, &doms);
+        if config.enable_dce {
+            dead_code_elimination(func, &mut def_use);
+        }
         if config.enable_cse {
             common_subexpression_elimination(func, &dom_tree);
         }
     }
 
-    if config.enable_dce {
-        dead_code_elimination(func, &mut def_use);
-    }
+    // constant_foldingによって到達不能コードが発生する可能性がある
+    remove_unreachable_bb(func);
 }
 
 pub fn inlining(module: &mut Module, module_inliner: &mut ModuleInliner, last: bool) {
@@ -511,7 +530,10 @@ fn inlining_func(
             locals.insert_node(module.funcs[func_id].locals[local]);
         }
         for &bb in merge_func_info.bb_map.values() {
-            bbs.insert_node(module.funcs[func_id].bbs[bb].clone());
+            // remove_unreachable_bbで消されている可能性がある
+            if let Some(bb) = module.funcs[func_id].bbs.get(bb) {
+                bbs.insert_node(bb.clone());
+            }
         }
     }
 
@@ -689,7 +711,10 @@ fn inlining_func(
             .map(|(i, arg_info)| Instr {
                 local: Some(arg_info.local),
                 // i == 0は必ずクロージャであり、毎回引数は変わらない(本当？)ので、non_exhaustive=falseにしてよい
-                kind: InstrKind::Phi(arg_info.incomings.clone(), i != 0 && !last),
+                kind: InstrKind::Phi {
+                    incomings: arg_info.incomings.clone(),
+                    non_exhaustive: i != 0 && !last,
+                },
             })
             .collect::<Vec<_>>();
 

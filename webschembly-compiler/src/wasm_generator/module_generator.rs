@@ -1048,7 +1048,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             ir::InstrKind::Nop => {
                 unreachable!("unexpected Nop");
             }
-            ir::InstrKind::Phi(..) => {
+            ir::InstrKind::Phi { .. } => {
                 unreachable!("unexpected Phi");
             }
             ir::InstrKind::Terminator(_) => {
