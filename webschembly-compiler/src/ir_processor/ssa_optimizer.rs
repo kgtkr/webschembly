@@ -2,6 +2,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::ir_processor::{
     cfg_analyzer::{DomTreeNode, build_dom_tree, calc_doms, calc_predecessors, calculate_rpo},
+    optimizer::remove_unreachable_bb,
     ssa::{DefUseChain, debug_assert_ssa},
 };
 use vec_map::VecMap;
@@ -405,6 +406,18 @@ pub fn constant_folding(
                         }
                     }
                 }
+                InstrKind::Terminator(TerminatorInstr::If(cond, then_bb, else_bb))
+                    if let Some(&InstrKind::Bool(value)) =
+                        def_use.get_def_non_move_expr(&func.bbs, cond) =>
+                {
+                    if value {
+                        func.bbs[*bb_id].instrs[expr_idx].kind =
+                            InstrKind::Terminator(TerminatorInstr::Jump(then_bb));
+                    } else {
+                        func.bbs[*bb_id].instrs[expr_idx].kind =
+                            InstrKind::Terminator(TerminatorInstr::Jump(else_bb));
+                    }
+                }
                 _ => {}
             }
         }
@@ -452,6 +465,8 @@ pub fn ssa_optimize(func: &mut Func, config: SsaOptimizerConfig) {
     if config.enable_dce {
         dead_code_elimination(func, &mut def_use);
     }
+    // constant_foldingによって到達不能コードが発生する可能性がある
+    remove_unreachable_bb(func);
 }
 
 pub fn inlining(module: &mut Module, module_inliner: &mut ModuleInliner, last: bool) {
