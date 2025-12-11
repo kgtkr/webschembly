@@ -530,7 +530,10 @@ fn inlining_func(
             locals.insert_node(module.funcs[func_id].locals[local]);
         }
         for &bb in merge_func_info.bb_map.values() {
-            bbs.insert_node(module.funcs[func_id].bbs[bb].clone());
+            // remove_unreachable_bbで消されている可能性がある
+            if let Some(bb) = module.funcs[func_id].bbs.get(bb) {
+                bbs.insert_node(bb.clone());
+            }
         }
     }
 
