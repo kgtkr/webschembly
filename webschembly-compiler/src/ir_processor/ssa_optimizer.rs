@@ -457,14 +457,14 @@ pub fn ssa_optimize(func: &mut Func, config: SsaOptimizerConfig) {
         copy_propagation(func, &rpo);
         eliminate_redundant_obj(func, &def_use);
         constant_folding(func, &rpo, &def_use, &doms);
+        if config.enable_dce {
+            dead_code_elimination(func, &mut def_use);
+        }
         if config.enable_cse {
             common_subexpression_elimination(func, &dom_tree);
         }
     }
 
-    if config.enable_dce {
-        dead_code_elimination(func, &mut def_use);
-    }
     // constant_foldingによって到達不能コードが発生する可能性がある
     remove_unreachable_bb(func);
 }
