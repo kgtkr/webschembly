@@ -8,6 +8,7 @@ import {
   type CompilerConfig,
 } from "./runtime";
 import { createNodeRuntimeEnv } from "./node-runtime-env";
+import * as testUtils from "./test-utils";
 
 function concatBufs(bufs: Uint8Array[]) {
   const bufLen = bufs.map((buf) => buf.length).reduce((a, b) => a + b, 0);
@@ -21,10 +22,6 @@ function concatBufs(bufs: Uint8Array[]) {
 }
 
 const snapshotDir = "e2e_snapshots";
-const sourceDir = "fixtures";
-const filenames = fsLegacy
-  .readdirSync(sourceDir)
-  .filter((file) => file.endsWith(".scm"));
 
 const compilerConfigs: CompilerConfig[] = [
   {},
@@ -32,8 +29,9 @@ const compilerConfigs: CompilerConfig[] = [
   { enableJit: false },
 ];
 
-describe("E2E test", () => {
+describe("E2E test", async () => {
   let runtimeModule: WebAssembly.Module;
+  const filenames = await testUtils.getAllFixtureFilenames();
   beforeAll(async () => {
     runtimeModule = new WebAssembly.Module(
       await fs.readFile(process.env["WEBSCHEMBLY_RUNTIME"]!)
@@ -49,7 +47,7 @@ describe("E2E test", () => {
     describe.each(filenames)("%s", (filename) => {
       let srcBuf: Buffer;
       beforeAll(async () => {
-        srcBuf = await fs.readFile(path.join(sourceDir, filename));
+        srcBuf = await fs.readFile(path.join(testUtils.fixtureDir, filename));
       });
 
       test(

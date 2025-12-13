@@ -10,12 +10,11 @@ import {
   type SchemeValue,
 } from "./runtime";
 import { createNodeRuntimeEnv } from "./node-runtime-env";
+import * as testUtils from "./test-utils";
 
-const sourceDir = "fixtures";
-const filenames = (await fs.readdir(sourceDir)).filter((file) =>
+const filenames = (await testUtils.getAllFixtureFilenames()).filter((file) =>
   file.endsWith(".b.scm")
 );
-
 const compilerConfigs: CompilerConfig[] = [
   {},
   //{ enableJitOptimization: false },
@@ -37,7 +36,9 @@ const bench = new Bench(
 for (const filename of filenames) {
   for (const warmup of [false, true]) {
     for (const compilerConfig of compilerConfigs) {
-      const srcBuf = await fs.readFile(path.join(sourceDir, filename));
+      const srcBuf = await fs.readFile(
+        path.join(testUtils.fixtureDir, filename)
+      );
 
       let runtime: Runtime;
 
