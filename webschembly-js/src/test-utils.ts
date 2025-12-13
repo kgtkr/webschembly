@@ -13,6 +13,9 @@ async function readDirRec(
     withFileTypes: true,
   });
   for (const entry of entries) {
+    if (entry.name.startsWith(".")) {
+      continue;
+    }
     const entryPath = path.join(curDir, entry.name);
     if (entry.isDirectory()) {
       await readDirRec(basePath, entryPath, result);
