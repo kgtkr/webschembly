@@ -20,9 +20,9 @@
         (tak 18 12 6)
         (loop (- n 1)))))
 
-(define (main)
+(define (run)
   (loop 30))
 
 (write "start")(newline)
-(main)
+(run)
 (write "done")(newline)

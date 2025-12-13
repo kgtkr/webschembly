@@ -10,12 +10,11 @@ import {
   type SchemeValue,
 } from "./runtime";
 import { createNodeRuntimeEnv } from "./node-runtime-env";
+import * as testUtils from "./test-utils";
 
-const sourceDir = "fixtures";
-const filenames = (await fs.readdir(sourceDir)).filter((file) =>
+const filenames = (await testUtils.getAllFixtureFilenames()).filter((file) =>
   file.endsWith(".b.scm")
 );
-
 const compilerConfigs: CompilerConfig[] = [
   {},
   //{ enableJitOptimization: false },
@@ -37,18 +36,20 @@ const bench = new Bench(
 for (const filename of filenames) {
   for (const warmup of [false, true]) {
     for (const compilerConfig of compilerConfigs) {
-      const srcBuf = await fs.readFile(path.join(sourceDir, filename));
+      const srcBuf = await fs.readFile(
+        path.join(testUtils.fixtureDir, filename)
+      );
 
       let runtime: Runtime;
 
       if (warmup) {
-        let mainClosure: SchemeValue;
-        let mainArgs: SchemeValue;
+        let runClosure: SchemeValue;
+        let runArgs: SchemeValue;
         let afterWarmup = false;
         bench.add(
           `${filename},with warmup,${compilerConfigToString(compilerConfig)}`,
           () => {
-            runtime.instance.exports.call_closure(mainClosure, mainArgs);
+            runtime.instance.exports.call_closure(runClosure, runArgs);
           },
           {
             beforeEach: async () => {
@@ -76,9 +77,9 @@ for (const filename of filenames) {
               );
               runtime.loadStdlib();
               runtime.loadSrc(srcBuf);
-              mainClosure = runtime.getGlobal("main");
-              mainArgs = runtime.instance.exports.new_args(0);
-              runtime.instance.exports.call_closure(mainClosure, mainArgs);
+              runClosure = runtime.getGlobal("run");
+              runArgs = runtime.instance.exports.new_args(0);
+              runtime.instance.exports.call_closure(runClosure, runArgs);
               afterWarmup = true;
             },
             afterEach: () => {
