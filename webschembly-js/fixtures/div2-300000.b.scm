@@ -23,9 +23,9 @@
       (begin
         (div2 l)
         (loop (- n 1)))))
-(define (main)
+(define (run)
   (loop 300000))
 
 (write "start")(newline)
-(main)
+(run)
 (write "done")(newline)

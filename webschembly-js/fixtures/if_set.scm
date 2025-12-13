@@ -1,4 +1,4 @@
-(define (main)
+(define (run)
   (define x 0)
   (if #t
       (set! x 1)
@@ -10,4 +10,4 @@
   (write x)(newline)
 )
 
-(main)
+(run)
