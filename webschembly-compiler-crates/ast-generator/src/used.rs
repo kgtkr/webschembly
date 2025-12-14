@@ -3,7 +3,8 @@ use webschembly_compiler_ast::*;
 use webschembly_compiler_error::{Result, compiler_error};
 use webschembly_compiler_locate::{Located, LocatedValue};
 
-pub trait UsedPrevPhase = AstPhase<XBegin = !, XQuote = !, XDefine = !, XLetStar = !, XExt = !>;
+pub trait UsedPrevPhase =
+    AstPhase<XBegin = !, XQuote = !, XDefine = !, XLetStar = !, XExt = !, XCond = !>;
 
 #[derive(Debug, Clone)]
 pub struct Used<P: UsedPrevPhase>(std::marker::PhantomData<P>);
@@ -325,6 +326,7 @@ impl<P: UsedPrevPhase> Used<P> {
                     .with_span(expr.span),
                 )
             }
+            Expr::Cond(x, _) => x,
             Expr::Call(x, call) => {
                 let new_func = Self::from_exprs(call.func, ctx, var_id_gen, state)?;
                 let new_args = call

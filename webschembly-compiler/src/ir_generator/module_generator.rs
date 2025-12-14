@@ -632,6 +632,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     }
                 }
             }
+            ast::Expr::Cond(x, _) => *x,
             ast::Expr::Call(x, ast::Call { func, args }) => {
                 if let [
                     Located {

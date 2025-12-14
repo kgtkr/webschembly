@@ -12,6 +12,7 @@ impl AstPhase for Parsed {
     type XDefine = ();
     type XLambda = ();
     type XIf = ();
+    type XCond = ();
     type XCall = ();
     type XVar = ();
     type XBegin = ();
@@ -176,6 +177,73 @@ impl Parsed {
                 }
                 _ => Err(compiler_error!("Invalid if expression",)),
             },
+            list_pattern![
+                LSExpr {
+                    value: SExpr::Symbol("cond"),
+                    ..
+                } => span,
+                ..cdr
+            ] => {
+                let clauses = cdr
+                    .value
+                    .to_vec()
+                    .ok_or_else(|| compiler_error!("Expected a list of clauses"))?
+                    .into_iter()
+                    .map(|clause| match clause {
+                        list_pattern![
+                            LSExpr {
+                                value: SExpr::Symbol("else"),
+                                ..
+                            },
+                            ..body
+                        ] => {
+                            let body = body
+                                .value
+                                .to_vec()
+                                .ok_or_else(|| compiler_error!("Invalid cond expression"))?
+                                .into_iter()
+                                .map(Self::from_sexpr)
+                                .collect::<Result<Vec<_>>>()?;
+                            Ok(CondClause::Else { body })
+                        }
+                        list_pattern![test,] => {
+                            let test = Self::from_sexpr(test)?;
+                            Ok(CondClause::TestOnly { test: vec![test] })
+                        }
+                        list_pattern![
+                            test,
+                            LSExpr {
+                                value: SExpr::Symbol("=>"),
+                                ..
+                            },
+                            func,
+                        ] => {
+                            let test = Self::from_sexpr(test)?;
+                            let func = Self::from_sexpr(func)?;
+                            Ok(CondClause::Allow {
+                                test: vec![test],
+                                func: vec![func],
+                            })
+                        }
+                        list_pattern![test, ..body] => {
+                            let test = Self::from_sexpr(test)?;
+                            let body = body
+                                .value
+                                .to_vec()
+                                .ok_or_else(|| compiler_error!("Invalid cond expression"))?
+                                .into_iter()
+                                .map(Self::from_sexpr)
+                                .collect::<Result<Vec<_>>>()?;
+                            Ok(CondClause::Test {
+                                test: vec![test],
+                                body,
+                            })
+                        }
+                        _ => Err(compiler_error!("Invalid cond clause")),
+                    })
+                    .collect::<Result<Vec<_>>>()?;
+                Ok(Expr::Cond((), Cond { clauses }).with_span(span))
+            }
             list_pattern![
                 LSExpr {
                     value: SExpr::Symbol("let"),

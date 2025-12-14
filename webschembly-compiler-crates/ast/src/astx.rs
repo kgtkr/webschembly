@@ -25,6 +25,7 @@ pub trait AstPhase: Sized + Clone + Debug {
     type XDefine: AstPhaseX;
     type XLambda: AstPhaseX;
     type XIf: AstPhaseX;
+    type XCond: AstPhaseX;
     type XCall: AstPhaseX;
     type XVar: AstPhaseX;
     type XBegin: AstPhaseX;
@@ -46,6 +47,7 @@ pub trait ExtendAstPhase: Sized + Clone + Debug {
     type XDefine: AstPhaseX = <Self::Prev as AstPhase>::XDefine;
     type XLambda: AstPhaseX = <Self::Prev as AstPhase>::XLambda;
     type XIf: AstPhaseX = <Self::Prev as AstPhase>::XIf;
+    type XCond: AstPhaseX = <Self::Prev as AstPhase>::XCond;
     type XCall: AstPhaseX = <Self::Prev as AstPhase>::XCall;
     type XVar: AstPhaseX = <Self::Prev as AstPhase>::XVar;
     type XBegin: AstPhaseX = <Self::Prev as AstPhase>::XBegin;
@@ -66,6 +68,7 @@ impl<T: ExtendAstPhase> AstPhase for T {
     type XDefine = T::XDefine;
     type XLambda = T::XLambda;
     type XIf = T::XIf;
+    type XCond = T::XCond;
     type XCall = T::XCall;
     type XVar = T::XVar;
     type XBegin = T::XBegin;
@@ -99,6 +102,7 @@ where
     Define(X::XDefine, Define<X>),
     Lambda(X::XLambda, Lambda<X>),
     If(X::XIf, If<X>),
+    Cond(X::XCond, Cond<X>),
     Call(X::XCall, Call<X>),
     Begin(X::XBegin, Begin<X>),
     Set(X::XSet, Set<X>),
@@ -150,6 +154,35 @@ where
     pub cond: ExprBox<LExpr<X>>,
     pub then: ExprBox<LExpr<X>>,
     pub els: ExprBox<LExpr<X>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Cond<X>
+where
+    X: AstPhase,
+{
+    pub clauses: Vec<CondClause<X>>,
+}
+
+#[derive(Debug, Clone)]
+pub enum CondClause<X>
+where
+    X: AstPhase,
+{
+    Else {
+        body: Vec<LExpr<X>>,
+    },
+    TestOnly {
+        test: ExprBox<LExpr<X>>,
+    },
+    Test {
+        test: ExprBox<LExpr<X>>,
+        body: Vec<LExpr<X>>,
+    },
+    Allow {
+        test: ExprBox<LExpr<X>>,
+        func: ExprBox<LExpr<X>>,
+    },
 }
 
 #[derive(Debug, Clone)]
