@@ -6,7 +6,10 @@ use webschembly_compiler_sexpr as sexpr;
 pub trait DesugaredPrevPhase = AstPhase<XExt = !>;
 
 #[derive(Debug, Clone)]
-pub struct Desugared<P: DesugaredPrevPhase>(std::marker::PhantomData<P>);
+pub struct Desugared<P: DesugaredPrevPhase> {
+    _marker: std::marker::PhantomData<P>,
+    var_counter: usize,
+}
 
 impl<P: DesugaredPrevPhase> ExtendAstPhase for Desugared<P> {
     type Prev = P;
@@ -28,21 +31,27 @@ impl<P: DesugaredPrevPhase> ExtendAstPhase for Desugared<P> {
 }
 
 impl<P: DesugaredPrevPhase> Desugared<P> {
-    pub fn from_ast(ast: Ast<P>) -> Ast<Self> {
-        let mut var_counter = 0;
-        Ast {
-            x: ast.x,
-            exprs: Self::from_exprs(ast.exprs, &mut var_counter),
+    pub fn new() -> Self {
+        Self {
+            _marker: std::marker::PhantomData,
+            var_counter: 0,
         }
     }
 
-    fn gen_temp_var(var_counter: &mut usize) -> String {
-        let var_name = format!("__desugared_temp_{}", var_counter);
-        *var_counter += 1;
+    pub fn from_ast(&mut self, ast: Ast<P>) -> Ast<Self> {
+        Ast {
+            x: ast.x,
+            exprs: self.from_exprs(ast.exprs),
+        }
+    }
+
+    fn gen_temp_var(&mut self) -> String {
+        let var_name = format!("__desugared_temp_{}", self.var_counter);
+        self.var_counter += 1;
         var_name
     }
 
-    fn from_expr(expr: LExpr<P>, exprs: &mut Vec<LExpr<Self>>, var_counter: &mut usize) {
+    fn from_expr(&mut self, expr: LExpr<P>, exprs: &mut Vec<LExpr<Self>>) {
         match expr.value {
             Expr::Const(_, lit) => exprs.push(Expr::Const((), lit).with_span(expr.span)),
             Expr::Var(_, var) => exprs.push(Expr::Var((), var).with_span(expr.span)),
@@ -51,7 +60,7 @@ impl<P: DesugaredPrevPhase> Desugared<P> {
                     x,
                     Define {
                         name: def.name,
-                        expr: Self::from_exprs(def.expr, var_counter),
+                        expr: self.from_exprs(def.expr),
                     },
                 )
                 .with_span(expr.span),
@@ -61,7 +70,7 @@ impl<P: DesugaredPrevPhase> Desugared<P> {
                     (),
                     Lambda {
                         args: lambda.args,
-                        body: Self::from_exprs(lambda.body, var_counter),
+                        body: self.from_exprs(lambda.body),
                     },
                 )
                 .with_span(expr.span),
@@ -70,9 +79,9 @@ impl<P: DesugaredPrevPhase> Desugared<P> {
                 Expr::If(
                     (),
                     If {
-                        cond: Self::from_exprs(if_.cond, var_counter),
-                        then: Self::from_exprs(if_.then, var_counter),
-                        els: Self::from_exprs(if_.els, var_counter),
+                        cond: self.from_exprs(if_.cond),
+                        then: self.from_exprs(if_.then),
+                        els: self.from_exprs(if_.els),
                     },
                 )
                 .with_span(expr.span),
@@ -82,11 +91,11 @@ impl<P: DesugaredPrevPhase> Desugared<P> {
                 for clause in cond.clauses.into_iter().rev() {
                     match clause {
                         CondClause::Else { body } => {
-                            else_branch = Self::from_exprs(body, var_counter);
+                            else_branch = self.from_exprs(body);
                         }
                         CondClause::Test { test, body } => {
-                            let then_branch = Self::from_exprs(body, var_counter);
-                            let cond_branch = Self::from_exprs(test, var_counter);
+                            let then_branch = self.from_exprs(body);
+                            let cond_branch = self.from_exprs(test);
                             else_branch = vec![
                                 Expr::If(
                                     (),
@@ -100,8 +109,8 @@ impl<P: DesugaredPrevPhase> Desugared<P> {
                             ];
                         }
                         CondClause::TestOnly { test } => {
-                            let cond_branch = Self::from_exprs(test, var_counter);
-                            let temp_var = Self::gen_temp_var(var_counter);
+                            let cond_branch = self.from_exprs(test);
+                            let temp_var = self.gen_temp_var();
                             else_branch = vec![
                                 Expr::Let(
                                     (),
@@ -139,9 +148,9 @@ impl<P: DesugaredPrevPhase> Desugared<P> {
                             ];
                         }
                         CondClause::Allow { test, func } => {
-                            let cond_branch = Self::from_exprs(test, var_counter);
-                            let func_branch = Self::from_exprs(func, var_counter);
-                            let temp_var = Self::gen_temp_var(var_counter);
+                            let cond_branch = self.from_exprs(test);
+                            let func_branch = self.from_exprs(func);
+                            let temp_var = self.gen_temp_var();
                             else_branch = vec![
                                 Expr::Let(
                                     (),
@@ -195,11 +204,11 @@ impl<P: DesugaredPrevPhase> Desugared<P> {
                 Expr::Call(
                     (),
                     Call {
-                        func: Self::from_exprs(call.func, var_counter),
+                        func: self.from_exprs(call.func),
                         args: call
                             .args
                             .into_iter()
-                            .map(|expr| Self::from_exprs(expr, var_counter))
+                            .map(|expr| self.from_exprs(expr))
                             .collect(),
                     },
                 )
@@ -207,7 +216,7 @@ impl<P: DesugaredPrevPhase> Desugared<P> {
             ),
             Expr::Begin(_, begin) => {
                 for expr in begin.exprs {
-                    Self::from_expr(expr, exprs, var_counter);
+                    self.from_expr(expr, exprs);
                 }
             }
             Expr::Set(x, set) => exprs.push(
@@ -215,21 +224,21 @@ impl<P: DesugaredPrevPhase> Desugared<P> {
                     x,
                     Set {
                         name: set.name,
-                        expr: Self::from_exprs(set.expr, var_counter),
+                        expr: self.from_exprs(set.expr),
                     },
                 )
                 .with_span(expr.span),
             ),
-            Expr::Let(_, let_like) => exprs.push(
-                Expr::Let((), Self::from_let_like(let_like, var_counter)).with_span(expr.span),
-            ),
+            Expr::Let(_, let_like) => {
+                exprs.push(Expr::Let((), self.from_let_like(let_like)).with_span(expr.span))
+            }
             Expr::LetStar(_, let_like) => {
                 // 空のlet*でもスコープを作るためにバインディングが空のletで囲む
                 let mut body = Expr::Let(
                     (),
                     LetLike {
                         bindings: vec![],
-                        body: Self::from_exprs(let_like.body, var_counter),
+                        body: self.from_exprs(let_like.body),
                     },
                 )
                 .with_span(expr.span);
@@ -237,7 +246,7 @@ impl<P: DesugaredPrevPhase> Desugared<P> {
                     body = Expr::Let(
                         (),
                         LetLike {
-                            bindings: vec![Self::from_binding(binding, var_counter)],
+                            bindings: vec![self.from_binding(binding)],
                             body: vec![body],
                         },
                     )
@@ -245,9 +254,9 @@ impl<P: DesugaredPrevPhase> Desugared<P> {
                 }
                 exprs.push(body);
             }
-            Expr::LetRec(_, let_like) => exprs.push(
-                Expr::LetRec((), Self::from_let_like(let_like, var_counter)).with_span(expr.span),
-            ),
+            Expr::LetRec(_, let_like) => {
+                exprs.push(Expr::LetRec((), self.from_let_like(let_like)).with_span(expr.span))
+            }
             Expr::NamedLet(_, name, let_like) => {
                 // from: (let tag ((name val) ...) body1 body2 ...)
                 // to: (letrec ((tag (lambda (name ...) body1 body2 ...))) (tag val ...))
@@ -260,7 +269,7 @@ impl<P: DesugaredPrevPhase> Desugared<P> {
                             .iter()
                             .map(|b| b.value.name.clone())
                             .collect(),
-                        body: Self::from_exprs(let_like.body, var_counter),
+                        body: self.from_exprs(let_like.body),
                     },
                 )
                 .with_span(expr.span);
@@ -287,7 +296,7 @@ impl<P: DesugaredPrevPhase> Desugared<P> {
                                     args: let_like
                                         .bindings
                                         .into_iter()
-                                        .map(|b| Self::from_exprs(b.value.expr, var_counter))
+                                        .map(|b| self.from_exprs(b.value.expr))
                                         .collect(),
                                 },
                             )
@@ -301,9 +310,7 @@ impl<P: DesugaredPrevPhase> Desugared<P> {
             Expr::Vector(_, vec) => exprs.push(
                 Expr::Vector(
                     (),
-                    vec.into_iter()
-                        .map(|expr| Self::from_exprs(expr, var_counter))
-                        .collect(),
+                    vec.into_iter().map(|expr| self.from_exprs(expr)).collect(),
                 )
                 .with_span(expr.span),
             ),
@@ -315,7 +322,7 @@ impl<P: DesugaredPrevPhase> Desugared<P> {
                         elements: uvec
                             .elements
                             .into_iter()
-                            .map(|expr| Self::from_exprs(expr, var_counter))
+                            .map(|expr| self.from_exprs(expr))
                             .collect(),
                     },
                 )
@@ -326,8 +333,8 @@ impl<P: DesugaredPrevPhase> Desugared<P> {
                 Expr::Cons(
                     (),
                     Cons {
-                        car: Self::from_exprs(cons.car, var_counter),
-                        cdr: Self::from_exprs(cons.cdr, var_counter),
+                        car: self.from_exprs(cons.car),
+                        cdr: self.from_exprs(cons.cdr),
                     },
                 )
                 .with_span(expr.span),
@@ -381,29 +388,29 @@ impl<P: DesugaredPrevPhase> Desugared<P> {
         }
     }
 
-    fn from_exprs(exprs: Vec<LExpr<P>>, var_counter: &mut usize) -> Vec<LExpr<Self>> {
+    fn from_exprs(&mut self, exprs: Vec<LExpr<P>>) -> Vec<LExpr<Self>> {
         let mut result = Vec::new();
         for expr in exprs {
-            Self::from_expr(expr, &mut result, var_counter);
+            self.from_expr(expr, &mut result);
         }
         result
     }
 
-    fn from_let_like(let_like: LetLike<P>, var_counter: &mut usize) -> LetLike<Self> {
+    fn from_let_like(&mut self, let_like: LetLike<P>) -> LetLike<Self> {
         LetLike {
             bindings: let_like
                 .bindings
                 .into_iter()
-                .map(|binding| Self::from_binding(binding, var_counter))
+                .map(|binding| self.from_binding(binding))
                 .collect(),
-            body: Self::from_exprs(let_like.body, var_counter),
+            body: self.from_exprs(let_like.body),
         }
     }
 
-    fn from_binding(binding: L<Binding<P>>, var_counter: &mut usize) -> L<Binding<Self>> {
+    fn from_binding(&mut self, binding: L<Binding<P>>) -> L<Binding<Self>> {
         Binding {
             name: binding.value.name,
-            expr: Self::from_exprs(binding.value.expr, var_counter),
+            expr: self.from_exprs(binding.value.expr),
         }
         .with_span(binding.span)
     }
