@@ -1495,10 +1495,48 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*rhs)));
                 function.instruction(&Instruction::F64Mul);
             }
-            ir::InstrKind::DivInt(lhs, rhs) => {
+            ir::InstrKind::QuotientInt(lhs, rhs) => {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*lhs)));
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*rhs)));
                 function.instruction(&Instruction::I64DivS);
+            }
+            ir::InstrKind::RemainderInt(lhs, rhs) => {
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*lhs)));
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*rhs)));
+                function.instruction(&Instruction::I64RemS);
+            }
+            ir::InstrKind::ModuloInt(lhs, rhs) => {
+                // rem = lhs % rhs;
+                // if (lhs ^ rhs) < 0 && rem != 0 {
+                //     return rem + rhs;
+                // }
+                // return rem;
+
+                // rem = lhs % rhs;
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*lhs)));
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*rhs)));
+                function.instruction(&Instruction::I64RemS);
+
+                // (lhs ^ rhs) < 0
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*rhs)));
+                function.instruction(&Instruction::I64Const(0));
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*lhs)));
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*rhs)));
+                function.instruction(&Instruction::I64Xor);
+                function.instruction(&Instruction::I64Const(0));
+                function.instruction(&Instruction::I64LtS);
+
+                // rem != 0
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*lhs)));
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*rhs)));
+                function.instruction(&Instruction::I64RemS);
+                function.instruction(&Instruction::I64Const(0));
+                function.instruction(&Instruction::I64Ne);
+
+                function.instruction(&Instruction::I32And);
+
+                function.instruction(&Instruction::Select);
+                function.instruction(&Instruction::I64Add);
             }
             ir::InstrKind::DivFloat(lhs, rhs) => {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*lhs)));

@@ -496,7 +496,9 @@ pub enum InstrKind {
     SubFloat(LocalId, LocalId),
     MulInt(LocalId, LocalId),
     MulFloat(LocalId, LocalId),
-    DivInt(LocalId, LocalId),
+    QuotientInt(LocalId, LocalId),
+    RemainderInt(LocalId, LocalId),
+    ModuloInt(LocalId, LocalId),
     DivFloat(LocalId, LocalId),
     WriteChar(LocalId),
     Is(ValType, LocalId),
@@ -651,7 +653,9 @@ macro_rules! impl_InstrKind_local_usages {
                         | InstrKind::SubFloat(a, b)
                         | InstrKind::MulInt(a, b)
                         | InstrKind::MulFloat(a, b)
-                        | InstrKind::DivInt(a, b)
+                        | InstrKind::QuotientInt(a, b)
+                        | InstrKind::RemainderInt(a, b)
+                        | InstrKind::ModuloInt(a, b)
                         | InstrKind::DivFloat(a, b) => {
                             yield (a, LocalUsedFlag::NonPhi);
                             yield (b, LocalUsedFlag::NonPhi);
@@ -886,7 +890,9 @@ impl InstrKind {
             | InstrKind::SubFloat(..)
             | InstrKind::MulInt(..)
             | InstrKind::MulFloat(..)
-            | InstrKind::DivInt(..)
+            | InstrKind::QuotientInt(..)
+            | InstrKind::RemainderInt(..)
+            | InstrKind::ModuloInt(..)
             | InstrKind::DivFloat(..) => InstrKindPurelity::Pure,
             // String/Cons/Vectorなどは可変なオブジェクトを生成するので純粋ではない
             InstrKind::String(..)
@@ -1218,10 +1224,26 @@ impl fmt::Display for DisplayInFunc<'_, &'_ InstrKind> {
                     b.display(self.meta)
                 )
             }
-            InstrKind::DivInt(a, b) => {
+            InstrKind::QuotientInt(a, b) => {
                 write!(
                     f,
-                    "div_int({}, {})",
+                    "quotient_int({}, {})",
+                    a.display(self.meta),
+                    b.display(self.meta)
+                )
+            }
+            InstrKind::RemainderInt(a, b) => {
+                write!(
+                    f,
+                    "remainder_int({}, {})",
+                    a.display(self.meta),
+                    b.display(self.meta)
+                )
+            }
+            InstrKind::ModuloInt(a, b) => {
+                write!(
+                    f,
+                    "modulo_int({}, {})",
                     a.display(self.meta),
                     b.display(self.meta)
                 )

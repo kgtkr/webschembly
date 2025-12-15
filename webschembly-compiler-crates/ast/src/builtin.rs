@@ -13,6 +13,10 @@ pub enum Builtin {
     Div,
     #[strum(serialize = "quotient")]
     Quotient,
+    #[strum(serialize = "remainder")]
+    Remainder,
+    #[strum(serialize = "modulo")]
+    Modulo,
     #[strum(serialize = "write-char")]
     WriteChar,
     #[strum(serialize = "pair?")]

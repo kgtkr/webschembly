@@ -1222,11 +1222,30 @@ impl BuiltinConversionRule {
                 ir_gen: |ctx, arg1, arg2| {
                     ctx.exprs.push(Instr {
                         local: Some(ctx.dest),
-                        kind: InstrKind::DivInt(arg1, arg2),
+                        kind: InstrKind::QuotientInt(arg1, arg2),
                     });
                 },
             }],
-
+            Builtin::Remainder => vec![BuiltinConversionRule::Binary {
+                args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
+                ret: Type::Val(ValType::Int),
+                ir_gen: |ctx, arg1, arg2| {
+                    ctx.exprs.push(Instr {
+                        local: Some(ctx.dest),
+                        kind: InstrKind::RemainderInt(arg1, arg2),
+                    });
+                },
+            }],
+            Builtin::Modulo => vec![BuiltinConversionRule::Binary {
+                args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
+                ret: Type::Val(ValType::Int),
+                ir_gen: |ctx, arg1, arg2| {
+                    ctx.exprs.push(Instr {
+                        local: Some(ctx.dest),
+                        kind: InstrKind::ModuloInt(arg1, arg2),
+                    });
+                },
+            }],
             Builtin::WriteChar => vec![BuiltinConversionRule::Unary {
                 args: [Type::Val(ValType::Char)],
                 ret: Type::Val(ValType::Nil),
