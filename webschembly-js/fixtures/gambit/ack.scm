@@ -14,7 +14,7 @@
         (ack 3 9)
         (loop (- n 1)))))
 (define (run)
-  (loop 30))
+  (loop 20))
 
 (write "start")(newline)
 (run)
