@@ -33,6 +33,7 @@ pub trait AstPhase: Sized + Clone + Debug {
     type XLet: AstPhaseX;
     type XLetStar: AstPhaseX;
     type XLetRec: AstPhaseX;
+    type XNamedLet: AstPhaseX;
     type XVector: AstPhaseX;
     type XUVector: AstPhaseX;
     type XQuote: AstPhaseX;
@@ -55,6 +56,7 @@ pub trait ExtendAstPhase: Sized + Clone + Debug {
     type XLet: AstPhaseX = <Self::Prev as AstPhase>::XLet;
     type XLetStar: AstPhaseX = <Self::Prev as AstPhase>::XLetStar;
     type XLetRec: AstPhaseX = <Self::Prev as AstPhase>::XLetRec;
+    type XNamedLet: AstPhaseX = <Self::Prev as AstPhase>::XNamedLet;
     type XVector: AstPhaseX = <Self::Prev as AstPhase>::XVector;
     type XUVector: AstPhaseX = <Self::Prev as AstPhase>::XUVector;
     type XQuote: AstPhaseX = <Self::Prev as AstPhase>::XQuote;
@@ -76,6 +78,7 @@ impl<T: ExtendAstPhase> AstPhase for T {
     type XLet = T::XLet;
     type XLetStar = T::XLetStar;
     type XLetRec = T::XLetRec;
+    type XNamedLet = T::XNamedLet;
     type XVector = T::XVector;
     type XUVector = T::XUVector;
     type XQuote = T::XQuote;
@@ -109,6 +112,7 @@ where
     Let(X::XLet, LetLike<X>),
     LetStar(X::XLetStar, LetLike<X>),
     LetRec(X::XLetRec, LetLike<X>),
+    NamedLet(X::XNamedLet, L<String>, LetLike<X>),
     Vector(X::XVector, Vec<ExprBox<LExpr<X>>>),
     UVector(X::XUVector, UVector<X>),
     Quote(X::XQuote, LSExpr),

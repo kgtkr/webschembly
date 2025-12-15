@@ -14,6 +14,7 @@ impl<P: DesugaredPrevPhase> ExtendAstPhase for Desugared<P> {
     type XQuote = !;
     type XLetStar = !;
     type XCond = !;
+    type XNamedLet = !;
     type XIf = ();
     type XVar = ();
     type XLet = ();
@@ -22,6 +23,8 @@ impl<P: DesugaredPrevPhase> ExtendAstPhase for Desugared<P> {
     type XCons = ();
     type XVector = ();
     type XUVector = ();
+    type XLambda = ();
+    type XLetRec = ();
 }
 
 impl<P: DesugaredPrevPhase> Desugared<P> {
@@ -53,9 +56,9 @@ impl<P: DesugaredPrevPhase> Desugared<P> {
                 )
                 .with_span(expr.span),
             ),
-            Expr::Lambda(x, lambda) => exprs.push(
+            Expr::Lambda(_, lambda) => exprs.push(
                 Expr::Lambda(
-                    x,
+                    (),
                     Lambda {
                         args: lambda.args,
                         body: Self::from_exprs(lambda.body, var_counter),
@@ -242,9 +245,59 @@ impl<P: DesugaredPrevPhase> Desugared<P> {
                 }
                 exprs.push(body);
             }
-            Expr::LetRec(x, let_like) => exprs.push(
-                Expr::LetRec(x, Self::from_let_like(let_like, var_counter)).with_span(expr.span),
+            Expr::LetRec(_, let_like) => exprs.push(
+                Expr::LetRec((), Self::from_let_like(let_like, var_counter)).with_span(expr.span),
             ),
+            Expr::NamedLet(_, name, let_like) => {
+                // from: (let tag ((name val) ...) body1 body2 ...)
+                // to: (letrec ((tag (lambda (name ...) body1 body2 ...))) (tag val ...))
+                let func_var = name.value.clone();
+                let lambda = Expr::Lambda(
+                    (),
+                    Lambda {
+                        args: let_like
+                            .bindings
+                            .iter()
+                            .map(|b| b.value.name.clone())
+                            .collect(),
+                        body: Self::from_exprs(let_like.body, var_counter),
+                    },
+                )
+                .with_span(expr.span);
+                let letrec = Expr::LetRec(
+                    (),
+                    LetLike {
+                        bindings: vec![
+                            Binding {
+                                name: L {
+                                    span: expr.span,
+                                    value: func_var.clone(),
+                                },
+                                expr: vec![lambda],
+                            }
+                            .with_span(expr.span),
+                        ],
+                        body: vec![
+                            Expr::Call(
+                                (),
+                                Call {
+                                    func: vec![
+                                        Expr::Var((), func_var.clone()).with_span(expr.span),
+                                    ],
+                                    args: let_like
+                                        .bindings
+                                        .into_iter()
+                                        .map(|b| Self::from_exprs(b.value.expr, var_counter))
+                                        .collect(),
+                                },
+                            )
+                            .with_span(expr.span),
+                        ],
+                    },
+                )
+                .with_span(expr.span);
+                exprs.push(letrec);
+            }
             Expr::Vector(_, vec) => exprs.push(
                 Expr::Vector(
                     (),

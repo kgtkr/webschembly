@@ -18,6 +18,7 @@ impl AstPhase for Parsed {
     type XBegin = ();
     type XSet = ();
     type XLet = ();
+    type XNamedLet = ();
     type XLetStar = ();
     type XLetRec = ();
     type XVector = ();
@@ -244,6 +245,20 @@ impl Parsed {
                     .collect::<Result<Vec<_>>>()?;
                 Ok(Expr::Cond((), Cond { clauses }).with_span(span))
             }
+            list_pattern![
+                LSExpr {
+                    value: SExpr::Symbol("let"),
+                    ..
+                } => span,
+                LSExpr {
+                    value: SExpr::Symbol(name),
+                    span: name_span
+                },
+                ..cdr
+            ] => Ok(
+                Expr::NamedLet((), name.with_span(name_span), Self::parse_let_like(cdr)?)
+                    .with_span(span),
+            ),
             list_pattern![
                 LSExpr {
                     value: SExpr::Symbol("let"),
