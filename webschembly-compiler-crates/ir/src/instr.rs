@@ -503,6 +503,7 @@ pub enum InstrKind {
     VectorLength(LocalId),
     VectorRef(LocalId, LocalId),
     VectorSet(LocalId, LocalId, LocalId),
+    MakeVector(LocalId),
     UVectorLength(UVectorKind, LocalId),
     UVectorRef(UVectorKind, LocalId, LocalId),
     UVectorSet(UVectorKind, LocalId, LocalId, LocalId),
@@ -590,6 +591,7 @@ macro_rules! impl_InstrKind_local_usages {
                             }
                         }
                         InstrKind::MakeUVector(_, id) => yield (id, LocalUsedFlag::NonPhi),
+                        InstrKind::MakeVector(id) => yield (id, LocalUsedFlag::NonPhi),
                         InstrKind::Cons(a, b) => {
                             yield (a, LocalUsedFlag::NonPhi);
                             yield (b, LocalUsedFlag::NonPhi);
@@ -882,6 +884,7 @@ impl InstrKind {
             | InstrKind::Vector(..)
             | InstrKind::UVector(..)
             | InstrKind::MakeUVector(..)
+            | InstrKind::MakeVector(..)
             | InstrKind::Cons(..)
             | InstrKind::CreateRef(..)
             | InstrKind::DerefRef(..)
@@ -1044,6 +1047,9 @@ impl fmt::Display for DisplayInFunc<'_, &'_ InstrKind> {
             }
             InstrKind::MakeUVector(kind, id) => {
                 write!(f, "make_uvector<{}>({})", kind, id.display(self.meta))
+            }
+            InstrKind::MakeVector(id) => {
+                write!(f, "make_vector({})", id.display(self.meta))
             }
             InstrKind::Cons(a, b) => {
                 write!(f, "({} . {})", a.display(self.meta), b.display(self.meta))

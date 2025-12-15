@@ -1367,6 +1367,16 @@ impl BuiltinConversionRule {
                     });
                 },
             }],
+            Builtin::MakeVector => vec![BuiltinConversionRule::Unary {
+                args: [Type::Val(ValType::Int)],
+                ret: Type::Val(ValType::Vector),
+                ir_gen: |ctx, arg1| {
+                    ctx.exprs.push(Instr {
+                        local: Some(ctx.dest),
+                        kind: InstrKind::MakeVector(arg1),
+                    });
+                },
+            }],
             Builtin::IsS64Vector => vec![BuiltinConversionRule::Unary {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),

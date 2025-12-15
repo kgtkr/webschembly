@@ -1192,6 +1192,13 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     self.module_generator.uvector_kind_to_type_idx(*kind),
                 ));
             }
+            ir::InstrKind::MakeVector(len) => {
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*len)));
+                function.instruction(&Instruction::I32WrapI64);
+                function.instruction(&Instruction::ArrayNewDefault(
+                    self.module_generator.vector_type,
+                ));
+            }
             ir::InstrKind::CreateRef(typ) => {
                 function.instruction(&Instruction::RefNull(HeapType::Abstract {
                     shared: false,

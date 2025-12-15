@@ -37,6 +37,8 @@ pub enum Builtin {
     VectorSet,
     #[strum(serialize = "vector?")]
     IsVector,
+    #[strum(serialize = "make-vector")]
+    MakeVector,
     #[strum(serialize = "uvector-length")]
     UVectorLength,
     #[strum(serialize = "uvector-ref")]

@@ -305,13 +305,20 @@ impl Parsed {
                                 ..
                             } => name_span,
                             init,
-                            step,
+                            ..step
                         ] => Ok(DoBinding {
                             name: name.with_span(name_span),
                             init: vec![Self::from_sexpr(init)?],
-                            step: match step.value {
-                                SExpr::Nil => None,
-                                _ => Some(vec![Self::from_sexpr(step)?]),
+                            step: match step {
+                                LSExpr {
+                                    value: SExpr::Nil, ..
+                                } => None,
+                                list_pattern!(step,) => Some(vec![Self::from_sexpr(step)?]),
+                                _ => {
+                                    return Err(compiler_error!(
+                                        "Invalid do binding step expression"
+                                    ));
+                                }
                             },
                         }
                         .with_span(binding.span)),
