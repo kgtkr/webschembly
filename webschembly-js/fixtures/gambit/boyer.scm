@@ -545,13 +545,8 @@
 
 (setup)
 
-(define (main . args)
-  (run-benchmark
-    "boyer"
-    boyer-iters
-    (lambda (result) (equal? result #t))
-    (lambda (alist term) (lambda () (test alist term)))
-    (quote ((x f (plus (plus a b)
+(write (test
+       (quote ((x f (plus (plus a b)
                        (plus c (zero))))
             (y f (times (times a b)
                         (plus c d)))
@@ -561,8 +556,8 @@
                      (difference x y))
             (w lessp (remainder a b)
                      (member a (length b)))))
-    (quote (implies (and (implies x y)
+      (quote (implies (and (implies x y)
                          (and (implies y z)
                               (and (implies z u)
                                    (implies u w))))
-                    (implies x w)))))
+                    (implies x w)))))(newline)

@@ -73,6 +73,53 @@
 (define (not x) (if x #f #t))
 (define (null? x) (eq? x '()))
 
+;; (define (list . objs) objs)
+
+(define (length lst)
+  (let loop ((l lst) (n 0))
+    (if (null? l)
+        n
+        (loop (cdr l) (+ n 1)))))
+
+(define (reverse lst)
+  (let loop ((rem lst) (acc '()))
+    (if (null? rem)
+        acc
+        (loop (cdr rem) (cons (car rem) acc)))))
+
+(define (append args);(append . args)
+  (if (null? args)
+      '()
+      (let loop ((rest args))
+        (if (null? (cdr rest))
+            (car rest)
+            (let recur ((ls (car rest)))
+              (if (null? ls)
+                  (loop (cdr rest))
+                  (cons (car ls) (recur (cdr ls)))))))))
+
+(define (assq obj alist)
+  (let loop ((l alist))
+    (cond ((null? l) #f)
+          ((eq? obj (caar l)) (car l))
+          (else (loop (cdr l))))))
+
+(define (equal? a b)
+  (cond ((eqv? a b) #t)
+        ((and (pair? a) (pair? b))
+         (and (equal? (car a) (car b))
+              (equal? (cdr a) (cdr b))))
+        ((and (string? a) (string? b))
+         (string=? a b))
+        ;; TODO: vectorなど
+        (else #f)))
+
+(define (member obj lst)
+  (let loop ((l lst))
+    (cond ((null? l) #f)
+          ((equal? obj (car l)) l)
+          (else (loop (cdr l))))))
+
 (define (caar x) (car (car x)))
 (define (cadr x) (car (cdr x)))
 (define (cdar x) (cdr (car x)))
