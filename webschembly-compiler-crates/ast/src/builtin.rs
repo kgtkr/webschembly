@@ -63,6 +63,10 @@ pub enum Builtin {
     Car,
     #[strum(serialize = "cdr")]
     Cdr,
+    #[strum(serialize = "set-car!")]
+    SetCar,
+    #[strum(serialize = "set-cdr!")]
+    SetCdr,
     #[strum(serialize = "symbol->string")]
     SymbolToString,
     #[strum(serialize = "number->string")]

@@ -1605,6 +1605,24 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     field_index: ModuleGenerator::CONS_CDR_FIELD,
                 });
             }
+            ir::InstrKind::SetCar(cons, val) => {
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*cons)));
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
+                function.instruction(&Instruction::StructSet {
+                    struct_type_index: self.module_generator.cons_type,
+                    field_index: ModuleGenerator::CONS_CAR_FIELD,
+                });
+                function.instruction(&Instruction::I32Const(0));
+            }
+            ir::InstrKind::SetCdr(cons, val) => {
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*cons)));
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
+                function.instruction(&Instruction::StructSet {
+                    struct_type_index: self.module_generator.cons_type,
+                    field_index: ModuleGenerator::CONS_CDR_FIELD,
+                });
+                function.instruction(&Instruction::I32Const(0));
+            }
             ir::InstrKind::SymbolToString(val) => {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
                 function.instruction(&Instruction::StructGet {

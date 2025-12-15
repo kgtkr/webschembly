@@ -513,6 +513,8 @@ pub enum InstrKind {
     Or(LocalId, LocalId),
     Car(LocalId),
     Cdr(LocalId),
+    SetCar(LocalId, LocalId),
+    SetCdr(LocalId, LocalId),
     SymbolToString(LocalId),
     IntToString(LocalId),
     FloatToString(LocalId),
@@ -691,6 +693,14 @@ macro_rules! impl_InstrKind_local_usages {
                         }
                         InstrKind::Car(id) => yield (id, LocalUsedFlag::NonPhi),
                         InstrKind::Cdr(id) => yield (id, LocalUsedFlag::NonPhi),
+                        InstrKind::SetCar(cons_id, value_id) => {
+                            yield (cons_id, LocalUsedFlag::NonPhi);
+                            yield (value_id, LocalUsedFlag::NonPhi);
+                        }
+                        InstrKind::SetCdr(cons_id, value_id) => {
+                            yield (cons_id, LocalUsedFlag::NonPhi);
+                            yield (value_id, LocalUsedFlag::NonPhi);
+                        }
                         InstrKind::SymbolToString(id) => yield (id, LocalUsedFlag::NonPhi),
                         InstrKind::IntToString(id) => yield (id, LocalUsedFlag::NonPhi),
                         InstrKind::FloatToString(id) => yield (id, LocalUsedFlag::NonPhi),
@@ -922,7 +932,10 @@ impl InstrKind {
             | InstrKind::SetEntrypointTable(..)
             | InstrKind::VectorSet(..)
             | InstrKind::UVectorSet(..)
-            | InstrKind::ClosureSetEnv(..) => InstrKindPurelity::Effectful,
+            | InstrKind::ClosureSetEnv(..)
+            | InstrKind::SetCar(..)
+            | InstrKind::SetCdr(..)
+             => InstrKindPurelity::Effectful,
         }
     }
 
@@ -1280,6 +1293,22 @@ impl fmt::Display for DisplayInFunc<'_, &'_ InstrKind> {
             }
             InstrKind::Car(id) => write!(f, "car({})", id.display(self.meta)),
             InstrKind::Cdr(id) => write!(f, "cdr({})", id.display(self.meta)),
+            InstrKind::SetCar(cons_id, value_id) => {
+                write!(
+                    f,
+                    "set_car({}, {})",
+                    cons_id.display(self.meta),
+                    value_id.display(self.meta)
+                )
+            }
+            InstrKind::SetCdr(cons_id, value_id) => {
+                write!(
+                    f,
+                    "set_cdr({}, {})",
+                    cons_id.display(self.meta),
+                    value_id.display(self.meta)
+                )
+            }
             InstrKind::SymbolToString(id) => {
                 write!(f, "symbol_to_string({})", id.display(self.meta))
             }

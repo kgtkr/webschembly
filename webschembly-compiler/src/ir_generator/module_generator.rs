@@ -1563,6 +1563,26 @@ impl BuiltinConversionRule {
                     });
                 },
             }],
+            Builtin::SetCar => vec![BuiltinConversionRule::Binary {
+                args: [Type::Val(ValType::Cons), Type::Obj],
+                ret: Type::Val(ValType::Nil),
+                ir_gen: |ctx, arg1, arg2| {
+                    ctx.exprs.push(Instr {
+                        local: Some(ctx.dest),
+                        kind: InstrKind::SetCar(arg1, arg2),
+                    });
+                },
+            }],
+            Builtin::SetCdr => vec![BuiltinConversionRule::Binary {
+                args: [Type::Val(ValType::Cons), Type::Obj],
+                ret: Type::Val(ValType::Nil),
+                ir_gen: |ctx, arg1, arg2| {
+                    ctx.exprs.push(Instr {
+                        local: Some(ctx.dest),
+                        kind: InstrKind::SetCdr(arg1, arg2),
+                    });
+                },
+            }],
             Builtin::SymbolToString => vec![BuiltinConversionRule::Unary {
                 args: [Type::Val(ValType::Symbol)],
                 ret: Type::Val(ValType::String),
