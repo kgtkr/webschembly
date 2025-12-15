@@ -18,6 +18,7 @@ impl<P: DesugaredPrevPhase> ExtendAstPhase for Desugared<P> {
     type XLetStar = !;
     type XCond = !;
     type XNamedLet = !;
+    type XDo = !;
     type XIf = ();
     type XVar = ();
     type XLet = ();
@@ -258,8 +259,6 @@ impl<P: DesugaredPrevPhase> Desugared<P> {
                 exprs.push(Expr::LetRec((), self.from_let_like(let_like)).with_span(expr.span))
             }
             Expr::NamedLet(_, name, let_like) => {
-                // from: (let tag ((name val) ...) body1 body2 ...)
-                // to: (letrec ((tag (lambda (name ...) body1 body2 ...))) (tag val ...))
                 let func_var = name.value.clone();
                 let lambda = Expr::Lambda(
                     (),
@@ -297,6 +296,91 @@ impl<P: DesugaredPrevPhase> Desugared<P> {
                                         .bindings
                                         .into_iter()
                                         .map(|b| self.from_exprs(b.value.expr))
+                                        .collect(),
+                                },
+                            )
+                            .with_span(expr.span),
+                        ],
+                    },
+                )
+                .with_span(expr.span);
+                exprs.push(letrec);
+            }
+            Expr::Do(_, do_) => {
+                let loop_var = self.gen_temp_var();
+                let letrec = Expr::LetRec(
+                    (),
+                    LetLike {
+                        bindings: vec![
+                            Binding {
+                                name: L {
+                                    span: expr.span,
+                                    value: loop_var.clone(),
+                                },
+                                expr: vec![
+                                    Expr::Lambda(
+                                        (),
+                                        Lambda {
+                                            args: do_
+                                                .bindings
+                                                .iter()
+                                                .map(|b| b.value.name.clone())
+                                                .collect(),
+                                            body: vec![
+                                                Expr::If(
+                                                    (),
+                                                    If {
+                                                        cond: self.from_exprs(do_.test),
+                                                        then: self.from_exprs(do_.exit_body),
+                                                        els: {
+                                                            let mut body = self.from_exprs(do_.body);
+                                                            body.push(
+                                                                Expr::Call(
+                                                                    (),
+                                                                    Call {
+                                                                        func: vec![
+                                                                            Expr::Var((), loop_var.clone())
+                                                                                .with_span(expr.span),
+                                                                        ],
+                                                                        args: do_
+                                                                            .bindings
+                                                                            .iter()
+                                                                            .map(|b| {
+                                                                                 b.value.step.clone().map(|step|self.from_exprs(step))
+                                                                                    .unwrap_or_else(|| {
+                                                                                        vec![
+                                                                                            Expr::Var((), b.value.name.value.clone())
+                                                                                                .with_span(b.span),
+                                                                                        ]
+                                                                                    })
+                                                                            })
+                                                                            .collect(),
+                                                                    },
+                                                                )
+                                                                .with_span(expr.span),
+                                                            );
+                                                            body
+                                                        },
+                                                    },
+                                                )
+                                                .with_span(expr.span),
+                                            ],
+                                        },
+                                    )
+                                    .with_span(expr.span),
+                                ],
+                            }
+                            .with_span(expr.span),
+                        ],
+                        body: vec![
+                            Expr::Call(
+                                (),
+                                Call {
+                                    func: vec![Expr::Var((), loop_var.clone()).with_span(expr.span)],
+                                    args: do_
+                                        .bindings
+                                        .into_iter()
+                                        .map(|b| self.from_exprs(b.value.init))
                                         .collect(),
                                 },
                             )

@@ -34,6 +34,7 @@ pub trait AstPhase: Sized + Clone + Debug {
     type XLetStar: AstPhaseX;
     type XLetRec: AstPhaseX;
     type XNamedLet: AstPhaseX;
+    type XDo: AstPhaseX;
     type XVector: AstPhaseX;
     type XUVector: AstPhaseX;
     type XQuote: AstPhaseX;
@@ -57,6 +58,7 @@ pub trait ExtendAstPhase: Sized + Clone + Debug {
     type XLetStar: AstPhaseX = <Self::Prev as AstPhase>::XLetStar;
     type XLetRec: AstPhaseX = <Self::Prev as AstPhase>::XLetRec;
     type XNamedLet: AstPhaseX = <Self::Prev as AstPhase>::XNamedLet;
+    type XDo: AstPhaseX = <Self::Prev as AstPhase>::XDo;
     type XVector: AstPhaseX = <Self::Prev as AstPhase>::XVector;
     type XUVector: AstPhaseX = <Self::Prev as AstPhase>::XUVector;
     type XQuote: AstPhaseX = <Self::Prev as AstPhase>::XQuote;
@@ -79,6 +81,7 @@ impl<T: ExtendAstPhase> AstPhase for T {
     type XLetStar = T::XLetStar;
     type XLetRec = T::XLetRec;
     type XNamedLet = T::XNamedLet;
+    type XDo = T::XDo;
     type XVector = T::XVector;
     type XUVector = T::XUVector;
     type XQuote = T::XQuote;
@@ -113,6 +116,7 @@ where
     LetStar(X::XLetStar, LetLike<X>),
     LetRec(X::XLetRec, LetLike<X>),
     NamedLet(X::XNamedLet, L<String>, LetLike<X>),
+    Do(X::XDo, Do<X>),
     Vector(X::XVector, Vec<ExprBox<LExpr<X>>>),
     UVector(X::XUVector, UVector<X>),
     Quote(X::XQuote, LSExpr),
@@ -231,6 +235,26 @@ where
 {
     pub name: L<String>,
     pub expr: ExprBox<LExpr<X>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Do<X>
+where
+    X: AstPhase,
+{
+    pub bindings: Vec<L<DoBinding<X>>>,
+    pub test: ExprBox<LExpr<X>>,
+    pub exit_body: Vec<LExpr<X>>,
+    pub body: Vec<LExpr<X>>,
+}
+#[derive(Debug, Clone)]
+pub struct DoBinding<X>
+where
+    X: AstPhase,
+{
+    pub name: L<String>,
+    pub init: ExprBox<LExpr<X>>,
+    pub step: Option<ExprBox<LExpr<X>>>,
 }
 
 #[derive(Debug, Clone)]

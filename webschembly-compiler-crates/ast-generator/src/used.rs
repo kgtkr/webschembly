@@ -3,8 +3,16 @@ use webschembly_compiler_ast::*;
 use webschembly_compiler_error::{Result, compiler_error};
 use webschembly_compiler_locate::{Located, LocatedValue};
 
-pub trait UsedPrevPhase =
-    AstPhase<XBegin = !, XQuote = !, XDefine = !, XLetStar = !, XExt = !, XCond = !, XNamedLet = !>;
+pub trait UsedPrevPhase = AstPhase<
+        XBegin = !,
+        XQuote = !,
+        XDefine = !,
+        XLetStar = !,
+        XExt = !,
+        XCond = !,
+        XNamedLet = !,
+        XDo = !,
+    >;
 
 #[derive(Debug, Clone)]
 pub struct Used<P: UsedPrevPhase>(std::marker::PhantomData<P>);
