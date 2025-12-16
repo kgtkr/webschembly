@@ -534,7 +534,8 @@ pub enum InstrKind {
     VariadicArgsRef(LocalId, usize),
     VariadicArgsLength(LocalId),
     // ArgsVariadic(Vec<LocalId>, LocalId<Vector>)
-    // ArgsRest(LocalId, usize) -> Vector
+    // VariadicArgs -> Cons | Nil
+    VariadicArgsRest(LocalId, usize),
     CreateMutFuncRef(LocalId),                   // (FuncRef) -> MutFuncRef
     CreateEmptyMutFuncRef,                       // () -> MutFuncRef
     DerefMutFuncRef(LocalId),                    // (MutFuncRef) -> FuncRef
@@ -732,6 +733,9 @@ macro_rules! impl_InstrKind_local_usages {
                         InstrKind::VariadicArgsLength(id) => {
                             yield (id, LocalUsedFlag::NonPhi);
                         }
+                        InstrKind::VariadicArgsRest(id, _) => {
+                            yield (id, LocalUsedFlag::NonPhi);
+                        }
                         InstrKind::CreateMutFuncRef(id) => {
                             yield (id, LocalUsedFlag::NonPhi);
                         }
@@ -910,6 +914,7 @@ impl InstrKind {
             | InstrKind::UVectorRef(..)
             | InstrKind::Car(..)
             | InstrKind::Cdr(..)
+            | InstrKind::VariadicArgsRest(..)
             | InstrKind::GlobalGet(..)
             | InstrKind::SymbolToString(..)
             | InstrKind::IntToString(..)
@@ -1427,6 +1432,14 @@ impl fmt::Display for DisplayInFunc<'_, &'_ InstrKind> {
             }
             InstrKind::VariadicArgsLength(id) => {
                 write!(f, "variadic_args_length({})", id.display(self.meta))
+            }
+            InstrKind::VariadicArgsRest(id, start_index) => {
+                write!(
+                    f,
+                    "variadic_args_rest({}, {})",
+                    id.display(self.meta),
+                    start_index
+                )
             }
             InstrKind::CreateMutFuncRef(func_ref_id) => {
                 write!(f, "create_mut_func_ref({})", func_ref_id.display(self.meta))

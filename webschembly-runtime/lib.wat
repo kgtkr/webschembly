@@ -209,4 +209,30 @@
 
     (call_ref $ClosureFunc (local.get $closure) (local.get $params) (local.get $func))
   )
+
+  (func $args_to_list (export "args_to_list") (param $args (ref null $Args)) (param $start_idx i32) (result eqref)
+    (local $len i32)
+    (local $i i32)
+    (local $cons eqref)
+    (local $car eqref)
+    (local $cdr eqref)
+
+    (local.set $cons (global.get $nil))
+    (local.set $len (array.len (local.get $args)))
+    (local.set $i (local.get $len))
+    (block $break
+      (loop $loop
+        (br_if $break
+          (i32.le_s (local.get $i) (local.get $start_idx))
+        )
+        (local.set $i (i32.sub (local.get $i) (i32.const 1)))
+        (local.set $car (array.get $Args (local.get $args) (local.get $i)))
+        (local.set $cdr (local.get $cons))
+        (local.set $cons (struct.new $Cons (local.get $car) (local.get $cdr)))
+        (br $loop)
+      )
+    )
+
+    (local.get $cons)
+  )
 )

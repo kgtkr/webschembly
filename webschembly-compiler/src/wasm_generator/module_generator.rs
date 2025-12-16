@@ -39,6 +39,7 @@ struct ModuleGenerator<'a> {
     write_char_func: u32,
     int_to_string_func: u32,
     float_to_string_func: u32,
+    args_to_list_func: u32,
     increment_branch_counter_func: u32,
     throw_webassembly_exception: u32,
     // wasm section
@@ -96,6 +97,7 @@ impl<'a> ModuleGenerator<'a> {
             write_char_func: 0,
             int_to_string_func: 0,
             float_to_string_func: 0,
+            args_to_list_func: 0,
             increment_branch_counter_func: 0,
             throw_webassembly_exception: 0,
             imports: ImportSection::new(),
@@ -689,6 +691,20 @@ impl<'a> ModuleGenerator<'a> {
                     nullable: true,
                     heap_type: HeapType::Concrete(self.string_type),
                 })],
+            },
+        );
+
+        self.args_to_list_func = self.add_runtime_function(
+            "args_to_list",
+            WasmFuncType {
+                params: vec![
+                    ValType::Ref(RefType {
+                        nullable: true,
+                        heap_type: HeapType::Concrete(self.args_type),
+                    }),
+                    ValType::I32,
+                ],
+                results: vec![ValType::Ref(RefType::EQREF)],
             },
         );
 
@@ -1746,6 +1762,11 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*args)));
                 function.instruction(&Instruction::ArrayLen);
                 function.instruction(&Instruction::I64ExtendI32U);
+            }
+            ir::InstrKind::VariadicArgsRest(args, start_idx) => {
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*args)));
+                function.instruction(&Instruction::I32Const(*start_idx as i32));
+                function.instruction(&Instruction::Call(self.module_generator.args_to_list_func));
             }
             ir::InstrKind::CreateMutFuncRef(id) => {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*id)));
