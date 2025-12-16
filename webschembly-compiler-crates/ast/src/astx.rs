@@ -151,6 +151,7 @@ where
     X: AstPhase,
 {
     pub args: Vec<L<String>>,
+    pub variadic_arg: Option<L<String>>,
     pub body: Vec<LExpr<X>>,
 }
 

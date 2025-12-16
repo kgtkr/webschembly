@@ -312,6 +312,7 @@ impl<P: UsedPrevPhase> Used<P> {
                         },
                         Lambda {
                             args: lambda.args,
+                            variadic_arg: lambda.variadic_arg,
                             body: new_body,
                         },
                     )

@@ -73,7 +73,7 @@
 (define (not x) (if x #f #t))
 (define (null? x) (eq? x '()))
 
-;; (define (list . objs) objs)
+(define (list . objs) objs)
 
 (define (length lst)
   (let loop ((l lst) (n 0))
@@ -87,7 +87,7 @@
         acc
         (loop (cdr rem) (cons (car rem) acc)))))
 
-(define (append args);(append . args)
+(define (append . args)
   (if (null? args)
       '()
       (let loop ((rest args))

@@ -102,6 +102,7 @@ impl<P: DefinedPrevPhase> Defined<P> {
                         x,
                         Lambda {
                             args: lambda.args,
+                            variadic_arg: lambda.variadic_arg,
                             body: new_body,
                         },
                     )

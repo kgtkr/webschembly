@@ -452,16 +452,26 @@ impl Parsed {
     }
 
     fn parse_lambda(span: Span, args: LSExpr, exprs: LSExpr) -> Result<LExpr<Self>> {
+        let (args, variadic_arg) = SExpr::to_vec_and_cdr(args);
         let args = args
-            .value
-            .to_vec()
-            .ok_or_else(|| compiler_error!("Expected a list of symbols"))?
             .into_iter()
             .map(|arg| match arg.value {
                 SExpr::Symbol(s) => Ok(s.with_span(arg.span)),
                 _ => Err(compiler_error!("Expected a symbol")),
             })
             .collect::<Result<Vec<_>>>()?;
+        let variadic_arg = match variadic_arg {
+            LSExpr {
+                value: SExpr::Symbol(s),
+                span,
+            } => Some(s.with_span(span)),
+            LSExpr {
+                value: SExpr::Nil, ..
+            } => None,
+            _ => {
+                return Err(compiler_error!("Invalid variadic argument"));
+            }
+        };
         let exprs = exprs
             .value
             .to_vec()
@@ -469,6 +479,14 @@ impl Parsed {
             .into_iter()
             .map(Self::from_sexpr)
             .collect::<Result<Vec<_>>>()?;
-        Ok(Expr::Lambda((), Lambda { args, body: exprs }).with_span(span))
+        Ok(Expr::Lambda(
+            (),
+            Lambda {
+                args,
+                variadic_arg,
+                body: exprs,
+            },
+        )
+        .with_span(span))
     }
 }

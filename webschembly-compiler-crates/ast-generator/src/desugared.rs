@@ -71,6 +71,7 @@ impl<P: DesugaredPrevPhase> Desugared<P> {
                     (),
                     Lambda {
                         args: lambda.args,
+                        variadic_arg: lambda.variadic_arg,
                         body: self.from_exprs(lambda.body),
                     },
                 )
@@ -268,6 +269,7 @@ impl<P: DesugaredPrevPhase> Desugared<P> {
                             .iter()
                             .map(|b| b.value.name.clone())
                             .collect(),
+                        variadic_arg: None,
                         body: self.from_exprs(let_like.body),
                     },
                 )
@@ -326,6 +328,7 @@ impl<P: DesugaredPrevPhase> Desugared<P> {
                                                 .iter()
                                                 .map(|b| b.value.name.clone())
                                                 .collect(),
+                                            variadic_arg: None,
                                             body: vec![
                                                 Expr::If(
                                                     (),

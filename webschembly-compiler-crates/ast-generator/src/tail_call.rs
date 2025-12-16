@@ -46,6 +46,7 @@ impl<P: TailCallPrevPhase> TailCall<P> {
                 x,
                 Lambda {
                     args: lambda.args,
+                    variadic_arg: lambda.variadic_arg,
                     body: Self::from_exprs(lambda.body, true),
                 },
             )
