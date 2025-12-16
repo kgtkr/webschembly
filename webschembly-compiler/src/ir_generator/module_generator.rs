@@ -232,10 +232,17 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             local: Some(expected_args_len_local),
             kind: InstrKind::Int(lambda.args.len() as i64),
         });
-        self.exprs.push(Instr {
-            local: Some(args_len_check_success_local),
-            kind: InstrKind::EqInt(args_len_local, expected_args_len_local),
-        });
+        if x.variadic_arg.is_some() {
+            self.exprs.push(Instr {
+                local: Some(args_len_check_success_local),
+                kind: InstrKind::GeInt(args_len_local, expected_args_len_local),
+            });
+        } else {
+            self.exprs.push(Instr {
+                local: Some(args_len_check_success_local),
+                kind: InstrKind::EqInt(args_len_local, expected_args_len_local),
+            });
+        }
 
         let error_bb_id = self.bbs.allocate_key();
         let merge_bb_id = self.bbs.allocate_key();
@@ -275,6 +282,32 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 self.exprs.push(Instr {
                     local: Some(arg_id),
                     kind: InstrKind::VariadicArgsRef(args, arg_idx),
+                });
+            }
+        }
+
+        if let Some(variadic_arg) = &x.variadic_arg {
+            if self.module_generator.ast.x.box_vars.contains(variadic_arg) {
+                let local = self.local(LocalType::Type(Type::Obj));
+                self.exprs.push(Instr {
+                    local: Some(local),
+                    kind: InstrKind::VariadicArgsRest(args, lambda.args.len()),
+                });
+
+                let ref_ = self.define_ast_local(*variadic_arg);
+                self.exprs.push(Instr {
+                    local: Some(ref_),
+                    kind: InstrKind::CreateRef(Type::Obj),
+                });
+                self.exprs.push(Instr {
+                    local: None,
+                    kind: InstrKind::SetRef(Type::Obj, ref_, local),
+                });
+            } else {
+                let arg_id = self.define_ast_local(*variadic_arg);
+                self.exprs.push(Instr {
+                    local: Some(arg_id),
+                    kind: InstrKind::VariadicArgsRest(args, lambda.args.len()),
                 });
             }
         }
