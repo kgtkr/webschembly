@@ -522,6 +522,7 @@ pub enum InstrKind {
     FloatToString(LocalId),
     EqInt(LocalId, LocalId),
     EqFloat(LocalId, LocalId),
+    EqString(LocalId, LocalId),
     LtInt(LocalId, LocalId),
     LtFloat(LocalId, LocalId),
     GtInt(LocalId, LocalId),
@@ -711,6 +712,7 @@ macro_rules! impl_InstrKind_local_usages {
                         InstrKind::FloatToString(id) => yield (id, LocalUsedFlag::NonPhi),
                         InstrKind::EqInt(a, b)
                         | InstrKind::EqFloat(a, b)
+                        | InstrKind::EqString(a, b)
                         | InstrKind::LtInt(a, b)
                         | InstrKind::LtFloat(a, b)
                         | InstrKind::GtInt(a, b)
@@ -901,6 +903,7 @@ impl InstrKind {
             // String/Cons/Vectorなどは可変なオブジェクトを生成するので純粋ではない
             InstrKind::String(..)
             | InstrKind::StringToSymbol(..)
+            | InstrKind::EqString(..)
             | InstrKind::Vector(..)
             | InstrKind::UVector(..)
             | InstrKind::MakeUVector(..)
@@ -1350,6 +1353,12 @@ impl fmt::Display for DisplayInFunc<'_, &'_ InstrKind> {
             InstrKind::EqFloat(a, b) => write!(
                 f,
                 "eq_float({}, {})",
+                a.display(self.meta),
+                b.display(self.meta)
+            ),
+            InstrKind::EqString(a, b) => write!(
+                f,
+                "eq_string({}, {})",
                 a.display(self.meta),
                 b.display(self.meta)
             ),

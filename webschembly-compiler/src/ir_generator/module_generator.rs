@@ -1689,6 +1689,16 @@ impl BuiltinConversionRule {
                     },
                 },
             ],
+            Builtin::StringEq => vec![BuiltinConversionRule::Binary {
+                args: [Type::Val(ValType::String), Type::Val(ValType::String)],
+                ret: Type::Val(ValType::Bool),
+                ir_gen: |ctx, arg1, arg2| {
+                    ctx.exprs.push(Instr {
+                        local: Some(ctx.dest),
+                        kind: InstrKind::EqString(arg1, arg2),
+                    });
+                },
+            }],
             Builtin::Lt => vec![
                 BuiltinConversionRule::Binary {
                     args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],

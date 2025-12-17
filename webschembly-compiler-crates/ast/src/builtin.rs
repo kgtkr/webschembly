@@ -77,6 +77,8 @@ pub enum Builtin {
     NumberToString,
     #[strum(serialize = "=")]
     EqNum,
+    #[strum(serialize = "string=?")]
+    StringEq,
     #[strum(serialize = "<")]
     Lt,
     #[strum(serialize = ">")]
