@@ -805,10 +805,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                                 Type::Val(val_type) => self.builder.local(Type::Val(val_type)),
                             };
                             let builtin_ctx = BuiltinIrGenCtx {
-                                exprs: &mut self.builder.exprs,
-                                locals: &mut self.builder.locals,
-                                bbs: &mut self.builder.bbs,
-                                current_bb_id: &mut self.builder.current_bb_id,
+                                builder: &mut self.builder,
                                 dest: ret_local,
                             };
                             match rule {
@@ -1166,10 +1163,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
 
 #[derive(Debug)]
 pub struct BuiltinIrGenCtx<'a> {
-    exprs: &'a mut Vec<Instr>,
-    locals: &'a mut VecMap<LocalId, Local>,
-    bbs: &'a mut VecMap<BasicBlockId, BasicBlock>,
-    current_bb_id: &'a mut Option<BasicBlockId>,
+    builder: &'a mut IrFuncBuilder,
     dest: LocalId,
 }
 
@@ -1224,7 +1218,7 @@ impl BuiltinConversionRule {
                 args: [Type::Val(ValType::String)],
                 ret: Type::Val(ValType::Nil),
                 ir_gen: |ctx, arg1| {
-                    ctx.exprs.push(Instr {
+                    ctx.builder.exprs.push(Instr {
                         local: Some(ctx.dest),
                         kind: InstrKind::Display(arg1),
                     });
@@ -1235,7 +1229,7 @@ impl BuiltinConversionRule {
                     args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
                     ret: Type::Val(ValType::Int),
                     ir_gen: |ctx, arg1, arg2| {
-                        ctx.exprs.push(Instr {
+                        ctx.builder.exprs.push(Instr {
                             local: Some(ctx.dest),
                             kind: InstrKind::AddInt(arg1, arg2),
                         });
@@ -1245,7 +1239,7 @@ impl BuiltinConversionRule {
                     args: [Type::Val(ValType::Float), Type::Val(ValType::Float)],
                     ret: Type::Val(ValType::Float),
                     ir_gen: |ctx, arg1, arg2| {
-                        ctx.exprs.push(Instr {
+                        ctx.builder.exprs.push(Instr {
                             local: Some(ctx.dest),
                             kind: InstrKind::AddFloat(arg1, arg2),
                         });
@@ -1257,7 +1251,7 @@ impl BuiltinConversionRule {
                     args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
                     ret: Type::Val(ValType::Int),
                     ir_gen: |ctx, arg1, arg2| {
-                        ctx.exprs.push(Instr {
+                        ctx.builder.exprs.push(Instr {
                             local: Some(ctx.dest),
                             kind: InstrKind::SubInt(arg1, arg2),
                         });
@@ -1267,7 +1261,7 @@ impl BuiltinConversionRule {
                     args: [Type::Val(ValType::Float), Type::Val(ValType::Float)],
                     ret: Type::Val(ValType::Float),
                     ir_gen: |ctx, arg1, arg2| {
-                        ctx.exprs.push(Instr {
+                        ctx.builder.exprs.push(Instr {
                             local: Some(ctx.dest),
                             kind: InstrKind::SubFloat(arg1, arg2),
                         });
@@ -1279,7 +1273,7 @@ impl BuiltinConversionRule {
                     args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
                     ret: Type::Val(ValType::Int),
                     ir_gen: |ctx, arg1, arg2| {
-                        ctx.exprs.push(Instr {
+                        ctx.builder.exprs.push(Instr {
                             local: Some(ctx.dest),
                             kind: InstrKind::MulInt(arg1, arg2),
                         });
@@ -1289,7 +1283,7 @@ impl BuiltinConversionRule {
                     args: [Type::Val(ValType::Float), Type::Val(ValType::Float)],
                     ret: Type::Val(ValType::Float),
                     ir_gen: |ctx, arg1, arg2| {
-                        ctx.exprs.push(Instr {
+                        ctx.builder.exprs.push(Instr {
                             local: Some(ctx.dest),
                             kind: InstrKind::MulFloat(arg1, arg2),
                         });
@@ -1300,7 +1294,7 @@ impl BuiltinConversionRule {
                 args: [Type::Val(ValType::Float), Type::Val(ValType::Float)],
                 ret: Type::Val(ValType::Float),
                 ir_gen: |ctx, arg1, arg2| {
-                    ctx.exprs.push(Instr {
+                    ctx.builder.exprs.push(Instr {
                         local: Some(ctx.dest),
                         kind: InstrKind::DivFloat(arg1, arg2),
                     });
@@ -1310,7 +1304,7 @@ impl BuiltinConversionRule {
                 args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
                 ret: Type::Val(ValType::Int),
                 ir_gen: |ctx, arg1, arg2| {
-                    ctx.exprs.push(Instr {
+                    ctx.builder.exprs.push(Instr {
                         local: Some(ctx.dest),
                         kind: InstrKind::QuotientInt(arg1, arg2),
                     });
@@ -1320,7 +1314,7 @@ impl BuiltinConversionRule {
                 args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
                 ret: Type::Val(ValType::Int),
                 ir_gen: |ctx, arg1, arg2| {
-                    ctx.exprs.push(Instr {
+                    ctx.builder.exprs.push(Instr {
                         local: Some(ctx.dest),
                         kind: InstrKind::RemainderInt(arg1, arg2),
                     });
@@ -1330,7 +1324,7 @@ impl BuiltinConversionRule {
                 args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
                 ret: Type::Val(ValType::Int),
                 ir_gen: |ctx, arg1, arg2| {
-                    ctx.exprs.push(Instr {
+                    ctx.builder.exprs.push(Instr {
                         local: Some(ctx.dest),
                         kind: InstrKind::ModuloInt(arg1, arg2),
                     });
@@ -1340,7 +1334,7 @@ impl BuiltinConversionRule {
                 args: [Type::Val(ValType::Char)],
                 ret: Type::Val(ValType::Nil),
                 ir_gen: |ctx, arg1| {
-                    ctx.exprs.push(Instr {
+                    ctx.builder.exprs.push(Instr {
                         local: Some(ctx.dest),
                         kind: InstrKind::WriteChar(arg1),
                     });
@@ -1350,7 +1344,7 @@ impl BuiltinConversionRule {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
                 ir_gen: |ctx, arg1| {
-                    ctx.exprs.push(Instr {
+                    ctx.builder.exprs.push(Instr {
                         local: Some(ctx.dest),
                         kind: InstrKind::Is(ValType::Cons, arg1),
                     });
@@ -1360,7 +1354,7 @@ impl BuiltinConversionRule {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
                 ir_gen: |ctx, arg1| {
-                    ctx.exprs.push(Instr {
+                    ctx.builder.exprs.push(Instr {
                         local: Some(ctx.dest),
                         kind: InstrKind::Is(ValType::Symbol, arg1),
                     });
@@ -1370,7 +1364,7 @@ impl BuiltinConversionRule {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
                 ir_gen: |ctx, arg1| {
-                    ctx.exprs.push(Instr {
+                    ctx.builder.exprs.push(Instr {
                         local: Some(ctx.dest),
                         kind: InstrKind::Is(ValType::String, arg1),
                     });
@@ -1380,23 +1374,23 @@ impl BuiltinConversionRule {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
                 ir_gen: |ctx, arg1| {
-                    let is_int_local = ctx.locals.push_with(|id| Local {
+                    let is_int_local = ctx.builder.locals.push_with(|id| Local {
                         id,
                         typ: ValType::Bool.into(),
                     });
-                    let is_float_local = ctx.locals.push_with(|id| Local {
+                    let is_float_local = ctx.builder.locals.push_with(|id| Local {
                         id,
                         typ: ValType::Bool.into(),
                     });
-                    ctx.exprs.push(Instr {
+                    ctx.builder.exprs.push(Instr {
                         local: Some(is_int_local),
                         kind: InstrKind::Is(ValType::Int, arg1),
                     });
-                    ctx.exprs.push(Instr {
+                    ctx.builder.exprs.push(Instr {
                         local: Some(is_float_local),
                         kind: InstrKind::Is(ValType::Float, arg1),
                     });
-                    ctx.exprs.push(Instr {
+                    ctx.builder.exprs.push(Instr {
                         local: Some(ctx.dest),
                         kind: InstrKind::Or(is_int_local, is_float_local),
                     });
@@ -1406,7 +1400,7 @@ impl BuiltinConversionRule {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
                 ir_gen: |ctx, arg1| {
-                    ctx.exprs.push(Instr {
+                    ctx.builder.exprs.push(Instr {
                         local: Some(ctx.dest),
                         kind: InstrKind::Is(ValType::Bool, arg1),
                     });
@@ -1416,7 +1410,7 @@ impl BuiltinConversionRule {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
                 ir_gen: |ctx, arg1| {
-                    ctx.exprs.push(Instr {
+                    ctx.builder.exprs.push(Instr {
                         local: Some(ctx.dest),
                         kind: InstrKind::Is(ValType::Closure, arg1),
                     });
@@ -1426,7 +1420,7 @@ impl BuiltinConversionRule {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
                 ir_gen: |ctx, arg1| {
-                    ctx.exprs.push(Instr {
+                    ctx.builder.exprs.push(Instr {
                         local: Some(ctx.dest),
                         kind: InstrKind::Is(ValType::Char, arg1),
                     });
@@ -1436,7 +1430,7 @@ impl BuiltinConversionRule {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
                 ir_gen: |ctx, arg1| {
-                    ctx.exprs.push(Instr {
+                    ctx.builder.exprs.push(Instr {
                         local: Some(ctx.dest),
                         kind: InstrKind::Is(ValType::Vector, arg1),
                     });
@@ -1446,7 +1440,7 @@ impl BuiltinConversionRule {
                 args: [Type::Val(ValType::Vector)],
                 ret: Type::Val(ValType::Int),
                 ir_gen: |ctx, arg1| {
-                    ctx.exprs.push(Instr {
+                    ctx.builder.exprs.push(Instr {
                         local: Some(ctx.dest),
                         kind: InstrKind::VectorLength(arg1),
                     });
@@ -1456,7 +1450,7 @@ impl BuiltinConversionRule {
                 args: [Type::Val(ValType::Vector), Type::Val(ValType::Int)],
                 ret: Type::Obj,
                 ir_gen: |ctx, arg1, arg2| {
-                    ctx.exprs.push(Instr {
+                    ctx.builder.exprs.push(Instr {
                         local: Some(ctx.dest),
                         kind: InstrKind::VectorRef(arg1, arg2),
                     });
@@ -1470,7 +1464,7 @@ impl BuiltinConversionRule {
                 ],
                 ret: Type::Val(ValType::Nil),
                 ir_gen: |ctx, arg1, arg2, arg3| {
-                    ctx.exprs.push(Instr {
+                    ctx.builder.exprs.push(Instr {
                         local: Some(ctx.dest),
                         kind: InstrKind::VectorSet(arg1, arg2, arg3),
                     });
@@ -1480,7 +1474,7 @@ impl BuiltinConversionRule {
                 args: [Type::Val(ValType::Int)],
                 ret: Type::Val(ValType::Vector),
                 ir_gen: |ctx, arg1| {
-                    ctx.exprs.push(Instr {
+                    ctx.builder.exprs.push(Instr {
                         local: Some(ctx.dest),
                         kind: InstrKind::MakeVector(arg1),
                     });
@@ -1490,7 +1484,7 @@ impl BuiltinConversionRule {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
                 ir_gen: |ctx, arg1| {
-                    ctx.exprs.push(Instr {
+                    ctx.builder.exprs.push(Instr {
                         local: Some(ctx.dest),
                         kind: InstrKind::Is(ValType::UVector(UVectorKind::S64), arg1),
                     });
@@ -1500,7 +1494,7 @@ impl BuiltinConversionRule {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
                 ir_gen: |ctx, arg1| {
-                    ctx.exprs.push(Instr {
+                    ctx.builder.exprs.push(Instr {
                         local: Some(ctx.dest),
                         kind: InstrKind::Is(ValType::UVector(UVectorKind::F64), arg1),
                     });
@@ -1510,23 +1504,23 @@ impl BuiltinConversionRule {
                 args: [Type::Obj],
                 ret: Type::Val(ValType::Bool),
                 ir_gen: |ctx, arg1| {
-                    let is_s64_local = ctx.locals.push_with(|id| Local {
+                    let is_s64_local = ctx.builder.locals.push_with(|id| Local {
                         id,
                         typ: ValType::Bool.into(),
                     });
-                    let is_f64_local = ctx.locals.push_with(|id| Local {
+                    let is_f64_local = ctx.builder.locals.push_with(|id| Local {
                         id,
                         typ: ValType::Bool.into(),
                     });
-                    ctx.exprs.push(Instr {
+                    ctx.builder.exprs.push(Instr {
                         local: Some(is_s64_local),
                         kind: InstrKind::Is(ValType::UVector(UVectorKind::S64), arg1),
                     });
-                    ctx.exprs.push(Instr {
+                    ctx.builder.exprs.push(Instr {
                         local: Some(is_f64_local),
                         kind: InstrKind::Is(ValType::UVector(UVectorKind::F64), arg1),
                     });
-                    ctx.exprs.push(Instr {
+                    ctx.builder.exprs.push(Instr {
                         local: Some(ctx.dest),
                         kind: InstrKind::Or(is_s64_local, is_f64_local),
                     });
@@ -1536,7 +1530,7 @@ impl BuiltinConversionRule {
                 args: [Type::Val(ValType::Int)],
                 ret: Type::Val(ValType::UVector(UVectorKind::S64)),
                 ir_gen: |ctx, arg1| {
-                    ctx.exprs.push(Instr {
+                    ctx.builder.exprs.push(Instr {
                         local: Some(ctx.dest),
                         kind: InstrKind::MakeUVector(UVectorKind::S64, arg1),
                     });
@@ -1546,7 +1540,7 @@ impl BuiltinConversionRule {
                 args: [Type::Val(ValType::Int)],
                 ret: Type::Val(ValType::UVector(UVectorKind::F64)),
                 ir_gen: |ctx, arg1| {
-                    ctx.exprs.push(Instr {
+                    ctx.builder.exprs.push(Instr {
                         local: Some(ctx.dest),
                         kind: InstrKind::MakeUVector(UVectorKind::F64, arg1),
                     });
@@ -1557,7 +1551,7 @@ impl BuiltinConversionRule {
                     args: [Type::Val(ValType::UVector(UVectorKind::S64))],
                     ret: Type::Val(ValType::Int),
                     ir_gen: |ctx, arg1| {
-                        ctx.exprs.push(Instr {
+                        ctx.builder.exprs.push(Instr {
                             local: Some(ctx.dest),
                             kind: InstrKind::UVectorLength(UVectorKind::S64, arg1),
                         });
@@ -1567,7 +1561,7 @@ impl BuiltinConversionRule {
                     args: [Type::Val(ValType::UVector(UVectorKind::F64))],
                     ret: Type::Val(ValType::Int),
                     ir_gen: |ctx, arg1| {
-                        ctx.exprs.push(Instr {
+                        ctx.builder.exprs.push(Instr {
                             local: Some(ctx.dest),
                             kind: InstrKind::UVectorLength(UVectorKind::F64, arg1),
                         });
@@ -1582,7 +1576,7 @@ impl BuiltinConversionRule {
                     ],
                     ret: Type::Val(ValType::Int),
                     ir_gen: |ctx, arg1, arg2| {
-                        ctx.exprs.push(Instr {
+                        ctx.builder.exprs.push(Instr {
                             local: Some(ctx.dest),
                             kind: InstrKind::UVectorRef(UVectorKind::S64, arg1, arg2),
                         });
@@ -1595,7 +1589,7 @@ impl BuiltinConversionRule {
                     ],
                     ret: Type::Val(ValType::Float),
                     ir_gen: |ctx, arg1, arg2| {
-                        ctx.exprs.push(Instr {
+                        ctx.builder.exprs.push(Instr {
                             local: Some(ctx.dest),
                             kind: InstrKind::UVectorRef(UVectorKind::F64, arg1, arg2),
                         });
@@ -1611,7 +1605,7 @@ impl BuiltinConversionRule {
                     ],
                     ret: Type::Val(ValType::Nil),
                     ir_gen: |ctx, arg1, arg2, arg3| {
-                        ctx.exprs.push(Instr {
+                        ctx.builder.exprs.push(Instr {
                             local: Some(ctx.dest),
                             kind: InstrKind::UVectorSet(UVectorKind::S64, arg1, arg2, arg3),
                         });
@@ -1625,7 +1619,7 @@ impl BuiltinConversionRule {
                     ],
                     ret: Type::Val(ValType::Nil),
                     ir_gen: |ctx, arg1, arg2, arg3| {
-                        ctx.exprs.push(Instr {
+                        ctx.builder.exprs.push(Instr {
                             local: Some(ctx.dest),
                             kind: InstrKind::UVectorSet(UVectorKind::F64, arg1, arg2, arg3),
                         });
@@ -1636,7 +1630,7 @@ impl BuiltinConversionRule {
                 args: [Type::Obj, Type::Obj],
                 ret: Type::Val(ValType::Bool),
                 ir_gen: |ctx, arg1, arg2| {
-                    ctx.exprs.push(Instr {
+                    ctx.builder.exprs.push(Instr {
                         local: Some(ctx.dest),
                         kind: InstrKind::EqObj(arg1, arg2),
                     });
@@ -1646,9 +1640,203 @@ impl BuiltinConversionRule {
                 args: [Type::Obj, Type::Obj],
                 ret: Type::Val(ValType::Bool),
                 ir_gen: |ctx, arg1, arg2| {
-                    ctx.exprs.push(Instr {
-                        local: Some(ctx.dest),
+                    /*
+                    if eq_obj(a, b) {
+                        dest1 = true
+                    } else if is_int(a) && is_int(b) {
+                        dest2 = eq_int(from_obj_int(a), from_obj_int(b))
+                    } else if is_float(a) && is_float(b) {
+                        dest3 = eq_float(from_obj_float(a), from_obj_float(b))
+                    } else if is_char(a) && is_char(b) {
+                        dest4 = eq_char(from_obj_char(a), from_obj_char(b))
+                    } else {
+                        dest5 = false
+                    }
+                    dest = phi(dest1, dest2, dest3, dest4, dest5)
+                    */
+                    let merge_bb_id = ctx.builder.bbs.allocate_key();
+
+                    let eq_obj_local = ctx.builder.local(Type::Val(ValType::Bool));
+                    ctx.builder.exprs.push(Instr {
+                        local: Some(eq_obj_local),
                         kind: InstrKind::EqObj(arg1, arg2),
+                    });
+
+                    let eq_obj_then_bb_id = ctx.builder.bbs.allocate_key();
+                    let eq_obj_else_bb_id = ctx.builder.bbs.allocate_key();
+                    ctx.builder.close_bb(TerminatorInstr::If(
+                        eq_obj_local,
+                        eq_obj_then_bb_id,
+                        eq_obj_else_bb_id,
+                    ));
+
+                    let eq_obj_dest_local = ctx.builder.local(Type::Val(ValType::Bool));
+                    ctx.builder.current_bb_id = Some(eq_obj_then_bb_id);
+                    ctx.builder.exprs.push(Instr {
+                        local: Some(eq_obj_dest_local),
+                        kind: InstrKind::Bool(true),
+                    });
+                    ctx.builder.close_bb(TerminatorInstr::Jump(merge_bb_id));
+
+                    ctx.builder.current_bb_id = Some(eq_obj_else_bb_id);
+                    let is_int1_local = ctx.builder.local(Type::Val(ValType::Bool));
+                    let is_int2_local = ctx.builder.local(Type::Val(ValType::Bool));
+                    let is_int_local = ctx.builder.local(Type::Val(ValType::Bool));
+                    ctx.builder.exprs.push(Instr {
+                        local: Some(is_int1_local),
+                        kind: InstrKind::Is(ValType::Int, arg1),
+                    });
+                    ctx.builder.exprs.push(Instr {
+                        local: Some(is_int2_local),
+                        kind: InstrKind::Is(ValType::Int, arg2),
+                    });
+                    ctx.builder.exprs.push(Instr {
+                        local: Some(is_int_local),
+                        kind: InstrKind::And(is_int1_local, is_int2_local),
+                    });
+                    let is_int_then_bb_id = ctx.builder.bbs.allocate_key();
+                    let is_int_else_bb_id = ctx.builder.bbs.allocate_key();
+                    ctx.builder.close_bb(TerminatorInstr::If(
+                        is_int_local,
+                        is_int_then_bb_id,
+                        is_int_else_bb_id,
+                    ));
+
+                    let is_int_dest_local = ctx.builder.local(Type::Val(ValType::Bool));
+                    ctx.builder.current_bb_id = Some(is_int_then_bb_id);
+                    let from_obj_int1_local = ctx.builder.local(Type::Val(ValType::Int));
+                    let from_obj_int2_local = ctx.builder.local(Type::Val(ValType::Int));
+                    ctx.builder.exprs.push(Instr {
+                        local: Some(from_obj_int1_local),
+                        kind: InstrKind::FromObj(ValType::Int, arg1),
+                    });
+                    ctx.builder.exprs.push(Instr {
+                        local: Some(from_obj_int2_local),
+                        kind: InstrKind::FromObj(ValType::Int, arg2),
+                    });
+                    ctx.builder.exprs.push(Instr {
+                        local: Some(is_int_dest_local),
+                        kind: InstrKind::EqInt(from_obj_int1_local, from_obj_int2_local),
+                    });
+                    ctx.builder.close_bb(TerminatorInstr::Jump(merge_bb_id));
+
+                    ctx.builder.current_bb_id = Some(is_int_else_bb_id);
+                    let is_float1_local = ctx.builder.local(Type::Val(ValType::Bool));
+                    let is_float2_local = ctx.builder.local(Type::Val(ValType::Bool));
+                    let is_float_local = ctx.builder.local(Type::Val(ValType::Bool));
+                    ctx.builder.exprs.push(Instr {
+                        local: Some(is_float1_local),
+                        kind: InstrKind::Is(ValType::Float, arg1),
+                    });
+                    ctx.builder.exprs.push(Instr {
+                        local: Some(is_float2_local),
+                        kind: InstrKind::Is(ValType::Float, arg2),
+                    });
+                    ctx.builder.exprs.push(Instr {
+                        local: Some(is_float_local),
+                        kind: InstrKind::And(is_float1_local, is_float2_local),
+                    });
+                    let is_float_then_bb_id = ctx.builder.bbs.allocate_key();
+                    let is_float_else_bb_id = ctx.builder.bbs.allocate_key();
+                    ctx.builder.close_bb(TerminatorInstr::If(
+                        is_float_local,
+                        is_float_then_bb_id,
+                        is_float_else_bb_id,
+                    ));
+                    let is_float_dest_local = ctx.builder.local(Type::Val(ValType::Bool));
+                    ctx.builder.current_bb_id = Some(is_float_then_bb_id);
+                    let from_obj_float1_local = ctx.builder.local(Type::Val(ValType::Float));
+                    let from_obj_float2_local = ctx.builder.local(Type::Val(ValType::Float));
+                    ctx.builder.exprs.push(Instr {
+                        local: Some(from_obj_float1_local),
+                        kind: InstrKind::FromObj(ValType::Float, arg1),
+                    });
+                    ctx.builder.exprs.push(Instr {
+                        local: Some(from_obj_float2_local),
+                        kind: InstrKind::FromObj(ValType::Float, arg2),
+                    });
+                    ctx.builder.exprs.push(Instr {
+                        local: Some(is_float_dest_local),
+                        kind: InstrKind::EqFloat(from_obj_float1_local, from_obj_float2_local),
+                    });
+                    ctx.builder.close_bb(TerminatorInstr::Jump(merge_bb_id));
+
+                    ctx.builder.current_bb_id = Some(is_float_else_bb_id);
+                    let is_char1_local = ctx.builder.local(Type::Val(ValType::Bool));
+                    let is_char2_local = ctx.builder.local(Type::Val(ValType::Bool));
+                    let is_char_local = ctx.builder.local(Type::Val(ValType::Bool));
+                    ctx.builder.exprs.push(Instr {
+                        local: Some(is_char1_local),
+                        kind: InstrKind::Is(ValType::Char, arg1),
+                    });
+                    ctx.builder.exprs.push(Instr {
+                        local: Some(is_char2_local),
+                        kind: InstrKind::Is(ValType::Char, arg2),
+                    });
+                    ctx.builder.exprs.push(Instr {
+                        local: Some(is_char_local),
+                        kind: InstrKind::And(is_char1_local, is_char2_local),
+                    });
+                    let is_char_then_bb_id = ctx.builder.bbs.allocate_key();
+                    let is_char_else_bb_id = ctx.builder.bbs.allocate_key();
+                    ctx.builder.close_bb(TerminatorInstr::If(
+                        is_char_local,
+                        is_char_then_bb_id,
+                        is_char_else_bb_id,
+                    ));
+                    let is_char_dest_local = ctx.builder.local(Type::Val(ValType::Bool));
+                    ctx.builder.current_bb_id = Some(is_char_then_bb_id);
+                    let from_obj_char1_local = ctx.builder.local(Type::Val(ValType::Char));
+                    let from_obj_char2_local = ctx.builder.local(Type::Val(ValType::Char));
+                    ctx.builder.exprs.push(Instr {
+                        local: Some(from_obj_char1_local),
+                        kind: InstrKind::FromObj(ValType::Char, arg1),
+                    });
+                    ctx.builder.exprs.push(Instr {
+                        local: Some(from_obj_char2_local),
+                        kind: InstrKind::FromObj(ValType::Char, arg2),
+                    });
+                    ctx.builder.exprs.push(Instr {
+                        local: Some(is_char_dest_local),
+                        kind: InstrKind::EqChar(from_obj_char1_local, from_obj_char2_local),
+                    });
+                    ctx.builder.close_bb(TerminatorInstr::Jump(merge_bb_id));
+                    ctx.builder.current_bb_id = Some(is_char_else_bb_id);
+                    let false_local = ctx.builder.local(Type::Val(ValType::Bool));
+                    ctx.builder.exprs.push(Instr {
+                        local: Some(false_local),
+                        kind: InstrKind::Bool(false),
+                    });
+                    ctx.builder.close_bb(TerminatorInstr::Jump(merge_bb_id));
+                    ctx.builder.current_bb_id = Some(merge_bb_id);
+
+                    ctx.builder.exprs.push(Instr {
+                        local: Some(ctx.dest),
+                        kind: InstrKind::Phi {
+                            incomings: vec![
+                                PhiIncomingValue {
+                                    local: eq_obj_dest_local,
+                                    bb: eq_obj_then_bb_id,
+                                },
+                                PhiIncomingValue {
+                                    local: is_int_dest_local,
+                                    bb: is_int_then_bb_id,
+                                },
+                                PhiIncomingValue {
+                                    local: is_float_dest_local,
+                                    bb: is_float_then_bb_id,
+                                },
+                                PhiIncomingValue {
+                                    local: is_char_dest_local,
+                                    bb: is_char_then_bb_id,
+                                },
+                                PhiIncomingValue {
+                                    local: false_local,
+                                    bb: is_char_else_bb_id,
+                                },
+                            ],
+                            non_exhaustive: false,
+                        },
                     });
                 },
             }],
@@ -1656,7 +1844,7 @@ impl BuiltinConversionRule {
                 args: [Type::Obj, Type::Obj],
                 ret: Type::Val(ValType::Cons),
                 ir_gen: |ctx, arg1, arg2| {
-                    ctx.exprs.push(Instr {
+                    ctx.builder.exprs.push(Instr {
                         local: Some(ctx.dest),
                         kind: InstrKind::Cons(arg1, arg2),
                     });
@@ -1666,7 +1854,7 @@ impl BuiltinConversionRule {
                 args: [Type::Val(ValType::Cons)],
                 ret: Type::Obj,
                 ir_gen: |ctx, arg1| {
-                    ctx.exprs.push(Instr {
+                    ctx.builder.exprs.push(Instr {
                         local: Some(ctx.dest),
                         kind: InstrKind::Car(arg1),
                     });
@@ -1676,7 +1864,7 @@ impl BuiltinConversionRule {
                 args: [Type::Val(ValType::Cons)],
                 ret: Type::Obj,
                 ir_gen: |ctx, arg1| {
-                    ctx.exprs.push(Instr {
+                    ctx.builder.exprs.push(Instr {
                         local: Some(ctx.dest),
                         kind: InstrKind::Cdr(arg1),
                     });
@@ -1686,7 +1874,7 @@ impl BuiltinConversionRule {
                 args: [Type::Val(ValType::Cons), Type::Obj],
                 ret: Type::Val(ValType::Nil),
                 ir_gen: |ctx, arg1, arg2| {
-                    ctx.exprs.push(Instr {
+                    ctx.builder.exprs.push(Instr {
                         local: Some(ctx.dest),
                         kind: InstrKind::SetCar(arg1, arg2),
                     });
@@ -1696,7 +1884,7 @@ impl BuiltinConversionRule {
                 args: [Type::Val(ValType::Cons), Type::Obj],
                 ret: Type::Val(ValType::Nil),
                 ir_gen: |ctx, arg1, arg2| {
-                    ctx.exprs.push(Instr {
+                    ctx.builder.exprs.push(Instr {
                         local: Some(ctx.dest),
                         kind: InstrKind::SetCdr(arg1, arg2),
                     });
@@ -1706,7 +1894,7 @@ impl BuiltinConversionRule {
                 args: [Type::Val(ValType::Symbol)],
                 ret: Type::Val(ValType::String),
                 ir_gen: |ctx, arg1| {
-                    ctx.exprs.push(Instr {
+                    ctx.builder.exprs.push(Instr {
                         local: Some(ctx.dest),
                         kind: InstrKind::SymbolToString(arg1),
                     });
@@ -1717,7 +1905,7 @@ impl BuiltinConversionRule {
                     args: [Type::Val(ValType::Int)],
                     ret: Type::Val(ValType::String),
                     ir_gen: |ctx, arg1| {
-                        ctx.exprs.push(Instr {
+                        ctx.builder.exprs.push(Instr {
                             local: Some(ctx.dest),
                             kind: InstrKind::IntToString(arg1),
                         });
@@ -1727,7 +1915,7 @@ impl BuiltinConversionRule {
                     args: [Type::Val(ValType::Float)],
                     ret: Type::Val(ValType::String),
                     ir_gen: |ctx, arg1| {
-                        ctx.exprs.push(Instr {
+                        ctx.builder.exprs.push(Instr {
                             local: Some(ctx.dest),
                             kind: InstrKind::FloatToString(arg1),
                         });
@@ -1739,7 +1927,7 @@ impl BuiltinConversionRule {
                     args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
                     ret: Type::Val(ValType::Bool),
                     ir_gen: |ctx, arg1, arg2| {
-                        ctx.exprs.push(Instr {
+                        ctx.builder.exprs.push(Instr {
                             local: Some(ctx.dest),
                             kind: InstrKind::EqInt(arg1, arg2),
                         });
@@ -1749,7 +1937,7 @@ impl BuiltinConversionRule {
                     args: [Type::Val(ValType::Float), Type::Val(ValType::Float)],
                     ret: Type::Val(ValType::Bool),
                     ir_gen: |ctx, arg1, arg2| {
-                        ctx.exprs.push(Instr {
+                        ctx.builder.exprs.push(Instr {
                             local: Some(ctx.dest),
                             kind: InstrKind::EqFloat(arg1, arg2),
                         });
@@ -1760,7 +1948,7 @@ impl BuiltinConversionRule {
                 args: [Type::Val(ValType::String), Type::Val(ValType::String)],
                 ret: Type::Val(ValType::Bool),
                 ir_gen: |ctx, arg1, arg2| {
-                    ctx.exprs.push(Instr {
+                    ctx.builder.exprs.push(Instr {
                         local: Some(ctx.dest),
                         kind: InstrKind::EqString(arg1, arg2),
                     });
@@ -1771,7 +1959,7 @@ impl BuiltinConversionRule {
                     args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
                     ret: Type::Val(ValType::Bool),
                     ir_gen: |ctx, arg1, arg2| {
-                        ctx.exprs.push(Instr {
+                        ctx.builder.exprs.push(Instr {
                             local: Some(ctx.dest),
                             kind: InstrKind::LtInt(arg1, arg2),
                         });
@@ -1781,7 +1969,7 @@ impl BuiltinConversionRule {
                     args: [Type::Val(ValType::Float), Type::Val(ValType::Float)],
                     ret: Type::Val(ValType::Bool),
                     ir_gen: |ctx, arg1, arg2| {
-                        ctx.exprs.push(Instr {
+                        ctx.builder.exprs.push(Instr {
                             local: Some(ctx.dest),
                             kind: InstrKind::LtFloat(arg1, arg2),
                         });
@@ -1793,7 +1981,7 @@ impl BuiltinConversionRule {
                     args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
                     ret: Type::Val(ValType::Bool),
                     ir_gen: |ctx, arg1, arg2| {
-                        ctx.exprs.push(Instr {
+                        ctx.builder.exprs.push(Instr {
                             local: Some(ctx.dest),
                             kind: InstrKind::GtInt(arg1, arg2),
                         });
@@ -1803,7 +1991,7 @@ impl BuiltinConversionRule {
                     args: [Type::Val(ValType::Float), Type::Val(ValType::Float)],
                     ret: Type::Val(ValType::Bool),
                     ir_gen: |ctx, arg1, arg2| {
-                        ctx.exprs.push(Instr {
+                        ctx.builder.exprs.push(Instr {
                             local: Some(ctx.dest),
                             kind: InstrKind::GtFloat(arg1, arg2),
                         });
@@ -1815,7 +2003,7 @@ impl BuiltinConversionRule {
                     args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
                     ret: Type::Val(ValType::Bool),
                     ir_gen: |ctx, arg1, arg2| {
-                        ctx.exprs.push(Instr {
+                        ctx.builder.exprs.push(Instr {
                             local: Some(ctx.dest),
                             kind: InstrKind::LeInt(arg1, arg2),
                         });
@@ -1825,7 +2013,7 @@ impl BuiltinConversionRule {
                     args: [Type::Val(ValType::Float), Type::Val(ValType::Float)],
                     ret: Type::Val(ValType::Bool),
                     ir_gen: |ctx, arg1, arg2| {
-                        ctx.exprs.push(Instr {
+                        ctx.builder.exprs.push(Instr {
                             local: Some(ctx.dest),
                             kind: InstrKind::LeFloat(arg1, arg2),
                         });
@@ -1837,7 +2025,7 @@ impl BuiltinConversionRule {
                     args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],
                     ret: Type::Val(ValType::Bool),
                     ir_gen: |ctx, arg1, arg2| {
-                        ctx.exprs.push(Instr {
+                        ctx.builder.exprs.push(Instr {
                             local: Some(ctx.dest),
                             kind: InstrKind::GeInt(arg1, arg2),
                         });
@@ -1847,7 +2035,7 @@ impl BuiltinConversionRule {
                     args: [Type::Val(ValType::Float), Type::Val(ValType::Float)],
                     ret: Type::Val(ValType::Bool),
                     ir_gen: |ctx, arg1, arg2| {
-                        ctx.exprs.push(Instr {
+                        ctx.builder.exprs.push(Instr {
                             local: Some(ctx.dest),
                             kind: InstrKind::GeFloat(arg1, arg2),
                         });

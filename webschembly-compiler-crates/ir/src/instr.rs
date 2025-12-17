@@ -522,6 +522,7 @@ pub enum InstrKind {
     FloatToString(LocalId),
     EqInt(LocalId, LocalId),
     EqFloat(LocalId, LocalId),
+    EqChar(LocalId, LocalId),
     EqString(LocalId, LocalId),
     LtInt(LocalId, LocalId),
     LtFloat(LocalId, LocalId),
@@ -712,6 +713,7 @@ macro_rules! impl_InstrKind_local_usages {
                         InstrKind::FloatToString(id) => yield (id, LocalUsedFlag::NonPhi),
                         InstrKind::EqInt(a, b)
                         | InstrKind::EqFloat(a, b)
+                        | InstrKind::EqChar(a, b)
                         | InstrKind::EqString(a, b)
                         | InstrKind::LtInt(a, b)
                         | InstrKind::LtFloat(a, b)
@@ -878,6 +880,7 @@ impl InstrKind {
             | InstrKind::And(..)
             | InstrKind::Or(..)
             | InstrKind::EqInt(..)
+            | InstrKind::EqChar(..)
             | InstrKind::EqFloat(..)
             | InstrKind::LtInt(..)
             | InstrKind::LtFloat(..)
@@ -1353,6 +1356,12 @@ impl fmt::Display for DisplayInFunc<'_, &'_ InstrKind> {
             InstrKind::EqFloat(a, b) => write!(
                 f,
                 "eq_float({}, {})",
+                a.display(self.meta),
+                b.display(self.meta)
+            ),
+            InstrKind::EqChar(a, b) => write!(
+                f,
+                "eq_char({}, {})",
                 a.display(self.meta),
                 b.display(self.meta)
             ),
