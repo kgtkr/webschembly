@@ -863,7 +863,31 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     let obj_func_local = self.builder.local(Type::Obj);
                     self.gen_exprs(Some(obj_func_local), func);
 
-                    // TODO: funcがクロージャかのチェック
+                    let is_closure_local = self.builder.local(Type::Val(ValType::Bool));
+                    self.builder.exprs.push(Instr {
+                        local: Some(is_closure_local),
+                        kind: InstrKind::Is(ValType::Closure, obj_func_local),
+                    });
+
+                    let then_bb_id = self.builder.bbs.allocate_key();
+                    let error_bb_id = self.builder.bbs.allocate_key();
+                    self.builder.close_bb(TerminatorInstr::If(
+                        is_closure_local,
+                        then_bb_id,
+                        error_bb_id,
+                    ));
+
+                    self.builder.current_bb_id = Some(error_bb_id);
+                    let msg = self.builder.local(Type::Val(ValType::String));
+                    self.builder.exprs.push(Instr {
+                        local: Some(msg),
+                        kind: InstrKind::String("call target is not a closure\n".to_string()),
+                    });
+                    self.builder
+                        .close_bb(TerminatorInstr::Exit(ExitInstr::Error(msg)));
+
+                    self.builder.current_bb_id = Some(then_bb_id);
+
                     let closure_local = self.builder.local(ValType::Closure);
                     self.builder.exprs.push(Instr {
                         local: Some(closure_local),
@@ -1732,6 +1756,16 @@ impl BuiltinConversionRule {
                     },
                 },
             ],
+            Builtin::StringEq => vec![BuiltinConversionRule::Binary {
+                args: [Type::Val(ValType::String), Type::Val(ValType::String)],
+                ret: Type::Val(ValType::Bool),
+                ir_gen: |ctx, arg1, arg2| {
+                    ctx.exprs.push(Instr {
+                        local: Some(ctx.dest),
+                        kind: InstrKind::EqString(arg1, arg2),
+                    });
+                },
+            }],
             Builtin::Lt => vec![
                 BuiltinConversionRule::Binary {
                     args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],

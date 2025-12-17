@@ -39,6 +39,7 @@ struct ModuleGenerator<'a> {
     write_char_func: u32,
     int_to_string_func: u32,
     float_to_string_func: u32,
+    string_eq_func: u32,
     args_to_list_func: u32,
     increment_branch_counter_func: u32,
     throw_webassembly_exception: u32,
@@ -97,6 +98,7 @@ impl<'a> ModuleGenerator<'a> {
             write_char_func: 0,
             int_to_string_func: 0,
             float_to_string_func: 0,
+            string_eq_func: 0,
             args_to_list_func: 0,
             increment_branch_counter_func: 0,
             throw_webassembly_exception: 0,
@@ -691,6 +693,23 @@ impl<'a> ModuleGenerator<'a> {
                     nullable: true,
                     heap_type: HeapType::Concrete(self.string_type),
                 })],
+            },
+        );
+
+        self.string_eq_func = self.add_runtime_function(
+            "string_eq",
+            WasmFuncType {
+                params: vec![
+                    ValType::Ref(RefType {
+                        nullable: true,
+                        heap_type: HeapType::Concrete(self.string_type),
+                    }),
+                    ValType::Ref(RefType {
+                        nullable: true,
+                        heap_type: HeapType::Concrete(self.string_type),
+                    }),
+                ],
+                results: vec![ValType::I32],
             },
         );
 
@@ -1703,6 +1722,11 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*lhs)));
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*rhs)));
                 function.instruction(&Instruction::F64Eq);
+            }
+            ir::InstrKind::EqString(lhs, rhs) => {
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*lhs)));
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*rhs)));
+                function.instruction(&Instruction::Call(self.module_generator.string_eq_func));
             }
             ir::InstrKind::LtInt(lhs, rhs) => {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*lhs)));
