@@ -61,6 +61,8 @@ pub enum Builtin {
     MakeF64Vector,
     #[strum(serialize = "eq?")]
     Eq,
+    #[strum(serialize = "eqv?")]
+    Eqv,
     #[strum(serialize = "cons")]
     Cons,
     #[strum(serialize = "car")]
