@@ -235,4 +235,45 @@
 
     (local.get $cons)
   )
+
+  (func $string_eq (export "string_eq") (param $s1 (ref null $String)) (param $s2 (ref null $String)) (result i32)
+    (local $len1 i32)
+    (local $len2 i32)
+    (local $i i32)
+    (local $buf1 (ref $Buf))
+    (local $buf2 (ref $Buf))
+
+    (local.set $len1 (struct.get $String $len (local.get $s1)))
+    (local.set $len2 (struct.get $String $len (local.get $s2)))
+
+    (if (i32.ne (local.get $len1) (local.get $len2))
+      (then
+        (return (i32.const 0))
+      )
+    )
+
+    (local.set $buf1 (struct.get $StringBuf $buf (struct.get $String $buf (local.get $s1))))
+    (local.set $buf2 (struct.get $StringBuf $buf (struct.get $String $buf (local.get $s2))))
+
+    (block $break
+      (loop $loop
+        (br_if $break
+          (i32.ge_u (local.get $i) (local.get $len1))
+        )
+        (if
+          (i32.ne
+            (array.get_u $Buf (local.get $buf1) (i32.add (struct.get $String $offset (local.get $s1)) (local.get $i)))
+            (array.get_u $Buf (local.get $buf2) (i32.add (struct.get $String $offset (local.get $s2)) (local.get $i)))
+          )
+          (then
+            (return (i32.const 0))
+          )
+        )
+        (local.set $i (i32.add (local.get $i) (i32.const 1)))
+        (br $loop)
+      )
+    )
+
+    (i32.const 1)
+  )
 )
