@@ -816,7 +816,29 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     let obj_func_local = self.local(Type::Obj);
                     self.gen_exprs(Some(obj_func_local), func);
 
-                    // TODO: funcがクロージャかのチェック
+                    let is_closure_local = self.local(Type::Val(ValType::Bool));
+                    self.exprs.push(Instr {
+                        local: Some(is_closure_local),
+                        kind: InstrKind::Is(ValType::Closure, obj_func_local),
+                    });
+
+                    let then_bb_id = self.bbs.allocate_key();
+                    let error_bb_id = self.bbs.allocate_key();
+                    self.close_bb(TerminatorInstr::If(
+                        is_closure_local,
+                        then_bb_id,
+                        error_bb_id,
+                    ));
+
+                    self.current_bb_id = Some(error_bb_id);
+                    let msg = self.local(Type::Val(ValType::String));
+                    self.exprs.push(Instr {
+                        local: Some(msg),
+                        kind: InstrKind::String("call target is not a closure\n".to_string()),
+                    });
+                    self.close_bb(TerminatorInstr::Exit(ExitInstr::Error(msg)));
+
+                    self.current_bb_id = Some(then_bb_id);
                     let closure_local = self.local(ValType::Closure);
                     self.exprs.push(Instr {
                         local: Some(closure_local),
