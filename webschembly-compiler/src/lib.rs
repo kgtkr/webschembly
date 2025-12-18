@@ -9,7 +9,8 @@
     iter_from_coroutine,
     if_let_guard,
     impl_trait_in_assoc_type,
-    coroutine_trait
+    coroutine_trait,
+    noop_waker
 )]
 #![allow(clippy::vec_init_then_push, clippy::too_many_arguments)]
 pub mod compiler;
