@@ -130,3 +130,92 @@ mod foo {
         assert_eq!(runner.count, 1_000_001);
     }
 }
+
+mod hoge {
+    use std::cell::RefCell;
+    use std::future::Future;
+    use std::pin::Pin;
+    use std::rc::Rc;
+    use std::task::{Context, Poll, Waker};
+
+    // runner への参照は Rc で共有するため、Future は 'static になれる
+    type BoxedFuture = Pin<Box<dyn Future<Output = ()> + 'static>>;
+
+    thread_local! {
+        static TASKS: RefCell<Vec<BoxedFuture>> = RefCell::new(Vec::new());
+    }
+
+    pub struct MyRunner {
+        pub count: u32,
+    }
+
+    impl MyRunner {
+        pub fn non_tail_recursive(runner: Rc<RefCell<Self>>, n: u32) -> BoxedFuture {
+            Box::pin(async move {
+                if n == 0 {
+                    return;
+                }
+
+                // 前処理
+                runner.borrow_mut().count += 1;
+
+                // 再帰呼び出しをスタックに積んで yield
+                // TASKS スレッドローカルに隠蔽されているので引数は不要
+                yield_and_spawn(Self::non_tail_recursive(Rc::clone(&runner), n - 1)).await;
+
+                // 後処理
+                println!("After: n = {}, count = {}", n, runner.borrow().count);
+            })
+        }
+    }
+
+    // 続きを予約して Pending する
+    fn yield_and_spawn(next: BoxedFuture) -> impl Future<Output = ()> {
+        // FutureをOptionで包む
+        let mut next_opt = Some(next);
+
+        std::future::poll_fn(move |_| {
+            // take() で一度だけ所有権を取り出す
+            if let Some(n) = next_opt.take() {
+                // スレッドローカルに次のタスクを積む
+                TASKS.with(|stack| stack.borrow_mut().push(n));
+                Poll::Pending // エグゼキュータに制御を戻す
+            } else {
+                // 2回目以降の poll（再開時）は Ready を返す
+                Poll::Ready(())
+            }
+        })
+    }
+
+    pub fn block_on_trampoline(first_task: BoxedFuture) {
+        let waker = Waker::noop();
+        let mut cx = Context::from_waker(&waker);
+
+        TASKS.with(|stack| stack.borrow_mut().push(first_task));
+
+        loop {
+            let mut top = match TASKS.with(|stack| stack.borrow_mut().pop()) {
+                Some(f) => f,
+                None => break,
+            };
+
+            match top.as_mut().poll(&mut cx) {
+                Poll::Ready(()) => continue,
+                Poll::Pending => {
+                    // 中断された Future をスタックに戻す
+                    TASKS.with(|stack| stack.borrow_mut().push(top));
+                    continue;
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_thread_local_trampoline() {
+        let runner = Rc::new(RefCell::new(MyRunner { count: 0 }));
+
+        block_on_trampoline(MyRunner::non_tail_recursive(Rc::clone(&runner), 1000000));
+
+        assert_eq!(runner.borrow().count, 1000000);
+    }
+}
