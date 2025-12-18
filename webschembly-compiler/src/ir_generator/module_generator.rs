@@ -129,7 +129,7 @@ impl<'a> ModuleGenerator<'a> {
         let global_metas = std::mem::take(&mut module_gen.global_metas);
         let globals = std::mem::take(&mut module_gen.globals);
         let funcs = std::mem::take(&mut module_gen.funcs);
-        
+
         let meta = Meta {
             local_metas,
             global_metas,
