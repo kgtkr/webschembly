@@ -29,6 +29,9 @@ repl: build-runtime
 run src: build-runtime
 	{{LOG_DIR_ENV}}{{WEBSCHEMBLY_RUNTIME_ENV}}npx tsx src/run.ts "{{src}}"
 
+run-release src: build-runtime-release
+	{{LOG_DIR_ENV}}{{WEBSCHEMBLY_RUNTIME_ENV}}npx tsx src/run.ts "{{src}}"
+
 benchmark: build-runtime-release
 	{{LOG_DIR_ENV}}{{WEBSCHEMBLY_RUNTIME_ENV}}npm run benchmark
 
