@@ -19,9 +19,9 @@ pub fn generate_module(
     ast: &ast::Ast<Final>,
     config: Config,
 ) -> Module {
-    let module_gen = ModuleGenerator::new(id, config, global_manager, ast);
+    let module_gen = ModuleGenerator::new_boxed(id, config, global_manager, ast);
 
-    module_gen.generate()
+    ModuleGenerator::generate_boxed(module_gen)
 }
 
 #[derive(Debug)]
@@ -39,13 +39,15 @@ struct ModuleGenerator<'a> {
 }
 
 impl<'a> ModuleGenerator<'a> {
-    fn new(
+    fn new_boxed(
         id: JitModuleId,
         config: Config,
         ir_generator: &'a mut GlobalManager,
         ast: &'a ast::Ast<Final>,
-    ) -> Self {
-        Self {
+    ) -> Box<Self> {
+        // Allocate the box first with minimal content, then populate it
+        // This avoids creating the full struct on the stack
+        Box::new(Self {
             id,
             ast,
             global_manager: ir_generator,
@@ -55,31 +57,32 @@ impl<'a> ModuleGenerator<'a> {
             global_metas: FxHashMap::default(),
             func_to_entrypoint_table: FxHashMap::default(),
             globals: FxHashMap::default(),
-        }
+        })
     }
 
-    fn generate(mut self) -> Module {
-        let ast_globals = self
+    fn generate_boxed(mut module_gen: Box<Self>) -> Module {
+        // Work with the boxed value to avoid moving large structs onto the stack
+        let ast_globals = module_gen
             .ast
             .x
             .global_vars
             .clone()
             .into_iter()
             .map(|id| {
-                let global = self.global(id);
+                let global = module_gen.global(id);
                 (global.id, global)
             })
             .collect::<FxHashMap<_, _>>();
-        self.globals.extend(ast_globals);
+        module_gen.globals.extend(ast_globals);
 
-        let entry_func_id = self.funcs.allocate_key();
-        let mut entry_func = FuncGenerator::new(&mut self, entry_func_id).entry_gen();
+        let entry_func_id = module_gen.funcs.allocate_key();
+        let mut entry_func = FuncGenerator::new(&mut *module_gen, entry_func_id).entry_gen();
 
         // エントリーポイントにモジュール初期化ロジックを追加
         let prev_bb_entry = entry_func.bb_entry;
         let mut entry_exprs = Vec::new();
 
-        for (func_id, entrypoint_table_global_id) in self.func_to_entrypoint_table {
+        for (func_id, entrypoint_table_global_id) in std::mem::take(&mut module_gen.func_to_entrypoint_table) {
             let func_ref_local = entry_func.locals.push_with(|id| Local {
                 id,
                 typ: LocalType::FuncRef,
@@ -119,16 +122,22 @@ impl<'a> ModuleGenerator<'a> {
         });
         entry_func.bb_entry = new_bb_entry;
 
-        self.funcs.insert_node(entry_func);
+        module_gen.funcs.insert_node(entry_func);
 
+        // Move fields out of the box individually to avoid moving the whole struct onto the stack
+        let local_metas = std::mem::take(&mut module_gen.local_metas);
+        let global_metas = std::mem::take(&mut module_gen.global_metas);
+        let globals = std::mem::take(&mut module_gen.globals);
+        let funcs = std::mem::take(&mut module_gen.funcs);
+        
         let meta = Meta {
-            local_metas: self.local_metas,
-            global_metas: self.global_metas,
+            local_metas,
+            global_metas,
         };
 
         Module {
-            globals: self.globals,
-            funcs: self.funcs,
+            globals,
+            funcs,
             entry: entry_func_id,
             meta,
         }
