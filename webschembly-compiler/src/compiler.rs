@@ -232,7 +232,7 @@ fn preprocess_module(module: &mut ir::Module) {
 }
 
 fn optimize_module(module: &mut ir::Module, config: SsaOptimizerConfig) {
-    let mut module_inliner = ModuleInliner::new(module);
+    let mut module_inliner = Box::new(ModuleInliner::new(module));
     let n = 5;
     for i in 0..n {
         if config.enable_inlining {
