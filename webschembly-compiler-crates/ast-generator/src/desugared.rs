@@ -19,6 +19,8 @@ impl<P: DesugaredPrevPhase> ExtendAstPhase for Desugared<P> {
     type XCond = !;
     type XNamedLet = !;
     type XDo = !;
+    type XAnd = !;
+    type XOr = !;
     type XIf = ();
     type XVar = ();
     type XLet = ();
@@ -393,6 +395,83 @@ impl<P: DesugaredPrevPhase> Desugared<P> {
                 )
                 .with_span(expr.span);
                 exprs.push(letrec);
+            }
+            Expr::And(_, and_exprs) => {
+                if and_exprs.is_empty() {
+                    exprs.push(Expr::Const((), Const::Bool(true)).with_span(expr.span));
+                } else if and_exprs.len() == 1 {
+                    exprs.extend(self.from_exprs(and_exprs.into_iter().next().unwrap()));
+                } else {
+                    let mut iter = and_exprs.into_iter().rev();
+                    let mut else_branch = self.from_exprs(iter.next().unwrap());
+                    for and_expr in iter {
+                        let cond = self.from_exprs(and_expr);
+                        else_branch = vec![
+                            Expr::If(
+                                (),
+                                If {
+                                    cond: cond,
+                                    then: else_branch,
+                                    els: vec![
+                                        Expr::Const((), Const::Bool(false)).with_span(expr.span),
+                                    ],
+                                },
+                            )
+                            .with_span(expr.span),
+                        ];
+                    }
+                    exprs.extend(else_branch);
+                }
+            }
+            Expr::Or(_, or_exprs) => {
+                if or_exprs.is_empty() {
+                    exprs.push(Expr::Const((), Const::Bool(false)).with_span(expr.span));
+                } else if or_exprs.len() == 1 {
+                    exprs.extend(self.from_exprs(or_exprs.into_iter().next().unwrap()));
+                } else {
+                    let mut else_branch =
+                        vec![Expr::Const((), Const::Bool(false)).with_span(expr.span)];
+                    for or_expr in or_exprs.into_iter().rev() {
+                        let test = self.from_exprs(or_expr);
+                        let temp_var = self.gen_temp_var();
+                        else_branch = vec![
+                            Expr::Let(
+                                (),
+                                LetLike {
+                                    bindings: vec![
+                                        Binding {
+                                            name: L {
+                                                span: expr.span,
+                                                value: temp_var.clone(),
+                                            },
+                                            expr: test,
+                                        }
+                                        .with_span(expr.span),
+                                    ],
+                                    body: vec![
+                                        Expr::If(
+                                            (),
+                                            If {
+                                                cond: vec![
+                                                    Expr::Var((), temp_var.clone())
+                                                        .with_span(expr.span),
+                                                ],
+                                                then: vec![
+                                                    Expr::Var((), temp_var.clone())
+                                                        .with_span(expr.span),
+                                                ],
+                                                els: else_branch,
+                                            },
+                                        )
+                                        .with_span(expr.span),
+                                    ],
+                                },
+                            )
+                            .with_span(expr.span),
+                        ];
+                    }
+                    exprs.extend(else_branch);
+                }
             }
             Expr::Vector(_, vec) => exprs.push(
                 Expr::Vector(

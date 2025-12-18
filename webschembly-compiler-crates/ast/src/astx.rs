@@ -39,6 +39,8 @@ pub trait AstPhase: Sized + Clone + Debug {
     type XUVector: AstPhaseX;
     type XQuote: AstPhaseX;
     type XCons: AstPhaseX;
+    type XAnd: AstPhaseX;
+    type XOr: AstPhaseX;
     type XExt: AstPhaseX;
 }
 
@@ -63,6 +65,8 @@ pub trait ExtendAstPhase: Sized + Clone + Debug {
     type XUVector: AstPhaseX = <Self::Prev as AstPhase>::XUVector;
     type XQuote: AstPhaseX = <Self::Prev as AstPhase>::XQuote;
     type XCons: AstPhaseX = <Self::Prev as AstPhase>::XCons;
+    type XAnd: AstPhaseX = <Self::Prev as AstPhase>::XAnd;
+    type XOr: AstPhaseX = <Self::Prev as AstPhase>::XOr;
     type XExt: AstPhaseX = <Self::Prev as AstPhase>::XExt;
 }
 
@@ -86,6 +90,8 @@ impl<T: ExtendAstPhase> AstPhase for T {
     type XUVector = T::XUVector;
     type XQuote = T::XQuote;
     type XCons = T::XCons;
+    type XAnd = T::XAnd;
+    type XOr = T::XOr;
     type XExt = T::XExt;
 }
 
@@ -121,6 +127,8 @@ where
     UVector(X::XUVector, UVector<X>),
     Quote(X::XQuote, LSExpr),
     Cons(X::XCons, Cons<X>),
+    And(X::XAnd, Vec<ExprBox<LExpr<X>>>),
+    Or(X::XOr, Vec<ExprBox<LExpr<X>>>),
     Ext(X::XExt),
 }
 

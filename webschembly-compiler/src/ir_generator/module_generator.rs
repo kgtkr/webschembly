@@ -1007,6 +1007,8 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             ast::Expr::LetRec(x, _) => *x,
             ast::Expr::NamedLet(x, _, _) => *x,
             ast::Expr::Do(x, _) => *x,
+            ast::Expr::And(x, _) => *x,
+            ast::Expr::Or(x, _) => *x,
             ast::Expr::Vector(_, vec) => {
                 let mut vec_locals = Vec::new();
                 for sexpr in vec {

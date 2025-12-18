@@ -23,6 +23,8 @@ pub trait TailCallPrevPhase = AstPhase<
         XCond = !,
         XNamedLet = !,
         XDo = !,
+        XAnd = !,
+        XOr = !,
     >;
 
 impl<P: TailCallPrevPhase> TailCall<P> {

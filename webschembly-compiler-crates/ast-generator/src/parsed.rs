@@ -26,6 +26,8 @@ impl AstPhase for Parsed {
     type XUVector = ();
     type XQuote = ();
     type XCons = ();
+    type XAnd = ();
+    type XOr = ();
     type XExt = !;
 }
 
@@ -393,6 +395,38 @@ impl Parsed {
                 }
                 _ => Err(compiler_error!("Invalid set! expression")),
             },
+            list_pattern![
+                LSExpr {
+                    value: SExpr::Symbol("and"),
+                    ..
+                } => span,
+                ..cdr
+            ] => {
+                let exprs = cdr
+                    .value
+                    .to_vec()
+                    .ok_or_else(|| compiler_error!("Expected a list of expressions"))?
+                    .into_iter()
+                    .map(|expr| Self::from_sexpr(expr).map(|e| vec![e]))
+                    .collect::<Result<Vec<_>>>()?;
+                Ok(Expr::And((), exprs).with_span(span))
+            }
+            list_pattern![
+                LSExpr {
+                    value: SExpr::Symbol("or"),
+                    ..
+                } => span,
+                ..cdr
+            ] => {
+                let exprs = cdr
+                    .value
+                    .to_vec()
+                    .ok_or_else(|| compiler_error!("Expected a list of expressions"))?
+                    .into_iter()
+                    .map(|expr| Self::from_sexpr(expr).map(|e| vec![e]))
+                    .collect::<Result<Vec<_>>>()?;
+                Ok(Expr::Or((), exprs).with_span(span))
+            }
             list_pattern![func => span, ..args] => {
                 let func = Self::from_sexpr(func)?;
                 let args = args

@@ -12,6 +12,8 @@ pub trait UsedPrevPhase = AstPhase<
         XCond = !,
         XNamedLet = !,
         XDo = !,
+        XAnd = !,
+        XOr = !,
     >;
 
 #[derive(Debug, Clone)]
