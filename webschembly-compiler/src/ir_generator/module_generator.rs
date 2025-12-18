@@ -1,8 +1,10 @@
+use async_recursion::async_recursion;
 use rustc_hash::FxHashMap;
 use webschembly_compiler_ast_generator::{Final, GlobalVarId, LocalVarId, UsedExtR, VarId};
 use webschembly_compiler_locate::Located;
 
 use crate::ir_generator::GlobalManager;
+use pollster::FutureExt;
 use vec_map::VecMap;
 use webschembly_compiler_ast as ast;
 use webschembly_compiler_ast::AstPhase;
@@ -73,7 +75,9 @@ impl<'a> ModuleGenerator<'a> {
         self.globals.extend(ast_globals);
 
         let entry_func_id = self.funcs.allocate_key();
-        let mut entry_func = FuncGenerator::new(&mut self, entry_func_id).entry_gen();
+        let mut entry_func = FuncGenerator::new(&mut self, entry_func_id)
+            .entry_gen()
+            .block_on();
 
         // エントリーポイントにモジュール初期化ロジックを追加
         let prev_bb_entry = entry_func.bb_entry;
@@ -147,13 +151,14 @@ impl<'a> ModuleGenerator<'a> {
         global
     }
 
-    fn gen_func(
+    #[async_recursion]
+    async fn gen_func(
         &mut self,
         x: &<Final as AstPhase>::XLambda,
         lambda: &ast::Lambda<Final>,
     ) -> FuncId {
         let id = self.funcs.allocate_key();
-        let func = FuncGenerator::new(self, id).lambda_gen(x, lambda);
+        let func = FuncGenerator::new(self, id).lambda_gen(x, lambda).await;
         self.funcs.insert_node(func);
 
         id
@@ -234,14 +239,16 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         }
     }
 
-    fn entry_gen(mut self) -> Func {
+    #[async_recursion]
+    async fn entry_gen(&mut self) -> Func {
         let obj_local = self.builder.local(Type::Obj);
 
         self.define_all_ast_local_and_create_ref(&self.module_generator.ast.x.defines);
 
         let bb_entry = self.builder.bbs.allocate_key();
         self.builder.current_bb_id = Some(bb_entry);
-        self.gen_exprs(Some(obj_local), &self.module_generator.ast.exprs);
+        self.gen_exprs(Some(obj_local), &self.module_generator.ast.exprs)
+            .await;
         self.builder
             .close_bb(TerminatorInstr::Exit(ExitInstr::Return(obj_local)));
 
@@ -249,13 +256,18 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             id: self.id,
             args: vec![],
             ret_type: LocalType::Type(Type::Obj),
-            locals: self.builder.locals,
+            locals: std::mem::take(&mut self.builder.locals),
             bb_entry,
-            bbs: self.builder.bbs,
+            bbs: std::mem::take(&mut self.builder.bbs),
         }
     }
 
-    fn lambda_gen(mut self, x: &<Final as AstPhase>::XLambda, lambda: &ast::Lambda<Final>) -> Func {
+    #[async_recursion]
+    async fn lambda_gen(
+        &mut self,
+        x: &<Final as AstPhase>::XLambda,
+        lambda: &ast::Lambda<Final>,
+    ) -> Func {
         let bb_entry = self.builder.bbs.allocate_key();
         self.builder.current_bb_id = Some(bb_entry);
 
@@ -377,16 +389,16 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         self.define_all_ast_local_and_create_ref(&x.defines);
 
         let ret = self.builder.local(Type::Obj);
-        self.gen_exprs(Some(ret), &lambda.body);
+        self.gen_exprs(Some(ret), &lambda.body).await;
         self.builder
             .close_bb(TerminatorInstr::Exit(ExitInstr::Return(ret)));
         Func {
             id: self.id,
             args: vec![self_closure, args],
             ret_type: LocalType::Type(Type::Obj),
-            locals: self.builder.locals,
+            locals: std::mem::take(&mut self.builder.locals),
             bb_entry,
-            bbs: self.builder.bbs,
+            bbs: std::mem::take(&mut self.builder.bbs),
         }
     }
 
@@ -440,7 +452,8 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         local
     }
 
-    fn gen_expr(&mut self, result: Option<LocalId>, ast: &ast::LExpr<Final>) {
+    #[async_recursion]
+    async fn gen_expr(&mut self, result: Option<LocalId>, ast: &ast::LExpr<Final>) {
         match &ast.value {
             ast::Expr::Const(_, lit) => match lit {
                 ast::Const::Bool(b) => {
@@ -539,7 +552,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             },
             ast::Expr::Define(x, _) => *x,
             ast::Expr::Lambda(x, lambda) => {
-                let func_id = self.module_generator.gen_func(x, lambda);
+                let func_id = self.module_generator.gen_func(x, lambda).await;
                 let func_local = self.builder.local(LocalType::FuncRef);
                 let val_type_local = self.builder.local(Type::Val(ValType::Closure));
                 self.builder.exprs.push(Instr {
@@ -602,7 +615,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             }
             ast::Expr::If(_, ast::If { cond, then, els }) => {
                 let obj_cond_local = self.builder.local(Type::Obj);
-                self.gen_exprs(Some(obj_cond_local), cond);
+                self.gen_exprs(Some(obj_cond_local), cond).await;
 
                 let false_local = self.builder.local(Type::Val(ValType::Bool));
                 self.builder.exprs.push(Instr {
@@ -631,14 +644,14 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
 
                 self.builder.current_bb_id = Some(then_bb_id);
                 let then_result = self.builder.local(Type::Obj);
-                self.gen_exprs(Some(then_result), then);
+                self.gen_exprs(Some(then_result), then).await;
                 let then_locals = self.local_ids.clone();
                 let then_ended_bb_id = self.builder.current_bb_id;
                 self.builder.close_bb(TerminatorInstr::Jump(merge_bb_id));
 
                 self.builder.current_bb_id = Some(else_bb_id);
                 let els_result = self.builder.local(Type::Obj);
-                self.gen_exprs(Some(els_result), els);
+                self.gen_exprs(Some(els_result), els).await;
                 let els_locals = self.local_ids.clone();
                 let els_ended_bb_id = self.builder.current_bb_id;
                 self.builder.close_bb(TerminatorInstr::Jump(merge_bb_id));
@@ -739,7 +752,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                             let mut type_check_success_locals = Vec::new();
                             for (typ, arg) in rule.arg_types().iter().zip(args) {
                                 let obj_arg_local = self.builder.local(Type::Obj);
-                                self.gen_exprs(Some(obj_arg_local), arg);
+                                self.gen_exprs(Some(obj_arg_local), arg).await;
                                 obj_arg_locals.push(obj_arg_local);
                                 if let Type::Val(val_type) = typ {
                                     let type_check_success_local =
@@ -858,7 +871,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     }
                 } else {
                     let obj_func_local = self.builder.local(Type::Obj);
-                    self.gen_exprs(Some(obj_func_local), func);
+                    self.gen_exprs(Some(obj_func_local), func).await;
 
                     let is_closure_local = self.builder.local(Type::Val(ValType::Bool));
                     self.builder.exprs.push(Instr {
@@ -895,7 +908,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     let mut args_locals = Vec::new();
                     for arg in args {
                         let arg_local = self.builder.local(Type::Obj);
-                        self.gen_exprs(Some(arg_local), arg);
+                        self.gen_exprs(Some(arg_local), arg).await;
                         args_locals.push(arg_local);
                     }
                     self.builder.exprs.push(Instr {
@@ -946,14 +959,14 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 }
             },
             ast::Expr::Begin(_, ast::Begin { exprs }) => {
-                self.gen_exprs(result, exprs);
+                self.gen_exprs(result, exprs).await;
             }
             ast::Expr::Set(x, ast::Set { name, expr, .. }) => {
                 match &x.var_id {
                     VarId::Local(id) => {
                         if self.module_generator.ast.x.box_vars.contains(id) {
                             let obj_local = self.builder.local(Type::Obj);
-                            self.gen_exprs(Some(obj_local), expr);
+                            self.gen_exprs(Some(obj_local), expr).await;
                             let local = self.local_ids.get(id).unwrap();
                             self.builder.exprs.push(Instr {
                                 local: None,
@@ -966,7 +979,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                         } else {
                             // SSA形式のため、新しいローカルを定義して代入する
                             let local = self.new_version_ast_local(*id);
-                            self.gen_exprs(Some(local), expr);
+                            self.gen_exprs(Some(local), expr).await;
                             self.builder.exprs.push(Instr {
                                 local: result,
                                 kind: InstrKind::Move(local),
@@ -988,7 +1001,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                                 .close_bb(TerminatorInstr::Exit(ExitInstr::Error(msg)));
                         } else {
                             let local = self.builder.local(Type::Obj);
-                            self.gen_exprs(Some(local), expr);
+                            self.gen_exprs(Some(local), expr).await;
                             let global = self.module_generator.global(*id);
                             self.builder.exprs.push(Instr {
                                 local: None,
@@ -1013,7 +1026,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 let mut vec_locals = Vec::new();
                 for sexpr in vec {
                     let obj_local = self.builder.local(Type::Obj);
-                    self.gen_exprs(Some(obj_local), sexpr);
+                    self.gen_exprs(Some(obj_local), sexpr).await;
                     vec_locals.push(obj_local);
                 }
                 let val_type_local = self.builder.local(Type::Val(ValType::Vector));
@@ -1035,7 +1048,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 let mut element_obj_locals = Vec::new();
                 for sexpr in &uvec.elements {
                     let obj_local = self.builder.local(Type::Obj);
-                    self.gen_exprs(Some(obj_local), sexpr);
+                    self.gen_exprs(Some(obj_local), sexpr).await;
                     element_obj_locals.push(obj_local);
                 }
                 let mut type_check_all_success_local = self.builder.local(Type::Val(ValType::Bool));
@@ -1102,9 +1115,9 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             }
             ast::Expr::Cons(_, cons) => {
                 let car_local = self.builder.local(Type::Obj);
-                self.gen_exprs(Some(car_local), &cons.car);
+                self.gen_exprs(Some(car_local), &cons.car).await;
                 let cdr_local = self.builder.local(Type::Obj);
-                self.gen_exprs(Some(cdr_local), &cons.cdr);
+                self.gen_exprs(Some(cdr_local), &cons.cdr).await;
 
                 let val_type_local = self.builder.local(Type::Val(ValType::Cons));
                 self.builder.exprs.push(Instr {
@@ -1123,7 +1136,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                         let prev = self.uninitialized_vars.insert(*var_id, Vec::new());
                         debug_assert!(prev.is_none());
                     }
-                    self.gen_exprs(result, &set_group.exprs);
+                    self.gen_exprs(result, &set_group.exprs).await;
                     for var_id in &set_group.var_ids {
                         let captures = self.uninitialized_vars.remove(var_id).unwrap();
                         for capture in captures {
@@ -1143,12 +1156,13 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         }
     }
 
-    fn gen_exprs(&mut self, result: Option<LocalId>, exprs: &[ast::LExpr<Final>]) {
+    #[async_recursion]
+    async fn gen_exprs(&mut self, result: Option<LocalId>, exprs: &[ast::LExpr<Final>]) {
         if let Some((last, rest)) = exprs.split_last() {
             for expr in rest {
-                self.gen_expr(None, expr);
+                self.gen_expr(None, expr).await;
             }
-            self.gen_expr(result, last);
+            self.gen_expr(result, last).await;
         } else {
             let val_type_local = self.builder.local(Type::Val(ValType::Nil));
             self.builder.exprs.push(Instr {
