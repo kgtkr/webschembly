@@ -75,9 +75,8 @@ impl<'a> ModuleGenerator<'a> {
         self.globals.extend(ast_globals);
 
         let entry_func_id = self.funcs.allocate_key();
-        let mut entry_func = FuncGenerator::new(&mut self, entry_func_id)
-            .entry_gen()
-            .block_on();
+        let mut entry_func =
+            block_on_safe(FuncGenerator::new(&mut self, entry_func_id).entry_gen());
 
         // エントリーポイントにモジュール初期化ロジックを追加
         let prev_bb_entry = entry_func.bb_entry;
@@ -2059,5 +2058,130 @@ impl BuiltinConversionRule {
                 },
             ],
         }
+    }
+}
+
+use std::future::Future;
+use std::pin::Pin;
+use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
+
+pub struct YieldNow {
+    yielded: bool,
+}
+
+impl YieldNow {
+    pub fn new() -> Self {
+        Self { yielded: false }
+    }
+}
+
+impl Future for YieldNow {
+    type Output = ();
+
+    fn poll(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
+        if self.yielded {
+            // 2回目に呼ばれたら完了（再開）
+            Poll::Ready(())
+        } else {
+            // 1回目は「未完了」を返して、一旦エグゼキュータに制御を戻す
+            self.yielded = true;
+            Poll::Pending
+        }
+    }
+}
+
+pub fn yield_now() -> YieldNow {
+    YieldNow::new()
+}
+
+pub fn block_on_safe<F: Future>(mut future: F) -> F::Output {
+    let mut future = unsafe { Pin::new_unchecked(&mut future) };
+
+    let waker = dummy_waker();
+    let mut cx = Context::from_waker(&waker);
+
+    loop {
+        match future.as_mut().poll(&mut cx) {
+            Poll::Ready(res) => return res,
+            Poll::Pending => {
+                continue;
+            }
+        }
+    }
+}
+
+fn dummy_waker() -> Waker {
+    unsafe fn clone(_: *const ()) -> RawWaker {
+        RawWaker::new(std::ptr::null(), &VTABLE)
+    }
+    unsafe fn wake(_: *const ()) {}
+    unsafe fn wake_by_ref(_: *const ()) {}
+    unsafe fn drop(_: *const ()) {}
+    static VTABLE: RawWakerVTable = RawWakerVTable::new(clone, wake, wake_by_ref, drop);
+    unsafe { Waker::from_raw(RawWaker::new(std::ptr::null(), &VTABLE)) }
+}
+
+#[async_recursion]
+async fn recursive_work(n: u32) {
+    if n % 100 == 0 {
+        yield_now().await;
+    }
+
+    if n > 0 {
+        recursive_work(n - 1).await;
+    }
+}
+
+#[test]
+fn test_block_on_safe() {
+    block_on_safe(recursive_work(10000));
+}
+
+mod tr {
+    use std::ops::{Coroutine, CoroutineState};
+    use std::pin::Pin;
+
+    enum Control<T> {
+        Next(Box<dyn Coroutine<Yield = Control<T>, Return = T> + Unpin>),
+        Done(T),
+    }
+
+    /// トランポリン・エグゼキュータ
+    /// スタックを深くせず、ヒープ上のループで処理を回す
+    fn trampoline<T>(mut coro: Box<dyn Coroutine<Yield = Control<T>, Return = T> + Unpin>) -> T {
+        loop {
+            match Pin::new(coro.as_mut()).resume(()) {
+                CoroutineState::Yielded(Control::Next(next_coro)) => {
+                    // 現在のコルーチンを一時中断し、次のコルーチンに切り替える
+                    coro = next_coro;
+                }
+                CoroutineState::Yielded(Control::Done(res)) => return res,
+                CoroutineState::Complete(res) => return res,
+            }
+        }
+    }
+
+    /// 再帰関数をトランポリン形式で記述
+    fn recursive_work(n: u32) -> Box<dyn Coroutine<Yield = Control<()>, Return = ()> + Unpin> {
+        Box::new(
+            #[coroutine]
+            move || {
+                if n == 0 {
+                    return ();
+                }
+
+                // スタックを積む代わりに、次のステップを yield してエグゼキュータに渡す
+                // これにより、現在のスタックフレームは解放（または停止）される
+                yield Control::Next(recursive_work(n - 1));
+
+                ()
+            },
+        )
+    }
+
+    #[test]
+    fn test_trampoline() {
+        // 100万回再帰してもスタックオーバーフローしない
+        trampoline(recursive_work(1_000_000));
     }
 }
