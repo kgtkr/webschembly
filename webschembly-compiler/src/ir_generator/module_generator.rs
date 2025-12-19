@@ -441,6 +441,12 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
     }
 
     fn gen_expr(&mut self, result: Option<LocalId>, ast: &ast::LExpr<Final>) {
+        stacker::maybe_grow(32 * 1024, 1024 * 1024, || {
+            self.gen_expr_impl(result, ast);
+        });
+    }
+
+    fn gen_expr_impl(&mut self, result: Option<LocalId>, ast: &ast::LExpr<Final>) {
         match &ast.value {
             ast::Expr::Const(_, lit) => match lit {
                 ast::Const::Bool(b) => {
