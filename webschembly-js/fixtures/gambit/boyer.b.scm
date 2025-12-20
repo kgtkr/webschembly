@@ -561,3 +561,26 @@
                               (and (implies z u)
                                    (implies u w))))
                     (implies x w)))))(newline)
+
+(define (run)
+  (test
+       (quote ((x f (plus (plus a b)
+                       (plus c (zero))))
+            (y f (times (times a b)
+                        (plus c d)))
+            (z f (reverse (append (append a b)
+                                  (nil))))
+            (u equal (plus a b)
+                     (difference x y))
+            (w lessp (remainder a b)
+                     (member a (length b)))))
+      (quote (implies (and (implies x y)
+                         (and (implies y z)
+                              (and (implies z u)
+                                   (implies u w))))
+                    (implies x w)))))
+
+(write "start")(newline)
+(run)
+(write "done")(newline)
+
