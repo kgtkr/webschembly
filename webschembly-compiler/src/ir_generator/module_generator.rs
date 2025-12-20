@@ -984,8 +984,14 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                             });
                         } else {
                             // SSA形式のため、新しいローカルを定義して代入する
-                            let local = self.new_version_ast_local(*id);
+                            let local = self.builder.local(Type::Obj);
                             self.gen_exprs(Some(local), expr);
+                            let local2 = self.new_version_ast_local(*id);
+                            // TODO: 無駄なMove
+                            self.builder.exprs.push(Instr {
+                                local: Some(local2),
+                                kind: InstrKind::Move(local),
+                            });
                             self.builder.exprs.push(Instr {
                                 local: result,
                                 kind: InstrKind::Move(local),
