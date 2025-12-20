@@ -120,6 +120,21 @@
           ((equal? obj (car l)) l)
           (else (loop (cdr l))))))
 
+(define (zero? z)
+  (= z 0))
+
+(define (positive? x)
+  (> x 0))
+
+(define (negative? x)
+  (< x 0))
+
+(define (odd? n)
+  (= (remainder n 2) (if (>= n 0) 1 -1)))
+
+(define (even? n)
+  (= (remainder n 2) 0))
+
 (define (caar x) (car (car x)))
 (define (cadr x) (car (cdr x)))
 (define (cdar x) (cdr (car x)))
