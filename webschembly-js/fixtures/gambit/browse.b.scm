@@ -181,12 +181,16 @@
               ((null? p))
               (my-match (car pats) (car p) '())))))
 
-(define (main . args)
-  (run-benchmark
-    "browse"
-    browse-iters
-    (lambda (result) #t)
-    (lambda (pats) (lambda () (browse pats)))
-    '((*a ?b *b ?b a *a a *b *a)
+(write (browse '((*a ?b *b ?b a *a a *b *a)
+      (*a *b *b *a (*a) (*b))
+      (? ? * (b a) * ? ?))))(newline)
+
+(define (run)
+  (browse '((*a ?b *b ?b a *a a *b *a)
       (*a *b *b *a (*a) (*b))
       (? ? * (b a) * ? ?))))
+
+(write "start")(newline)
+(run)
+(write "done")(newline)
+
