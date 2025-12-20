@@ -1,6 +1,6 @@
 use rustc_hash::FxHashMap;
 use webschembly_compiler_ast_generator::{Final, GlobalVarId, LocalVarId, UsedExtR, VarId};
-use webschembly_compiler_locate::Located;
+use webschembly_compiler_locate::{Located, Span};
 
 use crate::ir_generator::GlobalManager;
 use vec_map::VecMap;
@@ -150,10 +150,11 @@ impl<'a> ModuleGenerator<'a> {
     fn gen_func(
         &mut self,
         x: &<Final as AstPhase>::XLambda,
+        span: Span,
         lambda: &ast::Lambda<Final>,
     ) -> FuncId {
         let id = self.funcs.allocate_key();
-        let func = FuncGenerator::new(self, id).lambda_gen(x, lambda);
+        let func = FuncGenerator::new(self, id).lambda_gen(x, span, lambda);
         self.funcs.insert_node(func);
 
         id
@@ -255,7 +256,12 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         }
     }
 
-    fn lambda_gen(mut self, x: &<Final as AstPhase>::XLambda, lambda: &ast::Lambda<Final>) -> Func {
+    fn lambda_gen(
+        mut self,
+        x: &<Final as AstPhase>::XLambda,
+        span: Span,
+        lambda: &ast::Lambda<Final>,
+    ) -> Func {
         let bb_entry = self.builder.bbs.allocate_key();
         self.builder.current_bb_id = Some(bb_entry);
 
@@ -296,7 +302,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         let msg = self.builder.local(Type::Val(ValType::String));
         self.builder.exprs.push(Instr {
             local: Some(msg),
-            kind: InstrKind::String("args count mismatch\n".to_string()),
+            kind: InstrKind::String(format!("args count mismatch. at {}\n", span)),
         });
         self.builder
             .close_bb(TerminatorInstr::Exit(ExitInstr::Error(msg)));
@@ -545,7 +551,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             },
             ast::Expr::Define(x, _) => *x,
             ast::Expr::Lambda(x, lambda) => {
-                let func_id = self.module_generator.gen_func(x, lambda);
+                let func_id = self.module_generator.gen_func(x, ast.span, lambda);
                 let func_local = self.builder.local(LocalType::FuncRef);
                 let val_type_local = self.builder.local(Type::Val(ValType::Closure));
                 self.builder.exprs.push(Instr {
@@ -733,7 +739,10 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                         let msg = self.builder.local(Type::Val(ValType::String));
                         self.builder.exprs.push(Instr {
                             local: Some(msg),
-                            kind: InstrKind::String("builtin args count mismatch\n".to_string()),
+                            kind: InstrKind::String(format!(
+                                "builtin args count mismatch. at {}\n",
+                                ast.span
+                            )),
                         });
                         self.builder
                             .close_bb(TerminatorInstr::Exit(ExitInstr::Error(msg)));
@@ -847,8 +856,9 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                         self.builder.exprs.push(Instr {
                             local: Some(msg),
                             kind: InstrKind::String(format!(
-                                "{}: arg type mismatch\n",
-                                builtin.name()
+                                "{}: arg type mismatch. at {}\n",
+                                builtin.name(),
+                                ast.span
                             )),
                         });
                         self.builder
@@ -884,7 +894,10 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     let msg = self.builder.local(Type::Val(ValType::String));
                     self.builder.exprs.push(Instr {
                         local: Some(msg),
-                        kind: InstrKind::String("call target is not a closure\n".to_string()),
+                        kind: InstrKind::String(format!(
+                            "call target is not a closure. at {}\n",
+                            ast.span
+                        )),
                     });
                     self.builder
                         .close_bb(TerminatorInstr::Exit(ExitInstr::Error(msg)));
@@ -986,9 +999,10 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                             let msg = self.builder.local(Type::Val(ValType::String));
                             self.builder.exprs.push(Instr {
                                 local: Some(msg),
-                                kind: InstrKind::String(
-                                    "set! builtin is not allowed\n".to_string(),
-                                ),
+                                kind: InstrKind::String(format!(
+                                    "set! builtin is not allowed. at {}\n",
+                                    ast.span
+                                )),
                             });
                             self.builder
                                 .close_bb(TerminatorInstr::Exit(ExitInstr::Error(msg)));
@@ -1080,8 +1094,9 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 self.builder.exprs.push(Instr {
                     local: Some(msg),
                     kind: InstrKind::String(format!(
-                        "uvector element type mismatch: expected {:?}\n",
-                        kind.element_type()
+                        "uvector element type mismatch: expected {:?}. at {}\n",
+                        kind.element_type(),
+                        ast.span
                     )),
                 });
                 self.builder
