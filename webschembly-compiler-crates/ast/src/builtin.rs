@@ -75,6 +75,8 @@ pub enum Builtin {
     SetCdr,
     #[strum(serialize = "symbol->string")]
     SymbolToString,
+    #[strum(serialize = "string->symbol")]
+    StringToSymbol,
     #[strum(serialize = "number->string")]
     NumberToString,
     #[strum(serialize = "=")]

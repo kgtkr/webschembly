@@ -1923,6 +1923,16 @@ impl BuiltinConversionRule {
                     });
                 },
             }],
+            Builtin::StringToSymbol => vec![BuiltinConversionRule::Unary {
+                args: [Type::Val(ValType::String)],
+                ret: Type::Val(ValType::Symbol),
+                ir_gen: |ctx, arg1| {
+                    ctx.builder.exprs.push(Instr {
+                        local: Some(ctx.dest),
+                        kind: InstrKind::StringToSymbol(arg1),
+                    });
+                },
+            }],
             Builtin::NumberToString => vec![
                 BuiltinConversionRule::Unary {
                     args: [Type::Val(ValType::Int)],
