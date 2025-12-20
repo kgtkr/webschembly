@@ -560,6 +560,7 @@ dependencies = [
 name = "webschembly-compiler-ast-generator"
 version = "0.1.0"
 dependencies = [
+ "log",
  "rustc-hash",
  "webschembly-compiler-ast",
  "webschembly-compiler-error",

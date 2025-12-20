@@ -8,6 +8,7 @@ repository.workspace = true
 version.workspace = true
 
 [dependencies]
+log = {workspace = true}
 rustc-hash = {workspace = true}
 webschembly-compiler-ast = {path = "../ast"}
 webschembly-compiler-error = {path = "../error"}

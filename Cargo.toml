@@ -11,6 +11,7 @@ repository = "https://github.com/kgtkr/webschembly"
 version = "0.1.0"
 
 [workspace.dependencies]
+log = {version = "0.4.26", features = ["release_max_level_warn"]}
 ordered-float = "5.1.0"
 rustc-hash = "2.1.1"
 strum = "0.27"
