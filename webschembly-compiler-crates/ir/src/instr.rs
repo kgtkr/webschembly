@@ -524,6 +524,10 @@ pub enum InstrKind {
     EqFloat(LocalId, LocalId),
     EqChar(LocalId, LocalId),
     EqString(LocalId, LocalId),
+    StringRef(LocalId, LocalId),
+    StringCopy(LocalId),
+    StringSet(LocalId, LocalId, LocalId),
+    StringLength(LocalId),
     LtInt(LocalId, LocalId),
     LtFloat(LocalId, LocalId),
     GtInt(LocalId, LocalId),
@@ -711,6 +715,19 @@ macro_rules! impl_InstrKind_local_usages {
                         InstrKind::SymbolToString(id) => yield (id, LocalUsedFlag::NonPhi),
                         InstrKind::IntToString(id) => yield (id, LocalUsedFlag::NonPhi),
                         InstrKind::FloatToString(id) => yield (id, LocalUsedFlag::NonPhi),
+                        InstrKind::StringRef(str_id, index_id) => {
+                            yield (str_id, LocalUsedFlag::NonPhi);
+                            yield (index_id, LocalUsedFlag::NonPhi);
+                        }
+                        InstrKind::StringCopy(str_id) => {
+                            yield (str_id, LocalUsedFlag::NonPhi);
+                        }
+                        InstrKind::StringSet(str_id, index_id, char_id) => {
+                            yield (str_id, LocalUsedFlag::NonPhi);
+                            yield (index_id, LocalUsedFlag::NonPhi);
+                            yield (char_id, LocalUsedFlag::NonPhi);
+                        }
+                        InstrKind::StringLength(id) => yield (id, LocalUsedFlag::NonPhi),
                         InstrKind::EqInt(a, b)
                         | InstrKind::EqFloat(a, b)
                         | InstrKind::EqChar(a, b)
@@ -925,6 +942,9 @@ impl InstrKind {
             | InstrKind::SymbolToString(..)
             | InstrKind::IntToString(..)
             | InstrKind::FloatToString(..)
+            | InstrKind::StringRef(..)
+            | InstrKind::StringCopy(..)
+            | InstrKind::StringLength(..)
             | InstrKind::CreateMutFuncRef(..)
             | InstrKind::CreateEmptyMutFuncRef
             | InstrKind::DerefMutFuncRef(..)
@@ -952,6 +972,7 @@ impl InstrKind {
             | InstrKind::ClosureSetEnv(..)
             | InstrKind::SetCar(..)
             | InstrKind::SetCdr(..)
+            | InstrKind::StringSet(..)
              => InstrKindPurelity::Effectful,
         }
     }
@@ -1347,6 +1368,29 @@ impl fmt::Display for DisplayInFunc<'_, &'_ InstrKind> {
             }
             InstrKind::IntToString(id) => write!(f, "int_to_string({})", id.display(self.meta)),
             InstrKind::FloatToString(id) => write!(f, "float_to_string({})", id.display(self.meta)),
+            InstrKind::StringRef(str_id, index_id) => {
+                write!(
+                    f,
+                    "string_ref({}, {})",
+                    str_id.display(self.meta),
+                    index_id.display(self.meta)
+                )
+            }
+            InstrKind::StringCopy(str_id) => {
+                write!(f, "string_copy({})", str_id.display(self.meta))
+            }
+            InstrKind::StringLength(id) => {
+                write!(f, "string_length({})", id.display(self.meta))
+            }
+            InstrKind::StringSet(str_id, index_id, char_id) => {
+                write!(
+                    f,
+                    "string_set({}, {}, {})",
+                    str_id.display(self.meta),
+                    index_id.display(self.meta),
+                    char_id.display(self.meta)
+                )
+            }
             InstrKind::EqInt(a, b) => write!(
                 f,
                 "eq_int({}, {})",

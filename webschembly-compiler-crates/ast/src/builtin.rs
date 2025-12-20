@@ -83,6 +83,14 @@ pub enum Builtin {
     EqNum,
     #[strum(serialize = "string=?")]
     StringEq,
+    #[strum(serialize = "string-copy")]
+    StringCopy,
+    #[strum(serialize = "string-ref")]
+    StringRef,
+    #[strum(serialize = "string-set!")]
+    StringSet,
+    #[strum(serialize = "string-length")]
+    StringLength,
     #[strum(serialize = "<")]
     Lt,
     #[strum(serialize = ">")]

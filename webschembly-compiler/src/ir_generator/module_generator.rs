@@ -1961,6 +1961,50 @@ impl BuiltinConversionRule {
                     },
                 },
             ],
+            Builtin::StringRef => vec![BuiltinConversionRule::Binary {
+                args: [Type::Val(ValType::String), Type::Val(ValType::Int)],
+                ret: Type::Val(ValType::Char),
+                ir_gen: |ctx, arg1, arg2| {
+                    ctx.builder.exprs.push(Instr {
+                        local: Some(ctx.dest),
+                        kind: InstrKind::StringRef(arg1, arg2),
+                    });
+                },
+            }],
+            Builtin::StringCopy => vec![BuiltinConversionRule::Unary {
+                args: [Type::Val(ValType::String)],
+                ret: Type::Val(ValType::String),
+                ir_gen: |ctx, arg| {
+                    ctx.builder.exprs.push(Instr {
+                        local: Some(ctx.dest),
+                        kind: InstrKind::StringCopy(arg),
+                    });
+                },
+            }],
+            Builtin::StringSet => vec![BuiltinConversionRule::Ternary {
+                args: [
+                    Type::Val(ValType::String),
+                    Type::Val(ValType::Int),
+                    Type::Val(ValType::Char),
+                ],
+                ret: Type::Val(ValType::Nil),
+                ir_gen: |ctx, arg1, arg2, arg3| {
+                    ctx.builder.exprs.push(Instr {
+                        local: Some(ctx.dest),
+                        kind: InstrKind::StringSet(arg1, arg2, arg3),
+                    });
+                },
+            }],
+            Builtin::StringLength => vec![BuiltinConversionRule::Unary {
+                args: [Type::Val(ValType::String)],
+                ret: Type::Val(ValType::Int),
+                ir_gen: |ctx, arg1| {
+                    ctx.builder.exprs.push(Instr {
+                        local: Some(ctx.dest),
+                        kind: InstrKind::StringLength(arg1),
+                    });
+                },
+            }],
             Builtin::EqNum => vec![
                 BuiltinConversionRule::Binary {
                     args: [Type::Val(ValType::Int), Type::Val(ValType::Int)],

@@ -4,7 +4,7 @@
   
   (type $Nil (sub final (struct)))
   (type $Bool (sub final (struct (field i8))))
-  (type $Char (sub final (struct (field i32))))
+  (type $Char (sub final (struct (field $value i32))))
   (type $Int (sub final (struct (field i64))))
   (type $Float (sub final (struct (field f64))))
   (type $String (sub final (struct
@@ -55,7 +55,7 @@
     (local $symbol_index i32)
     (local $new_symbol (ref null $Symbol))
 
-    (local.set $s (call $copy_string (local.get $s)))
+    (local.set $s (call $string_copy (local.get $s)))
     
     ;; string -> symbol_index
     (call $string_to_memory (local.get $s)) (local.set $s_ptr) (local.set $s_len)
@@ -176,7 +176,7 @@
     (local.get $buf)
   )
 
-  (func $copy_string (export "copy_string") (param $s (ref null $String)) (result (ref null $String))
+  (func $string_copy (export "string_copy") (param $s (ref null $String)) (result (ref null $String))
     (local $s_buf (ref $StringBuf))
     (local.set $s_buf (struct.get $String $buf (local.get $s)))
     (struct.set $StringBuf $shared (local.get $s_buf) (i32.const 1))
@@ -236,6 +236,26 @@
     (local.get $cons)
   )
 
+  (func $copy_buf (param $buf (ref $Buf)) (param $offset i32) (param $len i32) (result (ref $Buf))
+    (local $new_buf (ref $Buf))
+    (local $i i32)
+
+    (local.set $new_buf (array.new $Buf (i32.const 0) (local.get $len)))
+
+    (block $break
+      (loop $loop
+        (br_if $break
+          (i32.ge_u (local.get $i) (local.get $len))
+        )
+        (array.set $Buf (local.get $new_buf) (local.get $i) (array.get_u $Buf (local.get $buf) (i32.add (local.get $offset) (local.get $i))))
+        (local.set $i (i32.add (local.get $i) (i32.const 1)))
+        (br $loop)
+      )
+    )
+
+    (local.get $new_buf)
+  )
+
   (func $string_eq (export "string_eq") (param $s1 (ref null $String)) (param $s2 (ref null $String)) (result i32)
     (local $len1 i32)
     (local $len2 i32)
@@ -275,5 +295,50 @@
     )
 
     (i32.const 1)
+  )
+
+  ;; TODO: string_set/ref/lengthのマルチバイト文字対応
+  (func $string_ref (export "string_ref") (param $s (ref null $String)) (param $index i32) (result i32)
+    (local $buf (ref $Buf))
+    (if (i32.ge_u (local.get $index) (struct.get $String $len (local.get $s)))
+      (then
+        (call $throw_webassembly_exception)
+      )
+    )  
+    (local.set $buf (struct.get $StringBuf $buf (struct.get $String $buf (local.get $s))))
+    (array.get_u $Buf (local.get $buf) (i32.add (struct.get $String $offset (local.get $s)) (local.get $index)))
+  )
+
+  (func $string_set (export "string_set") (param $s (ref null $String)) (param $index i32) (param $char i32)
+    (local $buf (ref $Buf))
+    (if (i32.ge_u (local.get $index) (struct.get $String $len (local.get $s)))
+      (then
+        (call $throw_webassembly_exception)
+      )
+    )
+    (call $string_to_unshared (local.get $s))
+    (local.set $buf (struct.get $StringBuf $buf (struct.get $String $buf (local.get $s))))
+    (array.set $Buf (local.get $buf) (i32.add (struct.get $String $offset (local.get $s)) (local.get $index)) (local.get $char))
+  )
+
+  (func $string_to_unshared (param $s (ref null $String))
+    (local $s_buf (ref $StringBuf))
+    (local.set $s_buf (struct.get $String $buf (local.get $s)))
+    (if (i32.eq (struct.get $StringBuf $shared (local.get $s_buf)) (i32.const 1))
+      (then
+        (local.set $s_buf
+          (struct.new $StringBuf
+            (call $copy_buf
+              (struct.get $StringBuf $buf (local.get $s_buf))
+              (struct.get $String $offset (local.get $s))
+              (struct.get $String $len (local.get $s)))
+            (i32.const 0)))
+        (struct.set $String $buf (local.get $s) (local.get $s_buf))
+      )
+    )
+  )
+
+  (func $string_length (export "string_length") (param $s (ref null $String)) (result i32)
+    (struct.get $String $len (local.get $s))
   )
 )
