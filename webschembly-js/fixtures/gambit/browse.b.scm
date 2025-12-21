@@ -185,10 +185,17 @@
       (*a *b *b *a (*a) (*b))
       (? ? * (b a) * ? ?))))(newline)
 
+(define (loop n)
+  (if (= n 0)
+      '()
+      (begin
+         (browse '((*a ?b *b ?b a *a a *b *a)
+          (*a *b *b *a (*a) (*b))
+          (? ? * (b a) * ? ?)))
+        (loop (- n 1)))))
+
 (define (run)
-  (browse '((*a ?b *b ?b a *a a *b *a)
-      (*a *b *b *a (*a) (*b))
-      (? ? * (b a) * ? ?))))
+  (loop 10))
 
 (write "start")(newline)
 (run)
