@@ -4,7 +4,7 @@
   (if (FLOAT< n 2.)
     n
     (FLOAT+ (fibfp (FLOAT- n 1.))
-            (fibfp (FLOAT- n 2.)))))
+      (fibfp (FLOAT- n 2.)))))
 
 (define (main . args)
   (run-benchmark

@@ -164,23 +164,23 @@
                     (loop (cdr l) (+ nb-confs 1))
                     (rule-loop (cdr rules) (+ nb-confs 1)))))
               (def-loop (cdr defs) nb-confs))))
-      nb-confs)))
+        nb-confs)))
 
-; First, associate a numeric identifier to every non-terminal in the
-; grammar (with the goal non-terminal associated with 0).
-;
-; So, for the grammar given above we get:
-;
-; s -> 0   x -> 1   = -> 4   e ->3    + -> 4   v -> 5   y -> 6
+  ; First, associate a numeric identifier to every non-terminal in the
+  ; grammar (with the goal non-terminal associated with 0).
+  ;
+  ; So, for the grammar given above we get:
+  ;
+  ; s -> 0   x -> 1   = -> 4   e ->3    + -> 4   v -> 5   y -> 6
 
-  (let* ((nts (non-terminals grammar))          ; id map = list of non-terms
-         (nb-nts (vector-length nts))           ; the number of non-terms
+  (let* ((nts (non-terminals grammar)) ; id map = list of non-terms
+         (nb-nts (vector-length nts)) ; the number of non-terms
          (nb-confs (+ (nb-configurations grammar) nb-nts)) ; the nb of confs
-         (starters (make-vector nb-nts '()))    ; starters for every non-term
-         (enders (make-vector nb-nts '()))      ; enders for every non-term
-         (predictors (make-vector nb-nts '()))  ; predictors for every non-term
-         (steps (make-vector nb-confs #f))      ; what to do in a given conf
-         (names (make-vector nb-confs #f)))     ; name of rules
+         (starters (make-vector nb-nts '())) ; starters for every non-term
+         (enders (make-vector nb-nts '())) ; enders for every non-term
+         (predictors (make-vector nb-nts '())) ; predictors for every non-term
+         (steps (make-vector nb-confs #f)) ; what to do in a given conf
+         (names (make-vector nb-confs #f))) ; name of rules
 
     (define (setup-tables grammar nts starters enders predictors steps names)
 
@@ -219,20 +219,20 @@
                           (rule-loop (cdr rules) (+ conf 1) (+ rule-num 1))))))
                   (def-loop (cdr defs) conf))))))))
 
-; Now, for each non-terminal, compute the starters, enders and predictors and
-; the names and steps tables.
+    ; Now, for each non-terminal, compute the starters, enders and predictors and
+    ; the names and steps tables.
 
     (setup-tables grammar nts starters enders predictors steps names)
 
-; Build the parser description
+    ; Build the parser description
 
     (let ((parser-descr (vector lexer
-                                nts
-                                starters
-                                enders
-                                predictors
-                                steps
-                                names)))
+                         nts
+                         starters
+                         enders
+                         predictors
+                         steps
+                         names)))
       (lambda (input)
 
         (define (ind nt nts) ; return index of non-terminal `nt' in `nts'
@@ -425,14 +425,14 @@
                 (if (pair? l)
                   (let* ((ender (car l))
                          (ender-set (conf-set-get (vector-ref states j)
-                                                  ender)))
+                                     ender)))
                     (if ender-set
                       (let loop2 ((k (conf-set-head ender-set)))
                         (if (>= k 0)
                           (begin
                             (and (>= k i)
-                                 (conf-set-adjoin** states states* k prev i)
-                                 (conf-set-adjoin** states states* j ender k))
+                              (conf-set-adjoin** states states* k prev i)
+                              (conf-set-adjoin** states states* j ender k))
                             (loop2 (conf-set-next ender-set k)))
                           (loop1 (cdr l))))
                       (loop1 (cdr l)))))))))
@@ -450,7 +450,10 @@
                       (if (>= i 0)
                         (begin
                           (produce conf i state-num enders steps
-                                   toks states states* nb-nts)
+                            toks
+                            states
+                            states*
+                            nb-nts)
                           (loop2 (conf-set-next conf-set i)))
                         (loop1)))))))))
 
@@ -499,28 +502,33 @@
                   (if (pair? l1)
                     (let* ((ender (car l1))
                            (ender-set (conf-set-get (vector-ref states j)
-                                                    ender)))
+                                       ender)))
                       (if ender-set
                         (let loop2 ((k (conf-set-head ender-set)) (l2 l2))
                           (if (>= k 0)
                             (if (and (>= k i)
-                                     (conf-set-member? (vector-ref states k)
-                                                       prev i))
+                                 (conf-set-member? (vector-ref states k)
+                                   prev
+                                   i))
                               (let ((prev-trees
                                       (deriv-trees prev i k enders steps names
-                                                   toks states nb-nts))
+                                        toks
+                                        states
+                                        nb-nts))
                                     (ender-trees
                                       (deriv-trees ender k j enders steps names
-                                                   toks states nb-nts)))
+                                        toks
+                                        states
+                                        nb-nts)))
                                 (let loop3 ((l3 ender-trees) (l2 l2))
                                   (if (pair? l3)
                                     (let ((ender-tree (list (car l3))))
                                       (let loop4 ((l4 prev-trees) (l2 l2))
                                         (if (pair? l4)
                                           (loop4 (cdr l4)
-                                                 (cons (append (car l4)
-                                                               ender-tree)
-                                                       l2))
+                                            (cons (append (car l4)
+                                                   ender-tree)
+                                              l2))
                                           (loop3 (cdr l3) l2))))
                                     (loop2 (conf-set-next ender-set k) l2))))
                               (loop2 (conf-set-next ender-set k) l2))
@@ -537,9 +545,11 @@
                     (let ((conf (car l)))
                       (if (conf-set-member? (vector-ref states j) conf i)
                         (loop (cdr l)
-                              (append (deriv-trees conf i j enders steps names
-                                                   toks states nb-nts)
-                                      trees))
+                          (append (deriv-trees conf i j enders steps names
+                                   toks
+                                   states
+                                   nb-nts)
+                            trees))
                         (loop (cdr l) trees)))
                     trees)))
               #f)))
@@ -553,21 +563,26 @@
                 (if (pair? l)
                   (let* ((ender (car l))
                          (ender-set (conf-set-get (vector-ref states j)
-                                                  ender)))
+                                     ender)))
                     (if ender-set
                       (let loop2 ((k (conf-set-head ender-set)) (n n))
                         (if (>= k 0)
                           (if (and (>= k i)
-                                   (conf-set-member? (vector-ref states k)
-                                                     prev i))
+                               (conf-set-member? (vector-ref states k)
+                                 prev
+                                 i))
                             (let ((nb-prev-trees
                                     (nb-deriv-trees prev i k enders steps
-                                                    toks states nb-nts))
+                                      toks
+                                      states
+                                      nb-nts))
                                   (nb-ender-trees
                                     (nb-deriv-trees ender k j enders steps
-                                                    toks states nb-nts)))
+                                      toks
+                                      states
+                                      nb-nts)))
                               (loop2 (conf-set-next ender-set k)
-                                     (+ n (* nb-prev-trees nb-ender-trees))))
+                                (+ n (* nb-prev-trees nb-ender-trees))))
                             (loop2 (conf-set-next ender-set k) n))
                           (loop1 (cdr l) n)))
                       (loop1 (cdr l) n)))
@@ -582,64 +597,69 @@
                     (let ((conf (car l)))
                       (if (conf-set-member? (vector-ref states j) conf i)
                         (loop (cdr l)
-                              (+ (nb-deriv-trees conf i j enders steps
-                                                 toks states nb-nts)
-                                 nb-trees))
+                          (+ (nb-deriv-trees conf i j enders steps
+                              toks
+                              states
+                              nb-nts)
+                            nb-trees))
                         (loop (cdr l) nb-trees)))
                     nb-trees)))
               #f)))
 
-        (let* ((lexer      (vector-ref parser-descr 0))
-               (nts        (vector-ref parser-descr 1))
-               (starters   (vector-ref parser-descr 2))
-               (enders     (vector-ref parser-descr 3))
+        (let* ((lexer (vector-ref parser-descr 0))
+               (nts (vector-ref parser-descr 1))
+               (starters (vector-ref parser-descr 2))
+               (enders (vector-ref parser-descr 3))
                (predictors (vector-ref parser-descr 4))
-               (steps      (vector-ref parser-descr 5))
-               (names      (vector-ref parser-descr 6))
-               (toks       (input->tokens input lexer nts)))
+               (steps (vector-ref parser-descr 5))
+               (names (vector-ref parser-descr 6))
+               (toks (input->tokens input lexer nts)))
 
           (vector nts
-                  starters
-                  enders
-                  predictors
-                  steps
-                  names
-                  toks
-                  (backward (forward starters enders predictors steps nts toks)
-                            enders steps nts toks)
-                  parsed?
-                  deriv-trees*
-                  nb-deriv-trees*))))))
+            starters
+            enders
+            predictors
+            steps
+            names
+            toks
+            (backward (forward starters enders predictors steps nts toks)
+              enders
+              steps
+              nts
+              toks)
+            parsed?
+            deriv-trees*
+            nb-deriv-trees*))))))
 
 (define (parse->parsed? parse nt i j)
-  (let* ((nts     (vector-ref parse 0))
-         (enders  (vector-ref parse 2))
-         (states  (vector-ref parse 7))
+  (let* ((nts (vector-ref parse 0))
+         (enders (vector-ref parse 2))
+         (states (vector-ref parse 7))
          (parsed? (vector-ref parse 8)))
     (parsed? nt i j nts enders states)))
 
 (define (parse->trees parse nt i j)
-  (let* ((nts          (vector-ref parse 0))
-         (enders       (vector-ref parse 2))
-         (steps        (vector-ref parse 4))
-         (names        (vector-ref parse 5))
-         (toks         (vector-ref parse 6))
-         (states       (vector-ref parse 7))
+  (let* ((nts (vector-ref parse 0))
+         (enders (vector-ref parse 2))
+         (steps (vector-ref parse 4))
+         (names (vector-ref parse 5))
+         (toks (vector-ref parse 6))
+         (states (vector-ref parse 7))
          (deriv-trees* (vector-ref parse 9)))
     (deriv-trees* nt i j nts enders steps names toks states)))
 
 (define (parse->nb-trees parse nt i j)
-  (let* ((nts             (vector-ref parse 0))
-         (enders          (vector-ref parse 2))
-         (steps           (vector-ref parse 4))
-         (toks            (vector-ref parse 6))
-         (states          (vector-ref parse 7))
+  (let* ((nts (vector-ref parse 0))
+         (enders (vector-ref parse 2))
+         (steps (vector-ref parse 4))
+         (toks (vector-ref parse 6))
+         (states (vector-ref parse 7))
          (nb-deriv-trees* (vector-ref parse 10)))
     (nb-deriv-trees* nt i j nts enders steps toks states)))
 
 (define (test)
-  (let ((p (make-parser '( (s (a) (s s)) )
-                        (lambda (l) (map (lambda (x) (list x x)) l)))))
+  (let ((p (make-parser '((s (a) (s s)))
+            (lambda (l) (map (lambda (x) (list x x)) l)))))
     (let ((x (p '(a a a a a a a a a))))
       (length (parse->trees x 's 0 9)))))
 

@@ -6,10 +6,10 @@
 (define (catport port)
   (let ((x (read-char port)))
     (if (eof-object? x)
-        (close-output-port outport)
-        (begin
-          (write-char x outport)
-          (catport port)))))
+      (close-output-port outport)
+      (begin
+        (write-char x outport)
+        (catport port)))))
 
 (define (go)
   (set! inport (open-input-file "../../src/bib"))
@@ -19,7 +19,7 @@
 
 (define (main . args)
   (run-benchmark
-   "cat"
-   cat-iters
-   (lambda (result) #t)
-   (lambda () (lambda () (go)))))
+    "cat"
+    cat-iters
+    (lambda (result) #t)
+    (lambda () (lambda () (go)))))

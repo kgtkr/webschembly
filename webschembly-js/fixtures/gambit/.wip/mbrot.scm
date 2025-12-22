@@ -3,11 +3,11 @@
 (define (count r i step x y)
 
   (let ((max-count 64)
-        (radius^2  16.0))
+        (radius^2 16.0))
 
     (let ((cr (FLOAT+ r (FLOAT* (exact->inexact x) step)))
           (ci (FLOAT+ i (FLOAT* (exact->inexact y) step))))
-      
+
       (let loop ((zr cr)
                  (zi ci)
                  (c 0))

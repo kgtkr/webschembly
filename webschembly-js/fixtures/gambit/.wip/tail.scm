@@ -7,18 +7,18 @@
   (let ((x (read-char port)))
     (cond ((eof-object? x)
            x)
-          ((char=? x #\newline)
-           (list->string (reverse
-                          (cons x line-so-far))))
-          (#t (readline port (cons x line-so-far))))))
+      ((char=? x #\newline)
+        (list->string (reverse
+                       (cons x line-so-far))))
+      (#t (readline port (cons x line-so-far))))))
 
 (define (tail-r-aux port file-so-far)
   (let ((x (readline port '())))
     (if (eof-object? x)
-        (begin
-          (display file-so-far outport)
-          (close-output-port outport))
-        (tail-r-aux port (cons x file-so-far)))))
+      (begin
+        (display file-so-far outport)
+        (close-output-port outport))
+      (tail-r-aux port (cons x file-so-far)))))
 
 (define (tail-r port)
   (tail-r-aux port '()))
@@ -31,7 +31,7 @@
 
 (define (main . args)
   (run-benchmark
-   "tail"
-   tail-iters
-   (lambda (result) #t)
-   (lambda () (lambda () (go)))))
+    "tail"
+    tail-iters
+    (lambda (result) #t)
+    (lambda () (lambda () (go)))))

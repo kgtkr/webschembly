@@ -22,15 +22,15 @@
                (t (GENERICquotient one 4))
                (x 1))
       (if (GENERIC= a b)
-          (GENERICquotient (square (GENERIC+ a b)) (GENERIC* 4 t))
-          (let ((new-a (GENERICquotient (GENERIC+ a b) 2)))
-            (loop new-a
-                  (square-root (GENERIC* a b))
-                  (GENERIC- t
-                            (GENERICquotient
-                             (GENERIC* x (square (GENERIC- new-a a)))
-                             one))
-                  (GENERIC* 2 x)))))))
+        (GENERICquotient (square (GENERIC+ a b)) (GENERIC* 4 t))
+        (let ((new-a (GENERICquotient (GENERIC+ a b) 2)))
+          (loop new-a
+            (square-root (GENERIC* a b))
+            (GENERIC- t
+              (GENERICquotient
+                (GENERIC* x (square (GENERIC- new-a a)))
+                one))
+            (GENERIC* 2 x)))))))
 
 ; Compute pi using the quadratically converging 'borwein' method.
 
@@ -46,17 +46,17 @@
                (y qurt2)
                (p (GENERIC+ (GENERIC* 2 one) sqrt2)))
       (let ((new-p (GENERICquotient (GENERIC* p (GENERIC+ x one))
-                                    (GENERIC+ y one))))
+                    (GENERIC+ y one))))
         (if (GENERIC= x one)
-            new-p
-            (let ((sqrt-x (square-root (GENERIC* one x))))
-              (loop (GENERICquotient
-                     (GENERIC* one (GENERIC+ x one))
-                     (GENERIC* 2 sqrt-x))
-                    (GENERICquotient
-                     (GENERIC* one (GENERIC+ (GENERIC* x y) one^2))
-                     (GENERIC* (GENERIC+ y one) sqrt-x))
-                    new-p)))))))
+          new-p
+          (let ((sqrt-x (square-root (GENERIC* one x))))
+            (loop (GENERICquotient
+                   (GENERIC* one (GENERIC+ x one))
+                   (GENERIC* 2 sqrt-x))
+              (GENERICquotient
+                (GENERIC* one (GENERIC+ (GENERIC* x y) one^2))
+                (GENERIC* (GENERIC+ y one) sqrt-x))
+              new-p)))))))
 
 ; Compute pi using the quartically converging 'borwein' method.
 
@@ -69,30 +69,30 @@
                (a (GENERIC- (GENERIC* 6 one) (GENERIC* 4 sqrt2)))
                (x 8))
       (if (GENERIC= y 0)
-          (GENERICquotient one^2 a)
-          (let* ((t1 (quartic-root (GENERIC- one^4 (square (square y)))))
-                 (t2 (GENERICquotient
-                      (GENERIC* one (GENERIC- one t1))
-                      (GENERIC+ one t1)))
-                 (t3 (GENERICquotient
-                      (square (GENERICquotient (square (GENERIC+ one t2)) one))
-                      one))
-                 (t4 (GENERIC+ one
-                               (GENERIC+ t2
-                                         (GENERICquotient (square t2) one)))))
-            (loop t2
-                  (GENERICquotient
-                   (GENERIC- (GENERIC* t3 a) (GENERIC* x (GENERIC* t2 t4)))
-                   one)
-                  (GENERIC* 4 x)))))))
+        (GENERICquotient one^2 a)
+        (let* ((t1 (quartic-root (GENERIC- one^4 (square (square y)))))
+               (t2 (GENERICquotient
+                    (GENERIC* one (GENERIC- one t1))
+                    (GENERIC+ one t1)))
+               (t3 (GENERICquotient
+                    (square (GENERICquotient (square (GENERIC+ one t2)) one))
+                    one))
+               (t4 (GENERIC+ one
+                    (GENERIC+ t2
+                      (GENERICquotient (square t2) one)))))
+          (loop t2
+            (GENERICquotient
+              (GENERIC- (GENERIC* t3 a) (GENERIC* x (GENERIC* t2 t4)))
+              one)
+            (GENERIC* 4 x)))))))
 
 ; Try it.
 
 (define (pies n)
   (map (lambda (n) (GENERICremainder n 10000000))
-       (list (pi-brent-salamin n)
-             (pi-borwein2 n)
-             (pi-borwein4 n))))
+    (list (pi-brent-salamin n)
+      (pi-borwein2 n)
+      (pi-borwein4 n))))
 
 ;;; The last seven digits of the various approximations to pi to
 ;;; 10,000 digits.
@@ -101,9 +101,8 @@
 
 (define (main . args)
   (run-benchmark
-   "pi10K"
-   pi10K-iters
-   (lambda (result) (equal? result expected))
-   (lambda (n) (lambda () (pies n)))
-   #e1e4
-   ))
+    "pi10K"
+    pi10K-iters
+    (lambda (result) (equal? result expected))
+    (lambda (n) (lambda () (pies n)))
+    #e1e4))

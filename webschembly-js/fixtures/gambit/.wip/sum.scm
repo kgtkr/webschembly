@@ -5,7 +5,7 @@
     (if (< i 0)
       sum
       (loop (- i 1) (+ i sum)))))
- 
+
 (define (main . args)
   (run-benchmark
     "sum"

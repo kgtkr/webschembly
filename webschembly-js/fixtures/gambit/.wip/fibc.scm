@@ -16,8 +16,8 @@
     (if (zero? (_1- x))
       (c 1)
       (addc (call-with-current-continuation (lambda (c) (fibc (_1- x) c)))
-            (call-with-current-continuation (lambda (c) (fibc (_1- (_1- x)) c)))
-            c))))
+        (call-with-current-continuation (lambda (c) (fibc (_1- (_1- x)) c)))
+        c))))
 
 (define (main)
   (run-benchmark

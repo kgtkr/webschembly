@@ -1,25 +1,25 @@
 ;; (<test> <expression> ...)
 (cond (#t
-        (write "Basic: First clause match")
-        (newline))
-      (#t
-        (write "Basic: Should not be reached")
-        (newline)))
+       (write "Basic: First clause match")
+       (newline))
+  (#t
+    (write "Basic: Should not be reached")
+    (newline)))
 (cond (#f
-        (write "Skip me")
-        (newline))
-      (#t
-        (write "Basic: Second clause match")
-        (newline)))
+       (write "Skip me")
+       (newline))
+  (#t
+    (write "Basic: Second clause match")
+    (newline)))
 (cond (#f
-        (write "Skip me")
-        (newline))
-      (#f
-        (write "Skip me too")
-        (newline))
-      (else
-        (write "Else: Fallback match")
-        (newline)))
+       (write "Skip me")
+       (newline))
+  (#f
+    (write "Skip me too")
+    (newline))
+  (else
+    (write "Else: Fallback match")
+    (newline)))
 
 ;; (<test>) の場合 (<test> <test>) とほぼ同じ動作をする
 (write
@@ -32,25 +32,24 @@
 
 ;; ただし<test>は一度だけ評価される
 (cond
-  ((begin (write "Evaluated once")(newline) #t)))
-
+  ((begin (write "Evaluated once") (newline) #t)))
 
 ;; (<test> => <expression>) の場合
-(cond (100 => 
-       (lambda (x) 
-         (write "Arrow: Received value ") 
-         (write x) 
+(cond (100 =>
+       (lambda (x)
+         (write "Arrow: Received value ")
+         (write x)
          (newline))))
 
 (cond (#f => (lambda (x) (write "Should not run")))
-      (else 
-        (write "Arrow: Skipped false test")
-        (newline)))
+  (else
+    (write "Arrow: Skipped false test")
+    (newline)))
 
 ;; <test> は一度だけ評価される
 (cond
-  ((begin (write "Arrow evaluated once")(newline) 200) =>
-   (lambda (x)
-     (write "Arrow received ")
-     (write x)
-     (newline))))
+  ((begin (write "Arrow evaluated once") (newline) 200) =>
+    (lambda (x)
+      (write "Arrow received ")
+      (write x)
+      (newline))))

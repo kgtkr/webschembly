@@ -3,14 +3,14 @@
 (define (create-x n)
   (define result (make-vector n))
   (do ((i 0 (+ i 1)))
-      ((>= i n) result)
+    ((>= i n) result)
     (vector-set! result i i)))
 
 (define (create-y x)
   (let* ((n (vector-length x))
          (result (make-vector n)))
     (do ((i (- n 1) (- i 1)))
-        ((< i 0) result)
+      ((< i 0) result)
       (vector-set! result i (vector-ref x i)))))
 
 (define (my-try n)
@@ -20,21 +20,24 @@
   (let loop ((repeat 100)
              (result '()))
     (if (> repeat 0)
-        (loop (- repeat 1) (my-try n))
-        result)))
+      (loop (- repeat 1) (my-try n))
+      result)))
 
-(write (go 200000))(newline)
+(write (go 200000))
+(newline)
 
 (define (loop n)
   (if (= n 0)
-      '()
-      (begin
-        (go 200000)
-        (loop (- n 1)))))
+    '()
+    (begin
+      (go 200000)
+      (loop (- n 1)))))
 
 (define (run)
   (loop 10))
 
-(write "start")(newline)
+(write "start")
+(newline)
 (run)
-(write "done")(newline)
+(write "done")
+(newline)

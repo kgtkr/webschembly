@@ -2,9 +2,9 @@
 
 (define (main . args)
   (run-benchmark
-   "crash"
-   1
-   (lambda (result)
-     #t)
-   (lambda (f) (lambda () (f)))
-   #f))
+    "crash"
+    1
+    (lambda (result)
+      #t)
+    (lambda (f) (lambda () (f)))
+    #f))

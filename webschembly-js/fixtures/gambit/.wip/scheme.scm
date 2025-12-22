@@ -7,8 +7,8 @@
     (code #f)))
 
 (define scheme-global-environment
-  (cons '()   ; environment chain
-        '())) ; macros
+  (cons '() ; environment chain
+    '())) ; macros
 
 (define (scheme-add-macro name proc)
   (set-cdr! scheme-global-environment
@@ -40,8 +40,21 @@
 
 (define scheme-syntactic-keywords
   '(quote quasiquote unquote unquote-splicing
-    lambda if set! cond => else and or
-    case let let* letrec begin do define
+    lambda
+    if
+    set!
+    cond
+    =>
+    else
+    and
+    or
+    case
+    let
+    let*
+    letrec
+    begin
+    do
+    define
     define-macro))
 
 ; - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -61,10 +74,10 @@
                   (over 1))
         (cond ((null? frame)
                (loop1 (car chain) (+ up 1)))
-              ((eq? (car frame) name)
-               (cons up over))
-              (else
-               (loop2 chain up (cdr frame) (+ over 1))))))))
+          ((eq? (car frame) name)
+            (cons up over))
+          (else
+            (loop2 chain up (cdr frame) (+ over 1))))))))
 
 (define (macro? name env)
   (assq name (cdr env)))
@@ -86,10 +99,10 @@
 (define (shape form n)
   (let loop ((form form) (n n) (l form))
     (cond ((<= n 0))
-          ((pair? l)
-           (loop form (- n 1) (cdr l)))
-          (else
-           (scheme-error "Ill-constructed form" form)))))
+      ((pair? l)
+        (loop form (- n 1) (cdr l)))
+      (else
+        (scheme-error "Ill-constructed form" form)))))
 
 ; - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
@@ -121,25 +134,25 @@
 (define (comp-quasiquotation form level env)
   (cond ((= level 0)
          (scheme-comp form env))
-        ((pair? form)
-         (cond
-           ((eq? (car form) 'quasiquote)
-            (comp-quasiquotation-list form (+ level 1) env))
-           ((eq? (car form) 'unquote)
-            (if (= level 1)
-              (scheme-comp (cadr form) env)
-              (comp-quasiquotation-list form (- level 1) env)))
-           ((eq? (car form) 'unquote-splicing)
-            (if (= level 1)
-              (scheme-error "Ill-placed 'unquote-splicing'" form))
-            (comp-quasiquotation-list form (- level 1) env))
-           (else
-            (comp-quasiquotation-list form level env))))
-        ((vector? form)
-         (gen-vector-form
-           (comp-quasiquotation-list (vector->lst form) level env)))
+    ((pair? form)
+      (cond
+        ((eq? (car form) 'quasiquote)
+          (comp-quasiquotation-list form (+ level 1) env))
+        ((eq? (car form) 'unquote)
+          (if (= level 1)
+            (scheme-comp (cadr form) env)
+            (comp-quasiquotation-list form (- level 1) env)))
+        ((eq? (car form) 'unquote-splicing)
+          (if (= level 1)
+            (scheme-error "Ill-placed 'unquote-splicing'" form))
+          (comp-quasiquotation-list form (- level 1) env))
         (else
-         (gen-cst form))))
+          (comp-quasiquotation-list form level env))))
+    ((vector? form)
+      (gen-vector-form
+        (comp-quasiquotation-list (vector->lst form) level env)))
+    (else
+      (gen-cst form))))
 
 (define (comp-quasiquotation-list l level env)
   (if (pair? l)
@@ -149,11 +162,11 @@
           (begin
             (shape first 2)
             (gen-append-form (scheme-comp (cadr first) env)
-                             (comp-quasiquotation (cdr l) 1 env)))
+              (comp-quasiquotation (cdr l) 1 env)))
           (gen-cons-form (comp-quasiquotation first level env)
-                         (comp-quasiquotation (cdr l) level env)))
+            (comp-quasiquotation (cdr l) level env)))
         (gen-cons-form (comp-quasiquotation first level env)
-                       (comp-quasiquotation (cdr l) level env))))
+          (comp-quasiquotation (cdr l) level env))))
     (comp-quasiquotation l level env)))
 
 (define (unquote-splicing? x)
@@ -193,21 +206,21 @@
 (define (parms->frame parms)
   (cond ((null? parms)
          '())
-        ((pair? parms)
-         (let ((x (car parms)))
-           (variable x)
-           (cons x (parms->frame (cdr parms)))))
-        (else
-         (variable parms)
-         (list parms))))
+    ((pair? parms)
+      (let ((x (car parms)))
+        (variable x)
+        (cons x (parms->frame (cdr parms)))))
+    (else
+      (variable parms)
+      (list parms))))
 
 (define (rest-param? parms)
   (cond ((pair? parms)
          (rest-param? (cdr parms)))
-        ((null? parms)
-         #f)
-        (else
-         #t)))
+    ((null? parms)
+      #f)
+    (else
+      #t)))
 
 (define (comp-body body env)
 
@@ -217,36 +230,36 @@
       (let ((expr (car body)))
         (cond ((not (pair? expr))
                (letrec-defines* vars vals body env))
-              ((macro? (car expr) env)
-               (letrec-defines vars
-                               vals
-                               (cons (macro-expand expr env) (cdr body))
-                               env))
-              (else
-               (cond
-                 ((eq? (car expr) 'begin)
+          ((macro? (car expr) env)
+            (letrec-defines vars
+              vals
+              (cons (macro-expand expr env) (cdr body))
+              env))
+          (else
+            (cond
+              ((eq? (car expr) 'begin)
+                (letrec-defines vars
+                  vals
+                  (append (cdr expr) (cdr body))
+                  env))
+              ((eq? (car expr) 'define)
+                (let ((x (definition-name expr)))
+                  (variable x)
+                  (letrec-defines (cons x vars)
+                    (cons (definition-value expr) vals)
+                    (cdr body)
+                    env)))
+              ((eq? (car expr) 'define-macro)
+                (let ((x (definition-name expr)))
                   (letrec-defines vars
-                                  vals
-                                  (append (cdr expr) (cdr body))
-                                  env))
-                 ((eq? (car expr) 'define)
-                  (let ((x (definition-name expr)))
-                    (variable x)
-                    (letrec-defines (cons x vars)
-                                    (cons (definition-value expr) vals)
-                                    (cdr body)
-                                    env)))
-                 ((eq? (car expr) 'define-macro)
-                  (let ((x (definition-name expr)))
-                    (letrec-defines vars
-                                    vals
-                                    (cdr body)
-                                    (push-macro
-                                      x
-                                      (scheme-eval (definition-value expr))
-                                      env))))
-                 (else
-                  (letrec-defines* vars vals body env))))))
+                    vals
+                    (cdr body)
+                    (push-macro
+                      x
+                      (scheme-eval (definition-value expr))
+                      env))))
+              (else
+                (letrec-defines* vars vals body env))))))
 
       (scheme-error "Body must contain at least one evaluable expression")))
 
@@ -293,18 +306,18 @@
       (cond ((eq? (car clause) 'else)
              (shape clause 2)
              (comp-sequence (cdr clause) env))
-            ((not (pair? (cdr clause)))
-             (gen-or (scheme-comp (car clause) env)
-                     (comp-cond-aux (cdr clauses) env)))
-            ((eq? (cadr clause) '=>)
-             (shape clause 3)
-             (gen-cond-send (scheme-comp (car clause) env)
-                            (scheme-comp (caddr clause) env)
-                            (comp-cond-aux (cdr clauses) env)))
-            (else
-             (gen-if (scheme-comp (car clause) env)
-                     (comp-sequence (cdr clause) env)
-                     (comp-cond-aux (cdr clauses) env)))))
+        ((not (pair? (cdr clause)))
+          (gen-or (scheme-comp (car clause) env)
+            (comp-cond-aux (cdr clauses) env)))
+        ((eq? (cadr clause) '=>)
+          (shape clause 3)
+          (gen-cond-send (scheme-comp (car clause) env)
+            (scheme-comp (caddr clause) env)
+            (comp-cond-aux (cdr clauses) env)))
+        (else
+          (gen-if (scheme-comp (car clause) env)
+            (comp-sequence (cdr clause) env)
+            (comp-cond-aux (cdr clauses) env)))))
     (gen-cst '())))
 
 ; - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -334,7 +347,7 @@
 (define (comp-case expr env)
   (shape expr 3)
   (gen-case (scheme-comp (cadr expr) env)
-            (comp-case-aux (cddr expr) env)))
+    (comp-case-aux (cddr expr) env)))
 
 (define (comp-case-aux clauses env)
   (if (pair? clauses)
@@ -343,8 +356,8 @@
       (if (eq? (car clause) 'else)
         (gen-case-else (comp-sequence (cdr clause) env))
         (gen-case-clause (car clause)
-                         (comp-sequence (cdr clause) env)
-                         (comp-case-aux (cdr clauses) env))))
+          (comp-sequence (cdr clause) env)
+          (comp-case-aux (cdr clauses) env))))
     (gen-case-else (gen-cst '()))))
 
 ; - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -357,14 +370,14 @@
            (let ((y (caddr expr)))
              (let ((proc (cons 'lambda (cons (bindings->vars y) (cdddr expr)))))
                (scheme-comp (cons (list 'letrec (list (list x proc)) x)
-                                  (bindings->vals y))
-                            env))))
-          ((pair? x)
-           (scheme-comp (cons (cons 'lambda (cons (bindings->vars x) (cddr expr)))
-                              (bindings->vals x))
-                        env))
-          (else
-           (comp-body (cddr expr) env)))))
+                             (bindings->vals y))
+                 env))))
+      ((pair? x)
+        (scheme-comp (cons (cons 'lambda (cons (bindings->vars x) (cddr expr)))
+                      (bindings->vals x))
+          env))
+      (else
+        (comp-body (cddr expr) env)))))
 
 (define (bindings->vars bindings)
   (if (pair? bindings)
@@ -388,9 +401,9 @@
   (let ((bindings (cadr expr)))
     (if (pair? bindings)
       (scheme-comp (list 'let
-                         (list (car bindings))
-                         (cons 'let* (cons (cdr bindings) (cddr expr))))
-                   env)
+                    (list (car bindings))
+                    (cons 'let* (cons (cdr bindings) (cddr expr))))
+        env)
       (comp-body (cddr expr) env))))
 
 ; - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -399,15 +412,15 @@
   (shape expr 3)
   (let ((bindings (cadr expr)))
     (comp-letrec-aux (bindings->vars bindings)
-                     (bindings->vals bindings)
-                     (cddr expr)
-                     env)))
+      (bindings->vals bindings)
+      (cddr expr)
+      env)))
 
 (define (comp-letrec-aux vars vals body env)
   (if (pair? vars)
     (let ((new-env (push-frame vars env)))
       (gen-letrec (comp-vals vals new-env)
-                  (comp-body body new-env)))
+        (comp-body body new-env)))
     (comp-body body env)))
 
 (define (comp-vals l env)
@@ -461,7 +474,7 @@
   (if (pair? bindings)
     (let ((binding (car bindings)))
       (cons (if (pair? (cddr binding)) (caddr binding) (car binding))
-            (bindings->steps (cdr bindings))))
+        (bindings->steps (cdr bindings))))
     '()))
 
 ; - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -473,10 +486,10 @@
       (variable x)
       (gen-sequence
         (gen-var-set (lookup-var x env)
-                     (scheme-comp (if (pair? pattern)
-                                    (cons 'lambda (cons (cdr pattern) (cddr expr)))
-                                    (caddr expr))
-                                  env))
+          (scheme-comp (if (pair? pattern)
+                        (cons 'lambda (cons (cdr pattern) (cddr expr)))
+                        (caddr expr))
+            env))
         (gen-cst x)))))
 
 ; - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -499,24 +512,24 @@
 
 (define (gen-rte-ref up over)
   (case up
-    ((0)  (gen-slot-ref-0 over))
-    ((1)  (gen-slot-ref-1 over))
+    ((0) (gen-slot-ref-0 over))
+    ((1) (gen-slot-ref-1 over))
     (else (gen-slot-ref-up-2 (gen-rte-ref (- up 2) over)))))
 
 (define (gen-slot-ref-0 i)
   (case i
-    ((0)  (lambda (rte) (vector-ref rte 0)))
-    ((1)  (lambda (rte) (vector-ref rte 1)))
-    ((2)  (lambda (rte) (vector-ref rte 2)))
-    ((3)  (lambda (rte) (vector-ref rte 3)))
+    ((0) (lambda (rte) (vector-ref rte 0)))
+    ((1) (lambda (rte) (vector-ref rte 1)))
+    ((2) (lambda (rte) (vector-ref rte 2)))
+    ((3) (lambda (rte) (vector-ref rte 3)))
     (else (lambda (rte) (vector-ref rte i)))))
 
 (define (gen-slot-ref-1 i)
   (case i
-    ((0)  (lambda (rte) (vector-ref (vector-ref rte 0) 0)))
-    ((1)  (lambda (rte) (vector-ref (vector-ref rte 0) 1)))
-    ((2)  (lambda (rte) (vector-ref (vector-ref rte 0) 2)))
-    ((3)  (lambda (rte) (vector-ref (vector-ref rte 0) 3)))
+    ((0) (lambda (rte) (vector-ref (vector-ref rte 0) 0)))
+    ((1) (lambda (rte) (vector-ref (vector-ref rte 0) 1)))
+    ((2) (lambda (rte) (vector-ref (vector-ref rte 0) 2)))
+    ((3) (lambda (rte) (vector-ref (vector-ref rte 0) 3)))
     (else (lambda (rte) (vector-ref (vector-ref rte 0) i)))))
 
 (define (gen-slot-ref-up-2 code)
@@ -534,9 +547,9 @@
     ((#t) (lambda (rte) #t))
     ((-2) (lambda (rte) -2))
     ((-1) (lambda (rte) -1))
-    ((0)  (lambda (rte) 0))
-    ((1)  (lambda (rte) 1))
-    ((2)  (lambda (rte) 2))
+    ((0) (lambda (rte) 0))
+    ((1) (lambda (rte) 1))
+    ((2) (lambda (rte) 2))
     (else (lambda (rte) val))))
 
 ; - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -559,32 +572,32 @@
 
 (define (gen-rte-set up over code)
   (case up
-    ((0)  (gen-slot-set-0 over code))
-    ((1)  (gen-slot-set-1 over code))
+    ((0) (gen-slot-set-0 over code))
+    ((1) (gen-slot-set-1 over code))
     (else (gen-slot-set-n (gen-rte-ref (- up 2) 0) over code))))
 
 (define (gen-slot-set-0 i code)
   (case i
-    ((0)  (lambda (rte) (vector-set! rte 0 (code rte))))
-    ((1)  (lambda (rte) (vector-set! rte 1 (code rte))))
-    ((2)  (lambda (rte) (vector-set! rte 2 (code rte))))
-    ((3)  (lambda (rte) (vector-set! rte 3 (code rte))))
+    ((0) (lambda (rte) (vector-set! rte 0 (code rte))))
+    ((1) (lambda (rte) (vector-set! rte 1 (code rte))))
+    ((2) (lambda (rte) (vector-set! rte 2 (code rte))))
+    ((3) (lambda (rte) (vector-set! rte 3 (code rte))))
     (else (lambda (rte) (vector-set! rte i (code rte))))))
 
 (define (gen-slot-set-1 i code)
   (case i
-    ((0)  (lambda (rte) (vector-set! (vector-ref rte 0) 0 (code rte))))
-    ((1)  (lambda (rte) (vector-set! (vector-ref rte 0) 1 (code rte))))
-    ((2)  (lambda (rte) (vector-set! (vector-ref rte 0) 2 (code rte))))
-    ((3)  (lambda (rte) (vector-set! (vector-ref rte 0) 3 (code rte))))
+    ((0) (lambda (rte) (vector-set! (vector-ref rte 0) 0 (code rte))))
+    ((1) (lambda (rte) (vector-set! (vector-ref rte 0) 1 (code rte))))
+    ((2) (lambda (rte) (vector-set! (vector-ref rte 0) 2 (code rte))))
+    ((3) (lambda (rte) (vector-set! (vector-ref rte 0) 3 (code rte))))
     (else (lambda (rte) (vector-set! (vector-ref rte 0) i (code rte))))))
 
 (define (gen-slot-set-n up i code)
   (case i
-    ((0)  (lambda (rte) (vector-set! (up (vector-ref rte 0)) 0 (code rte))))
-    ((1)  (lambda (rte) (vector-set! (up (vector-ref rte 0)) 1 (code rte))))
-    ((2)  (lambda (rte) (vector-set! (up (vector-ref rte 0)) 2 (code rte))))
-    ((3)  (lambda (rte) (vector-set! (up (vector-ref rte 0)) 3 (code rte))))
+    ((0) (lambda (rte) (vector-set! (up (vector-ref rte 0)) 0 (code rte))))
+    ((1) (lambda (rte) (vector-set! (up (vector-ref rte 0)) 1 (code rte))))
+    ((2) (lambda (rte) (vector-set! (up (vector-ref rte 0)) 2 (code rte))))
+    ((3) (lambda (rte) (vector-set! (up (vector-ref rte 0)) 3 (code rte))))
     (else (lambda (rte) (vector-set! (up (vector-ref rte 0)) i (code rte))))))
 
 (define (gen-glo-set i code)
@@ -594,9 +607,9 @@
 
 (define (gen-lambda-rest nb-vars body)
   (case nb-vars
-    ((1)  (gen-lambda-1-rest body))
-    ((2)  (gen-lambda-2-rest body))
-    ((3)  (gen-lambda-3-rest body))
+    ((1) (gen-lambda-1-rest body))
+    ((2) (gen-lambda-2-rest body))
+    ((3) (gen-lambda-3-rest body))
     (else (gen-lambda-n-rest nb-vars body))))
 
 (define (gen-lambda-1-rest body)
@@ -630,10 +643,10 @@
 
 (define (gen-lambda nb-vars body)
   (case nb-vars
-    ((0)  (gen-lambda-0 body))
-    ((1)  (gen-lambda-1 body))
-    ((2)  (gen-lambda-2 body))
-    ((3)  (gen-lambda-3 body))
+    ((0) (gen-lambda-0 body))
+    ((1) (gen-lambda-1 body))
+    ((2) (gen-lambda-2 body))
+    ((3) (gen-lambda-3 body))
     (else (gen-lambda-n nb-vars body))))
 
 (define (gen-lambda-0 body)
@@ -696,7 +709,7 @@
       (if temp
         ((code2 rte) temp)
         (code3 rte)))))
-              
+
 ; - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
 (define (gen-and code1 code2)
@@ -731,9 +744,9 @@
 (define (gen-letrec vals body)
   (let ((nb-vals (length vals)))
     (case nb-vals
-      ((1)  (gen-letrec-1 (car vals) body))
-      ((2)  (gen-letrec-2 (car vals) (cadr vals) body))
-      ((3)  (gen-letrec-3 (car vals) (cadr vals) (caddr vals) body))
+      ((1) (gen-letrec-1 (car vals) body))
+      ((2) (gen-letrec-2 (car vals) (cadr vals) body))
+      ((3) (gen-letrec-3 (car vals) (cadr vals) (caddr vals) body))
       (else (gen-letrec-n nb-vals vals body)))))
 
 (define (gen-letrec-1 val1 body)
@@ -775,10 +788,10 @@
 
 (define (gen-combination oper args)
   (case (length args)
-    ((0)  (gen-combination-0 oper))
-    ((1)  (gen-combination-1 oper (car args)))
-    ((2)  (gen-combination-2 oper (car args) (cadr args)))
-    ((3)  (gen-combination-3 oper (car args) (cadr args) (caddr args)))
+    ((0) (gen-combination-0 oper))
+    ((1) (gen-combination-1 oper (car args)))
+    ((2) (gen-combination-2 oper (car args) (cadr args)))
+    ((3) (gen-combination-3 oper (car args) (cadr args) (caddr args)))
     (else (gen-combination-n oper args))))
 
 (define (gen-combination-0 oper)
@@ -806,31 +819,31 @@
 (define (scheme-comp expr env)
   (cond ((symbol? expr)
          (comp-var expr env))
-        ((not (pair? expr))
-         (comp-self-eval expr env))
-        ((macro? (car expr) env)
-         (scheme-comp (macro-expand expr env) env))
-        (else
-         (cond
-           ((eq? (car expr) 'quote)            (comp-quote expr env))
-           ((eq? (car expr) 'quasiquote)       (comp-quasiquote expr env))
-           ((eq? (car expr) 'unquote)          (comp-unquote expr env))
-           ((eq? (car expr) 'unquote-splicing) (comp-unquote-splicing expr env))
-           ((eq? (car expr) 'set!)             (comp-set! expr env))
-           ((eq? (car expr) 'lambda)           (comp-lambda expr env))
-           ((eq? (car expr) 'if)               (comp-if expr env))
-           ((eq? (car expr) 'cond)             (comp-cond expr env))
-           ((eq? (car expr) 'and)              (comp-and expr env))
-           ((eq? (car expr) 'or)               (comp-or expr env))
-           ((eq? (car expr) 'case)             (comp-case expr env))
-           ((eq? (car expr) 'let)              (comp-let expr env))
-           ((eq? (car expr) 'let*)             (comp-let* expr env))
-           ((eq? (car expr) 'letrec)           (comp-letrec expr env))
-           ((eq? (car expr) 'begin)            (comp-begin expr env))
-           ((eq? (car expr) 'do)               (comp-do expr env))
-           ((eq? (car expr) 'define)           (comp-define expr env))
-           ((eq? (car expr) 'define-macro)     (comp-define-macro expr env))
-           (else                               (comp-combination expr env))))))
+    ((not (pair? expr))
+      (comp-self-eval expr env))
+    ((macro? (car expr) env)
+      (scheme-comp (macro-expand expr env) env))
+    (else
+      (cond
+        ((eq? (car expr) 'quote) (comp-quote expr env))
+        ((eq? (car expr) 'quasiquote) (comp-quasiquote expr env))
+        ((eq? (car expr) 'unquote) (comp-unquote expr env))
+        ((eq? (car expr) 'unquote-splicing) (comp-unquote-splicing expr env))
+        ((eq? (car expr) 'set!) (comp-set! expr env))
+        ((eq? (car expr) 'lambda) (comp-lambda expr env))
+        ((eq? (car expr) 'if) (comp-if expr env))
+        ((eq? (car expr) 'cond) (comp-cond expr env))
+        ((eq? (car expr) 'and) (comp-and expr env))
+        ((eq? (car expr) 'or) (comp-or expr env))
+        ((eq? (car expr) 'case) (comp-case expr env))
+        ((eq? (car expr) 'let) (comp-let expr env))
+        ((eq? (car expr) 'let*) (comp-let* expr env))
+        ((eq? (car expr) 'letrec) (comp-letrec expr env))
+        ((eq? (car expr) 'begin) (comp-begin expr env))
+        ((eq? (car expr) 'do) (comp-do expr env))
+        ((eq? (car expr) 'define) (comp-define expr env))
+        ((eq? (car expr) 'define-macro) (comp-define-macro expr env))
+        (else (comp-combination expr env))))))
 
 ; - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
@@ -856,68 +869,68 @@
     (scheme-global-var name)
     value))
 
-(def-proc 'not                            (lambda (x) (not x)))
-(def-proc 'boolean?                       boolean?)
-(def-proc 'eqv?                           eqv?)
-(def-proc 'eq?                            eq?)
-(def-proc 'equal?                         equal?)
-(def-proc 'pair?                          (lambda (obj) (pair? obj)))
-(def-proc 'cons                           (lambda (x y) (cons x y)))
-(def-proc 'car                            (lambda (x) (car x)))
-(def-proc 'cdr                            (lambda (x) (cdr x)))
-(def-proc 'set-car!                       set-car!)
-(def-proc 'set-cdr!                       set-cdr!)
-(def-proc 'caar                           caar)
-(def-proc 'cadr                           cadr)
-(def-proc 'cdar                           cdar)
-(def-proc 'cddr                           cddr)
-(def-proc 'caaar                          caaar)
-(def-proc 'caadr                          caadr)
-(def-proc 'cadar                          cadar)
-(def-proc 'caddr                          caddr)
-(def-proc 'cdaar                          cdaar)
-(def-proc 'cdadr                          cdadr)
-(def-proc 'cddar                          cddar)
-(def-proc 'cdddr                          cdddr)
-(def-proc 'caaaar                         caaaar)
-(def-proc 'caaadr                         caaadr)
-(def-proc 'caadar                         caadar)
-(def-proc 'caaddr                         caaddr)
-(def-proc 'cadaar                         cadaar)
-(def-proc 'cadadr                         cadadr)
-(def-proc 'caddar                         caddar)
-(def-proc 'cadddr                         cadddr)
-(def-proc 'cdaaar                         cdaaar)
-(def-proc 'cdaadr                         cdaadr)
-(def-proc 'cdadar                         cdadar)
-(def-proc 'cdaddr                         cdaddr)
-(def-proc 'cddaar                         cddaar)
-(def-proc 'cddadr                         cddadr)
-(def-proc 'cdddar                         cdddar)
-(def-proc 'cddddr                         cddddr)
-(def-proc 'null?                          (lambda (x) (null? x)))
-(def-proc 'list?                          list?)
-(def-proc 'list                           list)
-(def-proc 'length                         length)
-(def-proc 'append                         append)
-(def-proc 'reverse                        reverse)
-(def-proc 'list-ref                       list-ref)
-(def-proc 'memq                           memq)
-(def-proc 'memv                           memv)
-(def-proc 'member                         member)
-(def-proc 'assq                           assq)
-(def-proc 'assv                           assv)
-(def-proc 'assoc                          assoc)
-(def-proc 'symbol?                        symbol?)
-(def-proc 'symbol->string                 symbol->string)
-(def-proc 'string->symbol                 string->symbol)
-(def-proc 'number?                        number?)
-(def-proc 'complex?                       complex?)
-(def-proc 'real?                          real?)
-(def-proc 'rational?                      rational?)
-(def-proc 'integer?                       integer?)
-(def-proc 'exact?                         exact?)
-(def-proc 'inexact?                       inexact?)
+(def-proc 'not (lambda (x) (not x)))
+(def-proc 'boolean? boolean?)
+(def-proc 'eqv? eqv?)
+(def-proc 'eq? eq?)
+(def-proc 'equal? equal?)
+(def-proc 'pair? (lambda (obj) (pair? obj)))
+(def-proc 'cons (lambda (x y) (cons x y)))
+(def-proc 'car (lambda (x) (car x)))
+(def-proc 'cdr (lambda (x) (cdr x)))
+(def-proc 'set-car! set-car!)
+(def-proc 'set-cdr! set-cdr!)
+(def-proc 'caar caar)
+(def-proc 'cadr cadr)
+(def-proc 'cdar cdar)
+(def-proc 'cddr cddr)
+(def-proc 'caaar caaar)
+(def-proc 'caadr caadr)
+(def-proc 'cadar cadar)
+(def-proc 'caddr caddr)
+(def-proc 'cdaar cdaar)
+(def-proc 'cdadr cdadr)
+(def-proc 'cddar cddar)
+(def-proc 'cdddr cdddr)
+(def-proc 'caaaar caaaar)
+(def-proc 'caaadr caaadr)
+(def-proc 'caadar caadar)
+(def-proc 'caaddr caaddr)
+(def-proc 'cadaar cadaar)
+(def-proc 'cadadr cadadr)
+(def-proc 'caddar caddar)
+(def-proc 'cadddr cadddr)
+(def-proc 'cdaaar cdaaar)
+(def-proc 'cdaadr cdaadr)
+(def-proc 'cdadar cdadar)
+(def-proc 'cdaddr cdaddr)
+(def-proc 'cddaar cddaar)
+(def-proc 'cddadr cddadr)
+(def-proc 'cdddar cdddar)
+(def-proc 'cddddr cddddr)
+(def-proc 'null? (lambda (x) (null? x)))
+(def-proc 'list? list?)
+(def-proc 'list list)
+(def-proc 'length length)
+(def-proc 'append append)
+(def-proc 'reverse reverse)
+(def-proc 'list-ref list-ref)
+(def-proc 'memq memq)
+(def-proc 'memv memv)
+(def-proc 'member member)
+(def-proc 'assq assq)
+(def-proc 'assv assv)
+(def-proc 'assoc assoc)
+(def-proc 'symbol? symbol?)
+(def-proc 'symbol->string symbol->string)
+(def-proc 'string->symbol string->symbol)
+(def-proc 'number? number?)
+(def-proc 'complex? complex?)
+(def-proc 'real? real?)
+(def-proc 'rational? rational?)
+(def-proc 'integer? integer?)
+(def-proc 'exact? exact?)
+(def-proc 'inexact? inexact?)
 ;(def-proc '=                              =)
 ;(def-proc '<                              <)
 ;(def-proc '>                              >)
@@ -928,111 +941,111 @@
 ;(def-proc 'negative?                      negative?)
 ;(def-proc 'odd?                           odd?)
 ;(def-proc 'even?                          even?)
-(def-proc 'max                            max)
-(def-proc 'min                            min)
+(def-proc 'max max)
+(def-proc 'min min)
 ;(def-proc '+                              +)
 ;(def-proc '*                              *)
 ;(def-proc '-                              -)
-(def-proc '/                              /)
-(def-proc 'abs                            abs)
+(def-proc '/ /)
+(def-proc 'abs abs)
 ;(def-proc 'quotient                       quotient)
 ;(def-proc 'remainder                      remainder)
 ;(def-proc 'modulo                         modulo)
-(def-proc 'gcd                            gcd)
-(def-proc 'lcm                            lcm)
+(def-proc 'gcd gcd)
+(def-proc 'lcm lcm)
 ;(def-proc 'numerator                      numerator)
 ;(def-proc 'denominator                    denominator)
-(def-proc 'floor                          floor)
-(def-proc 'ceiling                        ceiling)
-(def-proc 'truncate                       truncate)
-(def-proc 'round                          round)
+(def-proc 'floor floor)
+(def-proc 'ceiling ceiling)
+(def-proc 'truncate truncate)
+(def-proc 'round round)
 ;(def-proc 'rationalize                    rationalize)
-(def-proc 'exp                            exp)
-(def-proc 'log                            log)
-(def-proc 'sin                            sin)
-(def-proc 'cos                            cos)
-(def-proc 'tan                            tan)
-(def-proc 'asin                           asin)
-(def-proc 'acos                           acos)
-(def-proc 'atan                           atan)
-(def-proc 'sqrt                           sqrt)
-(def-proc 'expt                           expt)
+(def-proc 'exp exp)
+(def-proc 'log log)
+(def-proc 'sin sin)
+(def-proc 'cos cos)
+(def-proc 'tan tan)
+(def-proc 'asin asin)
+(def-proc 'acos acos)
+(def-proc 'atan atan)
+(def-proc 'sqrt sqrt)
+(def-proc 'expt expt)
 ;(def-proc 'make-rectangular               make-rectangular)
 ;(def-proc 'make-polar                     make-polar)
 ;(def-proc 'real-part                      real-part)
 ;(def-proc 'imag-part                      imag-part)
 ;(def-proc 'magnitude                      magnitude)
 ;(def-proc 'angle                          angle)
-(def-proc 'exact->inexact                 exact->inexact)
-(def-proc 'inexact->exact                 inexact->exact)
-(def-proc 'number->string                 number->string)
-(def-proc 'string->number                 string->number)
-(def-proc 'char?                          char?)
-(def-proc 'char=?                         char=?)
-(def-proc 'char<?                         char<?)
-(def-proc 'char>?                         char>?)
-(def-proc 'char<=?                        char<=?)
-(def-proc 'char>=?                        char>=?)
-(def-proc 'char-ci=?                      char-ci=?)
-(def-proc 'char-ci<?                      char-ci<?)
-(def-proc 'char-ci>?                      char-ci>?)
-(def-proc 'char-ci<=?                     char-ci<=?)
-(def-proc 'char-ci>=?                     char-ci>=?)
-(def-proc 'char-alphabetic?               char-alphabetic?)
-(def-proc 'char-numeric?                  char-numeric?)
-(def-proc 'char-whitespace?               char-whitespace?)
-(def-proc 'char-lower-case?               char-lower-case?)
-(def-proc 'char->integer                  char->integer)
-(def-proc 'integer->char                  integer->char)
-(def-proc 'char-upcase                    char-upcase)
-(def-proc 'char-downcase                  char-downcase)
-(def-proc 'string?                        string?)
-(def-proc 'make-string                    make-string)
-(def-proc 'string                         string)
-(def-proc 'string-length                  string-length)
-(def-proc 'string-ref                     string-ref)
-(def-proc 'string-set!                    string-set!)
-(def-proc 'string=?                       string=?)
-(def-proc 'string<?                       string<?)
-(def-proc 'string>?                       string>?)
-(def-proc 'string<=?                      string<=?)
-(def-proc 'string>=?                      string>=?)
-(def-proc 'string-ci=?                    string-ci=?)
-(def-proc 'string-ci<?                    string-ci<?)
-(def-proc 'string-ci>?                    string-ci>?)
-(def-proc 'string-ci<=?                   string-ci<=?)
-(def-proc 'string-ci>=?                   string-ci>=?)
-(def-proc 'substring                      substring)
-(def-proc 'string-append                  string-append)
-(def-proc 'vector?                        vector?)
-(def-proc 'make-vector                    make-vector)
-(def-proc 'vector                         vector)
-(def-proc 'vector-length                  vector-length)
-(def-proc 'vector-ref                     vector-ref)
-(def-proc 'vector-set!                    vector-set!)
-(def-proc 'procedure?                     procedure?)
-(def-proc 'apply                          apply)
-(def-proc 'map                            map)
-(def-proc 'for-each                       for-each)
+(def-proc 'exact->inexact exact->inexact)
+(def-proc 'inexact->exact inexact->exact)
+(def-proc 'number->string number->string)
+(def-proc 'string->number string->number)
+(def-proc 'char? char?)
+(def-proc 'char=? char=?)
+(def-proc 'char<? char<?)
+(def-proc 'char>? char>?)
+(def-proc 'char<=? char<=?)
+(def-proc 'char>=? char>=?)
+(def-proc 'char-ci=? char-ci=?)
+(def-proc 'char-ci<? char-ci<?)
+(def-proc 'char-ci>? char-ci>?)
+(def-proc 'char-ci<=? char-ci<=?)
+(def-proc 'char-ci>=? char-ci>=?)
+(def-proc 'char-alphabetic? char-alphabetic?)
+(def-proc 'char-numeric? char-numeric?)
+(def-proc 'char-whitespace? char-whitespace?)
+(def-proc 'char-lower-case? char-lower-case?)
+(def-proc 'char->integer char->integer)
+(def-proc 'integer->char integer->char)
+(def-proc 'char-upcase char-upcase)
+(def-proc 'char-downcase char-downcase)
+(def-proc 'string? string?)
+(def-proc 'make-string make-string)
+(def-proc 'string string)
+(def-proc 'string-length string-length)
+(def-proc 'string-ref string-ref)
+(def-proc 'string-set! string-set!)
+(def-proc 'string=? string=?)
+(def-proc 'string<? string<?)
+(def-proc 'string>? string>?)
+(def-proc 'string<=? string<=?)
+(def-proc 'string>=? string>=?)
+(def-proc 'string-ci=? string-ci=?)
+(def-proc 'string-ci<? string-ci<?)
+(def-proc 'string-ci>? string-ci>?)
+(def-proc 'string-ci<=? string-ci<=?)
+(def-proc 'string-ci>=? string-ci>=?)
+(def-proc 'substring substring)
+(def-proc 'string-append string-append)
+(def-proc 'vector? vector?)
+(def-proc 'make-vector make-vector)
+(def-proc 'vector vector)
+(def-proc 'vector-length vector-length)
+(def-proc 'vector-ref vector-ref)
+(def-proc 'vector-set! vector-set!)
+(def-proc 'procedure? procedure?)
+(def-proc 'apply apply)
+(def-proc 'map map)
+(def-proc 'for-each for-each)
 ;(def-proc 'call-with-current-continuation call-with-current-continuation)
-(def-proc 'call-with-input-file           call-with-input-file)
-(def-proc 'call-with-output-file          call-with-output-file)
-(def-proc 'input-port?                    input-port?)
-(def-proc 'output-port?                   output-port?)
-(def-proc 'current-input-port             current-input-port)
-(def-proc 'current-output-port            current-output-port)
-(def-proc 'open-input-file                open-input-file)
-(def-proc 'open-output-file               open-output-file)
-(def-proc 'close-input-port               close-input-port)
-(def-proc 'close-output-port              close-output-port)
-(def-proc 'eof-object?                    eof-object?)
-(def-proc 'read                           read)
-(def-proc 'read-char                      read-char)
-(def-proc 'peek-char                      peek-char)
-(def-proc 'write                          write)
-(def-proc 'display                        display)
-(def-proc 'newline                        newline)
-(def-proc 'write-char                     write-char)
+(def-proc 'call-with-input-file call-with-input-file)
+(def-proc 'call-with-output-file call-with-output-file)
+(def-proc 'input-port? input-port?)
+(def-proc 'output-port? output-port?)
+(def-proc 'current-input-port current-input-port)
+(def-proc 'current-output-port current-output-port)
+(def-proc 'open-input-file open-input-file)
+(def-proc 'open-output-file open-output-file)
+(def-proc 'close-input-port close-input-port)
+(def-proc 'close-output-port close-output-port)
+(def-proc 'eof-object? eof-object?)
+(def-proc 'read read)
+(def-proc 'read-char read-char)
+(def-proc 'peek-char peek-char)
+(def-proc 'write write)
+(def-proc 'display display)
+(def-proc 'newline newline)
+(def-proc 'write-char write-char)
 
 ; - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
@@ -1042,34 +1055,44 @@
     scheme-iters
     (lambda (result)
       (equal? result
-              '("eight" "eleven" "five" "four" "nine" "one"
-                "seven" "six" "ten" "three" "twelve" "two")))
+        '("eight" "eleven" "five" "four" "nine" "one"
+          "seven"
+          "six"
+          "ten"
+          "three"
+          "twelve"
+          "two")))
     (lambda (expr) (lambda () (scheme-eval expr)))
     '(let ()
 
-       (define (sort-list obj pred)
+      (define (sort-list obj pred)
 
-         (define (loop l)
-           (if (and (pair? l) (pair? (cdr l)))
-               (split l '() '())
-               l))
+       (define (loop l)
+        (if (and (pair? l) (pair? (cdr l)))
+         (split l '() '())
+         l))
 
-         (define (split l one two)
-           (if (pair? l)
-               (split (cdr l) two (cons (car l) one))
-               (merge (loop one) (loop two))))
+       (define (split l one two)
+        (if (pair? l)
+         (split (cdr l) two (cons (car l) one))
+         (merge (loop one) (loop two))))
 
-         (define (merge one two)
-           (cond ((null? one) two)
-                 ((pred (car two) (car one))
-                  (cons (car two)
-                        (merge (cdr two) one)))
-                 (else
-                  (cons (car one)
-                        (merge (cdr one) two)))))
+       (define (merge one two)
+        (cond ((null? one) two)
+         ((pred (car two) (car one))
+          (cons (car two)
+           (merge (cdr two) one)))
+         (else
+          (cons (car one)
+           (merge (cdr one) two)))))
 
-         (loop obj))
+       (loop obj))
 
-       (sort-list '("one" "two" "three" "four" "five" "six"
-                    "seven" "eight" "nine" "ten" "eleven" "twelve")
-                  string<?))))
+      (sort-list '("one" "two" "three" "four" "five" "six"
+                   "seven"
+                   "eight"
+                   "nine"
+                   "ten"
+                   "eleven"
+                   "twelve")
+       string<?))))

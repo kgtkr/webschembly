@@ -27,27 +27,27 @@
     (let loop3 ((mmax 2))
       (if (< mmax n)
         (let* ((theta
-                (FLOAT/ pi*2 (exact->inexact mmax)))
+                 (FLOAT/ pi*2 (exact->inexact mmax)))
                (wpr
-                (let ((x (FLOATsin (FLOAT* 0.5 theta))))
-                  (FLOAT* -2.0 (FLOAT* x x))))
+                 (let ((x (FLOATsin (FLOAT* 0.5 theta))))
+                   (FLOAT* -2.0 (FLOAT* x x))))
                (wpi
-                (FLOATsin theta)))
+                 (FLOATsin theta)))
           (let loop4 ((wr 1.0) (wi 0.0) (m 0))
             (if (< m mmax)
               (begin
                 (let loop5 ((i m))
                   (if (< i n)
                     (let* ((j
-                            (+ i mmax))
+                             (+ i mmax))
                            (tempr
-                            (FLOAT-
-                              (FLOAT* wr (FLOATvector-ref data j))
-                              (FLOAT* wi (FLOATvector-ref data (+ j 1)))))
+                             (FLOAT-
+                               (FLOAT* wr (FLOATvector-ref data j))
+                               (FLOAT* wi (FLOATvector-ref data (+ j 1)))))
                            (tempi
-                            (FLOAT+
-                              (FLOAT* wr (FLOATvector-ref data (+ j 1)))
-                              (FLOAT* wi (FLOATvector-ref data j)))))
+                             (FLOAT+
+                               (FLOAT* wr (FLOATvector-ref data (+ j 1)))
+                               (FLOAT* wi (FLOATvector-ref data j)))))
                       (FLOATvector-set! data j
                         (FLOAT- (FLOATvector-ref data i) tempr))
                       (FLOATvector-set! data (+ j 1)
@@ -56,16 +56,15 @@
                         (FLOAT+ (FLOATvector-ref data i) tempr))
                       (FLOATvector-set! data (+ i 1)
                         (FLOAT+ (FLOATvector-ref data (+ i 1)) tempi))
-                      (loop5 (+ j mmax)));***))
-                (loop4 (FLOAT+ (FLOAT- (FLOAT* wr wpr) (FLOAT* wi wpi)) wr)
-                       (FLOAT+ (FLOAT+ (FLOAT* wi wpr) (FLOAT* wr wpi)) wi)
-                       (+ m 2)))))
-));******
+                      (loop5 (+ j mmax))) ;***))
+                    (loop4 (FLOAT+ (FLOAT- (FLOAT* wr wpr) (FLOAT* wi wpi)) wr)
+                      (FLOAT+ (FLOAT+ (FLOAT* wi wpr) (FLOAT* wr wpi)) wi)
+                      (+ m 2))))))) ;******
           (loop3 (* mmax 2)))))))
 
 (define data
   (FLOATmake-vector 1024 0.0))
- 
+
 (define (run data)
   (four1 data)
   (FLOATvector-ref data 0))

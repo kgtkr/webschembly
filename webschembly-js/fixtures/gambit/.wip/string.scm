@@ -11,19 +11,19 @@
 
 (define (trial n)
   (do ((i 0 (+ i 1)))
-      ((> (string-length s) n) (string-length s))
+    ((> (string-length s) n) (string-length s))
     (grow)))
 
 (define (my-try n)
   (do ((i 0 (+ i 1)))
-      ((>= i 10) (string-length s))
+    ((>= i 10) (string-length s))
     (set! s "abcdef")
     (trial n)))
 
 (define (main . args)
   (run-benchmark
-   "string"
-   string-iters
-   (lambda (result) (equal? result 524278))
-   (lambda (n) (lambda () (my-try n)))
-   500000))
+    "string"
+    string-iters
+    (lambda (result) (equal? result 524278))
+    (lambda (n) (lambda () (my-try n)))
+    500000))

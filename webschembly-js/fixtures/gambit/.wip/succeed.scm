@@ -2,9 +2,9 @@
 
 (define (main . args)
   (run-benchmark
-   "succeed"
-   1
-   (lambda (result)
-     (equal? result #f))
-   (lambda (f) (lambda () f))
-   #f))
+    "succeed"
+    1
+    (lambda (result)
+      (equal? result #f))
+    (lambda (f) (lambda () f))
+    #f))

@@ -35,29 +35,29 @@
 
 (define (my+dderiv a)
   (cons '+
-        (map dderiv (cdr a))))
+    (map dderiv (cdr a))))
 
 (define (my-dderiv a)
   (cons '-
-        (map dderiv (cdr a))))
+    (map dderiv (cdr a))))
 
 (define (*dderiv a)
   (list '*
-         a
-         (cons '+
-               (map (lambda (a) (list '/ (dderiv a) a)) (cdr a)))))
+    a
+    (cons '+
+      (map (lambda (a) (list '/ (dderiv a) a)) (cdr a)))))
 
 (define (/dderiv a)
   (list '-
-        (list '/
-              (dderiv (cadr a))
-              (caddr a))
-        (list '/
-              (cadr a)
-              (list '*
-                    (caddr a)
-                    (caddr a)
-                    (dderiv (caddr a))))))
+    (list '/
+      (dderiv (cadr a))
+      (caddr a))
+    (list '/
+      (cadr a)
+      (list '*
+        (caddr a)
+        (caddr a)
+        (dderiv (caddr a))))))
 
 (put '+ 'dderiv my+dderiv)
 (put '- 'dderiv my-dderiv)
@@ -78,9 +78,9 @@
     dderiv-iters
     (lambda (result)
       (equal? result
-              '(+ (* (* 3 x x) (+ (/ 0 3) (/ 1 x) (/ 1 x)))
-                  (* (* a x x) (+ (/ 0 a) (/ 1 x) (/ 1 x)))
-                  (* (* b x) (+ (/ 0 b) (/ 1 x)))
-                  0)))
+        '(+ (* (* 3 x x) (+ (/ 0 3) (/ 1 x) (/ 1 x)))
+          (* (* a x x) (+ (/ 0 a) (/ 1 x) (/ 1 x)))
+          (* (* b x) (+ (/ 0 b) (/ 1 x)))
+          0)))
     (lambda (a) (lambda () (dderiv a)))
     '(+ (* 3 x x) (* a x x) (* b x) 5)))

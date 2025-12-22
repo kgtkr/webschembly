@@ -6,22 +6,22 @@
 
   (define (loop l)
     (if (and (pair? l) (pair? (cdr l)))
-        (split-list l '() '())
-        l))
+      (split-list l '() '())
+      l))
 
   (define (split-list l one two)
     (if (pair? l)
-        (split-list (cdr l) two (cons (car l) one))
-        (merge (loop one) (loop two))))
+      (split-list (cdr l) two (cons (car l) one))
+      (merge (loop one) (loop two))))
 
   (define (merge one two)
     (cond ((null? one) two)
-          ((pred (car two) (car one))
-           (cons (car two)
-                 (merge (cdr two) one)))
-          (else
-           (cons (car one)
-                 (merge (cdr one) two)))))
+      ((pred (car two) (car one))
+        (cons (car two)
+          (merge (cdr two) one)))
+      (else
+        (cons (car one)
+          (merge (cdr one) two)))))
 
   (loop obj))
 
@@ -33,20 +33,20 @@
 
 (define (eliminate element set)
   (cond ((null? set) set)
-        ((eq? element (car set)) (cdr set))
-        (else (cons (car set) (eliminate element (cdr set))))))
+    ((eq? element (car set)) (cdr set))
+    (else (cons (car set) (eliminate element (cdr set))))))
 
 (define (intersect list1 list2)
   (let loop ((l list1))
     (cond ((null? l) '())
-          ((memq (car l) list2) (cons (car l) (loop (cdr l))))
-          (else (loop (cdr l))))))
+      ((memq (car l) list2) (cons (car l) (loop (cdr l))))
+      (else (loop (cdr l))))))
 
 (define (union list1 list2)
   (if (null? list1)
-      list2
-      (union (cdr list1)
-             (adjoin (car list1) list2))))
+    list2
+    (union (cdr list1)
+      (adjoin (car list1) list2))))
 
 ;; GRAPH NODES
 
@@ -60,7 +60,7 @@
 (define (set-internal-node-red-edges! node edges) (vector-set! node 2 edges))
 (define (set-internal-node-blue-edges! node edges) (vector-set! node 3 edges))
 
-(define (make-node name . blue-edges)   ; User's constructor
+(define (make-node name . blue-edges) ; User's constructor
   (let ((name (if (symbol? name) (symbol->string name) name))
         (blue-edges (if (null? blue-edges) 'NOT-A-NODE-YET (car blue-edges))))
     (make-internal-node name '() '() blue-edges)))
@@ -74,8 +74,8 @@
 (define (make-edge-getter selector)
   (lambda (node)
     (if (or (none-node? node) (any-node? node))
-        (fatal-error "Can't get edges from the ANY or NONE nodes")
-        (selector node))))
+      (fatal-error "Can't get edges from the ANY or NONE nodes")
+      (selector node))))
 (define red-edges (make-edge-getter internal-node-red-edges))
 (define green-edges (make-edge-getter internal-node-green-edges))
 (define blue-edges (make-edge-getter internal-node-blue-edges))
@@ -85,8 +85,8 @@
 (define (make-edge-setter mutator!)
   (lambda (node value)
     (cond ((any-node? node) (fatal-error "Can't set edges from the ANY node"))
-          ((none-node? node) 'OK)
-          (else (mutator! node value)))))
+      ((none-node? node) 'OK)
+      (else (mutator! node value)))))
 (define set-red-edges! (make-edge-setter set-internal-node-red-edges!))
 (define set-green-edges! (make-edge-setter set-internal-node-green-edges!))
 (define set-blue-edges! (make-edge-setter set-internal-node-blue-edges!))
@@ -115,8 +115,8 @@
 (define (lookup-op op node)
   (let loop ((edges (blue-edges node)))
     (cond ((null? edges) '())
-          ((eq? op (operation (car edges))) (car edges))
-          (else (loop (cdr edges))))))
+      ((eq? op (operation (car edges))) (car edges))
+      (else (loop (cdr edges))))))
 
 (define (has-op? op node)
   (not (null? (lookup-op op node))))
@@ -148,63 +148,63 @@
 (define (copy-graph g)
   (define (copy-list l) (vector->list (list->vector l)))
   (make-internal-graph
-   (copy-list (graph-nodes g))
-   (already-met g)
-   (already-joined g)))
+    (copy-list (graph-nodes g))
+    (already-met g)
+    (already-joined g)))
 
 (define (clean-graph g)
   (define (clean-node node)
     (if (not (or (any-node? node) (none-node? node)))
-        (begin
-          (set-green-edges! node '())
-          (set-red-edges! node '()))))
+      (begin
+        (set-green-edges! node '())
+        (set-red-edges! node '()))))
   (for-each clean-node (graph-nodes g))
   g)
 
 (define (canonicalize-graph graph classes)
   (define (fix node)
     (define (fix-set object selector mutator)
-      (mutator object 
-               (map (lambda (node)
-                      (find-canonical-representative node classes))
-                    (selector object))))
+      (mutator object
+        (map (lambda (node)
+              (find-canonical-representative node classes))
+          (selector object))))
     (if (not (or (none-node? node) (any-node? node)))
-        (begin
-          (fix-set node green-edges set-green-edges!)
-          (fix-set node red-edges set-red-edges!)
-          (for-each 
-           (lambda (blue-edge)
-             (set-arg-node! blue-edge
-                            (find-canonical-representative (arg-node blue-edge) classes))
-             (set-res-node! blue-edge
-                            (find-canonical-representative (res-node blue-edge) classes)))
-           (blue-edges node))))
+      (begin
+        (fix-set node green-edges set-green-edges!)
+        (fix-set node red-edges set-red-edges!)
+        (for-each
+          (lambda (blue-edge)
+            (set-arg-node! blue-edge
+              (find-canonical-representative (arg-node blue-edge) classes))
+            (set-res-node! blue-edge
+              (find-canonical-representative (res-node blue-edge) classes)))
+          (blue-edges node))))
     node)
   (define (fix-table table)
     (define (canonical? node) (eq? node (find-canonical-representative node classes)))
     (define (filter-and-fix predicate-fn update-fn list)
       (let loop ((list list))
         (cond ((null? list) '())
-              ((predicate-fn (car list))
-               (cons (update-fn (car list)) (loop (cdr list))))
-              (else (loop (cdr list))))))
+          ((predicate-fn (car list))
+            (cons (update-fn (car list)) (loop (cdr list))))
+          (else (loop (cdr list))))))
     (define (fix-line line)
       (filter-and-fix
-       (lambda (entry) (canonical? (car entry)))
-       (lambda (entry) (cons (car entry)
-                             (find-canonical-representative (cdr entry) classes)))
-       line))
+        (lambda (entry) (canonical? (car entry)))
+        (lambda (entry) (cons (car entry)
+                         (find-canonical-representative (cdr entry) classes)))
+        line))
     (if (null? table)
-        '()
-        (cons (car table)
-              (filter-and-fix
-               (lambda (entry) (canonical? (car entry)))
-               (lambda (entry) (cons (car entry) (fix-line (cdr entry))))
-               (cdr table)))))
+      '()
+      (cons (car table)
+        (filter-and-fix
+          (lambda (entry) (canonical? (car entry)))
+          (lambda (entry) (cons (car entry) (fix-line (cdr entry))))
+          (cdr table)))))
   (make-internal-graph
-   (map (lambda (class) (fix (car class))) classes)
-   (fix-table (already-met graph))
-   (fix-table (already-joined graph))))
+    (map (lambda (class) (fix (car class))) classes)
+    (fix-table (already-met graph))
+    (fix-table (already-joined graph))))
 
 ;; USEFUL NODES
 
@@ -218,15 +218,15 @@
 
 (define (green-edge? from-node to-node)
   (cond ((any-node? from-node) #f)
-        ((none-node? from-node) #t)
-        ((memq to-node (green-edges from-node)) #t)
-        (else #f)))
+    ((none-node? from-node) #t)
+    ((memq to-node (green-edges from-node)) #t)
+    (else #f)))
 
 (define (red-edge? from-node to-node)
   (cond ((any-node? from-node) #f)
-        ((none-node? from-node) #t)
-        ((memq to-node (red-edges from-node)) #t)
-        (else #f)))
+    ((none-node? from-node) #t)
+    ((memq to-node (red-edges from-node)) #t)
+    (else #f)))
 
 ;; SIGNATURE
 
@@ -234,11 +234,11 @@
 
 (define sig
   (let ((none-comma-any (cons none-node any-node)))
-    (lambda (op node)                   ; Returns (arg, res)
+    (lambda (op node) ; Returns (arg, res)
       (let ((the-edge (lookup-op op node)))
         (if (not (null? the-edge))
-            (cons (arg-node the-edge) (res-node the-edge))
-            none-comma-any)))))
+          (cons (arg-node the-edge) (res-node the-edge))
+          none-comma-any)))))
 
 ; Selectors from signature
 
@@ -252,36 +252,36 @@
   (define (add-red-edge! from-node to-node)
     (set-red-edges! from-node (adjoin to-node (red-edges from-node)))
     (set! nodes-with-red-edges-out
-          (adjoin from-node nodes-with-red-edges-out)))
+      (adjoin from-node nodes-with-red-edges-out)))
   (define (greenify-red-edges! from-node)
     (set-green-edges! from-node
-                      (append (red-edges from-node) (green-edges from-node)))
+      (append (red-edges from-node) (green-edges from-node)))
     (set-red-edges! from-node '()))
   (define (delete-red-edges! from-node)
     (set-red-edges! from-node '()))
   (define (does-conform t1 t2)
     (cond ((or (none-node? t1) (any-node? t2)) #t)
-          ((or (any-node? t1) (none-node? t2)) #f)
-          ((green-edge? t1 t2) #t)
-          ((red-edge? t1 t2) #t)
-          (else
-           (add-red-edge! t1 t2)
-           (let loop ((blues (blue-edges t2)))
-             (if (null? blues)
-                 #t
-                 (let* ((current-edge (car blues))
-                        (phi (operation current-edge)))
-                   (and (has-op? phi t1)
-                        (does-conform
-                         (res (sig phi t1))
-                         (res (sig phi t2)))
-                        (does-conform
-                         (arg (sig phi t2))
-                         (arg (sig phi t1)))
-                        (loop (cdr blues)))))))))
+      ((or (any-node? t1) (none-node? t2)) #f)
+      ((green-edge? t1 t2) #t)
+      ((red-edge? t1 t2) #t)
+      (else
+        (add-red-edge! t1 t2)
+        (let loop ((blues (blue-edges t2)))
+          (if (null? blues)
+            #t
+            (let* ((current-edge (car blues))
+                   (phi (operation current-edge)))
+              (and (has-op? phi t1)
+                (does-conform
+                  (res (sig phi t1))
+                  (res (sig phi t2)))
+                (does-conform
+                  (arg (sig phi t2))
+                  (arg (sig phi t1)))
+                (loop (cdr blues)))))))))
   (let ((result (does-conform t1 t2)))
     (for-each (if result greenify-red-edges! delete-red-edges!)
-              nodes-with-red-edges-out)
+      nodes-with-red-edges-out)
     result))
 
 (define (equivalent? a b)
@@ -294,33 +294,33 @@
   (let node-loop ((classes '())
                   (nodes nodes))
     (if (null? nodes)
-        (map (lambda (class)
-               (sort-list class
-                          (lambda (node1 node2)
-                            (< (string-length (name node1))
-                               (string-length (name node2))))))
-             classes)
-        (let ((this-node (car nodes)))
-          (define (add-node classes)
-            (cond ((null? classes) (list (list this-node)))
-                  ((equivalent? this-node (caar classes))
-                   (cons (cons this-node (car classes))
-                         (cdr classes)))
-                  (else (cons (car classes)
-                              (add-node (cdr classes))))))
-          (node-loop (add-node classes)
-                     (cdr nodes))))))
+      (map (lambda (class)
+            (sort-list class
+              (lambda (node1 node2)
+                (< (string-length (name node1))
+                  (string-length (name node2))))))
+        classes)
+      (let ((this-node (car nodes)))
+        (define (add-node classes)
+          (cond ((null? classes) (list (list this-node)))
+            ((equivalent? this-node (caar classes))
+              (cons (cons this-node (car classes))
+                (cdr classes)))
+            (else (cons (car classes)
+                   (add-node (cdr classes))))))
+        (node-loop (add-node classes)
+          (cdr nodes))))))
 
 ; Given a node N and a classified set of nodes,
 ; find the canonical member corresponding to N
 
 (define (find-canonical-representative element classification)
   (let loop ((classes classification))
-    (cond ((null? classes) (fatal-error "Can't classify" element)) 
-          ((memq element (car classes)) (car (car classes)))
-          (else (loop (cdr classes))))))
+    (cond ((null? classes) (fatal-error "Can't classify" element))
+      ((memq element (car classes)) (car (car classes)))
+      (else (loop (cdr classes))))))
 
-; Reduce a graph by taking only one member of each equivalence 
+; Reduce a graph by taking only one member of each equivalence
 ; class and canonicalizing all outbound pointers
 
 (define (reduce graph)
@@ -333,67 +333,67 @@
 (define (lookup table x y)
   (let ((one (assq x (cdr table))))
     (if one
-        (let ((two (assq y (cdr one))))
-          (if two (cdr two) #f))
-        #f)))
+      (let ((two (assq y (cdr one))))
+        (if two (cdr two) #f))
+      #f)))
 (define (insert! table x y value)
   (define (make-singleton-table x y)
     (list (cons x y)))
   (let ((one (assq x (cdr table))))
     (if one
-        (set-cdr! one (cons (cons y value) (cdr one)))
-        (set-cdr! table (cons (cons x (make-singleton-table y value))
-                              (cdr table))))))
+      (set-cdr! one (cons (cons y value) (cdr one)))
+      (set-cdr! table (cons (cons x (make-singleton-table y value))
+                       (cdr table))))))
 
-;; MEET/JOIN 
+;; MEET/JOIN
 ; These update the graph when computing the node for node1*node2
 
 (define (blue-edge-operate arg-fn res-fn graph op sig1 sig2)
   (make-blue-edge op
-                  (arg-fn graph (arg sig1) (arg sig2))
-                  (res-fn graph (res sig1) (res sig2))))
+    (arg-fn graph (arg sig1) (arg sig2))
+    (res-fn graph (res sig1) (res sig2))))
 
 (define (meet graph node1 node2)
   (cond ((eq? node1 node2) node1)
-        ((or (any-node? node1) (any-node? node2)) any-node) ; canonicalize
-        ((none-node? node1) node2)
-        ((none-node? node2) node1)
-        ((lookup (already-met graph) node1 node2)) ; return it if found
-        ((conforms? node1 node2) node2)
-        ((conforms? node2 node1) node1)
-        (else
-         (let ((result
-                (make-node (string-append "(" (name node1) " ^ " (name node2) ")"))))
-           (add-graph-nodes! graph result)
-           (insert! (already-met graph) node1 node2 result)
-           (set-blue-edges! result
-             (map
-              (lambda (op)
-                (blue-edge-operate join meet graph op (sig op node1) (sig op node2)))
-              (intersect (map operation (blue-edges node1))
-                         (map operation (blue-edges node2)))))
-           result))))
+    ((or (any-node? node1) (any-node? node2)) any-node) ; canonicalize
+    ((none-node? node1) node2)
+    ((none-node? node2) node1)
+    ((lookup (already-met graph) node1 node2)) ; return it if found
+    ((conforms? node1 node2) node2)
+    ((conforms? node2 node1) node1)
+    (else
+      (let ((result
+              (make-node (string-append "(" (name node1) " ^ " (name node2) ")"))))
+        (add-graph-nodes! graph result)
+        (insert! (already-met graph) node1 node2 result)
+        (set-blue-edges! result
+          (map
+            (lambda (op)
+              (blue-edge-operate join meet graph op (sig op node1) (sig op node2)))
+            (intersect (map operation (blue-edges node1))
+              (map operation (blue-edges node2)))))
+        result))))
 
 (define (join graph node1 node2)
   (cond ((eq? node1 node2) node1)
-        ((any-node? node1) node2)
-        ((any-node? node2) node1)
-        ((or (none-node? node1) (none-node? node2)) none-node) ; canonicalize
-        ((lookup (already-joined graph) node1 node2)) ; return it if found
-        ((conforms? node1 node2) node1)
-        ((conforms? node2 node1) node2)
-        (else
-         (let ((result
-                (make-node (string-append "(" (name node1) " v " (name node2) ")"))))
-           (add-graph-nodes! graph result)
-           (insert! (already-joined graph) node1 node2 result)
-           (set-blue-edges! result
-             (map
-              (lambda (op)
-                (blue-edge-operate meet join graph op (sig op node1) (sig op node2)))
-              (union (map operation (blue-edges node1))
-                     (map operation (blue-edges node2)))))
-           result))))
+    ((any-node? node1) node2)
+    ((any-node? node2) node1)
+    ((or (none-node? node1) (none-node? node2)) none-node) ; canonicalize
+    ((lookup (already-joined graph) node1 node2)) ; return it if found
+    ((conforms? node1 node2) node1)
+    ((conforms? node2 node1) node2)
+    (else
+      (let ((result
+              (make-node (string-append "(" (name node1) " v " (name node2) ")"))))
+        (add-graph-nodes! graph result)
+        (insert! (already-joined graph) node1 node2 result)
+        (set-blue-edges! result
+          (map
+            (lambda (op)
+              (blue-edge-operate meet join graph op (sig op node1) (sig op node2)))
+            (union (map operation (blue-edges node1))
+              (map operation (blue-edges node2)))))
+        result))))
 
 ;; MAKE A LATTICE FROM A GRAPH
 
@@ -402,10 +402,11 @@
     (let* ((copy (copy-graph g))
            (nodes (graph-nodes copy)))
       (for-each (lambda (first)
-                  (for-each (lambda (second)
-                              (meet copy first second) (join copy first second))
-                            nodes))
-                nodes)
+                 (for-each (lambda (second)
+                            (meet copy first second)
+                            (join copy first second))
+                   nodes))
+        nodes)
       copy))
   (define (loop g count)
     (if print? (display count))
@@ -414,15 +415,15 @@
       (let* ((new-g (reduce lattice))
              (new-count (length (graph-nodes new-g))))
         (if (= new-count count)
-            (begin
-              (if print? (newline))
-              new-g)
-            (begin
-              (if print? (begin (display " -> ") (display new-count) (newline)))
-              (loop new-g new-count))))))
+          (begin
+            (if print? (newline))
+            new-g)
+          (begin
+            (if print? (begin (display " -> ") (display new-count) (newline)))
+            (loop new-g new-count))))))
   (let ((graph
-         (apply make-graph
-                (adjoin any-node (adjoin none-node (graph-nodes (clean-graph g)))))))
+          (apply make-graph
+            (adjoin any-node (adjoin none-node (graph-nodes (clean-graph g)))))))
     (loop graph (length (graph-nodes graph)))))
 
 ;; DEBUG and TEST
@@ -437,18 +438,18 @@
   (set! b (make-node 'b))
   (set-blue-edges! a (list (make-blue-edge 'phi any-node b)))
   (set-blue-edges! b (list (make-blue-edge 'phi any-node a)
-                           (make-blue-edge 'theta any-node b)))
+                      (make-blue-edge 'theta any-node b)))
   (set! c (make-node "c"))
   (set! d (make-node "d"))
   (set-blue-edges! c (list (make-blue-edge 'theta any-node b)))
   (set-blue-edges! d (list (make-blue-edge 'phi any-node c)
-                           (make-blue-edge 'theta any-node d)))
+                      (make-blue-edge 'theta any-node d)))
   '(made a b c d))
 
 (define (test)
   (setup)
   (map name
-       (graph-nodes (make-lattice (make-graph a b c d any-node none-node) #f))))
+    (graph-nodes (make-lattice (make-graph a b c d any-node none-node) #f))))
 
 (define (main . args)
   (run-benchmark
@@ -456,37 +457,37 @@
     conform-iters
     (lambda (result)
       (equal? (map (lambda (s)
-                     (list->string (map char-downcase (string->list s))))
-                   result)
-              '("(((b v d) ^ a) v c)"
-                "(c ^ d)"
-                "(b v (a ^ d))"
-                "((a v d) ^ b)"
-                "(b v d)"
-                "(b ^ (a v c))"
-                "(a v (c ^ d))"
-                "((b v d) ^ a)"
-                "(c v (a v d))"
-                "(a v c)"
-                "(d v (b ^ (a v c)))"
-                "(d ^ (a v c))"
-                "((a ^ d) v c)"
-                "((a ^ b) v d)"
-                "(((a v d) ^ b) v (a ^ d))"
-                "(b ^ d)"
-                "(b v (a v d))"
-                "(a ^ c)"
-                "(b ^ (c v d))"
-                "(a ^ b)"
-                "(a v b)"
-                "((a ^ d) ^ b)"
-                "(a ^ d)"
-                "(a v d)"
-                "d"
-                "(c v d)"
-                "a"
-                "b"
-                "c"
-                "any"
-                "none")))
+                    (list->string (map char-downcase (string->list s))))
+               result)
+        '("(((b v d) ^ a) v c)"
+          "(c ^ d)"
+          "(b v (a ^ d))"
+          "((a v d) ^ b)"
+          "(b v d)"
+          "(b ^ (a v c))"
+          "(a v (c ^ d))"
+          "((b v d) ^ a)"
+          "(c v (a v d))"
+          "(a v c)"
+          "(d v (b ^ (a v c)))"
+          "(d ^ (a v c))"
+          "((a ^ d) v c)"
+          "((a ^ b) v d)"
+          "(((a v d) ^ b) v (a ^ d))"
+          "(b ^ d)"
+          "(b v (a v d))"
+          "(a ^ c)"
+          "(b ^ (c v d))"
+          "(a ^ b)"
+          "(a v b)"
+          "((a ^ d) ^ b)"
+          "(a ^ d)"
+          "(a v d)"
+          "d"
+          "(c v d)"
+          "a"
+          "b"
+          "c"
+          "any"
+          "none")))
     (lambda () (lambda () (test)))))
