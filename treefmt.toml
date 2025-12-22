@@ -10,3 +10,8 @@ options = ["--edition", "2024"]
 [formatter.scheme]
 command = "schemat"
 includes = ["*.scm"]
+
+[formatter.dprint]
+command = "dprint"
+includes = ["*.js", "*.ts", "*.json", "*.toml", "*.md", "*.css", "*.html", "*.tsx", "*.jsx", "*.yaml", "*.yml"]
+options = ["fmt"]
