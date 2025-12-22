@@ -7,9 +7,9 @@ command = "rustfmt"
 includes = ["*.rs"]
 options = ["--edition", "2024"]
 
-[formatter.scheme]
+[formatter.schemat]
 command = "schemat"
-includes = ["*.scm"]
+includes = ["*.scm", "*.wat"]
 
 [formatter.dprint]
 command = "dprint"
