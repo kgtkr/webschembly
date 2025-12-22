@@ -6,11 +6,11 @@ jobs:
     outputs:
       tags: ${{ steps.generate-tags.outputs.tags }}
     steps:
-    - name: Generate tags
-      uses: kgtkr/docker-tags-gen-action@master
-      id: generate-tags
-      with:
-        name: ghcr.io/${{ github.repository_owner }}/webschembly-devcontainer
+      - name: Generate tags
+        uses: kgtkr/docker-tags-gen-action@master
+        id: generate-tags
+        with:
+          name: ghcr.io/${{ github.repository_owner }}/webschembly-devcontainer
   build-and-push:
     needs: generate-tags
     permissions:

@@ -8,7 +8,7 @@ const runtime = await createRuntime(
   {
     exitWhenException: false,
     printEvalResult: true,
-  }
+  },
 );
 
 process.stdout.write("=> <eval stdlib>\n");

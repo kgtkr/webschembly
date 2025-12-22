@@ -2,22 +2,24 @@
 
 Scheme JIT compiler for WebAssembly
 
-* [Playground](https://kgtkr.github.io/webschembly/)
-* [Benchmark](https://kgtkr.github.io/webschembly/dev/bench)
+- [Playground](https://kgtkr.github.io/webschembly/)
+- [Benchmark](https://kgtkr.github.io/webschembly/dev/bench)
 
 ## Project Structure
+
 This project consists of the following components:
 
-* webschembly-compiler: Scheme → WebAssembly compiler library
-* webschembly-compiler-cli: Command-line interface for the compiler, mainly used for debugging generated code
-* webschembly-js: JavaScript bindings with CLI execution and REPL capabilities
-* webschembly-playground: Web-based playground
-* webschembly-runtime: Runtime library
-* webschembly-runtime-rust: Rust-implemented parts of the runtime library
+- webschembly-compiler: Scheme → WebAssembly compiler library
+- webschembly-compiler-cli: Command-line interface for the compiler, mainly used for debugging generated code
+- webschembly-js: JavaScript bindings with CLI execution and REPL capabilities
+- webschembly-playground: Web-based playground
+- webschembly-runtime: Runtime library
+- webschembly-runtime-rust: Rust-implemented parts of the runtime library
 
 ## Requirements
-* Nix
-* Direnv
+
+- Nix
+- Direnv
 
 Run `direnv allow` to set up the development environment.
 

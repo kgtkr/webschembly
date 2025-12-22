@@ -6,7 +6,7 @@ jobs:
       contents: write
       id-token: write
     env:
-      CI: 'true'
+      CI: "true"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -52,7 +52,7 @@ jobs:
       - name: Store benchmark result
         uses: benchmark-action/github-action-benchmark@v1
         with:
-          tool: 'benchmarkjs'
+          tool: "benchmarkjs"
           output-file-path: ./webschembly-js/benchmark.result
           gh-pages-branch: github-action-benchmark-data
           auto-push: false

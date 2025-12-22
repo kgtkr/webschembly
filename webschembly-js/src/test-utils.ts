@@ -6,7 +6,7 @@ export const fixtureDir = "fixtures";
 async function readDirRec(
   basePath: string,
   curDir: string,
-  result: string[]
+  result: string[],
 ): Promise<void> {
   const dir = path.join(basePath, curDir);
   const entries = await fs.readdir(dir, {
