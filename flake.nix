@@ -54,6 +54,8 @@
               pkgs.skopeo
               pkgs.manifest-tool
               pkgs.nix-prefetch-docker
+              (pkgs.callPackage ./schemat.nix { })
+              pkgs.treefmt
             ];
           };
         };

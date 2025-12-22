@@ -32,8 +32,7 @@ jobs:
             cargo-home-20250204-1-
       - name: Format
         run: |
-          cargo fmt --check
-          nixpkgs-fmt --check $(git ls-files ':(attr:!linguist-generated)*.nix')
+          treefmt --ci
       - name: Clippy
         run: |
           cargo clippy --all --lib --tests -- -D warnings
