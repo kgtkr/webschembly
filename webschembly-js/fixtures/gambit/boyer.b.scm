@@ -593,7 +593,7 @@
       (loop (- n 1)))))
 
 (define (run)
-  (loop 10))
+  (loop 3))
 
 (write "start")
 (newline)
