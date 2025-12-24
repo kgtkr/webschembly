@@ -1,22 +1,11 @@
 {
-  "typescript": {
-  },
-  "json": {
-  },
-  "markdown": {
-  },
-  "toml": {
-  },
-  "malva": {
-  },
-  "markup": {
-  },
-  "yaml": {
-  },
-  "excludes": [
-    "**/node_modules",
-    "**/*-lock.json"
-  ],
+  "typescript": {},
+  "json": {},
+  "markdown": {},
+  "toml": {},
+  "malva": {},
+  "markup": {},
+  "yaml": {},
   "plugins": [
     "https://plugins.dprint.dev/typescript-0.95.13.wasm",
     "https://plugins.dprint.dev/json-0.21.0.wasm",

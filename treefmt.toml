@@ -15,3 +15,7 @@ includes = ["*.scm", "*.wat"]
 command = "dprint"
 includes = ["*.js", "*.ts", "*.json", "*.toml", "*.md", "*.css", "*.html", "*.tsx", "*.jsx", "*.yaml", "*.yml"]
 options = ["fmt"]
+
+excludes = [
+  "*-lock.json",
+]
