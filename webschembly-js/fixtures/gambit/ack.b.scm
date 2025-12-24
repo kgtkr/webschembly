@@ -5,20 +5,8 @@
     ((= n 0) (ack (- m 1) 1))
     (else (ack (- m 1) (ack m (- n 1))))))
 
-(write (ack 3 9))
-(newline)
-
-(define (loop n)
-  (if (= n 0)
-    '()
-    (begin
-      (ack 3 9)
-      (loop (- n 1)))))
 (define (run)
-  (loop 5))
+  (ack 3 9))
 
-(write "start")
-(newline)
-(run)
-(write "done")
+(write (run))
 (newline)

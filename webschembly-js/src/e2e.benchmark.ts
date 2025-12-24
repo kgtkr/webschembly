@@ -3,10 +3,18 @@ import { Bench } from "tinybench";
 import * as fs from "fs/promises";
 import * as path from "path";
 import { createNodeRuntimeEnv } from "./node-runtime-env";
-import { type CompilerConfig, compilerConfigToString, createRuntime, type Runtime, type SchemeValue } from "./runtime";
+import {
+  type CompilerConfig,
+  compilerConfigToString,
+  createRuntime,
+  type Runtime,
+  type SchemeValue,
+} from "./runtime";
 import * as testUtils from "./test-utils";
 
-const filenames = (await testUtils.getAllFixtureFilenames()).filter((file) => file.endsWith(".b.scm"));
+const filenames = (await testUtils.getAllFixtureFilenames()).filter((file) =>
+  file.endsWith(".b.scm")
+);
 const compilerConfigs: CompilerConfig[] = [
   {},
   // { enableJitOptimization: false },
@@ -14,22 +22,22 @@ const compilerConfigs: CompilerConfig[] = [
 ];
 
 const runtimeModule = new WebAssembly.Module(
-  await fs.readFile(process.env["WEBSCHEMBLY_RUNTIME"]!),
+  await fs.readFile(process.env["WEBSCHEMBLY_RUNTIME"]!)
 );
 
 const bench = new Bench(
   process.env["BENCH_DEV"]
     ? {
-      iterations: 1,
-    }
-    : undefined,
+        iterations: 1,
+      }
+    : undefined
 );
 
 for (const filename of filenames) {
   for (const warmup of [false, true]) {
     for (const compilerConfig of compilerConfigs) {
       const srcBuf = await fs.readFile(
-        path.join(testUtils.fixtureDir, filename),
+        path.join(testUtils.fixtureDir, filename)
       );
 
       let runtime: Runtime;
@@ -41,7 +49,9 @@ for (const filename of filenames) {
         bench.add(
           `${filename},with warmup,${compilerConfigToString(compilerConfig)}`,
           () => {
-            runtime.instance.exports.call_closure(runClosure, runArgs);
+            for (let i = 0; i < 10; i++) {
+              runtime.instance.exports.call_closure(runClosure, runArgs);
+            }
           },
           {
             beforeEach: async () => {
@@ -57,7 +67,7 @@ for (const filename of filenames) {
                     instantiate: () => {
                       if (afterWarmup) {
                         throw new Error(
-                          "instantiate should not be called after warmup",
+                          "instantiate should not be called after warmup"
                         );
                       }
                     },
@@ -65,7 +75,7 @@ for (const filename of filenames) {
                 }),
                 {
                   compilerConfig,
-                },
+                }
               );
               runtime.loadStdlib();
               runtime.loadSrc(srcBuf);
@@ -77,7 +87,7 @@ for (const filename of filenames) {
             afterEach: () => {
               runtime.cleanup();
             },
-          },
+          }
         );
       } else {
         bench.add(
@@ -96,14 +106,14 @@ for (const filename of filenames) {
                 }),
                 {
                   compilerConfig,
-                },
+                }
               );
               runtime.loadStdlib();
             },
             afterEach: () => {
               runtime.cleanup();
             },
-          },
+          }
         );
       }
     }
@@ -118,11 +128,11 @@ const outputFile = await fs.open("benchmark.result", "w");
 bench.tasks.forEach((task) => {
   const result = task.result!;
   outputFile.write(
-    `${task.name} x ${
-      result.throughput.mean.toFixed(
-        2,
-      )
-    } ops/sec ±${result.latency.rme.toFixed(2)}% (${result.latency.samples.length} runs sampled)\n`,
+    `${task.name} x ${result.throughput.mean.toFixed(
+      2
+    )} ops/sec ±${result.latency.rme.toFixed(2)}% (${
+      result.latency.samples.length
+    } runs sampled)\n`
   );
 });
 await outputFile.close();

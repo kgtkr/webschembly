@@ -11,21 +11,7 @@
                   (tak-cps v1 v2 v3 k)))))))))
   (tak-cps x y z (lambda (x) x)))
 
-(write (tak 18 12 6))
-(newline)
-
-(define (loop n)
-  (if (= n 0)
-    '()
-    (begin
-      (tak 18 12 6)
-      (loop (- n 1)))))
-
 (define (run)
-  (loop 30))
-
-(write "start")
-(newline)
-(run)
-(write "done")
+  (tak 18 12 6))
+(write (run))
 (newline)

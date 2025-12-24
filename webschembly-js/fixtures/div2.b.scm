@@ -1,7 +1,9 @@
 (define (create-n size)
-  (if (= size 0)
-    '()
-    (cons size (create-n (- size 1)))))
+  (define (loop n acc)
+    (if (= n 0)
+      acc
+      (loop (- n 1) (cons n acc))))
+  (loop size '()))
 
 (define (div2 l)
   (define (loop x y z)
@@ -14,21 +16,10 @@
           (cons (cadr x) z)))))
   (loop l '() '()))
 
-(define l (create-n 10))
-(write (div2 l))
-(newline)
+(define l (create-n 100))
 
-(define (loop n)
-  (if (= n 0)
-    '()
-    (begin
-      (div2 l)
-      (loop (- n 1)))))
 (define (run)
-  (loop 300000))
+  (div2 l))
 
-(write "start")
-(newline)
-(run)
-(write "done")
+(write (run))
 (newline)

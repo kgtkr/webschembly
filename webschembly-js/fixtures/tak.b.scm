@@ -6,20 +6,8 @@
         (tak-rec (- y 1) z x)
         (tak-rec (- z 1) x y))))
   (tak-rec x y z))
-(write (tak 18 12 6))
-(newline)
 
-(define (loop n)
-  (if (= n 0)
-    '()
-    (begin
-      (tak 18 12 6)
-      (loop (- n 1)))))
 (define (run)
-  (loop 30))
-
-(write "start")
-(newline)
-(run)
-(write "done")
+  (tak 18 12 6))
+(write (run))
 (newline)

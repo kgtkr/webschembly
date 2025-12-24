@@ -23,21 +23,8 @@
       (loop (- repeat 1) (my-try n))
       result)))
 
-(write (go 200000))
-(newline)
-
-(define (loop n)
-  (if (= n 0)
-    '()
-    (begin
-      (go 200000)
-      (loop (- n 1)))))
-
 (define (run)
-  (loop 3))
+  (go 200000))
 
-(write "start")
-(newline)
-(run)
-(write "done")
+(write (run))
 (newline)

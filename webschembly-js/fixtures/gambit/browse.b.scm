@@ -186,25 +186,10 @@
         ((null? p))
         (my-match (car pats) (car p) '())))))
 
-(write (browse '((*a ?b *b ?b a *a a *b *a)
-                 (*a *b *b *a (*a) (*b))
-                 (? ? * (b a) * ? ?))))
-(newline)
-
-(define (loop n)
-  (if (= n 0)
-    '()
-    (begin
-      (browse '((*a ?b *b ?b a *a a *b *a)
-                (*a *b *b *a (*a) (*b))
-                (? ? * (b a) * ? ?)))
-      (loop (- n 1)))))
-
 (define (run)
-  (loop 10))
+  (browse '((*a ?b *b ?b a *a a *b *a)
+            (*a *b *b *a (*a) (*b))
+            (? ? * (b a) * ? ?))))
 
-(write "start")
-(newline)
-(run)
-(write "done")
+(write (run))
 (newline)
