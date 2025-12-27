@@ -424,7 +424,7 @@ impl JitSpecializedFunc {
 
                         if branch_specialization {
                             match self.jit_bbs[orig_bb_id].branch_counter.dominant_branch() {
-                                BranchKind::Then => {
+                                DominantBranchKind::Then => {
                                     todo_bb_ids.push(orig_then_bb_id);
                                     required_bbs.push((
                                         orig_else_bb_id,
@@ -432,13 +432,17 @@ impl JitSpecializedFunc {
                                         BranchKind::Else,
                                     ));
                                 }
-                                BranchKind::Else => {
+                                DominantBranchKind::Else => {
                                     todo_bb_ids.push(orig_else_bb_id);
                                     required_bbs.push((
                                         orig_then_bb_id,
                                         then_types,
                                         BranchKind::Then,
                                     ));
+                                }
+                                DominantBranchKind::Both => {
+                                    todo_bb_ids.push(orig_then_bb_id);
+                                    todo_bb_ids.push(orig_else_bb_id);
                                 }
                             }
                         } else {
@@ -1055,6 +1059,13 @@ pub struct BranchCounter {
     pub else_count: usize,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum DominantBranchKind {
+    Then,
+    Else,
+    Both,
+}
+
 impl BranchCounter {
     pub fn increment(&mut self, kind: BranchKind) {
         match kind {
@@ -1063,11 +1074,13 @@ impl BranchCounter {
         }
     }
 
-    pub fn dominant_branch(&self) -> BranchKind {
-        if self.then_count >= self.else_count {
-            BranchKind::Then
+    pub fn dominant_branch(&self) -> DominantBranchKind {
+        if self.then_count.checked_div(self.else_count).unwrap_or(100) >= 4 {
+            DominantBranchKind::Then
+        } else if self.else_count.checked_div(self.then_count).unwrap_or(100) >= 4 {
+            DominantBranchKind::Else
         } else {
-            BranchKind::Else
+            DominantBranchKind::Both
         }
     }
 

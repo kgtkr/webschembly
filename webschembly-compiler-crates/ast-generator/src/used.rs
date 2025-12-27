@@ -3,7 +3,18 @@ use webschembly_compiler_ast::*;
 use webschembly_compiler_error::{Result, compiler_error};
 use webschembly_compiler_locate::{Located, LocatedValue};
 
-pub trait UsedPrevPhase = AstPhase<XBegin = !, XQuote = !, XDefine = !, XLetStar = !, XExt = !>;
+pub trait UsedPrevPhase = AstPhase<
+        XBegin = !,
+        XQuote = !,
+        XDefine = !,
+        XLetStar = !,
+        XExt = !,
+        XCond = !,
+        XNamedLet = !,
+        XDo = !,
+        XAnd = !,
+        XOr = !,
+    >;
 
 #[derive(Debug, Clone)]
 pub struct Used<P: UsedPrevPhase>(std::marker::PhantomData<P>);
@@ -54,6 +65,7 @@ pub enum UsedExtR<P: UsedPrevPhase> {
 #[derive(Debug, Clone)]
 pub struct UsedLambdaR {
     pub args: Vec<LocalVarId>,
+    pub variadic_arg: Option<LocalVarId>,
     pub defines: Vec<LocalVarId>,
     pub captures: Vec<LocalVarId>,
 }
@@ -273,6 +285,26 @@ impl<P: UsedPrevPhase> Used<P> {
                     })
                     .collect::<Vec<_>>();
 
+                let variadic_arg = lambda.variadic_arg.as_ref().map(
+                    |Located {
+                         value: variadic_arg,
+                         ..
+                     }| {
+                        let id = var_id_gen.gen_local(VarMeta {
+                            name: variadic_arg.clone(),
+                        });
+                        new_ctx.env.insert(
+                            variadic_arg.clone(),
+                            EnvLocalVar {
+                                id,
+                                captured: false,
+                                initialized: true,
+                            },
+                        );
+                        id
+                    },
+                );
+
                 let mut new_state = LambdaState::new();
 
                 let new_body = Self::from_exprs(lambda.body, &new_ctx, var_id_gen, &mut new_state)?;
@@ -298,11 +330,13 @@ impl<P: UsedPrevPhase> Used<P> {
                     Expr::Lambda(
                         UsedLambdaR {
                             args,
+                            variadic_arg,
                             defines: new_state.defines,
                             captures: new_state.captures.into_iter().collect(), // 非決定的だが問題ないはず
                         },
                         Lambda {
                             args: lambda.args,
+                            variadic_arg: lambda.variadic_arg,
                             body: new_body,
                         },
                     )
@@ -325,6 +359,7 @@ impl<P: UsedPrevPhase> Used<P> {
                     .with_span(expr.span),
                 )
             }
+            Expr::Cond(x, _) => x,
             Expr::Call(x, call) => {
                 let new_func = Self::from_exprs(call.func, ctx, var_id_gen, state)?;
                 let new_args = call

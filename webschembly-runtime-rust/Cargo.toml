@@ -1,12 +1,12 @@
 [package]
-edition = "2024"
 name = "webschembly-runtime-rust"
 version = "0.1.0"
+edition = "2024"
 
 [dependencies]
-log = {version = "0.4.26", features = ["release_max_level_warn"]}
-rustc-hash = {workspace = true}
-webschembly-compiler = {path = "../webschembly-compiler"}
+log = { workspace = true }
+rustc-hash = { workspace = true }
+webschembly-compiler = { path = "../webschembly-compiler" }
 
 [lib]
 crate-type = ["cdylib"]

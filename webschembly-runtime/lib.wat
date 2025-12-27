@@ -1,16 +1,16 @@
 (module
   (type $Buf (array (mut i8)))
   (type $StringBuf (sub final (struct (field $buf (ref $Buf)) (field $shared (mut i8)))))
-  
+
   (type $Nil (sub final (struct)))
   (type $Bool (sub final (struct (field i8))))
-  (type $Char (sub final (struct (field i32))))
+  (type $Char (sub final (struct (field $value i32))))
   (type $Int (sub final (struct (field i64))))
   (type $Float (sub final (struct (field f64))))
   (type $String (sub final (struct
-    (field $buf (mut (ref $StringBuf)))
-    (field $len i32)
-    (field $offset i32))))
+                            (field $buf (mut (ref $StringBuf)))
+                            (field $len i32)
+                            (field $offset i32))))
   (type $Symbol (sub final (struct (field $name (ref null $String)))))
   (type $Cons (sub final (struct (field $car (mut eqref)) (field $cdr (mut eqref)))))
   (type $Vector (array (mut eqref)))
@@ -18,12 +18,12 @@
   (type $MutFuncRef (sub final (struct (field $func (mut funcref)))))
   (type $EntrypointTable (array (mut (ref null $MutFuncRef))))
   (type $Closure (sub (struct
-    (field $module_id i32)
-    (field $func_id i32)
-    ;; (Closure, Args) -> Obj
-    (field $entrypoint_table (ref null $EntrypointTable)))))
+                       (field $module_id i32)
+                       (field $func_id i32)
+                       ;; (Closure, Args) -> Obj
+                       (field $entrypoint_table (ref null $EntrypointTable)))))
   (type $ClosureFunc (func (param (ref null $Closure)) (param (ref null $Args)) (result eqref)))
-  
+
   (import "runtime" "malloc" (func $malloc (param i32) (result i32)))
   (import "runtime" "free" (func $free (param i32)))
   (import "runtime" "memory" (memory 1))
@@ -42,23 +42,25 @@
   (func $display_fd (export "display_fd") (param $fd i32) (param $s (ref null $String))
     (local $s_ptr i32)
     (local $s_len i32)
-    (call $string_to_memory (local.get $s)) (local.set $s_ptr) (local.set $s_len)
+    (call $string_to_memory (local.get $s))
+    (local.set $s_ptr)
+    (local.set $s_len)
     (call $write_buf (local.get $fd) (local.get $s_ptr) (local.get $s_len))
-    (call $free (local.get $s_ptr))
-  )
+    (call $free (local.get $s_ptr)))
   (func $display (export "display") (param $s (ref null $String))
-    (call $display_fd (i32.const 1) (local.get $s))
-  )
+    (call $display_fd (i32.const 1) (local.get $s)))
   (func $string_to_symbol (export "string_to_symbol") (param $s (ref null $String)) (result (ref null $Symbol))
     (local $s_ptr i32)
     (local $s_len i32)
     (local $symbol_index i32)
     (local $new_symbol (ref null $Symbol))
 
-    (local.set $s (call $copy_string (local.get $s)))
-    
+    (local.set $s (call $string_copy (local.get $s)))
+
     ;; string -> symbol_index
-    (call $string_to_memory (local.get $s)) (local.set $s_ptr) (local.set $s_len)
+    (call $string_to_memory (local.get $s))
+    (local.set $s_ptr)
+    (local.set $s_len)
     (local.set $symbol_index (call $_string_to_symbol (local.get $s_ptr) (local.get $s_len)))
     (call $free (local.get $s_ptr))
 
@@ -66,56 +68,49 @@
     (block $break
       (loop $loop
         (br_if $break
-          (i32.gt_u (table.size $symbols) (local.get $symbol_index))
-        )
+          (i32.gt_u (table.size $symbols) (local.get $symbol_index)))
         (if (i32.eq (i32.const -1) (table.grow $symbols (ref.null $Symbol) (table.size $symbols)))
           (then
-            (unreachable)
-          )
-        )
-        (br $loop)
-      )
-    )
+            (unreachable)))
+        (br $loop)))
 
     (return (block $exist (result (ref null $Symbol))
-      (br_on_non_null $exist (table.get $symbols (local.get $symbol_index)))
-      (local.set $new_symbol (struct.new $Symbol (local.get $s)))
-      (table.set $symbols (local.get $symbol_index) (local.get $new_symbol))
-      (local.get $new_symbol)
-    ))
-  )
+             (br_on_non_null $exist (table.get $symbols (local.get $symbol_index)))
+             (local.set $new_symbol (struct.new $Symbol (local.get $s)))
+             (table.set $symbols (local.get $symbol_index) (local.get $new_symbol))
+             (local.get $new_symbol))))
 
   (func $int_to_string (export "int_to_string") (param $x i64) (result (ref null $String))
     (local $s_ptr i32)
     (local $s_len i32)
     (local $s (ref null $String))
-    (call $uncos_tuple_i32 (call $_int_to_string (local.get $x))) (local.set $s_ptr) (local.set $s_len)
+    (call $uncos_tuple_i32 (call $_int_to_string (local.get $x)))
+    (local.set $s_ptr)
+    (local.set $s_len)
     (local.set $s (call $memory_to_string (local.get $s_ptr) (local.get $s_len)))
     (call $free (local.get $s_ptr))
-    (local.get $s)
-  )
+    (local.get $s))
 
   (func $float_to_string (export "float_to_string") (param $x f64) (result (ref null $String))
     (local $s_ptr i32)
     (local $s_len i32)
     (local $s (ref null $String))
-    (call $uncos_tuple_i32 (call $_float_to_string (local.get $x))) (local.set $s_ptr) (local.set $s_len)
+    (call $uncos_tuple_i32 (call $_float_to_string (local.get $x)))
+    (local.set $s_ptr)
+    (local.set $s_len)
     (local.set $s (call $memory_to_string (local.get $s_ptr) (local.get $s_len)))
     (call $free (local.get $s_ptr))
-    (local.get $s)
-  )
+    (local.get $s))
 
   ;; i64を(i32, i32)として解釈する
   (func $uncos_tuple_i32 (param $x i64) (result i32) (result i32)
     (i32.wrap_i64 (i64.shr_u (local.get $x) (i64.const 32)))
-    (i32.wrap_i64 (local.get $x))
-  )
+    (i32.wrap_i64 (local.get $x)))
 
   (func $string_to_memory (param $s (ref null $String)) (result i32) (result i32)
     (local $ptr i32)
     (local $s_buf (ref $StringBuf))
     (local $len i32)
-    
 
     (local.set $s_buf (struct.get $String $buf (local.get $s)))
     (local.set $len (struct.get $String $len (local.get $s)))
@@ -123,17 +118,15 @@
     (local.set $ptr (call $buf_to_memory (struct.get $StringBuf $buf (local.get $s_buf)) (local.get $len) (struct.get $String $offset (local.get $s))))
 
     (local.get $len)
-    (local.get $ptr)
-  )
+    (local.get $ptr))
 
   (func $memory_to_string (param $ptr i32) (param $len i32) (result (ref null $String))
     (local $buf (ref $Buf))
     (local $s_buf (ref $StringBuf))
-    
+
     (local.set $buf (call $memory_to_buf (local.get $ptr) (local.get $len)))
     (local.set $s_buf (struct.new $StringBuf (local.get $buf) (i32.const 0)))
-    (struct.new $String (local.get $s_buf) (local.get $len) (i32.const 0))
-  )
+    (struct.new $String (local.get $s_buf) (local.get $len) (i32.const 0)))
 
   (func $buf_to_memory (param $buf (ref $Buf)) (param $len i32) (param $offset i32) (result i32)
     (local $ptr i32)
@@ -146,16 +139,12 @@
     (block $break
       (loop $loop
         (br_if $break
-          (i32.ge_u (local.get $i) (local.get $len))
-        )
+          (i32.ge_u (local.get $i) (local.get $len)))
         (i32.store8 (i32.add (local.get $ptr) (local.get $i)) (array.get_u $Buf (local.get $buf) (i32.add (local.get $offset) (local.get $i))))
         (local.set $i (i32.add (local.get $i) (i32.const 1)))
-        (br $loop)
-      )
-    )
+        (br $loop)))
 
-    (local.get $ptr)
-  )
+    (local.get $ptr))
 
   (func $memory_to_buf (param $ptr i32) (param $len i32) (result (ref $Buf))
     (local $i i32)
@@ -165,36 +154,28 @@
     (block $break
       (loop $loop
         (br_if $break
-          (i32.ge_u (local.get $i) (local.get $len))
-        )
+          (i32.ge_u (local.get $i) (local.get $len)))
         (array.set $Buf (local.get $buf) (local.get $i) (i32.load8_u (i32.add (local.get $ptr) (local.get $i))))
         (local.set $i (i32.add (local.get $i) (i32.const 1)))
-        (br $loop)
-      )
-    )
+        (br $loop)))
 
-    (local.get $buf)
-  )
+    (local.get $buf))
 
-  (func $copy_string (export "copy_string") (param $s (ref null $String)) (result (ref null $String))
+  (func $string_copy (export "string_copy") (param $s (ref null $String)) (result (ref null $String))
     (local $s_buf (ref $StringBuf))
     (local.set $s_buf (struct.get $String $buf (local.get $s)))
     (struct.set $StringBuf $shared (local.get $s_buf) (i32.const 1))
 
-    (return (struct.new $String (local.get $s_buf) (struct.get $String $len (local.get $s)) (struct.get $String $offset (local.get $s))))
-  )
+    (return (struct.new $String (local.get $s_buf) (struct.get $String $len (local.get $s)) (struct.get $String $offset (local.get $s)))))
 
   (func $throw_webassembly_exception (export "throw_webassembly_exception")
-    (throw $WEBSCHEMBLY_EXCEPTION)
-  )
+    (throw $WEBSCHEMBLY_EXCEPTION))
 
   (func $new_args (export "new_args") (param $size i32) (result (ref null $Args))
-    (return (array.new $Args (ref.null eq) (local.get $size)))
-  )
+    (return (array.new $Args (ref.null eq) (local.get $size))))
 
   (func $set_args (export "set_args") (param $params (ref null $Args)) (param $index i32) (param $value eqref)
-    (array.set $Args (local.get $params) (local.get $index) (local.get $value))
-  )
+    (array.set $Args (local.get $params) (local.get $index) (local.get $value)))
 
   (func $call_closure (export "call_closure") (param $closure (ref null $Closure)) (param $params (ref null $Args)) (result eqref)
     (local $func (ref $ClosureFunc))
@@ -206,7 +187,109 @@
     (ref.cast (ref $ClosureFunc))
     (local.set $func)
 
+    (call_ref $ClosureFunc (local.get $closure) (local.get $params) (local.get $func)))
 
-    (call_ref $ClosureFunc (local.get $closure) (local.get $params) (local.get $func))
-  )
-)
+  (func $args_to_list (export "args_to_list") (param $args (ref null $Args)) (param $start_idx i32) (result eqref)
+    (local $len i32)
+    (local $i i32)
+    (local $cons eqref)
+    (local $car eqref)
+    (local $cdr eqref)
+
+    (local.set $cons (global.get $nil))
+    (local.set $len (array.len (local.get $args)))
+    (local.set $i (local.get $len))
+    (block $break
+      (loop $loop
+        (br_if $break
+          (i32.le_s (local.get $i) (local.get $start_idx)))
+        (local.set $i (i32.sub (local.get $i) (i32.const 1)))
+        (local.set $car (array.get $Args (local.get $args) (local.get $i)))
+        (local.set $cdr (local.get $cons))
+        (local.set $cons (struct.new $Cons (local.get $car) (local.get $cdr)))
+        (br $loop)))
+
+    (local.get $cons))
+
+  (func $copy_buf (param $buf (ref $Buf)) (param $offset i32) (param $len i32) (result (ref $Buf))
+    (local $new_buf (ref $Buf))
+    (local $i i32)
+
+    (local.set $new_buf (array.new $Buf (i32.const 0) (local.get $len)))
+
+    (block $break
+      (loop $loop
+        (br_if $break
+          (i32.ge_u (local.get $i) (local.get $len)))
+        (array.set $Buf (local.get $new_buf) (local.get $i) (array.get_u $Buf (local.get $buf) (i32.add (local.get $offset) (local.get $i))))
+        (local.set $i (i32.add (local.get $i) (i32.const 1)))
+        (br $loop)))
+
+    (local.get $new_buf))
+
+  (func $string_eq (export "string_eq") (param $s1 (ref null $String)) (param $s2 (ref null $String)) (result i32)
+    (local $len1 i32)
+    (local $len2 i32)
+    (local $i i32)
+    (local $buf1 (ref $Buf))
+    (local $buf2 (ref $Buf))
+
+    (local.set $len1 (struct.get $String $len (local.get $s1)))
+    (local.set $len2 (struct.get $String $len (local.get $s2)))
+
+    (if (i32.ne (local.get $len1) (local.get $len2))
+      (then
+        (return (i32.const 0))))
+
+    (local.set $buf1 (struct.get $StringBuf $buf (struct.get $String $buf (local.get $s1))))
+    (local.set $buf2 (struct.get $StringBuf $buf (struct.get $String $buf (local.get $s2))))
+
+    (block $break
+      (loop $loop
+        (br_if $break
+          (i32.ge_u (local.get $i) (local.get $len1)))
+        (if
+          (i32.ne
+            (array.get_u $Buf (local.get $buf1) (i32.add (struct.get $String $offset (local.get $s1)) (local.get $i)))
+            (array.get_u $Buf (local.get $buf2) (i32.add (struct.get $String $offset (local.get $s2)) (local.get $i))))
+          (then
+            (return (i32.const 0))))
+        (local.set $i (i32.add (local.get $i) (i32.const 1)))
+        (br $loop)))
+
+    (i32.const 1))
+
+  ;; TODO: string_set/ref/lengthのマルチバイト文字対応
+  (func $string_ref (export "string_ref") (param $s (ref null $String)) (param $index i32) (result i32)
+    (local $buf (ref $Buf))
+    (if (i32.ge_u (local.get $index) (struct.get $String $len (local.get $s)))
+      (then
+        (call $throw_webassembly_exception)))
+    (local.set $buf (struct.get $StringBuf $buf (struct.get $String $buf (local.get $s))))
+    (array.get_u $Buf (local.get $buf) (i32.add (struct.get $String $offset (local.get $s)) (local.get $index))))
+
+  (func $string_set (export "string_set") (param $s (ref null $String)) (param $index i32) (param $char i32)
+    (local $buf (ref $Buf))
+    (if (i32.ge_u (local.get $index) (struct.get $String $len (local.get $s)))
+      (then
+        (call $throw_webassembly_exception)))
+    (call $string_to_unshared (local.get $s))
+    (local.set $buf (struct.get $StringBuf $buf (struct.get $String $buf (local.get $s))))
+    (array.set $Buf (local.get $buf) (i32.add (struct.get $String $offset (local.get $s)) (local.get $index)) (local.get $char)))
+
+  (func $string_to_unshared (param $s (ref null $String))
+    (local $s_buf (ref $StringBuf))
+    (local.set $s_buf (struct.get $String $buf (local.get $s)))
+    (if (i32.eq (struct.get $StringBuf $shared (local.get $s_buf)) (i32.const 1))
+      (then
+        (local.set $s_buf
+          (struct.new $StringBuf
+            (call $copy_buf
+              (struct.get $StringBuf $buf (local.get $s_buf))
+              (struct.get $String $offset (local.get $s))
+              (struct.get $String $len (local.get $s)))
+            (i32.const 0)))
+        (struct.set $String $buf (local.get $s) (local.get $s_buf)))))
+
+  (func $string_length (export "string_length") (param $s (ref null $String)) (result i32)
+    (struct.get $String $len (local.get $s))))

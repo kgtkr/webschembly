@@ -1,23 +1,24 @@
 <!DOCTYPE html>
 <html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Webschembly Playground</title>
+  </head>
 
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Webschembly Playground</title>
-</head>
-
-<body>
-  <script src="./src/playground" type="module"></script>
-  <h1>Webschembly Playground</h1>
-  <div><textarea id="src" cols="30" rows="10">(write "Hello World")(newline)</textarea></div>
-  <button id="run">Run</button>
-  <h2>stdout</h2>
-  <pre id="stdout"></pre>
-  <h2>stderr</h2>
-  <pre id="stderr"></pre>
-  <h2>exit code</h2>
-  <pre id="exit-code"></pre>
-</body>
-
+  <body>
+    <script src="./src/playground" type="module"></script>
+    <h1>Webschembly Playground</h1>
+    <div>
+      <textarea id="src" cols="30" rows="10"
+      >(write "Hello World")(newline)</textarea>
+    </div>
+    <button id="run">Run</button>
+    <h2>stdout</h2>
+    <pre id="stdout"></pre>
+    <h2>stderr</h2>
+    <pre id="stderr"></pre>
+    <h2>exit code</h2>
+    <pre id="exit-code"></pre>
+  </body>
 </html>

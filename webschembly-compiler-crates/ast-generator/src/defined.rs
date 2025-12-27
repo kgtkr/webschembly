@@ -3,7 +3,17 @@ use webschembly_compiler_error::{Result, compiler_error};
 use webschembly_compiler_locate::{Located, LocatedValue, Span};
 // defineをletrec or set!に変換
 
-pub trait DefinedPrevPhase = AstPhase<XBegin = !, XQuote = !, XLetStar = !, XExt = !>;
+pub trait DefinedPrevPhase = AstPhase<
+        XBegin = !,
+        XQuote = !,
+        XLetStar = !,
+        XCond = !,
+        XExt = !,
+        XNamedLet = !,
+        XDo = !,
+        XAnd = !,
+        XOr = !,
+    >;
 
 #[derive(Debug, Clone)]
 pub struct Defined<P: DefinedPrevPhase>(std::marker::PhantomData<P>);
@@ -101,6 +111,7 @@ impl<P: DefinedPrevPhase> Defined<P> {
                         x,
                         Lambda {
                             args: lambda.args,
+                            variadic_arg: lambda.variadic_arg,
                             body: new_body,
                         },
                     )
@@ -130,6 +141,7 @@ impl<P: DefinedPrevPhase> Defined<P> {
                 );
                 Ok(())
             }
+            Expr::Cond(x, _) => x,
             Expr::Call(x, call) => {
                 let new_func = Self::from_exprs(call.func, ctx.to_undefinable_if_local(), defines)?;
                 let new_args = call
@@ -179,6 +191,7 @@ impl<P: DefinedPrevPhase> Defined<P> {
                 );
                 Ok(())
             }
+
             Expr::Vector(x, vec) => {
                 result.push(
                     Expr::Vector(

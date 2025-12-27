@@ -14,7 +14,18 @@ pub struct TailCallCallR {
     pub is_tail: bool,
 }
 
-pub trait TailCallPrevPhase = AstPhase<XBegin = !, XQuote = !, XDefine = !, XLetStar = !, XExt = !>;
+pub trait TailCallPrevPhase = AstPhase<
+        XBegin = !,
+        XQuote = !,
+        XDefine = !,
+        XLetStar = !,
+        XExt = !,
+        XCond = !,
+        XNamedLet = !,
+        XDo = !,
+        XAnd = !,
+        XOr = !,
+    >;
 
 impl<P: TailCallPrevPhase> TailCall<P> {
     pub fn from_ast(ast: Ast<P>) -> Ast<Self> {
@@ -37,6 +48,7 @@ impl<P: TailCallPrevPhase> TailCall<P> {
                 x,
                 Lambda {
                     args: lambda.args,
+                    variadic_arg: lambda.variadic_arg,
                     body: Self::from_exprs(lambda.body, true),
                 },
             )
@@ -50,6 +62,7 @@ impl<P: TailCallPrevPhase> TailCall<P> {
                 },
             )
             .with_span(expr.span),
+            Expr::Cond(x, _) => x,
             Expr::Call(_, call) => Expr::Call(
                 TailCallCallR { is_tail },
                 Call {

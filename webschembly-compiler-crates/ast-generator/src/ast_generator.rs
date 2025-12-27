@@ -31,7 +31,7 @@ impl ASTGenerator {
 
     pub fn gen_ast(&mut self, sexprs: Vec<LSExpr>) -> Result<Ast<Final>> {
         let parsed = Parsed::from_sexprs(sexprs)?;
-        let desugared = Desugared::from_ast(parsed);
+        let desugared = Desugared::new().from_ast(parsed);
         let defined = Defined::from_ast(desugared)?;
         let tail_call = TailCall::from_ast(defined);
         let used = Used::from_ast(tail_call, &mut self.var_id_gen)?;

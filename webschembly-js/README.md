@@ -2,8 +2,8 @@
 
 JavaScript bindings for Webschembly
 
-
 ## Usage
+
 ```bash
 $ just repl
 => (+ 1 2)
