@@ -66,10 +66,11 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: runtime-debug
+          path: ./result-runtime
       - run: npm ci
       - name: Run tests
         run: |
-          WEBSCHEMBLY_RUNTIME=../result-runtime-debug/lib/webschembly_runtime.wasm npm test
+          WEBSCHEMBLY_RUNTIME=../result-runtime/webschembly_runtime.wasm npm test
         env:
           WEBSCHEMBLY_SHARD_PREFIX: ${{ matrix.shard }}
         working-directory: ./webschembly-js
@@ -90,10 +91,11 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: runtime
+          path: ./result-runtime
       - run: npm ci
       - name: Run benchmark
         run: |
-          WEBSCHEMBLY_RUNTIME=../result-runtime/lib/webschembly_runtime.wasm npm run benchmark
+          WEBSCHEMBLY_RUNTIME=../result-runtime/webschembly_runtime.wasm npm run benchmark
           mv ./benchmark.result ./benchmark.result-${{ matrix.shard }}
         env:
           WEBSCHEMBLY_SHARD_PREFIX: ${{ matrix.shard }}
@@ -112,9 +114,10 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: benchmark-results
+          path: ./benchmark-results
       - name: Combine benchmark results
         run: |
-          cat ./webschembly-js/benchmark.result-* > ./benchmark.result
+          cat ./benchmark-results/* > ./benchmark.result
       - name: Store benchmark result
         uses: benchmark-action/github-action-benchmark@v1
         with:
@@ -140,6 +143,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: playground
+          path: ./result-playground
       - name: Prepare pages
         run: |
           mkdir -p pages
