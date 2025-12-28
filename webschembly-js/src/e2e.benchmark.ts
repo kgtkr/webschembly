@@ -42,10 +42,7 @@ for (const filename of filenames) {
         bench.add(
           `${filename},with warmup,${compilerConfigToString(compilerConfig)}`,
           () => {
-            // branch specializationのthresholdが20なので20回実行する
-            for (let i = 0; i < 20; i++) {
-              runtime.instance.exports.call_closure(runClosure, runArgs);
-            }
+            runtime.instance.exports.call_closure(runClosure, runArgs);
           },
           {
             beforeEach: async () => {
@@ -75,7 +72,10 @@ for (const filename of filenames) {
               runtime.loadSrc(srcBuf);
               runClosure = runtime.getGlobal("run");
               runArgs = runtime.instance.exports.new_args(0);
-              runtime.instance.exports.call_closure(runClosure, runArgs);
+              // branch specializationのthresholdが20なので少し多めの30回実行する
+              for (let i = 0; i < 30; i++) {
+                runtime.instance.exports.call_closure(runClosure, runArgs);
+              }
               afterWarmup = true;
             },
             afterEach: () => {
