@@ -115,6 +115,7 @@ jobs:
         run: |
           mkdir -p pages
           cp -r result-playground/* pages/
+          git fetch origin github-action-benchmark-data
           git archive github-action-benchmark-data | tar -x -C pages
       - name: Upload Playground
         uses: actions/upload-pages-artifact@v3
