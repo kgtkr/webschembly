@@ -39,6 +39,7 @@
       debugWasmRustPkgs = pkgs.rustBuilder.makePackageSet {
         packageFun = import "${generatedSrc}/Cargo.nix";
         target = "wasm32-unknown-unknown";
+        release = false;
         inherit rustToolchain;
       };
       webschembly-compiler-cli = (staticRustPkgs.workspace.webschembly-compiler-cli { }).bin;
