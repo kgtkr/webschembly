@@ -30,7 +30,7 @@
     in
     {
       packages = {
-        inherit webschembly-playground;
+        inherit webschembly-playground nodejs;
         webschembly-playground-for-pages = webschembly-playground.overrideAttrs (oldAttrs: {
           BASE_URL = "/webschembly/";
         });

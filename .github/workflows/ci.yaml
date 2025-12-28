@@ -21,15 +21,70 @@ jobs:
       - name: Test
         run: |
           cargo test
+      - name: Build WebAssembly runtime
+        run: |
+          nix build .#webschembly-runtime --out-link result-runtime
+          nix build .#webschembly-runtime-debug --out-link result-runtime-debug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: runtime
+          path: result-runtime/lib/webschembly_runtime.wasm
+      - uses: actions/upload-artifact@v4
+        with:
+          name: runtime-debug
+          path: result-runtime-debug/lib/webschembly_runtime.wasm
       - run: npm ci
       - run: npm run check
-      - name: E2E Test
+      - name: Build Playground
         run: |
-          just test
+          nix build .#webschembly-playground-for-pages --out-link result-playground
+      - uses: actions/upload-artifact@v4
+        with:
+          name: playground
+          path: result-playground
+      - name: Build cli
+        run: |
+          nix build .#webschembly-compiler-cli --out-link result-cli
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cli
+          path: result-cli-bin/bin/webschembly-compiler-cli
+  e2e-test:
+    needs: build
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: DeterminateSystems/nix-installer-action@main
+      - name: Install nodejs
+        run: |
+          nix profile install .#nodejs
+      - uses: actions/download-artifact@v4
+        with:
+          name: runtime-debug
+      - run: npm ci
+      - name: Run tests
+        run: |
+          WEBSCHEMBLY_RUNTIME=../runtime-debug/lib/webschembly_runtime.wasm npm test
         working-directory: ./webschembly-js
-      - name: E2E Benchmark
+  e2e-benchmark:
+    needs: build
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: DeterminateSystems/nix-installer-action@main
+      - name: Install nodejs
         run: |
-          just benchmark
+          nix profile install .#nodejs
+      - uses: actions/download-artifact@v4
+        with:
+          name: runtime
+      - name: Run benchmark
+        run: |
+          WEBSCHEMBLY_RUNTIME=../runtime/lib/webschembly_runtime.wasm npm run benchmark
         working-directory: ./webschembly-js
       - name: Store benchmark result
         uses: benchmark-action/github-action-benchmark@v1
@@ -41,35 +96,8 @@ jobs:
       - name: Push benchmark result
         run: git push origin github-action-benchmark-data:github-action-benchmark-data
         if: github.ref == 'refs/heads/master'
-      - name: Build Playground
-        run: |
-          nix build .#webschembly-playground-for-pages --out-link result-playground
-      - name: Prepare pages
-        run: |
-          mkdir -p pages
-          cp -r result-playground/* pages/
-          git archive github-action-benchmark-data | tar -x -C pages
-      - name: Upload Playground
-        id: deployment
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: ./pages
-      - name: Build cli
-        run: |
-          nix build .#webschembly-compiler-cli --out-link result-cli
-      - name: Build runtime
-        run: |
-          nix build .#webschembly-runtime --out-link result-runtime
-      - uses: actions/upload-artifact@v4
-        with:
-          name: cli
-          path: result-cli-bin/bin/webschembly-compiler-cli
-      - uses: actions/upload-artifact@v4
-        with:
-          name: runtime
-          path: result-runtime/lib/webschembly_runtime.wasm
   deploy:
-    needs: build
+    needs: [build, e2e-benchmark]
     if: github.ref == 'refs/heads/master'
     permissions:
       id-token: write
@@ -79,5 +107,18 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      - uses: actions/checkout@v3
+      - uses: actions/download-artifact@v4
+        with:
+          name: playground
+      - name: Prepare pages
+        run: |
+          mkdir -p pages
+          cp -r result-playground/* pages/
+          git archive github-action-benchmark-data | tar -x -C pages
+      - name: Upload Playground
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./pages
       - uses: actions/deploy-pages@v4
         id: deployment
