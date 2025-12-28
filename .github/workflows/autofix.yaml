@@ -7,6 +7,7 @@ jobs:
   autofix:
     permissions:
       contents: write
+      actions: write
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -18,12 +19,26 @@ jobs:
         run: |
           treefmt
           cargo clippy --all --lib --tests --fix --allow-dirty --allow-staged
-      - name: Commit and push if changed
+      - name: Git Diff
+        id: git-diff
+        run: git diff --exit-code || echo "changed=true" >> $GITHUB_OUTPUT
+      - name: Commit and Push
+        if: steps.git-diff.outputs.changed == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -A
-          if ! git diff --staged --quiet; then
-            git commit -m "chore: auto-fix format and lint"
-            git push
-          fi
+          git commit -m "chore: auto-fix format and lint"
+          git push
+      - name: Run workflow dispatch
+        if: steps.git-diff.outputs.changed == 'true'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'ci.yaml',
+              ref: '${{ github.head_ref }}',
+            })
