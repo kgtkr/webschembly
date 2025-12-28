@@ -1,10 +1,13 @@
 name: ci
-on: push
+on:
+  workflow_dispatch:
+  push:
 jobs:
   build:
     permissions:
       contents: write
       id-token: write
+      statuses: write
     env:
       CI: "true"
     runs-on: ubuntu-latest
