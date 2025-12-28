@@ -36,9 +36,14 @@
         target = "wasm32-unknown-unknown";
         inherit rustToolchain;
       };
+      debugWasmRustPkgs = pkgs.rustBuilder.makePackageSet {
+        packageFun = import "${generatedSrc}/Cargo.nix";
+        target = "wasm32-unknown-unknown";
+        inherit rustToolchain;
+      };
       webschembly-compiler-cli = (staticRustPkgs.workspace.webschembly-compiler-cli { }).bin;
       webschembly-runtime-rust = (wasmRustPkgs.workspace.webschembly-runtime-rust { }).out;
-      webschembly-runtime-rust-debug = (wasmRustPkgs.workspace.webschembly-runtime-rust { release = false; }).out;
+      webschembly-runtime-rust-debug = (debugWasmRustPkgs.workspace.webschembly-runtime-rust { }).out;
       webschembly-runtime = pkgs.callPackage ./webschembly-runtime { inherit webschembly-runtime-rust; BINARYEN_ARGS = lib.strings.trim (builtins.readFile ./binaryen-args.txt); };
       webschembly-runtime-debug = pkgs.callPackage ./webschembly-runtime { webschembly-runtime-rust = webschembly-runtime-rust-debug; BINARYEN_ARGS = lib.strings.trim (builtins.readFile ./binaryen-args.txt); };
     in
