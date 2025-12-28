@@ -95,7 +95,7 @@ jobs:
           script: |
             const results = ${{ toJson(needs) }};
             const allSuccess = Object.values(results).every(job => job.result === 'success');
-            
+
             const state = allSuccess ? 'success' : 'failure';
             const description = allSuccess ? 'All jobs passed' : 'Some jobs failed';
 
