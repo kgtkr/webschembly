@@ -3,11 +3,7 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import { beforeAll, describe, expect, test } from "vitest";
 import { createNodeRuntimeEnv } from "./node-runtime-env";
-import {
-  type CompilerConfig,
-  compilerConfigToString,
-  createRuntime,
-} from "./runtime";
+import { type CompilerConfig, compilerConfigToString, createRuntime } from "./runtime";
 import * as testUtils from "./test-utils";
 
 function concatBufs(bufs: Uint8Array[]) {
@@ -34,7 +30,7 @@ describe("E2E test", async () => {
   const filenames = await testUtils.getAllFixtureFilenames();
   beforeAll(async () => {
     runtimeModule = new WebAssembly.Module(
-      await fs.readFile(process.env["WEBSCHEMBLY_RUNTIME"]!)
+      await fs.readFile(process.env["WEBSCHEMBLY_RUNTIME"]!),
     );
   });
 
@@ -42,7 +38,7 @@ describe("E2E test", async () => {
     compilerConfigs.map((compilerConfig) => [
       compilerConfigToString(compilerConfig),
       compilerConfig,
-    ])
+    ]),
   )("%s", (_, compilerConfig) => {
     describe.each(filenames)("%s", (filename) => {
       let srcBuf: Buffer;
@@ -78,7 +74,7 @@ describe("E2E test", async () => {
             }),
             {
               compilerConfig,
-            }
+            },
           );
 
           runtime.loadStdlib();
@@ -89,16 +85,16 @@ describe("E2E test", async () => {
           const stderr = new TextDecoder().decode(concatBufs(stderrBufs));
 
           await expect(exitCode).toMatchFileSnapshot(
-            `${snapshotDir}/${filename}-exitCode`
+            `${snapshotDir}/${filename}-exitCode`,
           );
           await expect(stdout).toMatchFileSnapshot(
-            `${snapshotDir}/${filename}-stdout`
+            `${snapshotDir}/${filename}-stdout`,
           );
           await expect(stderr).toMatchFileSnapshot(
-            `${snapshotDir}/${filename}-stderr`
+            `${snapshotDir}/${filename}-stderr`,
           );
         },
-        60 * 1000
+        60 * 1000,
       );
     });
   });
