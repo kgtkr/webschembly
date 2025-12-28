@@ -44,7 +44,7 @@
     in
     {
       packages = {
-        inherit generatedSrc webschembly-compiler-cli webschembly-runtime webschembly-runtime-debug;
+        inherit webschembly-compiler-cli webschembly-runtime webschembly-runtime-debug;
       };
       make-shells.default = {
         env = {
