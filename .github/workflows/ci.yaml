@@ -90,6 +90,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: runtime
+      - run: npm ci
       - name: Run benchmark
         run: |
           WEBSCHEMBLY_RUNTIME=../runtime/lib/webschembly_runtime.wasm npm run benchmark
