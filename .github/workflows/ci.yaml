@@ -102,7 +102,7 @@ jobs:
         working-directory: ./webschembly-js
       - uses: actions/upload-artifact@v4
         with:
-          name: benchmark-results
+          name: benchmark-result-{{ matrix.shard }}
           path: ./webschembly-js/benchmark.result-{{ matrix.shard }}
   store-benchmark-results:
     needs: e2e-benchmark
@@ -113,8 +113,9 @@ jobs:
       - name: Download benchmark results
         uses: actions/download-artifact@v4
         with:
-          name: benchmark-results
+          pattern: benchmark-result-*
           path: ./benchmark-results
+          merge-multiple: true
       - name: Combine benchmark results
         run: |
           cat ./benchmark-results/* > ./benchmark.result
