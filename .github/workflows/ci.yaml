@@ -10,26 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - uses: DeterminateSystems/nix-installer-action@main
-      - uses: DeterminateSystems/magic-nix-cache-action@main
-      - name: Build devShell
-        run: |
-          nix print-dev-env > result-devShell.sh
-          echo "BASH_ENV=$PWD/result-devShell.sh" >> $GITHUB_ENV
-      - name: Cache cargo target
-        uses: actions/cache@v4
-        with:
-          path: ./target
-          key: cargo-cache-20250204-1-${{ github.sha }}
-          restore-keys: |
-            cargo-cache-20250204-1-
-      - name: Cache cargo home
-        uses: actions/cache@v4
-        with:
-          path: ~/.cargo
-          key: cargo-home-20250204-1-${{ github.sha }}
-          restore-keys: |
-            cargo-home-20250204-1-
+      - uses: ./.github/actions/setup
       - name: Format
         run: |
           treefmt --ci
