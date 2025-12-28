@@ -1,16 +1,16 @@
 name: Setup
-description: 'Setup project'
+description: "Setup project"
 
 outputs:
   readonly-token:
-    description: 'Readonly token'
+    description: "Readonly token"
     value: ${{ steps.readonly-token.outputs.token }}
   writable-token:
-    description: 'Writable token'
+    description: "Writable token"
     value: ${{ steps.writable-token.outputs.token }}
 
 runs:
-  using: 'composite'
+  using: "composite"
   steps:
     - uses: DeterminateSystems/nix-installer-action@main
     - uses: DeterminateSystems/magic-nix-cache-action@main
