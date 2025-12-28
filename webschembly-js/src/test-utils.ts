@@ -1,12 +1,27 @@
 import * as fs from "fs/promises";
 import * as path from "path";
+import { createHash } from "crypto";
 
+const shardPrefix = process.env.WEBSCHEMBLY_SHARD_PREFIX || "";
 export const fixtureDir = "fixtures";
+
+function shouldIncludePath(entryPath: string): boolean {
+  if (!shardPrefix) {
+    return true;
+  }
+
+  const hash = createHash("sha256").update(entryPath).digest("hex");
+  const hashBinary = BigInt("0x" + hash)
+    .toString(2)
+    .padStart(256, "0");
+
+  return hashBinary.startsWith(shardPrefix);
+}
 
 async function readDirRec(
   basePath: string,
   curDir: string,
-  result: string[],
+  result: string[]
 ): Promise<void> {
   const dir = path.join(basePath, curDir);
   const entries = await fs.readdir(dir, {
@@ -20,7 +35,9 @@ async function readDirRec(
     if (entry.isDirectory()) {
       await readDirRec(basePath, entryPath, result);
     } else {
-      result.push(entryPath);
+      if (shouldIncludePath(entryPath)) {
+        result.push(entryPath);
+      }
     }
   }
 }
