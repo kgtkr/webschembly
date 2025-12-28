@@ -1,6 +1,6 @@
+import { createHash } from "crypto";
 import * as fs from "fs/promises";
 import * as path from "path";
-import { createHash } from "crypto";
 
 const shardPrefix = process.env.WEBSCHEMBLY_SHARD_PREFIX || "";
 export const fixtureDir = "fixtures";
@@ -21,7 +21,7 @@ function shouldIncludePath(entryPath: string): boolean {
 async function readDirRec(
   basePath: string,
   curDir: string,
-  result: string[]
+  result: string[],
 ): Promise<void> {
   const dir = path.join(basePath, curDir);
   const entries = await fs.readdir(dir, {
