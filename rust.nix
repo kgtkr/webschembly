@@ -38,13 +38,13 @@
       };
       webschembly-compiler-cli = (staticRustPkgs.workspace.webschembly-compiler-cli { }).bin;
       webschembly-runtime-rust = (wasmRustPkgs.workspace.webschembly-runtime-rust { }).out;
-      webschembly-runtime-rust-debug = (wasmRustPkgs.workspace.webschembly-runtime-rust { debug = true; }).out;
+      webschembly-runtime-rust-debug = (wasmRustPkgs.workspace.webschembly-runtime-rust { release = false; }).out;
       webschembly-runtime = pkgs.callPackage ./webschembly-runtime { inherit webschembly-runtime-rust; BINARYEN_ARGS = lib.strings.trim (builtins.readFile ./binaryen-args.txt); };
       webschembly-runtime-debug = pkgs.callPackage ./webschembly-runtime { webschembly-runtime-rust = webschembly-runtime-rust-debug; BINARYEN_ARGS = lib.strings.trim (builtins.readFile ./binaryen-args.txt); };
     in
     {
       packages = {
-        inherit webschembly-compiler-cli webschembly-runtime webschembly-runtime-debug;
+        inherit generatedSrc webschembly-compiler-cli webschembly-runtime webschembly-runtime-debug;
       };
       make-shells.default = {
         env = {
