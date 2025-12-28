@@ -54,6 +54,9 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        shard: ['00', '01', '10', '11']
     steps:
       - uses: actions/checkout@v3
       - uses: DeterminateSystems/nix-installer-action@main
@@ -67,12 +70,17 @@ jobs:
       - name: Run tests
         run: |
           WEBSCHEMBLY_RUNTIME=../runtime-debug/lib/webschembly_runtime.wasm npm test
+        env:
+          WEBSCHEMBLY_SHARD_PREFIX: ${{ matrix.shard }}
         working-directory: ./webschembly-js
   e2e-benchmark:
     needs: build
     permissions:
       contents: read
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        shard: ['00', '01', '10', '11']
     steps:
       - uses: actions/checkout@v3
       - uses: DeterminateSystems/nix-installer-action@main
@@ -85,12 +93,32 @@ jobs:
       - name: Run benchmark
         run: |
           WEBSCHEMBLY_RUNTIME=../runtime/lib/webschembly_runtime.wasm npm run benchmark
+          mv ./benchmark.result ./benchmark.result-${{ matrix.shard }}
+        env:
+          WEBSCHEMBLY_SHARD_PREFIX: ${{ matrix.shard }}
         working-directory: ./webschembly-js
+      - uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: ./webschembly-js/benchmark.result-{{ matrix.shard }}
+  store-benchmark-results:
+    needs: e2e-benchmark
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download benchmark results
+        uses: actions/download-artifact@v4
+        with:
+          name: benchmark-results
+      - name: Combine benchmark results
+        run: |
+          cat ./webschembly-js/benchmark.result-* > ./benchmark.result
       - name: Store benchmark result
         uses: benchmark-action/github-action-benchmark@v1
         with:
           tool: "benchmarkjs"
-          output-file-path: ./webschembly-js/benchmark.result
+          output-file-path: ./benchmark.result
           gh-pages-branch: github-action-benchmark-data
           auto-push: false
       - name: Push benchmark result
