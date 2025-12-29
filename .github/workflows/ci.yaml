@@ -119,8 +119,8 @@ jobs:
         working-directory: ./webschembly-js
       - uses: actions/upload-artifact@v4
         with:
-          name: benchmark-result-{{ matrix.shard }}
-          path: ./webschembly-js/benchmark.result-{{ matrix.shard }}
+          name: benchmark-result-${{ matrix.shard }}
+          path: ./webschembly-js/benchmark.result-${{ matrix.shard }}
   store-benchmark-results:
     needs: e2e-benchmark
     runs-on: ubuntu-latest
