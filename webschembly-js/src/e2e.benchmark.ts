@@ -1,4 +1,4 @@
-import { Bench } from "tinybench";
+import { Bench, type BenchOptions } from "tinybench";
 
 import * as fs from "fs/promises";
 import * as path from "path";
@@ -26,15 +26,21 @@ const runtimeModule = new WebAssembly.Module(
   await fs.readFile(process.env["WEBSCHEMBLY_RUNTIME"]!)
 );
 
+// time[ms]経つ and iterations回という条件でベンチマークが終了する仕様になっている
+// そのためsetupに時間が掛かるが本体は速いベンチマークだと数時間掛かってしまう
+// その対策としてtime=0にしてiterations回で必ず終了するようにする
+const benchOptions: BenchOptions = {
+  time: 0,
+  warmupTime: 0,
+};
 const bench = new Bench(
   process.env["BENCH_DEV"]
     ? {
+        ...benchOptions,
         iterations: 10,
-        time: 0,
         warmupIterations: 5,
-        warmupTime: 0,
       }
-    : undefined
+    : benchOptions
 );
 
 for (const filename of filenames) {
