@@ -1098,14 +1098,20 @@ fn calculate_bb_info(func: &Func) -> VecMap<BasicBlockId, BBInfo> {
     let mut bb_info = VecMap::new();
 
     for bb_id in func.bbs.keys() {
-        let mut args = liveness
-            .live_in
-            .get(&bb_id)
-            .unwrap()
-            .iter()
-            .copied()
-            .collect::<Vec<_>>();
-        args.sort();
+        let args = if bb_id == func.bb_entry {
+            // bbを関数として使えるように
+            func.args.clone()
+        } else {
+            let mut args = liveness
+                .live_in
+                .get(&bb_id)
+                .unwrap()
+                .iter()
+                .copied()
+                .collect::<Vec<_>>();
+            args.sort();
+            args
+        };
 
         let mut type_params = VecMap::new();
         for &arg in &args {
