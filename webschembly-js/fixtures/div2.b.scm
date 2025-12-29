@@ -16,7 +16,7 @@
           (cons (cadr x) z)))))
   (loop l '() '()))
 
-(define l (create-n 10))
+(define l (create-n 100))
 
 (define (run)
   (div2 l))
