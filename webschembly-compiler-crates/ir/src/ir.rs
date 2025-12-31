@@ -194,6 +194,12 @@ impl Func {
             ret: self.ret_type(),
         }
     }
+
+    pub fn extend_entry_bb(&mut self, f: impl FnOnce(&mut Func, TerminatorInstr) -> BasicBlockId) {
+        let prev_entry_bb_id = self.bb_entry;
+        let new_entry_bb_id = f(self, TerminatorInstr::Jump(prev_entry_bb_id));
+        self.bb_entry = new_entry_bb_id;
+    }
 }
 
 impl fmt::Display for Display<'_, &'_ Func> {
@@ -356,6 +362,15 @@ impl Module {
             value: self,
             meta: &self.meta,
         }
+    }
+
+    pub fn extend_entry_func(
+        &mut self,
+        f: impl FnOnce(&mut Func, TerminatorInstr) -> BasicBlockId,
+    ) {
+        let entry_func = &mut self.funcs[self.entry];
+
+        entry_func.extend_entry_bb(f);
     }
 }
 impl fmt::Display for Display<'_, &'_ Module> {

@@ -24,6 +24,14 @@ pub struct JitSpecializedFunc {
 }
 
 impl JitSpecializedFunc {
+    pub fn entry_bb_global_id(&self) -> GlobalId {
+        self.jit_bbs[self.func.bb_entry]
+            .bb_index_manager
+            .type_args(GLOBAL_LAYOUT_DEFAULT_INDEX)
+            .1
+            .id
+    }
+
     pub fn new(
         module_id: JitModuleId,
         global_manager: &mut GlobalManager,
@@ -151,7 +159,7 @@ impl JitSpecializedFunc {
             })
         };
 
-        extend_entry_func(&mut module, |entry_func, next| {
+        module.extend_entry_func(|entry_func, next| {
             entry_func.bbs.push_with(|id| {
                 /*
                 func entry() {
@@ -180,13 +188,15 @@ impl JitSpecializedFunc {
                         ),
                     },
                 ]);
-                if self.func_index == GLOBAL_LAYOUT_DEFAULT_INDEX {
-                    // func_to_globalsはindex=0のためのもの
-                    exprs.push(Instr {
-                        local: None,
-                        kind: InstrKind::GlobalSet(func_to_globals[self.func.id], func_ref_local),
-                    });
-                }
+                /*
+                 if self.func_index == GLOBAL_LAYOUT_DEFAULT_INDEX {
+                     // func_to_globalsはindex=0のためのもの
+                     exprs.push(Instr {
+                         local: None,
+                         kind: InstrKind::GlobalSet(func_to_globals[self.func.id], func_ref_local),
+                     });
+                 }
+                */
 
                 exprs.push(Instr {
                     local: None,
@@ -282,7 +292,7 @@ impl JitSpecializedFunc {
 
         let (_, index_global) = jit_bb.bb_index_manager.type_args(index);
 
-        extend_entry_func(module, |entry_func, next| {
+        module.extend_entry_func(|entry_func, next| {
             let func_ref_local = entry_func.locals.push_with(|id| Local {
                 id,
                 typ: LocalType::FuncRef,
@@ -1262,23 +1272,6 @@ fn closure_func_assign_types(
     func.bb_entry = new_bb_entry;
 }
 
-// エントリー関数を拡張
-// ir.rsに置くべきかも？
-fn extend_entry_func(
-    module: &mut Module,
-    f: impl FnOnce(&mut Func, TerminatorInstr) -> BasicBlockId,
-) {
-    let entry_func = &mut module.funcs[module.entry];
-
-    extend_entry_bb(entry_func, f);
-}
-
-fn extend_entry_bb(func: &mut Func, f: impl FnOnce(&mut Func, TerminatorInstr) -> BasicBlockId) {
-    let prev_entry_bb_id = func.bb_entry;
-    let new_entry_bb_id = f(func, TerminatorInstr::Jump(prev_entry_bb_id));
-    func.bb_entry = new_entry_bb_id;
-}
-
 pub fn assign_type_args(
     func: &mut Func,
     type_params: &FxBiHashMap<TypeParamId, LocalId>,
@@ -1316,7 +1309,7 @@ pub fn assign_type_args(
         }
     }
 
-    extend_entry_bb(func, |func, next| {
+    func.extend_entry_bb(|func, next| {
         entry_bb_instrs.push(Instr {
             local: None,
             kind: InstrKind::Terminator(next),
