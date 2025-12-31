@@ -297,7 +297,60 @@ pub struct Module {
     pub meta: Meta,
 }
 
+impl Default for Module {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Module {
+    pub fn new() -> Self {
+        let mut funcs: VecMap<FuncId, Func> = VecMap::new();
+        let entry = funcs.push_with(|id| {
+            let mut locals = VecMap::new();
+            let ret_local_id = locals.push_with(|local_id| Local {
+                id: local_id,
+                typ: ValType::Nil.into(),
+            });
+
+            let mut bbs = VecMap::new();
+            let bb_entry = bbs.push_with(|bb_id| BasicBlock {
+                id: bb_id,
+                instrs: vec![
+                    Instr {
+                        local: Some(ret_local_id),
+                        kind: InstrKind::Nil,
+                    },
+                    Instr {
+                        local: None,
+                        kind: InstrKind::Terminator(TerminatorInstr::Exit(ExitInstr::Return(
+                            ret_local_id,
+                        ))),
+                    },
+                ],
+            });
+
+            Func {
+                id,
+                locals,
+                args: Vec::new(),
+                ret_type: ValType::Nil.into(),
+                bbs,
+                bb_entry,
+            }
+        });
+
+        Self {
+            globals: FxHashMap::default(),
+            funcs,
+            entry,
+            meta: Meta {
+                local_metas: FxHashMap::default(),
+                global_metas: FxHashMap::default(),
+            },
+        }
+    }
+
     pub fn display(&self) -> Display<'_, &Module> {
         Display {
             value: self,
