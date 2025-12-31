@@ -188,15 +188,14 @@ impl JitSpecializedFunc {
                         ),
                     },
                 ]);
-                /*
-                 if self.func_index == GLOBAL_LAYOUT_DEFAULT_INDEX {
-                     // func_to_globalsはindex=0のためのもの
-                     exprs.push(Instr {
-                         local: None,
-                         kind: InstrKind::GlobalSet(func_to_globals[self.func.id], func_ref_local),
-                     });
-                 }
-                */
+
+                if self.func_index == GLOBAL_LAYOUT_DEFAULT_INDEX {
+                    // func_to_globalsはindex=0のためのもの
+                    exprs.push(Instr {
+                        local: None,
+                        kind: InstrKind::GlobalSet(func_to_globals[self.func.id], func_ref_local),
+                    });
+                }
 
                 exprs.push(Instr {
                     local: None,
