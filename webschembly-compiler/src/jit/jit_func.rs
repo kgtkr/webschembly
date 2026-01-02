@@ -83,7 +83,7 @@ impl JitSpecializedFunc {
         jit_ctx: &mut JitCtx,
     ) -> Module {
         // entry_bbのモジュールをベースに拡張する
-        let (mut module, _ /*bb_func_id*/) = self.generate_bb_module(
+        let mut module = self.generate_bb_module(
             func_to_globals,
             func_types,
             self.func.bb_entry,
@@ -325,7 +325,7 @@ impl JitSpecializedFunc {
         global_manager: &mut GlobalManager,
         jit_ctx: &mut JitCtx,
         branch_specialization: bool,
-    ) -> (Module, FuncId /* BBの実態を表す関数 */) {
+    ) -> Module {
         let mut required_closure_idx = Vec::new();
 
         {
@@ -927,7 +927,7 @@ impl JitSpecializedFunc {
             self.add_bb_stub_func(self.module_id, *bb_id, *index, &mut module);
         }
 
-        (module, body_func_id)
+        module
     }
 
     pub fn increment_branch_counter(
@@ -943,7 +943,7 @@ impl JitSpecializedFunc {
     ) -> Option<Module> {
         self.jit_bbs[bb_id].branch_counter.increment(kind);
         if self.jit_bbs[bb_id].branch_counter.should_specialize() {
-            let (module, _ /*bb_func_id*/) = self.generate_bb_module(
+            let module = self.generate_bb_module(
                 func_to_globals,
                 func_types,
                 source_bb_id,
