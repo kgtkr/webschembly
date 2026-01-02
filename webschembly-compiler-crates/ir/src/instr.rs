@@ -428,7 +428,7 @@ pub enum InstrKind {
         non_exhaustive: bool,
     }, // BBの先頭にのみ連続して出現可能(Nopが間に入るのは可)。non_exhaustive=trueの時incomings.length=1でもコピー伝播などの最適化を行ってはならない(inline化のためのフラグ)
     Terminator(TerminatorInstr), // 左辺はNoneでなければならない。また、BasicBlockの最後にのみ出現可能
-    InstantiateFunc(JitModuleId, JitFuncId, usize),
+    InstantiateFunc(JitModuleId, JitFuncId),
     InstantiateClosureFunc(LocalId, LocalId, usize), // InstantiateFuncのModuleId/FuncIdを動的に指定する版
     // TODO: InstantiateBBなどはFooId型ではなくusize型を受け取るべき
     // 理由: 副作用命令であり、BasicBlockIdの一括置換などで同時に置き換えると意味が変わってしまうため
@@ -1016,13 +1016,12 @@ impl fmt::Display for DisplayInFunc<'_, &'_ InstrKind> {
             InstrKind::Terminator(terminator) => {
                 write!(f, "{}", terminator.display(self.meta))
             }
-            InstrKind::InstantiateFunc(module_id, func_id, func_index) => {
+            InstrKind::InstantiateFunc(module_id, func_id) => {
                 write!(
                     f,
-                    "instantiate_func({}, {}, {})",
+                    "instantiate_func({}, {})",
                     module_id.display(self.meta.meta),
                     func_id.display(self.meta.meta),
-                    func_index
                 )
             }
             InstrKind::InstantiateClosureFunc(module_id, func_id, func_index) => {

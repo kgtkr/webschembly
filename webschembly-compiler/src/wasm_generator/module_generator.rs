@@ -1154,10 +1154,10 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             ir::InstrKind::CallClosure(..) => {
                 unreachable!("unexpected CallClosure");
             }
-            ir::InstrKind::InstantiateFunc(module_id, func_id, func_index) => {
+            ir::InstrKind::InstantiateFunc(module_id, func_id) => {
                 function.instruction(&Instruction::I32Const(usize::from(*module_id) as i32));
                 function.instruction(&Instruction::I32Const(usize::from(*func_id) as i32));
-                function.instruction(&Instruction::I32Const(*func_index as i32));
+                function.instruction(&Instruction::I32Const(0));
                 function.instruction(&Instruction::Call(
                     self.module_generator.instantiate_func_func,
                 ));

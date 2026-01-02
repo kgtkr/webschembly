@@ -110,7 +110,6 @@ impl JitModule {
                             kind: InstrKind::InstantiateFunc(
                                 self.module_id,
                                 JitFuncId::from(func.id),
-                                0,
                             ),
                         },
                         Instr {
