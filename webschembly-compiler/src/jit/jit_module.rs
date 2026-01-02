@@ -236,7 +236,7 @@ impl JitModule {
         jit_ctx: &mut JitCtx,
     ) -> Module {
         let jit_func = self.jit_funcs.get_mut(&(func_id, func_index)).unwrap();
-        
+
         jit_func.generate_bb_module(
             &self.func_to_globals,
             &self.func_types,
