@@ -40,7 +40,8 @@ impl JitModule {
                 GLOBAL_LAYOUT_DEFAULT_INDEX,
                 jit_ctx,
             );
-            func_to_globals.insert(func.id, jit_func.entry_bb_global_id());
+            let global = global_manager.gen_global(LocalType::FuncRef);
+            func_to_globals.insert(func.id, global.id);
             jit_funcs.insert((func.id, GLOBAL_LAYOUT_DEFAULT_INDEX), jit_func);
         }
 

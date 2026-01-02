@@ -24,14 +24,6 @@ pub struct JitSpecializedFunc {
 }
 
 impl JitSpecializedFunc {
-    pub fn entry_bb_global_id(&self) -> GlobalId {
-        self.jit_bbs[self.func.bb_entry]
-            .bb_index_manager
-            .type_args(GLOBAL_LAYOUT_DEFAULT_INDEX)
-            .1
-            .id
-    }
-
     pub fn new(
         module_id: JitModuleId,
         global_manager: &mut GlobalManager,
