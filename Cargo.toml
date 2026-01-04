@@ -1,16 +1,22 @@
 [workspace]
-members = ["webschembly-compiler", "webschembly-compiler-cli", "webschembly-runtime-rust", "webschembly-compiler-crates/*"]
+members = [
+  "webschembly-compiler",
+  "webschembly-compiler-cli",
+  "webschembly-compiler-crates/*",
+  "webschembly-runtime-rust",
+]
 resolver = "2"
 
 [workspace.package]
+version = "0.1.0"
 authors = ["kgtkr"]
-description = "Scheme compiler for WebAssembly"
 edition = "2024"
 homepage = "https://kgtkr.github.io/webschembly/"
 repository = "https://github.com/kgtkr/webschembly"
-version = "0.1.0"
+description = "Scheme compiler for WebAssembly"
 
 [workspace.dependencies]
+log = { version = "0.4.26", features = ["release_max_level_warn"] }
 ordered-float = "5.1.0"
 rustc-hash = "2.1.1"
 strum = "0.27"

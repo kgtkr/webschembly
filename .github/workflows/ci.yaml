@@ -1,94 +1,154 @@
 name: ci
-on: push
+on:
+  push:
 jobs:
   build:
     permissions:
       contents: write
       id-token: write
     env:
-      CI: 'true'
+      CI: "true"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - uses: DeterminateSystems/nix-installer-action@main
-      - uses: DeterminateSystems/magic-nix-cache-action@main
-      - name: Build devShell
-        run: |
-          nix print-dev-env > result-devShell.sh
-          echo "BASH_ENV=$PWD/result-devShell.sh" >> $GITHUB_ENV
-      - name: Cache cargo target
-        uses: actions/cache@v4
-        with:
-          path: ./target
-          key: cargo-cache-20250204-1-${{ github.sha }}
-          restore-keys: |
-            cargo-cache-20250204-1-
-      - name: Cache cargo home
-        uses: actions/cache@v4
-        with:
-          path: ~/.cargo
-          key: cargo-home-20250204-1-${{ github.sha }}
-          restore-keys: |
-            cargo-home-20250204-1-
+      - uses: ./.github/actions/setup
       - name: Format
         run: |
-          cargo fmt --check
-          nixpkgs-fmt --check $(git ls-files ':(attr:!linguist-generated)*.nix')
+          treefmt --ci
       - name: Clippy
         run: |
           cargo clippy --all --lib --tests -- -D warnings
       - name: Test
         run: |
           cargo test
+      - name: Build WebAssembly runtime
+        run: |
+          nix build .#webschembly-runtime --out-link result-runtime
+          nix build .#webschembly-runtime-debug --out-link result-runtime-debug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: runtime
+          path: result-runtime/lib/webschembly_runtime.wasm
+      - uses: actions/upload-artifact@v4
+        with:
+          name: runtime-debug
+          path: result-runtime-debug/lib/webschembly_runtime.wasm
       - run: npm ci
       - run: npm run check
-      - name: E2E Test
+      - name: Build Playground
         run: |
-          just test
-        working-directory: ./webschembly-js
-      - name: E2E Benchmark
+          nix build .#webschembly-playground-for-pages --out-link result-playground
+      - uses: actions/upload-artifact@v4
+        with:
+          name: playground
+          path: result-playground
+      - name: Build cli
         run: |
-          just benchmark
+          nix build .#webschembly-compiler-cli --out-link result-cli
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cli
+          path: result-cli-bin/bin/webschembly-compiler-cli
+  e2e-test:
+    needs: build
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        shard: ["00", "01", "10", "11"]
+    steps:
+      - uses: actions/checkout@v3
+      - uses: DeterminateSystems/nix-installer-action@main
+      - name: Install nodejs
+        run: |
+          nix profile install .#nodejs
+      - uses: actions/download-artifact@v4
+        with:
+          name: runtime-debug
+          path: ./result-runtime
+      - run: npm ci
+      - name: Run tests
+        run: |
+          WEBSCHEMBLY_RUNTIME=../result-runtime/webschembly_runtime.wasm npm test
+        env:
+          WEBSCHEMBLY_SHARD_PREFIX: ${{ matrix.shard }}
         working-directory: ./webschembly-js
+  e2e-benchmark:
+    needs: build
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        shard: [
+          "0000",
+          "0001",
+          "0010",
+          "0011",
+          "0100",
+          "0101",
+          "0110",
+          "0111",
+          "1000",
+          "1001",
+          "1010",
+          "1011",
+          "1100",
+          "1101",
+          "1110",
+          "1111",
+        ]
+    steps:
+      - uses: actions/checkout@v3
+      - uses: DeterminateSystems/nix-installer-action@main
+      - name: Install nodejs
+        run: |
+          nix profile install .#nodejs
+      - uses: actions/download-artifact@v4
+        with:
+          name: runtime
+          path: ./result-runtime
+      - run: npm ci
+      - name: Run benchmark
+        run: |
+          WEBSCHEMBLY_RUNTIME=../result-runtime/webschembly_runtime.wasm npm run benchmark
+          mv ./benchmark.result ./benchmark.result-${{ matrix.shard }}
+        env:
+          WEBSCHEMBLY_SHARD_PREFIX: ${{ matrix.shard }}
+        working-directory: ./webschembly-js
+      - uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-result-${{ matrix.shard }}
+          path: ./webschembly-js/benchmark.result-${{ matrix.shard }}
+  store-benchmark-results:
+    needs: e2e-benchmark
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v3
+      - name: Download benchmark results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: benchmark-result-*
+          path: ./benchmark-results
+          merge-multiple: true
+      - name: Combine benchmark results
+        run: |
+          cat ./benchmark-results/* > ./benchmark.result
       - name: Store benchmark result
         uses: benchmark-action/github-action-benchmark@v1
         with:
-          tool: 'benchmarkjs'
-          output-file-path: ./webschembly-js/benchmark.result
+          tool: "benchmarkjs"
+          output-file-path: ./benchmark.result
           gh-pages-branch: github-action-benchmark-data
           auto-push: false
       - name: Push benchmark result
         run: git push origin github-action-benchmark-data:github-action-benchmark-data
         if: github.ref == 'refs/heads/master'
-      - name: Build Playground
-        run: |
-          nix build .#webschembly-playground-for-pages --out-link result-playground
-      - name: Prepare pages
-        run: |
-          mkdir -p pages
-          cp -r result-playground/* pages/
-          git archive github-action-benchmark-data | tar -x -C pages
-      - name: Upload Playground
-        id: deployment
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: ./pages
-      - name: Build cli
-        run: |
-          nix build .#webschembly-compiler-cli --out-link result-cli
-      - name: Build runtime
-        run: |
-          nix build .#webschembly-runtime --out-link result-runtime
-      - uses: actions/upload-artifact@v4
-        with:
-          name: cli
-          path: result-cli-bin/bin/webschembly-compiler-cli
-      - uses: actions/upload-artifact@v4
-        with:
-          name: runtime
-          path: result-runtime/lib/webschembly_runtime.wasm
   deploy:
-    needs: build
+    needs: [build, e2e-benchmark]
     if: github.ref == 'refs/heads/master'
     permissions:
       id-token: write
@@ -98,5 +158,20 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      - uses: actions/checkout@v3
+      - uses: actions/download-artifact@v4
+        with:
+          name: playground
+          path: ./result-playground
+      - name: Prepare pages
+        run: |
+          mkdir -p pages
+          cp -r result-playground/* pages/
+          git fetch origin github-action-benchmark-data
+          git archive github-action-benchmark-data | tar -x -C pages
+      - name: Upload Playground
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./pages
       - uses: actions/deploy-pages@v4
         id: deployment

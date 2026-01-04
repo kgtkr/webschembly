@@ -40,7 +40,7 @@ self.addEventListener("message", async (event) => {
         }
       },
     },
-    {}
+    {},
   );
 
   runtime.loadStdlib();

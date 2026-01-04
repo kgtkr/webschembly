@@ -1,13 +1,10 @@
-import * as fs from "fs/promises";
 import * as fsLegacy from "fs";
-import { beforeAll, describe, expect, test } from "vitest";
+import * as fs from "fs/promises";
 import * as path from "path";
-import {
-  compilerConfigToString,
-  createRuntime,
-  type CompilerConfig,
-} from "./runtime";
+import { beforeAll, describe, expect, test } from "vitest";
 import { createNodeRuntimeEnv } from "./node-runtime-env";
+import { type CompilerConfig, compilerConfigToString, createRuntime } from "./runtime";
+import * as testUtils from "./test-utils";
 
 function concatBufs(bufs: Uint8Array[]) {
   const bufLen = bufs.map((buf) => buf.length).reduce((a, b) => a + b, 0);
@@ -21,10 +18,6 @@ function concatBufs(bufs: Uint8Array[]) {
 }
 
 const snapshotDir = "e2e_snapshots";
-const sourceDir = "fixtures";
-const filenames = fsLegacy
-  .readdirSync(sourceDir)
-  .filter((file) => file.endsWith(".scm"));
 
 const compilerConfigs: CompilerConfig[] = [
   {},
@@ -32,11 +25,12 @@ const compilerConfigs: CompilerConfig[] = [
   { enableJit: false },
 ];
 
-describe("E2E test", () => {
+describe("E2E test", async () => {
   let runtimeModule: WebAssembly.Module;
+  const filenames = await testUtils.getAllFixtureFilenames();
   beforeAll(async () => {
     runtimeModule = new WebAssembly.Module(
-      await fs.readFile(process.env["WEBSCHEMBLY_RUNTIME"]!)
+      await fs.readFile(process.env["WEBSCHEMBLY_RUNTIME"]!),
     );
   });
 
@@ -44,12 +38,12 @@ describe("E2E test", () => {
     compilerConfigs.map((compilerConfig) => [
       compilerConfigToString(compilerConfig),
       compilerConfig,
-    ])
+    ]),
   )("%s", (_, compilerConfig) => {
     describe.each(filenames)("%s", (filename) => {
       let srcBuf: Buffer;
       beforeAll(async () => {
-        srcBuf = await fs.readFile(path.join(sourceDir, filename));
+        srcBuf = await fs.readFile(path.join(testUtils.fixtureDir, filename));
       });
 
       test(
@@ -80,7 +74,7 @@ describe("E2E test", () => {
             }),
             {
               compilerConfig,
-            }
+            },
           );
 
           runtime.loadStdlib();
@@ -91,17 +85,21 @@ describe("E2E test", () => {
           const stderr = new TextDecoder().decode(concatBufs(stderrBufs));
 
           await expect(exitCode).toMatchFileSnapshot(
-            `${snapshotDir}/${filename}-exitCode`
+            `${snapshotDir}/${filename}-exitCode`,
           );
           await expect(stdout).toMatchFileSnapshot(
-            `${snapshotDir}/${filename}-stdout`
+            `${snapshotDir}/${filename}-stdout`,
           );
           await expect(stderr).toMatchFileSnapshot(
-            `${snapshotDir}/${filename}-stderr`
+            `${snapshotDir}/${filename}-stderr`,
           );
         },
-        60 * 1000
+        60 * 1000,
       );
     });
+
+    if (filenames.length === 0) {
+      test("dummy test to avoid empty describe block", () => {});
+    }
   });
 });

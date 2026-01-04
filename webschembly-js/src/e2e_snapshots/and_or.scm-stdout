@@ -1,0 +1,25 @@
+"and tests:"
+#t
+#t
+#f
+#t
+#f
+#f
+#t
+#f
+3
+#f
+"or tests:"
+#f
+#t
+#f
+#t
+#t
+#f
+#f
+#t
+1
+2
+"short-circuit tests:"
+0
+0

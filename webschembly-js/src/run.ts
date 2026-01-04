@@ -1,6 +1,6 @@
 import * as fs from "fs";
-import { createRuntime } from "./runtime";
 import { createNodeRuntimeEnv } from "./node-runtime-env";
+import { createRuntime } from "./runtime";
 
 const srcName = process.argv[2];
 if (!srcName) {
@@ -11,7 +11,7 @@ const runtime = await createRuntime(
   await createNodeRuntimeEnv({
     runtimeName: srcName,
   }),
-  {}
+  {},
 );
 
 const srcBuf = new Uint8Array(fs.readFileSync(srcName));

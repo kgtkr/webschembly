@@ -1,20 +1,20 @@
 {
-    "name": "webschembly-dev",
-    "image": "webschembly-devcontainer:local",
-    "initializeCommand": [
-        ".devcontainer/pull-image.sh"
-    ],
-    "customizations": {
-        "vscode": {
-            "settings": {},
-            "extensions": [
-                "rust-lang.rust-analyzer",
-                "esbenp.prettier-vscode",
-                "jnoortheen.nix-ide",
-                "James-Yu.latex-workshop"
-            ]
-        }
-    },
-    "forwardPorts": [],
-    "remoteUser": "vscode"
+  "name": "webschembly-dev",
+  "image": "webschembly-devcontainer:local",
+  "initializeCommand": [
+    ".devcontainer/pull-image.sh"
+  ],
+  "customizations": {
+    "vscode": {
+      "settings": {},
+      "extensions": [
+        "rust-lang.rust-analyzer",
+        "esbenp.prettier-vscode",
+        "jnoortheen.nix-ide",
+        "James-Yu.latex-workshop"
+      ]
+    }
+  },
+  "forwardPorts": [],
+  "remoteUser": "vscode"
 }

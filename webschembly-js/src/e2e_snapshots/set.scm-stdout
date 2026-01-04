@@ -1,0 +1,10 @@
+"initial x (2):"
+2
+"set! result (unspecified):"
+28
+"updated x (28):"
+28
+"local binding test:"
+15
+"complex assignment:"
+(10 . (5 . ()))

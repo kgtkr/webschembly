@@ -3,7 +3,7 @@ use rustc_hash::FxHashMap;
 use super::global_layout::GLOBAL_LAYOUT_MAX_SIZE;
 use super::jit_ctx::JitCtx;
 use super::jit_func::JitSpecializedFunc;
-use crate::ir_generator::GlobalManager;
+use crate::{ir_generator::GlobalManager, jit::global_layout::GLOBAL_LAYOUT_DEFAULT_INDEX};
 use vec_map::{HasId, VecMap};
 use webschembly_compiler_ir::*;
 #[derive(Debug)]
@@ -23,12 +23,27 @@ impl HasId for JitModule {
 }
 
 impl JitModule {
-    pub fn new(global_manager: &mut GlobalManager, module_id: JitModuleId, module: Module) -> Self {
-        let func_to_globals = module
-            .funcs
-            .keys()
-            .map(|id| (id, global_manager.gen_global(LocalType::FuncRef).id))
-            .collect::<VecMap<FuncId, _>>();
+    pub fn new(
+        global_manager: &mut GlobalManager,
+        module_id: JitModuleId,
+        module: Module,
+        jit_ctx: &mut JitCtx,
+    ) -> Self {
+        let mut jit_funcs = FxHashMap::default();
+        let mut func_to_globals = VecMap::default();
+
+        for func in module.funcs.values() {
+            let jit_func = JitSpecializedFunc::new(
+                module_id,
+                global_manager,
+                func,
+                GLOBAL_LAYOUT_DEFAULT_INDEX,
+                jit_ctx,
+            );
+            let global = global_manager.gen_global(LocalType::FuncRef);
+            func_to_globals.insert(func.id, global.id);
+            jit_funcs.insert((func.id, GLOBAL_LAYOUT_DEFAULT_INDEX), jit_func);
+        }
 
         let func_types = module
             .funcs
@@ -39,7 +54,7 @@ impl JitModule {
         Self {
             module_id,
             module,
-            jit_funcs: FxHashMap::default(),
+            jit_funcs,
             func_to_globals,
             func_types,
         }
@@ -50,9 +65,12 @@ impl JitModule {
         global_manager: &mut GlobalManager,
         jit_ctx: &mut JitCtx,
     ) -> Module {
+        let mut module = Module::new();
+
+        // TODO: meta
+
         // entry関数もあるので+1してる
         let mut stub_func_ids = FxHashMap::default();
-        let mut funcs = VecMap::new();
 
         /*
         以下のようなentryを生成
@@ -79,7 +97,7 @@ impl JitModule {
                 typ: LocalType::FuncRef,
             });
 
-            let id = funcs.push_with(|id| Func {
+            let id = module.funcs.push_with(|id| Func {
                 id,
                 args: func.args.clone(),
                 ret_type: func.ret_type,
@@ -93,7 +111,6 @@ impl JitModule {
                             kind: InstrKind::InstantiateFunc(
                                 self.module_id,
                                 JitFuncId::from(func.id),
-                                0,
                             ),
                         },
                         Instr {
@@ -118,12 +135,11 @@ impl JitModule {
             stub_func_ids.insert(func.id, id);
         }
 
-        let entry_func_id = {
+        module.extend_entry_func(|entry_func, next| {
             // entry
-            let mut locals = VecMap::new();
             let mut exprs = Vec::new();
             for func in self.module.funcs.values() {
-                let func_ref_local = locals.push_with(|id| Local {
+                let func_ref_local = entry_func.locals.push_with(|id| Local {
                     id,
                     typ: LocalType::FuncRef,
                 });
@@ -144,7 +160,7 @@ impl JitModule {
                 for func_index in 0..GLOBAL_LAYOUT_MAX_SIZE {
                     let stub_global = global_manager.gen_global(LocalType::MutFuncRef);
                     stub_globals.insert(func_index, stub_global);
-                    let stub_local = locals.push_with(|id| Local {
+                    let stub_local = entry_func.locals.push_with(|id| Local {
                         id,
                         typ: LocalType::MutFuncRef,
                     });
@@ -164,38 +180,24 @@ impl JitModule {
 
             exprs.push(Instr {
                 local: None,
-                kind: InstrKind::Terminator(TerminatorInstr::Exit(ExitInstr::TailCall(
-                    InstrCall {
-                        func_id: stub_func_ids[&self.module.entry],
-                        args: vec![],
-                    },
-                ))),
+                // TODO: Tail Callにする
+                kind: InstrKind::Call(InstrCall {
+                    func_id: stub_func_ids[&self.module.entry],
+                    args: vec![],
+                }),
             });
 
-            funcs.push_with(|id| Func {
-                id,
-                args: vec![],
-                ret_type: LocalType::Type(Type::Obj),
-                locals,
-                bb_entry: BasicBlockId::from(0),
-                bbs: [BasicBlock {
-                    id: BasicBlockId::from(0),
-                    instrs: exprs,
-                }]
-                .into_iter()
-                .collect(),
-            })
-        };
-        Module {
-            globals: FxHashMap::default(),
-            funcs,
-            entry: entry_func_id,
-            meta: Meta {
-                // TODO:
-                local_metas: FxHashMap::default(),
-                global_metas: FxHashMap::default(),
-            },
-        }
+            exprs.push(Instr {
+                local: None,
+                kind: InstrKind::Terminator(next),
+            });
+
+            entry_func
+                .bbs
+                .push_with(|id| BasicBlock { id, instrs: exprs })
+        });
+
+        module
     }
 
     pub fn instantiate_func(
@@ -235,7 +237,8 @@ impl JitModule {
         jit_ctx: &mut JitCtx,
     ) -> Module {
         let jit_func = self.jit_funcs.get_mut(&(func_id, func_index)).unwrap();
-        let (module, _) = jit_func.generate_bb_module(
+
+        jit_func.generate_bb_module(
             &self.func_to_globals,
             &self.func_types,
             bb_id,
@@ -243,8 +246,7 @@ impl JitModule {
             global_manager,
             jit_ctx,
             false,
-        );
-        module
+        )
     }
 
     pub fn increment_branch_counter(

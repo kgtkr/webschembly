@@ -1,10 +1,6 @@
 import * as fs from "fs";
 import { createNodeRuntimeEnv } from "./node-runtime-env";
-import {
-  type RuntimeExports,
-  type TypedWebAssemblyInstance,
-  type RuntimeImportsEnv,
-} from "./runtime";
+import { type RuntimeExports, type RuntimeImportsEnv, type TypedWebAssemblyInstance } from "./runtime";
 
 const wasmName = process.argv[2];
 if (!wasmName) {
@@ -15,19 +11,19 @@ if (!wasmName) {
 const runtimeEnv = await createNodeRuntimeEnv({
   loadRuntimeModule: () => {
     throw new Error(
-      "loadRuntimeModule is not supported in run-aot. Use run instead."
+      "loadRuntimeModule is not supported in run-aot. Use run instead.",
     );
   },
 });
 const runtimeImportObjects: RuntimeImportsEnv = {
   js_instantiate: (bufPtr, bufSize, fromSrc) => {
     throw new Error(
-      "js_instantiate is not supported in run-aot. Use run instead."
+      "js_instantiate is not supported in run-aot. Use run instead.",
     );
   },
   js_webschembly_log: (bufPtr, bufLen) => {
     const s = new TextDecoder().decode(
-      new Uint8Array(wasmInstance.exports.memory.buffer, bufPtr, bufLen)
+      new Uint8Array(wasmInstance.exports.memory.buffer, bufPtr, bufLen),
     );
     runtimeEnv.logger.log(s);
   },
@@ -35,7 +31,7 @@ const runtimeImportObjects: RuntimeImportsEnv = {
     const buf = new Uint8Array(
       wasmInstance.exports.memory.buffer,
       bufPtr,
-      bufLen
+      bufLen,
     );
     runtimeEnv.writeBuf(fd, buf);
   },

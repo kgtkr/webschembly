@@ -13,6 +13,10 @@ pub enum Builtin {
     Div,
     #[strum(serialize = "quotient")]
     Quotient,
+    #[strum(serialize = "remainder")]
+    Remainder,
+    #[strum(serialize = "modulo")]
+    Modulo,
     #[strum(serialize = "write-char")]
     WriteChar,
     #[strum(serialize = "pair?")]
@@ -37,6 +41,8 @@ pub enum Builtin {
     VectorSet,
     #[strum(serialize = "vector?")]
     IsVector,
+    #[strum(serialize = "make-vector")]
+    MakeVector,
     #[strum(serialize = "uvector-length")]
     UVectorLength,
     #[strum(serialize = "uvector-ref")]
@@ -55,18 +61,36 @@ pub enum Builtin {
     MakeF64Vector,
     #[strum(serialize = "eq?")]
     Eq,
+    #[strum(serialize = "eqv?")]
+    Eqv,
     #[strum(serialize = "cons")]
     Cons,
     #[strum(serialize = "car")]
     Car,
     #[strum(serialize = "cdr")]
     Cdr,
+    #[strum(serialize = "set-car!")]
+    SetCar,
+    #[strum(serialize = "set-cdr!")]
+    SetCdr,
     #[strum(serialize = "symbol->string")]
     SymbolToString,
+    #[strum(serialize = "string->symbol")]
+    StringToSymbol,
     #[strum(serialize = "number->string")]
     NumberToString,
     #[strum(serialize = "=")]
     EqNum,
+    #[strum(serialize = "string=?")]
+    StringEq,
+    #[strum(serialize = "string-copy")]
+    StringCopy,
+    #[strum(serialize = "string-ref")]
+    StringRef,
+    #[strum(serialize = "string-set!")]
+    StringSet,
+    #[strum(serialize = "string-length")]
+    StringLength,
     #[strum(serialize = "<")]
     Lt,
     #[strum(serialize = ">")]

@@ -35,7 +35,7 @@ impl Jit {
     ) -> Module {
         let module_id = self
             .jit_module
-            .push_with(|id| JitModule::new(global_manager, id, module));
+            .push_with(|id| JitModule::new(global_manager, id, module, &mut self.ctx));
         self.jit_module[module_id].generate_stub_module(global_manager, &mut self.ctx)
     }
 

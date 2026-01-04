@@ -428,7 +428,7 @@ pub enum InstrKind {
         non_exhaustive: bool,
     }, // BBの先頭にのみ連続して出現可能(Nopが間に入るのは可)。non_exhaustive=trueの時incomings.length=1でもコピー伝播などの最適化を行ってはならない(inline化のためのフラグ)
     Terminator(TerminatorInstr), // 左辺はNoneでなければならない。また、BasicBlockの最後にのみ出現可能
-    InstantiateFunc(JitModuleId, JitFuncId, usize),
+    InstantiateFunc(JitModuleId, JitFuncId),
     InstantiateClosureFunc(LocalId, LocalId, usize), // InstantiateFuncのModuleId/FuncIdを動的に指定する版
     // TODO: InstantiateBBなどはFooId型ではなくusize型を受け取るべき
     // 理由: 副作用命令であり、BasicBlockIdの一括置換などで同時に置き換えると意味が変わってしまうため
@@ -496,13 +496,16 @@ pub enum InstrKind {
     SubFloat(LocalId, LocalId),
     MulInt(LocalId, LocalId),
     MulFloat(LocalId, LocalId),
-    DivInt(LocalId, LocalId),
+    QuotientInt(LocalId, LocalId),
+    RemainderInt(LocalId, LocalId),
+    ModuloInt(LocalId, LocalId),
     DivFloat(LocalId, LocalId),
     WriteChar(LocalId),
     Is(ValType, LocalId),
     VectorLength(LocalId),
     VectorRef(LocalId, LocalId),
     VectorSet(LocalId, LocalId, LocalId),
+    MakeVector(LocalId),
     UVectorLength(UVectorKind, LocalId),
     UVectorRef(UVectorKind, LocalId, LocalId),
     UVectorSet(UVectorKind, LocalId, LocalId, LocalId),
@@ -512,11 +515,19 @@ pub enum InstrKind {
     Or(LocalId, LocalId),
     Car(LocalId),
     Cdr(LocalId),
+    SetCar(LocalId, LocalId),
+    SetCdr(LocalId, LocalId),
     SymbolToString(LocalId),
     IntToString(LocalId),
     FloatToString(LocalId),
     EqInt(LocalId, LocalId),
     EqFloat(LocalId, LocalId),
+    EqChar(LocalId, LocalId),
+    EqString(LocalId, LocalId),
+    StringRef(LocalId, LocalId),
+    StringCopy(LocalId),
+    StringSet(LocalId, LocalId, LocalId),
+    StringLength(LocalId),
     LtInt(LocalId, LocalId),
     LtFloat(LocalId, LocalId),
     GtInt(LocalId, LocalId),
@@ -529,7 +540,8 @@ pub enum InstrKind {
     VariadicArgsRef(LocalId, usize),
     VariadicArgsLength(LocalId),
     // ArgsVariadic(Vec<LocalId>, LocalId<Vector>)
-    // ArgsRest(LocalId, usize) -> Vector
+    // VariadicArgs -> Cons | Nil
+    VariadicArgsRest(LocalId, usize),
     CreateMutFuncRef(LocalId),                   // (FuncRef) -> MutFuncRef
     CreateEmptyMutFuncRef,                       // () -> MutFuncRef
     DerefMutFuncRef(LocalId),                    // (MutFuncRef) -> FuncRef
@@ -553,6 +565,23 @@ macro_rules! impl_InstrKind_func_ids {
                                 yield id;
                             }
                         }
+                        _ => {}
+                    },
+                )
+            }
+        }
+    };
+}
+
+macro_rules! impl_InstrKind_global_ids {
+    ($($suffix: ident)?,$($mutability: tt)?) => {
+        paste::paste! {
+            pub fn [<global_ids $($suffix)?>](&$($mutability)? self) -> impl Iterator<Item = &$($mutability)? GlobalId> {
+                from_coroutine(
+                    #[coroutine]
+                    move || match self {
+                        InstrKind::GlobalSet(global_id, _) => yield global_id,
+                        InstrKind::GlobalGet(global_id) => yield global_id,
                         _ => {}
                     },
                 )
@@ -590,6 +619,7 @@ macro_rules! impl_InstrKind_local_usages {
                             }
                         }
                         InstrKind::MakeUVector(_, id) => yield (id, LocalUsedFlag::NonPhi),
+                        InstrKind::MakeVector(id) => yield (id, LocalUsedFlag::NonPhi),
                         InstrKind::Cons(a, b) => {
                             yield (a, LocalUsedFlag::NonPhi);
                             yield (b, LocalUsedFlag::NonPhi);
@@ -647,7 +677,9 @@ macro_rules! impl_InstrKind_local_usages {
                         | InstrKind::SubFloat(a, b)
                         | InstrKind::MulInt(a, b)
                         | InstrKind::MulFloat(a, b)
-                        | InstrKind::DivInt(a, b)
+                        | InstrKind::QuotientInt(a, b)
+                        | InstrKind::RemainderInt(a, b)
+                        | InstrKind::ModuloInt(a, b)
                         | InstrKind::DivFloat(a, b) => {
                             yield (a, LocalUsedFlag::NonPhi);
                             yield (b, LocalUsedFlag::NonPhi);
@@ -689,11 +721,34 @@ macro_rules! impl_InstrKind_local_usages {
                         }
                         InstrKind::Car(id) => yield (id, LocalUsedFlag::NonPhi),
                         InstrKind::Cdr(id) => yield (id, LocalUsedFlag::NonPhi),
+                        InstrKind::SetCar(cons_id, value_id) => {
+                            yield (cons_id, LocalUsedFlag::NonPhi);
+                            yield (value_id, LocalUsedFlag::NonPhi);
+                        }
+                        InstrKind::SetCdr(cons_id, value_id) => {
+                            yield (cons_id, LocalUsedFlag::NonPhi);
+                            yield (value_id, LocalUsedFlag::NonPhi);
+                        }
                         InstrKind::SymbolToString(id) => yield (id, LocalUsedFlag::NonPhi),
                         InstrKind::IntToString(id) => yield (id, LocalUsedFlag::NonPhi),
                         InstrKind::FloatToString(id) => yield (id, LocalUsedFlag::NonPhi),
+                        InstrKind::StringRef(str_id, index_id) => {
+                            yield (str_id, LocalUsedFlag::NonPhi);
+                            yield (index_id, LocalUsedFlag::NonPhi);
+                        }
+                        InstrKind::StringCopy(str_id) => {
+                            yield (str_id, LocalUsedFlag::NonPhi);
+                        }
+                        InstrKind::StringSet(str_id, index_id, char_id) => {
+                            yield (str_id, LocalUsedFlag::NonPhi);
+                            yield (index_id, LocalUsedFlag::NonPhi);
+                            yield (char_id, LocalUsedFlag::NonPhi);
+                        }
+                        InstrKind::StringLength(id) => yield (id, LocalUsedFlag::NonPhi),
                         InstrKind::EqInt(a, b)
                         | InstrKind::EqFloat(a, b)
+                        | InstrKind::EqChar(a, b)
+                        | InstrKind::EqString(a, b)
                         | InstrKind::LtInt(a, b)
                         | InstrKind::LtFloat(a, b)
                         | InstrKind::GtInt(a, b)
@@ -714,6 +769,9 @@ macro_rules! impl_InstrKind_local_usages {
                             yield (id, LocalUsedFlag::NonPhi);
                         }
                         InstrKind::VariadicArgsLength(id) => {
+                            yield (id, LocalUsedFlag::NonPhi);
+                        }
+                        InstrKind::VariadicArgsRest(id, _) => {
                             yield (id, LocalUsedFlag::NonPhi);
                         }
                         InstrKind::CreateMutFuncRef(id) => {
@@ -856,6 +914,7 @@ impl InstrKind {
             | InstrKind::And(..)
             | InstrKind::Or(..)
             | InstrKind::EqInt(..)
+            | InstrKind::EqChar(..)
             | InstrKind::EqFloat(..)
             | InstrKind::LtInt(..)
             | InstrKind::LtFloat(..)
@@ -874,14 +933,18 @@ impl InstrKind {
             | InstrKind::SubFloat(..)
             | InstrKind::MulInt(..)
             | InstrKind::MulFloat(..)
-            | InstrKind::DivInt(..)
+            | InstrKind::QuotientInt(..)
+            | InstrKind::RemainderInt(..)
+            | InstrKind::ModuloInt(..)
             | InstrKind::DivFloat(..) => InstrKindPurelity::Pure,
             // String/Cons/Vectorなどは可変なオブジェクトを生成するので純粋ではない
             InstrKind::String(..)
             | InstrKind::StringToSymbol(..)
+            | InstrKind::EqString(..)
             | InstrKind::Vector(..)
             | InstrKind::UVector(..)
             | InstrKind::MakeUVector(..)
+            | InstrKind::MakeVector(..)
             | InstrKind::Cons(..)
             | InstrKind::CreateRef(..)
             | InstrKind::DerefRef(..)
@@ -891,10 +954,14 @@ impl InstrKind {
             | InstrKind::UVectorRef(..)
             | InstrKind::Car(..)
             | InstrKind::Cdr(..)
+            | InstrKind::VariadicArgsRest(..)
             | InstrKind::GlobalGet(..)
             | InstrKind::SymbolToString(..)
             | InstrKind::IntToString(..)
             | InstrKind::FloatToString(..)
+            | InstrKind::StringRef(..)
+            | InstrKind::StringCopy(..)
+            | InstrKind::StringLength(..)
             | InstrKind::CreateMutFuncRef(..)
             | InstrKind::CreateEmptyMutFuncRef
             | InstrKind::DerefMutFuncRef(..)
@@ -919,12 +986,18 @@ impl InstrKind {
             | InstrKind::SetEntrypointTable(..)
             | InstrKind::VectorSet(..)
             | InstrKind::UVectorSet(..)
-            | InstrKind::ClosureSetEnv(..) => InstrKindPurelity::Effectful,
+            | InstrKind::ClosureSetEnv(..)
+            | InstrKind::SetCar(..)
+            | InstrKind::SetCdr(..)
+            | InstrKind::StringSet(..)
+             => InstrKindPurelity::Effectful,
         }
     }
 
     impl_InstrKind_func_ids!(_mut, mut);
     impl_InstrKind_func_ids!(,);
+    impl_InstrKind_global_ids!(_mut, mut);
+    impl_InstrKind_global_ids!(,);
     impl_InstrKind_local_usages!(_mut, mut);
     impl_InstrKind_local_usages!(,);
     impl_InstrKind_bb_ids!(_mut, mut);
@@ -962,13 +1035,12 @@ impl fmt::Display for DisplayInFunc<'_, &'_ InstrKind> {
             InstrKind::Terminator(terminator) => {
                 write!(f, "{}", terminator.display(self.meta))
             }
-            InstrKind::InstantiateFunc(module_id, func_id, func_index) => {
+            InstrKind::InstantiateFunc(module_id, func_id) => {
                 write!(
                     f,
-                    "instantiate_func({}, {}, {})",
+                    "instantiate_func({}, {})",
                     module_id.display(self.meta.meta),
                     func_id.display(self.meta.meta),
-                    func_index
                 )
             }
             InstrKind::InstantiateClosureFunc(module_id, func_id, func_index) => {
@@ -1044,6 +1116,9 @@ impl fmt::Display for DisplayInFunc<'_, &'_ InstrKind> {
             }
             InstrKind::MakeUVector(kind, id) => {
                 write!(f, "make_uvector<{}>({})", kind, id.display(self.meta))
+            }
+            InstrKind::MakeVector(id) => {
+                write!(f, "make_vector({})", id.display(self.meta))
             }
             InstrKind::Cons(a, b) => {
                 write!(f, "({} . {})", a.display(self.meta), b.display(self.meta))
@@ -1199,10 +1274,26 @@ impl fmt::Display for DisplayInFunc<'_, &'_ InstrKind> {
                     b.display(self.meta)
                 )
             }
-            InstrKind::DivInt(a, b) => {
+            InstrKind::QuotientInt(a, b) => {
                 write!(
                     f,
-                    "div_int({}, {})",
+                    "quotient_int({}, {})",
+                    a.display(self.meta),
+                    b.display(self.meta)
+                )
+            }
+            InstrKind::RemainderInt(a, b) => {
+                write!(
+                    f,
+                    "remainder_int({}, {})",
+                    a.display(self.meta),
+                    b.display(self.meta)
+                )
+            }
+            InstrKind::ModuloInt(a, b) => {
+                write!(
+                    f,
+                    "modulo_int({}, {})",
                     a.display(self.meta),
                     b.display(self.meta)
                 )
@@ -1274,11 +1365,50 @@ impl fmt::Display for DisplayInFunc<'_, &'_ InstrKind> {
             }
             InstrKind::Car(id) => write!(f, "car({})", id.display(self.meta)),
             InstrKind::Cdr(id) => write!(f, "cdr({})", id.display(self.meta)),
+            InstrKind::SetCar(cons_id, value_id) => {
+                write!(
+                    f,
+                    "set_car({}, {})",
+                    cons_id.display(self.meta),
+                    value_id.display(self.meta)
+                )
+            }
+            InstrKind::SetCdr(cons_id, value_id) => {
+                write!(
+                    f,
+                    "set_cdr({}, {})",
+                    cons_id.display(self.meta),
+                    value_id.display(self.meta)
+                )
+            }
             InstrKind::SymbolToString(id) => {
                 write!(f, "symbol_to_string({})", id.display(self.meta))
             }
             InstrKind::IntToString(id) => write!(f, "int_to_string({})", id.display(self.meta)),
             InstrKind::FloatToString(id) => write!(f, "float_to_string({})", id.display(self.meta)),
+            InstrKind::StringRef(str_id, index_id) => {
+                write!(
+                    f,
+                    "string_ref({}, {})",
+                    str_id.display(self.meta),
+                    index_id.display(self.meta)
+                )
+            }
+            InstrKind::StringCopy(str_id) => {
+                write!(f, "string_copy({})", str_id.display(self.meta))
+            }
+            InstrKind::StringLength(id) => {
+                write!(f, "string_length({})", id.display(self.meta))
+            }
+            InstrKind::StringSet(str_id, index_id, char_id) => {
+                write!(
+                    f,
+                    "string_set({}, {}, {})",
+                    str_id.display(self.meta),
+                    index_id.display(self.meta),
+                    char_id.display(self.meta)
+                )
+            }
             InstrKind::EqInt(a, b) => write!(
                 f,
                 "eq_int({}, {})",
@@ -1288,6 +1418,18 @@ impl fmt::Display for DisplayInFunc<'_, &'_ InstrKind> {
             InstrKind::EqFloat(a, b) => write!(
                 f,
                 "eq_float({}, {})",
+                a.display(self.meta),
+                b.display(self.meta)
+            ),
+            InstrKind::EqChar(a, b) => write!(
+                f,
+                "eq_char({}, {})",
+                a.display(self.meta),
+                b.display(self.meta)
+            ),
+            InstrKind::EqString(a, b) => write!(
+                f,
+                "eq_string({}, {})",
                 a.display(self.meta),
                 b.display(self.meta)
             ),
@@ -1370,6 +1512,14 @@ impl fmt::Display for DisplayInFunc<'_, &'_ InstrKind> {
             }
             InstrKind::VariadicArgsLength(id) => {
                 write!(f, "variadic_args_length({})", id.display(self.meta))
+            }
+            InstrKind::VariadicArgsRest(id, start_index) => {
+                write!(
+                    f,
+                    "variadic_args_rest({}, {})",
+                    id.display(self.meta),
+                    start_index
+                )
             }
             InstrKind::CreateMutFuncRef(func_ref_id) => {
                 write!(f, "create_mut_func_ref({})", func_ref_id.display(self.meta))

@@ -25,6 +25,7 @@ pub trait AstPhase: Sized + Clone + Debug {
     type XDefine: AstPhaseX;
     type XLambda: AstPhaseX;
     type XIf: AstPhaseX;
+    type XCond: AstPhaseX;
     type XCall: AstPhaseX;
     type XVar: AstPhaseX;
     type XBegin: AstPhaseX;
@@ -32,10 +33,14 @@ pub trait AstPhase: Sized + Clone + Debug {
     type XLet: AstPhaseX;
     type XLetStar: AstPhaseX;
     type XLetRec: AstPhaseX;
+    type XNamedLet: AstPhaseX;
+    type XDo: AstPhaseX;
     type XVector: AstPhaseX;
     type XUVector: AstPhaseX;
     type XQuote: AstPhaseX;
     type XCons: AstPhaseX;
+    type XAnd: AstPhaseX;
+    type XOr: AstPhaseX;
     type XExt: AstPhaseX;
 }
 
@@ -46,6 +51,7 @@ pub trait ExtendAstPhase: Sized + Clone + Debug {
     type XDefine: AstPhaseX = <Self::Prev as AstPhase>::XDefine;
     type XLambda: AstPhaseX = <Self::Prev as AstPhase>::XLambda;
     type XIf: AstPhaseX = <Self::Prev as AstPhase>::XIf;
+    type XCond: AstPhaseX = <Self::Prev as AstPhase>::XCond;
     type XCall: AstPhaseX = <Self::Prev as AstPhase>::XCall;
     type XVar: AstPhaseX = <Self::Prev as AstPhase>::XVar;
     type XBegin: AstPhaseX = <Self::Prev as AstPhase>::XBegin;
@@ -53,10 +59,14 @@ pub trait ExtendAstPhase: Sized + Clone + Debug {
     type XLet: AstPhaseX = <Self::Prev as AstPhase>::XLet;
     type XLetStar: AstPhaseX = <Self::Prev as AstPhase>::XLetStar;
     type XLetRec: AstPhaseX = <Self::Prev as AstPhase>::XLetRec;
+    type XNamedLet: AstPhaseX = <Self::Prev as AstPhase>::XNamedLet;
+    type XDo: AstPhaseX = <Self::Prev as AstPhase>::XDo;
     type XVector: AstPhaseX = <Self::Prev as AstPhase>::XVector;
     type XUVector: AstPhaseX = <Self::Prev as AstPhase>::XUVector;
     type XQuote: AstPhaseX = <Self::Prev as AstPhase>::XQuote;
     type XCons: AstPhaseX = <Self::Prev as AstPhase>::XCons;
+    type XAnd: AstPhaseX = <Self::Prev as AstPhase>::XAnd;
+    type XOr: AstPhaseX = <Self::Prev as AstPhase>::XOr;
     type XExt: AstPhaseX = <Self::Prev as AstPhase>::XExt;
 }
 
@@ -66,6 +76,7 @@ impl<T: ExtendAstPhase> AstPhase for T {
     type XDefine = T::XDefine;
     type XLambda = T::XLambda;
     type XIf = T::XIf;
+    type XCond = T::XCond;
     type XCall = T::XCall;
     type XVar = T::XVar;
     type XBegin = T::XBegin;
@@ -73,10 +84,14 @@ impl<T: ExtendAstPhase> AstPhase for T {
     type XLet = T::XLet;
     type XLetStar = T::XLetStar;
     type XLetRec = T::XLetRec;
+    type XNamedLet = T::XNamedLet;
+    type XDo = T::XDo;
     type XVector = T::XVector;
     type XUVector = T::XUVector;
     type XQuote = T::XQuote;
     type XCons = T::XCons;
+    type XAnd = T::XAnd;
+    type XOr = T::XOr;
     type XExt = T::XExt;
 }
 
@@ -99,16 +114,21 @@ where
     Define(X::XDefine, Define<X>),
     Lambda(X::XLambda, Lambda<X>),
     If(X::XIf, If<X>),
+    Cond(X::XCond, Cond<X>),
     Call(X::XCall, Call<X>),
     Begin(X::XBegin, Begin<X>),
     Set(X::XSet, Set<X>),
     Let(X::XLet, LetLike<X>),
     LetStar(X::XLetStar, LetLike<X>),
     LetRec(X::XLetRec, LetLike<X>),
+    NamedLet(X::XNamedLet, L<String>, LetLike<X>),
+    Do(X::XDo, Do<X>),
     Vector(X::XVector, Vec<ExprBox<LExpr<X>>>),
     UVector(X::XUVector, UVector<X>),
     Quote(X::XQuote, LSExpr),
     Cons(X::XCons, Cons<X>),
+    And(X::XAnd, Vec<ExprBox<LExpr<X>>>),
+    Or(X::XOr, Vec<ExprBox<LExpr<X>>>),
     Ext(X::XExt),
 }
 
@@ -139,6 +159,7 @@ where
     X: AstPhase,
 {
     pub args: Vec<L<String>>,
+    pub variadic_arg: Option<L<String>>,
     pub body: Vec<LExpr<X>>,
 }
 
@@ -150,6 +171,35 @@ where
     pub cond: ExprBox<LExpr<X>>,
     pub then: ExprBox<LExpr<X>>,
     pub els: ExprBox<LExpr<X>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Cond<X>
+where
+    X: AstPhase,
+{
+    pub clauses: Vec<CondClause<X>>,
+}
+
+#[derive(Debug, Clone)]
+pub enum CondClause<X>
+where
+    X: AstPhase,
+{
+    Else {
+        body: Vec<LExpr<X>>,
+    },
+    TestOnly {
+        test: ExprBox<LExpr<X>>,
+    },
+    Test {
+        test: ExprBox<LExpr<X>>,
+        body: Vec<LExpr<X>>,
+    },
+    Allow {
+        test: ExprBox<LExpr<X>>,
+        func: ExprBox<LExpr<X>>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -194,6 +244,26 @@ where
 {
     pub name: L<String>,
     pub expr: ExprBox<LExpr<X>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Do<X>
+where
+    X: AstPhase,
+{
+    pub bindings: Vec<L<DoBinding<X>>>,
+    pub test: ExprBox<LExpr<X>>,
+    pub exit_body: Vec<LExpr<X>>,
+    pub body: Vec<LExpr<X>>,
+}
+#[derive(Debug, Clone)]
+pub struct DoBinding<X>
+where
+    X: AstPhase,
+{
+    pub name: L<String>,
+    pub init: ExprBox<LExpr<X>>,
+    pub step: Option<ExprBox<LExpr<X>>>,
 }
 
 #[derive(Debug, Clone)]

@@ -6,76 +6,227 @@ use webschembly_compiler_sexpr as sexpr;
 pub trait DesugaredPrevPhase = AstPhase<XExt = !>;
 
 #[derive(Debug, Clone)]
-pub struct Desugared<P: DesugaredPrevPhase>(std::marker::PhantomData<P>);
+pub struct Desugared<P: DesugaredPrevPhase> {
+    _marker: std::marker::PhantomData<P>,
+    var_counter: usize,
+}
 
 impl<P: DesugaredPrevPhase> ExtendAstPhase for Desugared<P> {
     type Prev = P;
     type XBegin = !;
     type XQuote = !;
     type XLetStar = !;
+    type XCond = !;
+    type XNamedLet = !;
+    type XDo = !;
+    type XAnd = !;
+    type XOr = !;
+    type XIf = ();
+    type XVar = ();
     type XLet = ();
+    type XCall = ();
     type XConst = ();
     type XCons = ();
     type XVector = ();
     type XUVector = ();
+    type XLambda = ();
+    type XLetRec = ();
+}
+
+impl<P: DesugaredPrevPhase> Default for Desugared<P> {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl<P: DesugaredPrevPhase> Desugared<P> {
-    pub fn from_ast(ast: Ast<P>) -> Ast<Self> {
-        Ast {
-            x: ast.x,
-            exprs: Self::from_exprs(ast.exprs),
+    pub fn new() -> Self {
+        Self {
+            _marker: std::marker::PhantomData,
+            var_counter: 0,
         }
     }
 
-    fn from_expr(expr: LExpr<P>, exprs: &mut Vec<LExpr<Self>>) {
+    pub fn from_ast(&mut self, ast: Ast<P>) -> Ast<Self> {
+        Ast {
+            x: ast.x,
+            exprs: self.process_exprs(ast.exprs),
+        }
+    }
+
+    fn gen_temp_var(&mut self) -> String {
+        let var_name = format!("__desugared_temp_{}", self.var_counter);
+        self.var_counter += 1;
+        var_name
+    }
+
+    fn process_expr(&mut self, expr: LExpr<P>, exprs: &mut Vec<LExpr<Self>>) {
         match expr.value {
             Expr::Const(_, lit) => exprs.push(Expr::Const((), lit).with_span(expr.span)),
-            Expr::Var(x, var) => exprs.push(Expr::Var(x, var).with_span(expr.span)),
+            Expr::Var(_, var) => exprs.push(Expr::Var((), var).with_span(expr.span)),
             Expr::Define(x, def) => exprs.push(
                 Expr::Define(
                     x,
                     Define {
                         name: def.name,
-                        expr: Self::from_exprs(def.expr),
+                        expr: self.process_exprs(def.expr),
                     },
                 )
                 .with_span(expr.span),
             ),
-            Expr::Lambda(x, lambda) => exprs.push(
+            Expr::Lambda(_, lambda) => exprs.push(
                 Expr::Lambda(
-                    x,
+                    (),
                     Lambda {
                         args: lambda.args,
-                        body: Self::from_exprs(lambda.body),
+                        variadic_arg: lambda.variadic_arg,
+                        body: self.process_exprs(lambda.body),
                     },
                 )
                 .with_span(expr.span),
             ),
-            Expr::If(x, if_) => exprs.push(
+            Expr::If(_, if_) => exprs.push(
                 Expr::If(
-                    x,
+                    (),
                     If {
-                        cond: Self::from_exprs(if_.cond),
-                        then: Self::from_exprs(if_.then),
-                        els: Self::from_exprs(if_.els),
+                        cond: self.process_exprs(if_.cond),
+                        then: self.process_exprs(if_.then),
+                        els: self.process_exprs(if_.els),
                     },
                 )
                 .with_span(expr.span),
             ),
-            Expr::Call(x, call) => exprs.push(
+            Expr::Cond(_, cond) => {
+                let mut else_branch = Vec::new();
+                for clause in cond.clauses.into_iter().rev() {
+                    match clause {
+                        CondClause::Else { body } => {
+                            else_branch = self.process_exprs(body);
+                        }
+                        CondClause::Test { test, body } => {
+                            let then_branch = self.process_exprs(body);
+                            let cond_branch = self.process_exprs(test);
+                            else_branch = vec![
+                                Expr::If(
+                                    (),
+                                    If {
+                                        cond: cond_branch,
+                                        then: then_branch,
+                                        els: else_branch,
+                                    },
+                                )
+                                .with_span(expr.span),
+                            ];
+                        }
+                        CondClause::TestOnly { test } => {
+                            let cond_branch = self.process_exprs(test);
+                            let temp_var = self.gen_temp_var();
+                            else_branch = vec![
+                                Expr::Let(
+                                    (),
+                                    LetLike {
+                                        bindings: vec![
+                                            Binding {
+                                                name: L {
+                                                    span: expr.span,
+                                                    value: temp_var.clone(),
+                                                },
+                                                expr: cond_branch,
+                                            }
+                                            .with_span(expr.span),
+                                        ],
+                                        body: vec![
+                                            Expr::If(
+                                                (),
+                                                If {
+                                                    cond: vec![
+                                                        Expr::Var((), temp_var.clone())
+                                                            .with_span(expr.span),
+                                                    ],
+                                                    then: vec![
+                                                        Expr::Var((), temp_var.clone())
+                                                            .with_span(expr.span),
+                                                    ],
+                                                    els: else_branch,
+                                                },
+                                            )
+                                            .with_span(expr.span),
+                                        ],
+                                    },
+                                )
+                                .with_span(expr.span),
+                            ];
+                        }
+                        CondClause::Allow { test, func } => {
+                            let cond_branch = self.process_exprs(test);
+                            let func_branch = self.process_exprs(func);
+                            let temp_var = self.gen_temp_var();
+                            else_branch = vec![
+                                Expr::Let(
+                                    (),
+                                    LetLike {
+                                        bindings: vec![
+                                            Binding {
+                                                name: L {
+                                                    span: expr.span,
+                                                    value: temp_var.clone(),
+                                                },
+                                                expr: cond_branch,
+                                            }
+                                            .with_span(expr.span),
+                                        ],
+                                        body: vec![
+                                            Expr::If(
+                                                (),
+                                                If {
+                                                    cond: vec![
+                                                        Expr::Var((), temp_var.clone())
+                                                            .with_span(expr.span),
+                                                    ],
+                                                    then: vec![
+                                                        Expr::Call(
+                                                            (),
+                                                            Call {
+                                                                func: func_branch,
+                                                                args: vec![vec![
+                                                                    Expr::Var((), temp_var.clone())
+                                                                        .with_span(expr.span),
+                                                                ]],
+                                                            },
+                                                        )
+                                                        .with_span(expr.span),
+                                                    ],
+                                                    els: else_branch,
+                                                },
+                                            )
+                                            .with_span(expr.span),
+                                        ],
+                                    },
+                                )
+                                .with_span(expr.span),
+                            ];
+                        }
+                    }
+                }
+                exprs.extend(else_branch);
+            }
+            Expr::Call(_, call) => exprs.push(
                 Expr::Call(
-                    x,
+                    (),
                     Call {
-                        func: Self::from_exprs(call.func),
-                        args: call.args.into_iter().map(Self::from_exprs).collect(),
+                        func: self.process_exprs(call.func),
+                        args: call
+                            .args
+                            .into_iter()
+                            .map(|expr| self.process_exprs(expr))
+                            .collect(),
                     },
                 )
                 .with_span(expr.span),
             ),
             Expr::Begin(_, begin) => {
                 for expr in begin.exprs {
-                    Self::from_expr(expr, exprs);
+                    self.process_expr(expr, exprs);
                 }
             }
             Expr::Set(x, set) => exprs.push(
@@ -83,13 +234,13 @@ impl<P: DesugaredPrevPhase> Desugared<P> {
                     x,
                     Set {
                         name: set.name,
-                        expr: Self::from_exprs(set.expr),
+                        expr: self.process_exprs(set.expr),
                     },
                 )
                 .with_span(expr.span),
             ),
             Expr::Let(_, let_like) => {
-                exprs.push(Expr::Let((), Self::from_let_like(let_like)).with_span(expr.span))
+                exprs.push(Expr::Let((), self.process_let_like(let_like)).with_span(expr.span))
             }
             Expr::LetStar(_, let_like) => {
                 // 空のlet*でもスコープを作るためにバインディングが空のletで囲む
@@ -97,7 +248,7 @@ impl<P: DesugaredPrevPhase> Desugared<P> {
                     (),
                     LetLike {
                         bindings: vec![],
-                        body: Self::from_exprs(let_like.body),
+                        body: self.process_exprs(let_like.body),
                     },
                 )
                 .with_span(expr.span);
@@ -105,7 +256,7 @@ impl<P: DesugaredPrevPhase> Desugared<P> {
                     body = Expr::Let(
                         (),
                         LetLike {
-                            bindings: vec![Self::from_binding(binding)],
+                            bindings: vec![self.process_binding(binding)],
                             body: vec![body],
                         },
                     )
@@ -113,30 +264,251 @@ impl<P: DesugaredPrevPhase> Desugared<P> {
                 }
                 exprs.push(body);
             }
-            Expr::LetRec(x, let_like) => {
-                exprs.push(Expr::LetRec(x, Self::from_let_like(let_like)).with_span(expr.span))
+            Expr::LetRec(_, let_like) => {
+                exprs.push(Expr::LetRec((), self.process_let_like(let_like)).with_span(expr.span))
+            }
+            Expr::NamedLet(_, name, let_like) => {
+                let func_var = name.value.clone();
+                let lambda = Expr::Lambda(
+                    (),
+                    Lambda {
+                        args: let_like
+                            .bindings
+                            .iter()
+                            .map(|b| b.value.name.clone())
+                            .collect(),
+                        variadic_arg: None,
+                        body: self.process_exprs(let_like.body),
+                    },
+                )
+                .with_span(expr.span);
+                let letrec = Expr::LetRec(
+                    (),
+                    LetLike {
+                        bindings: vec![
+                            Binding {
+                                name: L {
+                                    span: expr.span,
+                                    value: func_var.clone(),
+                                },
+                                expr: vec![lambda],
+                            }
+                            .with_span(expr.span),
+                        ],
+                        body: vec![
+                            Expr::Call(
+                                (),
+                                Call {
+                                    func: vec![
+                                        Expr::Var((), func_var.clone()).with_span(expr.span),
+                                    ],
+                                    args: let_like
+                                        .bindings
+                                        .into_iter()
+                                        .map(|b| self.process_exprs(b.value.expr))
+                                        .collect(),
+                                },
+                            )
+                            .with_span(expr.span),
+                        ],
+                    },
+                )
+                .with_span(expr.span);
+                exprs.push(letrec);
+            }
+            Expr::Do(_, do_) => {
+                let loop_var = self.gen_temp_var();
+                let letrec = Expr::LetRec(
+                    (),
+                    LetLike {
+                        bindings: vec![
+                            Binding {
+                                name: L {
+                                    span: expr.span,
+                                    value: loop_var.clone(),
+                                },
+                                expr: vec![
+                                    Expr::Lambda(
+                                        (),
+                                        Lambda {
+                                            args: do_
+                                                .bindings
+                                                .iter()
+                                                .map(|b| b.value.name.clone())
+                                                .collect(),
+                                            variadic_arg: None,
+                                            body: vec![
+                                                Expr::If(
+                                                    (),
+                                                    If {
+                                                        cond: self.process_exprs(do_.test),
+                                                        then: self.process_exprs(do_.exit_body),
+                                                        els: {
+                                                            let mut body = self.process_exprs(do_.body);
+                                                            body.push(
+                                                                Expr::Call(
+                                                                    (),
+                                                                    Call {
+                                                                        func: vec![
+                                                                            Expr::Var((), loop_var.clone())
+                                                                                .with_span(expr.span),
+                                                                        ],
+                                                                        args: do_
+                                                                            .bindings
+                                                                            .iter()
+                                                                            .map(|b| {
+                                                                                 b.value.step.clone().map(|step|self.process_exprs(step))
+                                                                                    .unwrap_or_else(|| {
+                                                                                        vec![
+                                                                                            Expr::Var((), b.value.name.value.clone())
+                                                                                                .with_span(b.span),
+                                                                                        ]
+                                                                                    })
+                                                                            })
+                                                                            .collect(),
+                                                                    },
+                                                                )
+                                                                .with_span(expr.span),
+                                                            );
+                                                            body
+                                                        },
+                                                    },
+                                                )
+                                                .with_span(expr.span),
+                                            ],
+                                        },
+                                    )
+                                    .with_span(expr.span),
+                                ],
+                            }
+                            .with_span(expr.span),
+                        ],
+                        body: vec![
+                            Expr::Call(
+                                (),
+                                Call {
+                                    func: vec![Expr::Var((), loop_var.clone()).with_span(expr.span)],
+                                    args: do_
+                                        .bindings
+                                        .into_iter()
+                                        .map(|b| self.process_exprs(b.value.init))
+                                        .collect(),
+                                },
+                            )
+                            .with_span(expr.span),
+                        ],
+                    },
+                )
+                .with_span(expr.span);
+                exprs.push(letrec);
+            }
+            Expr::And(_, and_exprs) => {
+                if and_exprs.is_empty() {
+                    exprs.push(Expr::Const((), Const::Bool(true)).with_span(expr.span));
+                } else if and_exprs.len() == 1 {
+                    exprs.extend(self.process_exprs(and_exprs.into_iter().next().unwrap()));
+                } else {
+                    let mut iter = and_exprs.into_iter().rev();
+                    let mut else_branch = self.process_exprs(iter.next().unwrap());
+                    for and_expr in iter {
+                        let cond = self.process_exprs(and_expr);
+                        else_branch = vec![
+                            Expr::If(
+                                (),
+                                If {
+                                    cond,
+                                    then: else_branch,
+                                    els: vec![
+                                        Expr::Const((), Const::Bool(false)).with_span(expr.span),
+                                    ],
+                                },
+                            )
+                            .with_span(expr.span),
+                        ];
+                    }
+                    exprs.extend(else_branch);
+                }
+            }
+            Expr::Or(_, or_exprs) => {
+                if or_exprs.is_empty() {
+                    exprs.push(Expr::Const((), Const::Bool(false)).with_span(expr.span));
+                } else if or_exprs.len() == 1 {
+                    exprs.extend(self.process_exprs(or_exprs.into_iter().next().unwrap()));
+                } else {
+                    let mut else_branch =
+                        vec![Expr::Const((), Const::Bool(false)).with_span(expr.span)];
+                    for or_expr in or_exprs.into_iter().rev() {
+                        let test = self.process_exprs(or_expr);
+                        let temp_var = self.gen_temp_var();
+                        else_branch = vec![
+                            Expr::Let(
+                                (),
+                                LetLike {
+                                    bindings: vec![
+                                        Binding {
+                                            name: L {
+                                                span: expr.span,
+                                                value: temp_var.clone(),
+                                            },
+                                            expr: test,
+                                        }
+                                        .with_span(expr.span),
+                                    ],
+                                    body: vec![
+                                        Expr::If(
+                                            (),
+                                            If {
+                                                cond: vec![
+                                                    Expr::Var((), temp_var.clone())
+                                                        .with_span(expr.span),
+                                                ],
+                                                then: vec![
+                                                    Expr::Var((), temp_var.clone())
+                                                        .with_span(expr.span),
+                                                ],
+                                                els: else_branch,
+                                            },
+                                        )
+                                        .with_span(expr.span),
+                                    ],
+                                },
+                            )
+                            .with_span(expr.span),
+                        ];
+                    }
+                    exprs.extend(else_branch);
+                }
             }
             Expr::Vector(_, vec) => exprs.push(
-                Expr::Vector((), vec.into_iter().map(Self::from_exprs).collect())
-                    .with_span(expr.span),
+                Expr::Vector(
+                    (),
+                    vec.into_iter()
+                        .map(|expr| self.process_exprs(expr))
+                        .collect(),
+                )
+                .with_span(expr.span),
             ),
             Expr::UVector(_, uvec) => exprs.push(
                 Expr::UVector(
                     (),
                     UVector {
                         kind: uvec.kind,
-                        elements: uvec.elements.into_iter().map(Self::from_exprs).collect(),
+                        elements: uvec
+                            .elements
+                            .into_iter()
+                            .map(|expr| self.process_exprs(expr))
+                            .collect(),
                     },
                 )
                 .with_span(expr.span),
             ),
-            Expr::Quote(_, sexpr) => exprs.push(Self::from_quoted_sexpr(sexpr)),
+            Expr::Quote(_, sexpr) => exprs.push(Self::process_quoted_sexpr(sexpr)),
             Expr::Cons(_, cons) => exprs.push(
                 Expr::Cons(
                     (),
                     Cons {
-                        car: Self::from_exprs(cons.car),
-                        cdr: Self::from_exprs(cons.cdr),
+                        car: self.process_exprs(cons.car),
+                        cdr: self.process_exprs(cons.cdr),
                     },
                 )
                 .with_span(expr.span),
@@ -145,7 +517,7 @@ impl<P: DesugaredPrevPhase> Desugared<P> {
         }
     }
 
-    fn from_quoted_sexpr(sexpr: sexpr::LSExpr) -> LExpr<Self> {
+    fn process_quoted_sexpr(sexpr: sexpr::LSExpr) -> LExpr<Self> {
         match sexpr.value {
             sexpr::SExpr::Bool(b) => Expr::Const((), Const::Bool(b)).with_span(sexpr.span),
             sexpr::SExpr::Int(i) => Expr::Const((), Const::Int(i)).with_span(sexpr.span),
@@ -158,8 +530,8 @@ impl<P: DesugaredPrevPhase> Desugared<P> {
             sexpr::SExpr::Cons(cons) => Expr::Cons(
                 (),
                 Cons {
-                    car: vec![Self::from_quoted_sexpr(cons.car)],
-                    cdr: vec![Self::from_quoted_sexpr(cons.cdr)],
+                    car: vec![Self::process_quoted_sexpr(cons.car)],
+                    cdr: vec![Self::process_quoted_sexpr(cons.cdr)],
                 },
             )
             .with_span(sexpr.span),
@@ -167,7 +539,7 @@ impl<P: DesugaredPrevPhase> Desugared<P> {
             sexpr::SExpr::Vector(vec) => Expr::Vector(
                 (),
                 vec.into_iter()
-                    .map(|s| vec![Self::from_quoted_sexpr(s)])
+                    .map(|s| vec![Self::process_quoted_sexpr(s)])
                     .collect(),
             )
             .with_span(sexpr.span),
@@ -181,7 +553,7 @@ impl<P: DesugaredPrevPhase> Desugared<P> {
                     },
                     elements: elements
                         .into_iter()
-                        .map(|s| vec![Self::from_quoted_sexpr(s)])
+                        .map(|s| vec![Self::process_quoted_sexpr(s)])
                         .collect(),
                 },
             )
@@ -190,29 +562,29 @@ impl<P: DesugaredPrevPhase> Desugared<P> {
         }
     }
 
-    fn from_exprs(exprs: Vec<LExpr<P>>) -> Vec<LExpr<Self>> {
+    fn process_exprs(&mut self, exprs: Vec<LExpr<P>>) -> Vec<LExpr<Self>> {
         let mut result = Vec::new();
         for expr in exprs {
-            Self::from_expr(expr, &mut result);
+            self.process_expr(expr, &mut result);
         }
         result
     }
 
-    fn from_let_like(let_like: LetLike<P>) -> LetLike<Self> {
+    fn process_let_like(&mut self, let_like: LetLike<P>) -> LetLike<Self> {
         LetLike {
             bindings: let_like
                 .bindings
                 .into_iter()
-                .map(Self::from_binding)
+                .map(|binding| self.process_binding(binding))
                 .collect(),
-            body: Self::from_exprs(let_like.body),
+            body: self.process_exprs(let_like.body),
         }
     }
 
-    fn from_binding(binding: L<Binding<P>>) -> L<Binding<Self>> {
+    fn process_binding(&mut self, binding: L<Binding<P>>) -> L<Binding<Self>> {
         Binding {
             name: binding.value.name,
-            expr: Self::from_exprs(binding.value.expr),
+            expr: self.process_exprs(binding.value.expr),
         }
         .with_span(binding.span)
     }

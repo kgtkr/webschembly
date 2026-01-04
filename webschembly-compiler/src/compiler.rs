@@ -269,9 +269,7 @@ fn postprocess(module: &mut ir::Module, global_manager: &mut GlobalManager) {
     for func in module.funcs.values() {
         for bbs in func.bbs.values() {
             for instr in bbs.instrs.iter() {
-                if let ir::InstrKind::GlobalGet(global_id)
-                | ir::InstrKind::GlobalSet(global_id, _) = instr.kind
-                {
+                for &global_id in instr.kind.global_ids() {
                     global_ids.insert(global_id);
                 }
             }

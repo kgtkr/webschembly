@@ -1,4 +1,4 @@
 (begin
-    (define x "Hello, World!")
-    (write x)(newline)
-)
+  (define x "Hello, World!")
+  (write x)
+  (newline))

@@ -2,7 +2,7 @@ import * as fsSync from "fs";
 import * as fs from "fs/promises";
 
 import * as path from "path";
-import { type RuntimeLogger, type RuntimeEnv } from "./runtime";
+import { type RuntimeEnv, type RuntimeLogger } from "./runtime";
 
 export async function createLogger({
   logDir = process.env.LOG_DIR || null,
@@ -29,18 +29,18 @@ export async function createLogger({
       if (logDir !== null) {
         fsSync.writeFileSync(
           path.join(logDir, logBasename + "-" + instantiateCount + ".wasm"),
-          buf
+          buf,
         );
         if (ir !== null) {
           fsSync.writeFileSync(
             path.join(logDir, logBasename + "-" + instantiateCount + ".ir"),
-            ir
+            ir,
           );
         }
       }
       if (logStdout) {
         console.log(
-          `called instantiate: id:${instantiateCount}, buf_size:${buf.length}`
+          `called instantiate: id:${instantiateCount}, buf_size:${buf.length}`,
         );
       }
       instantiateCount++;
@@ -62,7 +62,7 @@ export async function createNodeRuntimeEnv({
   logger,
   loadRuntimeModule = async () =>
     new WebAssembly.Module(
-      await fs.readFile(process.env["WEBSCHEMBLY_RUNTIME"]!)
+      await fs.readFile(process.env["WEBSCHEMBLY_RUNTIME"]!),
     ),
   writeBuf = (fd, buf) => {
     switch (fd) {
