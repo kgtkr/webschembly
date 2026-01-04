@@ -5,6 +5,50 @@ Scheme JIT compiler for WebAssembly
 - [Playground](https://kgtkr.github.io/webschembly/)
 - [Benchmark](https://kgtkr.github.io/webschembly/dev/bench)
 
+## Documentation
+
+**For Developers & Researchers:**
+- 📘 [Architecture Documentation](./docs/ARCHITECTURE.md) - Complete system architecture and JIT implementation details
+- 🛠️ [Development Guide](./docs/DEVELOPMENT_GUIDE.md) - Development workflow, implementation examples, and debugging tips
+- 🔬 [Research Strategy](./docs/RESEARCH_STRATEGY.md) - Performance analysis, optimization proposals, and research roadmap
+
+**For Users:**
+- [R5RS Compliance](./docs/r5rs.md) - Differences from R5RS standard
+
+## Quick Start
+
+### Prerequisites
+
+- Nix
+- Direnv
+
+### Setup
+
+```bash
+# Clone the repository
+git clone https://github.com/kgtkr/webschembly.git
+cd webschembly
+
+# Enable direnv
+direnv allow
+
+# Build the project
+cargo build --all
+```
+
+### Usage
+
+```bash
+# Run Scheme code
+cd webschembly-js
+npm install
+npm run build
+node dist/cli.js your-program.scm
+
+# Run REPL
+node dist/repl.js
+```
+
 ## Project Structure
 
 This project consists of the following components:
