@@ -573,6 +573,23 @@ macro_rules! impl_InstrKind_func_ids {
     };
 }
 
+macro_rules! impl_InstrKind_global_ids {
+    ($($suffix: ident)?,$($mutability: tt)?) => {
+        paste::paste! {
+            pub fn [<global_ids $($suffix)?>](&$($mutability)? self) -> impl Iterator<Item = &$($mutability)? GlobalId> {
+                from_coroutine(
+                    #[coroutine]
+                    move || match self {
+                        InstrKind::GlobalSet(global_id, _) => yield global_id,
+                        InstrKind::GlobalGet(global_id) => yield global_id,
+                        _ => {}
+                    },
+                )
+            }
+        }
+    };
+}
+
 macro_rules! impl_InstrKind_local_usages {
     ($($suffix: ident)?,$($mutability: tt)?) => {
         paste::paste! {
@@ -979,6 +996,8 @@ impl InstrKind {
 
     impl_InstrKind_func_ids!(_mut, mut);
     impl_InstrKind_func_ids!(,);
+    impl_InstrKind_global_ids!(_mut, mut);
+    impl_InstrKind_global_ids!(,);
     impl_InstrKind_local_usages!(_mut, mut);
     impl_InstrKind_local_usages!(,);
     impl_InstrKind_bb_ids!(_mut, mut);
