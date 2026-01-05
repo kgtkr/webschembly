@@ -63,6 +63,47 @@ impl BBIndexManager {
     }
 }
 
+#[derive(Debug)]
+pub struct EnvIndexManager {
+    env_types_to_index: FxBiHashMap<Vec<ValType>, usize>,
+    index_to_table_global: FxHashMap<usize, Global>,
+}
+
+impl EnvIndexManager {
+    pub fn new() -> Self {
+        Self {
+            env_types_to_index: FxBiHashMap::default(),
+            index_to_table_global: FxHashMap::default(),
+        }
+    }
+
+    pub fn idx(
+        &mut self,
+        env_types: &[ValType],
+        global_manager: &mut GlobalManager,
+    ) -> Option<(Global, usize, IndexFlag)> {
+        if let Some(&index) = self.env_types_to_index.get_by_left(env_types) {
+            let global = *self.index_to_table_global.get(&index).unwrap();
+            Some((global.to_import(), index, IndexFlag::ExistingInstance))
+        } else if self.env_types_to_index.len() < GLOBAL_LAYOUT_MAX_SIZE {
+            let index = self.env_types_to_index.len();
+            self.env_types_to_index.insert(env_types.to_vec(), index);
+            let global = global_manager.gen_global(LocalType::EntrypointTable);
+            self.index_to_table_global.insert(index, global);
+            Some((global, index, IndexFlag::NewInstance))
+        } else {
+            None
+        }
+    }
+
+    pub fn env_types(&self, index: usize) -> (&Vec<ValType>, Global) {
+        (
+            self.env_types_to_index.get_by_right(&index).unwrap(),
+            self.index_to_table_global.get(&index).unwrap().to_import(),
+        )
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IndexFlag {
     NewInstance,
