@@ -2,7 +2,7 @@ use rustc_hash::FxHashMap;
 
 use super::global_layout::GLOBAL_LAYOUT_MAX_SIZE;
 use super::jit_ctx::JitCtx;
-use super::jit_func::JitSpecializedArgsFunc;
+use super::jit_func::{JitFunc, JitSpecializedArgsFunc};
 use crate::{ir_generator::GlobalManager, jit::global_layout::GLOBAL_LAYOUT_DEFAULT_INDEX};
 use vec_map::{HasId, VecMap};
 use webschembly_compiler_ir::*;
@@ -10,7 +10,7 @@ use webschembly_compiler_ir::*;
 pub struct JitModule {
     module_id: JitModuleId,
     module: Module,
-    jit_funcs: FxHashMap<(FuncId, usize), JitSpecializedArgsFunc>,
+    jit_funcs: FxHashMap<FuncId, JitFunc>,
     func_to_globals: VecMap<FuncId, GlobalId>,
     func_types: VecMap<FuncId, FuncType>,
 }
@@ -33,16 +33,10 @@ impl JitModule {
         let mut func_to_globals = VecMap::default();
 
         for func in module.funcs.values() {
-            let jit_func = JitSpecializedArgsFunc::new(
-                module_id,
-                global_manager,
-                func,
-                GLOBAL_LAYOUT_DEFAULT_INDEX,
-                jit_ctx,
-            );
+            let jit_func = JitFunc::new(global_manager, module_id, jit_ctx, func);
             let global = global_manager.gen_global(LocalType::FuncRef);
             func_to_globals.insert(func.id, global.id);
-            jit_funcs.insert((func.id, GLOBAL_LAYOUT_DEFAULT_INDEX), jit_func);
+            jit_funcs.insert(func.id, jit_func);
         }
 
         let func_types = module
@@ -214,10 +208,17 @@ impl JitModule {
             func_index,
             jit_ctx,
         );
-        self.jit_funcs.insert((func_id, func_index), jit_func);
+        self.jit_funcs
+            .get_mut(&func_id)
+            .unwrap()
+            .jit_specialized_args_funcs
+            .insert(func_index, jit_func);
 
         self.jit_funcs
-            .get_mut(&(func_id, func_index))
+            .get_mut(&func_id)
+            .unwrap()
+            .jit_specialized_args_funcs
+            .get_mut(&func_index)
             .unwrap()
             .generate_func_module(
                 &self.func_to_globals,
@@ -236,7 +237,13 @@ impl JitModule {
         global_manager: &mut GlobalManager,
         jit_ctx: &mut JitCtx,
     ) -> Module {
-        let jit_func = self.jit_funcs.get_mut(&(func_id, func_index)).unwrap();
+        let jit_func = self
+            .jit_funcs
+            .get_mut(&func_id)
+            .unwrap()
+            .jit_specialized_args_funcs
+            .get_mut(&func_index)
+            .unwrap();
 
         jit_func.generate_bb_module(
             &self.func_to_globals,
@@ -260,7 +267,13 @@ impl JitModule {
         source_bb_id: BasicBlockId,
         source_index: usize,
     ) -> Option<Module> {
-        let jit_func = self.jit_funcs.get_mut(&(func_id, func_index)).unwrap();
+        let jit_func = self
+            .jit_funcs
+            .get_mut(&func_id)
+            .unwrap()
+            .jit_specialized_args_funcs
+            .get_mut(&func_index)
+            .unwrap();
         jit_func.increment_branch_counter(
             &self.func_to_globals,
             &self.func_types,

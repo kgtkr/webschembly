@@ -16,6 +16,32 @@ use vec_map::{HasId, VecMap};
 use webschembly_compiler_ir::*;
 
 #[derive(Debug)]
+pub struct JitFunc {
+    pub jit_specialized_args_funcs: FxHashMap<usize, JitSpecializedArgsFunc>,
+}
+
+impl JitFunc {
+    pub fn new(
+        global_manager: &mut GlobalManager,
+        module_id: JitModuleId,
+        jit_ctx: &mut JitCtx,
+        func: &Func,
+    ) -> Self {
+        let mut jit_specialized_args_funcs = FxHashMap::default();
+        let jit_func = JitSpecializedArgsFunc::new(
+            module_id,
+            global_manager,
+            func,
+            GLOBAL_LAYOUT_DEFAULT_INDEX,
+            jit_ctx,
+        );
+        jit_specialized_args_funcs.insert(GLOBAL_LAYOUT_DEFAULT_INDEX, jit_func);
+        Self {
+            jit_specialized_args_funcs,
+        }
+    }
+}
+#[derive(Debug)]
 pub struct JitSpecializedArgsFunc {
     module_id: JitModuleId,
     func_index: usize,
