@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1765436758449,
+  "lastUpdate": 1767630409063,
   "repoUrl": "https://github.com/kgtkr/webschembly",
   "entries": {
     "Benchmark": [
@@ -1650,6 +1650,282 @@ window.BENCHMARK_DATA = {
             "name": "tak-cps-30.b.scm,with warmup,enableJit=false",
             "value": 17.64,
             "range": "±1.05%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "me@kgtkr.net",
+            "name": "kgtkr",
+            "username": "kgtkr"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "0a21bfd12199f769a80c18bc6d9e39bd0002b332",
+          "message": "Merge pull request #38 from kgtkr/work-20251211\n\nWork 20251211",
+          "timestamp": "2026-01-05T22:25:53+09:00",
+          "tree_id": "812e30b7812628e000e92ad8f8a45a868136ecfc",
+          "url": "https://github.com/kgtkr/webschembly/commit/0a21bfd12199f769a80c18bc6d9e39bd0002b332"
+        },
+        "date": 1767630408620,
+        "tool": "benchmarkjs",
+        "benches": [
+          {
+            "name": "gambit/ack.b.scm,",
+            "value": 3.43,
+            "range": "±1.94%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "gambit/ack.b.scm,enableJit=false",
+            "value": 6.98,
+            "range": "±0.70%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "gambit/ack.b.scm,with warmup,",
+            "value": 3.99,
+            "range": "±0.76%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "gambit/browse.b.scm,",
+            "value": 2.94,
+            "range": "±0.26%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "gambit/ack.b.scm,with warmup,enableJit=false",
+            "value": 7.3,
+            "range": "±0.32%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "gambit/browse.b.scm,enableJit=false",
+            "value": 48.94,
+            "range": "±2.53%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "gambit/browse.b.scm,with warmup,",
+            "value": 181.61,
+            "range": "±1.18%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "gambit/browse.b.scm,with warmup,enableJit=false",
+            "value": 235.18,
+            "range": "±0.34%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "tak-cps-30.b.scm,",
+            "value": 20.13,
+            "range": "±1.22%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "tak-cps-30.b.scm,enableJit=false",
+            "value": 237.29,
+            "range": "±14.02%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "tak-cps-30.b.scm,with warmup,",
+            "value": 411.46,
+            "range": "±0.80%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "tak-cps-30.b.scm,with warmup,enableJit=false",
+            "value": 522.78,
+            "range": "±1.07%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "matmul-64.b.scm,",
+            "value": 3.72,
+            "range": "±0.12%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "matmul-64.b.scm,enableJit=false",
+            "value": 14.21,
+            "range": "±0.53%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "matmul-64.b.scm,with warmup,",
+            "value": 47.86,
+            "range": "±0.79%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "matmul-64.b.scm,with warmup,enableJit=false",
+            "value": 17.77,
+            "range": "±0.51%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "div2.b.scm,",
+            "value": 17.01,
+            "range": "±1.39%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "div2.b.scm,enableJit=false",
+            "value": 517.31,
+            "range": "±6.09%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "div2.b.scm,with warmup,",
+            "value": 121247.38,
+            "range": "±30.48%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "div2.b.scm,with warmup,enableJit=false",
+            "value": 211852.02,
+            "range": "±12.10%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "tak.b.scm,",
+            "value": 19.01,
+            "range": "±1.25%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "tak.b.scm,enableJit=false",
+            "value": 367.26,
+            "range": "±7.09%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "tak.b.scm,with warmup,",
+            "value": 570.11,
+            "range": "±2.93%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "tak.b.scm,with warmup,enableJit=false",
+            "value": 758.68,
+            "range": "±1.10%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "gambit/boyer.b.scm,",
+            "value": 1.89,
+            "range": "±0.39%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "gambit/boyer.b.scm,enableJit=false",
+            "value": 7.3,
+            "range": "±0.95%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "gambit/boyer.b.scm,with warmup,",
+            "value": 4.22,
+            "range": "±0.45%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "gambit/boyer.b.scm,with warmup,enableJit=false",
+            "value": 8.81,
+            "range": "±0.97%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "matmul2-64.b.scm,",
+            "value": 3.06,
+            "range": "±0.10%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "matmul2-64.b.scm,enableJit=false",
+            "value": 14.82,
+            "range": "±0.67%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "matmul2-64.b.scm,with warmup,",
+            "value": 42.8,
+            "range": "±0.67%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "matmul2-64.b.scm,with warmup,enableJit=false",
+            "value": 18.92,
+            "range": "±0.56%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "gambit/array1.b.scm,",
+            "value": 0.92,
+            "range": "±0.58%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "gambit/array1.b.scm,enableJit=false",
+            "value": 0.4,
+            "range": "±0.21%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "gambit/array1.b.scm,with warmup,",
+            "value": 0.96,
+            "range": "±0.45%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "gambit/array1.b.scm,with warmup,enableJit=false",
+            "value": 0.4,
+            "range": "±0.21%",
             "unit": "ops/sec",
             "extra": "64 samples"
           }
