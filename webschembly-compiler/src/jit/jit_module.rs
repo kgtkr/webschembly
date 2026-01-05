@@ -2,7 +2,7 @@ use rustc_hash::FxHashMap;
 
 use super::global_layout::GLOBAL_LAYOUT_MAX_SIZE;
 use super::jit_ctx::JitCtx;
-use super::jit_func::JitSpecializedFunc;
+use super::jit_func::JitSpecializedArgsFunc;
 use crate::{ir_generator::GlobalManager, jit::global_layout::GLOBAL_LAYOUT_DEFAULT_INDEX};
 use vec_map::{HasId, VecMap};
 use webschembly_compiler_ir::*;
@@ -10,7 +10,7 @@ use webschembly_compiler_ir::*;
 pub struct JitModule {
     module_id: JitModuleId,
     module: Module,
-    jit_funcs: FxHashMap<(FuncId, usize), JitSpecializedFunc>,
+    jit_funcs: FxHashMap<(FuncId, usize), JitSpecializedArgsFunc>,
     func_to_globals: VecMap<FuncId, GlobalId>,
     func_types: VecMap<FuncId, FuncType>,
 }
@@ -33,7 +33,7 @@ impl JitModule {
         let mut func_to_globals = VecMap::default();
 
         for func in module.funcs.values() {
-            let jit_func = JitSpecializedFunc::new(
+            let jit_func = JitSpecializedArgsFunc::new(
                 module_id,
                 global_manager,
                 func,
@@ -207,7 +207,7 @@ impl JitModule {
         func_index: usize,
         jit_ctx: &mut JitCtx,
     ) -> Module {
-        let jit_func = JitSpecializedFunc::new(
+        let jit_func = JitSpecializedArgsFunc::new(
             self.module_id,
             global_manager,
             &self.module.funcs[func_id],
