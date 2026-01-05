@@ -12,12 +12,14 @@ use crate::ir_processor::dataflow::{analyze_liveness, calc_def_use};
 use crate::ir_processor::optimizer::remove_unreachable_bb;
 use crate::ir_processor::ssa::{DefUseChain, build_ssa};
 use crate::ir_processor::ssa_optimizer::{SsaOptimizerConfig, ssa_optimize};
+use crate::jit::global_layout::EnvIndexManager;
 use vec_map::{HasId, VecMap};
 use webschembly_compiler_ir::*;
 
 #[derive(Debug)]
 pub struct JitFunc {
-    pub jit_specialized_args_funcs: FxHashMap<usize, JitSpecializedArgsFunc>,
+    pub jit_specialized_arg_funcs: FxHashMap<usize, JitSpecializedArgFunc>,
+    env_index_manager: EnvIndexManager,
 }
 
 impl JitFunc {
@@ -27,8 +29,10 @@ impl JitFunc {
         jit_ctx: &mut JitCtx,
         func: &Func,
     ) -> Self {
+        let env_index_manager = EnvIndexManager::new();
+
         let mut jit_specialized_args_funcs = FxHashMap::default();
-        let jit_func = JitSpecializedArgsFunc::new(
+        let jit_func = JitSpecializedArgFunc::new(
             module_id,
             global_manager,
             func,
@@ -37,19 +41,20 @@ impl JitFunc {
         );
         jit_specialized_args_funcs.insert(GLOBAL_LAYOUT_DEFAULT_INDEX, jit_func);
         Self {
-            jit_specialized_args_funcs,
+            jit_specialized_arg_funcs: jit_specialized_args_funcs,
+            env_index_manager,
         }
     }
 }
 #[derive(Debug)]
-pub struct JitSpecializedArgsFunc {
+pub struct JitSpecializedArgFunc {
     module_id: JitModuleId,
     func_index: usize,
     func: Func,
     jit_bbs: VecMap<BasicBlockId, JitBB>,
 }
 
-impl JitSpecializedArgsFunc {
+impl JitSpecializedArgFunc {
     pub fn new(
         module_id: JitModuleId,
         global_manager: &mut GlobalManager,

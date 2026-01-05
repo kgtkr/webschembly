@@ -2,7 +2,7 @@ use rustc_hash::FxHashMap;
 
 use super::global_layout::GLOBAL_LAYOUT_MAX_SIZE;
 use super::jit_ctx::JitCtx;
-use super::jit_func::{JitFunc, JitSpecializedArgsFunc};
+use super::jit_func::{JitFunc, JitSpecializedArgFunc};
 use crate::{ir_generator::GlobalManager, jit::global_layout::GLOBAL_LAYOUT_DEFAULT_INDEX};
 use vec_map::{HasId, VecMap};
 use webschembly_compiler_ir::*;
@@ -201,7 +201,7 @@ impl JitModule {
         func_index: usize,
         jit_ctx: &mut JitCtx,
     ) -> Module {
-        let jit_func = JitSpecializedArgsFunc::new(
+        let jit_func = JitSpecializedArgFunc::new(
             self.module_id,
             global_manager,
             &self.module.funcs[func_id],
@@ -211,13 +211,13 @@ impl JitModule {
         self.jit_funcs
             .get_mut(&func_id)
             .unwrap()
-            .jit_specialized_args_funcs
+            .jit_specialized_arg_funcs
             .insert(func_index, jit_func);
 
         self.jit_funcs
             .get_mut(&func_id)
             .unwrap()
-            .jit_specialized_args_funcs
+            .jit_specialized_arg_funcs
             .get_mut(&func_index)
             .unwrap()
             .generate_func_module(
@@ -241,7 +241,7 @@ impl JitModule {
             .jit_funcs
             .get_mut(&func_id)
             .unwrap()
-            .jit_specialized_args_funcs
+            .jit_specialized_arg_funcs
             .get_mut(&func_index)
             .unwrap();
 
@@ -271,7 +271,7 @@ impl JitModule {
             .jit_funcs
             .get_mut(&func_id)
             .unwrap()
-            .jit_specialized_args_funcs
+            .jit_specialized_arg_funcs
             .get_mut(&func_index)
             .unwrap();
         jit_func.increment_branch_counter(
