@@ -75,7 +75,7 @@ impl JitSpecializedFunc {
         jit_ctx: &mut JitCtx,
     ) -> Module {
         // entry_bbのモジュールをベースに拡張する
-        let (mut module, _ /*bb_func_id*/) = self.generate_bb_module(
+        let mut module = self.generate_bb_module(
             func_to_globals,
             func_types,
             self.func.bb_entry,
@@ -151,7 +151,7 @@ impl JitSpecializedFunc {
             })
         };
 
-        extend_entry_func(&mut module, |entry_func, next| {
+        module.extend_entry_func(|entry_func, next| {
             entry_func.bbs.push_with(|id| {
                 /*
                 func entry() {
@@ -180,6 +180,7 @@ impl JitSpecializedFunc {
                         ),
                     },
                 ]);
+
                 if self.func_index == GLOBAL_LAYOUT_DEFAULT_INDEX {
                     // func_to_globalsはindex=0のためのもの
                     exprs.push(Instr {
@@ -282,7 +283,7 @@ impl JitSpecializedFunc {
 
         let (_, index_global) = jit_bb.bb_index_manager.type_args(index);
 
-        extend_entry_func(module, |entry_func, next| {
+        module.extend_entry_func(|entry_func, next| {
             let func_ref_local = entry_func.locals.push_with(|id| Local {
                 id,
                 typ: LocalType::FuncRef,
@@ -316,7 +317,7 @@ impl JitSpecializedFunc {
         global_manager: &mut GlobalManager,
         jit_ctx: &mut JitCtx,
         branch_specialization: bool,
-    ) -> (Module, FuncId /* BBの実態を表す関数 */) {
+    ) -> Module {
         let mut required_closure_idx = Vec::new();
 
         {
@@ -424,7 +425,7 @@ impl JitSpecializedFunc {
 
                         if branch_specialization {
                             match self.jit_bbs[orig_bb_id].branch_counter.dominant_branch() {
-                                BranchKind::Then => {
+                                DominantBranchKind::Then => {
                                     todo_bb_ids.push(orig_then_bb_id);
                                     required_bbs.push((
                                         orig_else_bb_id,
@@ -432,13 +433,17 @@ impl JitSpecializedFunc {
                                         BranchKind::Else,
                                     ));
                                 }
-                                BranchKind::Else => {
+                                DominantBranchKind::Else => {
                                     todo_bb_ids.push(orig_else_bb_id);
                                     required_bbs.push((
                                         orig_then_bb_id,
                                         then_types,
                                         BranchKind::Then,
                                     ));
+                                }
+                                DominantBranchKind::Both => {
+                                    todo_bb_ids.push(orig_then_bb_id);
+                                    todo_bb_ids.push(orig_else_bb_id);
                                 }
                             }
                         } else {
@@ -914,7 +919,7 @@ impl JitSpecializedFunc {
             self.add_bb_stub_func(self.module_id, *bb_id, *index, &mut module);
         }
 
-        (module, body_func_id)
+        module
     }
 
     pub fn increment_branch_counter(
@@ -930,7 +935,7 @@ impl JitSpecializedFunc {
     ) -> Option<Module> {
         self.jit_bbs[bb_id].branch_counter.increment(kind);
         if self.jit_bbs[bb_id].branch_counter.should_specialize() {
-            let (module, _ /*bb_func_id*/) = self.generate_bb_module(
+            let module = self.generate_bb_module(
                 func_to_globals,
                 func_types,
                 source_bb_id,
@@ -1055,6 +1060,13 @@ pub struct BranchCounter {
     pub else_count: usize,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum DominantBranchKind {
+    Then,
+    Else,
+    Both,
+}
+
 impl BranchCounter {
     pub fn increment(&mut self, kind: BranchKind) {
         match kind {
@@ -1063,11 +1075,13 @@ impl BranchCounter {
         }
     }
 
-    pub fn dominant_branch(&self) -> BranchKind {
-        if self.then_count >= self.else_count {
-            BranchKind::Then
+    pub fn dominant_branch(&self) -> DominantBranchKind {
+        if self.then_count.checked_div(self.else_count).unwrap_or(100) >= 4 {
+            DominantBranchKind::Then
+        } else if self.else_count.checked_div(self.then_count).unwrap_or(100) >= 4 {
+            DominantBranchKind::Else
         } else {
-            BranchKind::Else
+            DominantBranchKind::Both
         }
     }
 
@@ -1085,14 +1099,20 @@ fn calculate_bb_info(func: &Func) -> VecMap<BasicBlockId, BBInfo> {
     let mut bb_info = VecMap::new();
 
     for bb_id in func.bbs.keys() {
-        let mut args = liveness
-            .live_in
-            .get(&bb_id)
-            .unwrap()
-            .iter()
-            .copied()
-            .collect::<Vec<_>>();
-        args.sort();
+        let args = if bb_id == func.bb_entry {
+            // bbを関数として使えるように
+            func.args.clone()
+        } else {
+            let mut args = liveness
+                .live_in
+                .get(&bb_id)
+                .unwrap()
+                .iter()
+                .copied()
+                .collect::<Vec<_>>();
+            args.sort();
+            args
+        };
 
         let mut type_params = VecMap::new();
         for &arg in &args {
@@ -1243,23 +1263,6 @@ fn closure_func_assign_types(
     func.bb_entry = new_bb_entry;
 }
 
-// エントリー関数を拡張
-// ir.rsに置くべきかも？
-fn extend_entry_func(
-    module: &mut Module,
-    f: impl FnOnce(&mut Func, TerminatorInstr) -> BasicBlockId,
-) {
-    let entry_func = &mut module.funcs[module.entry];
-
-    extend_entry_bb(entry_func, f);
-}
-
-fn extend_entry_bb(func: &mut Func, f: impl FnOnce(&mut Func, TerminatorInstr) -> BasicBlockId) {
-    let prev_entry_bb_id = func.bb_entry;
-    let new_entry_bb_id = f(func, TerminatorInstr::Jump(prev_entry_bb_id));
-    func.bb_entry = new_entry_bb_id;
-}
-
 pub fn assign_type_args(
     func: &mut Func,
     type_params: &FxBiHashMap<TypeParamId, LocalId>,
@@ -1297,7 +1300,7 @@ pub fn assign_type_args(
         }
     }
 
-    extend_entry_bb(func, |func, next| {
+    func.extend_entry_bb(|func, next| {
         entry_bb_instrs.push(Instr {
             local: None,
             kind: InstrKind::Terminator(next),

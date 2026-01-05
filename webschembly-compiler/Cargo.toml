@@ -1,25 +1,26 @@
 [package]
-edition = "2024"
 name = "webschembly-compiler"
 version = "0.1.0"
+edition = "2024"
 
 [dependencies]
 bimap = "0.6.3"
-log = "0.4.26"
+log = { workspace = true }
 nom = "7.1.3"
 nom_locate = "4.2.0"
-ordered-float = {workspace = true}
-rustc-hash = {workspace = true}
-strum = {workspace = true}
-vec-map = {path = "../webschembly-compiler-crates/vec-map"}
+ordered-float = { workspace = true }
+rustc-hash = { workspace = true }
+stacker = "0.1.22"
+strum = { workspace = true }
+vec-map = { path = "../webschembly-compiler-crates/vec-map" }
 wasm-encoder = "0.221.2"
-webschembly-compiler-ast = {path = "../webschembly-compiler-crates/ast"}
-webschembly-compiler-ast-generator = {path = "../webschembly-compiler-crates/ast-generator"}
-webschembly-compiler-error = {path = "../webschembly-compiler-crates/error"}
-webschembly-compiler-ir = {path = "../webschembly-compiler-crates/ir"}
-webschembly-compiler-locate = {path = "../webschembly-compiler-crates/locate"}
-webschembly-compiler-sexpr = {path = "../webschembly-compiler-crates/sexpr"}
+webschembly-compiler-ast = { path = "../webschembly-compiler-crates/ast" }
+webschembly-compiler-ast-generator = { path = "../webschembly-compiler-crates/ast-generator" }
+webschembly-compiler-error = { path = "../webschembly-compiler-crates/error" }
+webschembly-compiler-ir = { path = "../webschembly-compiler-crates/ir" }
+webschembly-compiler-locate = { path = "../webschembly-compiler-crates/locate" }
+webschembly-compiler-sexpr = { path = "../webschembly-compiler-crates/sexpr" }
 
 [dev-dependencies]
-insta = {version = "1.42.2"}
-vec-map = {path = "../webschembly-compiler-crates/vec-map", features = ["test-util"]}
+insta = { version = "1.42.2" }
+vec-map = { path = "../webschembly-compiler-crates/vec-map", features = ["test-util"] }

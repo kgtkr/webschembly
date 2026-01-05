@@ -46,7 +46,7 @@ export type RuntimeImportsEnv = {
     bufSize: number,
     irBufPtr: number,
     irBufSize: number,
-    fromSrc: number
+    fromSrc: number,
   ) => void;
   js_webschembly_log: (bufPtr: number, bufLen: number) => void;
   js_write_buf: (fd: number, bufPtr: number, bufLen: number) => void;
@@ -93,7 +93,7 @@ export async function createRuntime(
     exitWhenException = true,
     printEvalResult = false,
     compilerConfig,
-  }: RuntimeConfig
+  }: RuntimeConfig,
 ): Promise<Runtime> {
   const dynamic: Record<string, WebAssembly.ExportValue> = {};
   const runtimeImportObjects: RuntimeImportsEnv = {
@@ -101,24 +101,23 @@ export async function createRuntime(
       const buf = new Uint8Array(
         runtimeInstance.exports.memory.buffer,
         bufPtr,
-        bufSize
+        bufSize,
       );
-      const ir =
-        irBufPtr === 0
-          ? null
-          : new TextDecoder().decode(
-              new Uint8Array(
-                runtimeInstance.exports.memory.buffer,
-                irBufPtr,
-                irBufSize
-              )
-            );
+      const ir = irBufPtr === 0
+        ? null
+        : new TextDecoder().decode(
+          new Uint8Array(
+            runtimeInstance.exports.memory.buffer,
+            irBufPtr,
+            irBufSize,
+          ),
+        );
 
       logger.instantiate(buf, ir);
 
       const instance = new WebAssembly.Instance(
         new WebAssembly.Module(buf),
-        importObject
+        importObject,
       ) as TypedWebAssemblyInstance<ModuleExports>;
       Object.assign(dynamic, instance.exports);
 
@@ -136,7 +135,7 @@ export async function createRuntime(
     },
     js_webschembly_log: (bufPtr, bufLen) => {
       const s = new TextDecoder().decode(
-        new Uint8Array(runtimeInstance.exports.memory.buffer, bufPtr, bufLen)
+        new Uint8Array(runtimeInstance.exports.memory.buffer, bufPtr, bufLen),
       );
       logger.log(s);
     },
@@ -144,24 +143,27 @@ export async function createRuntime(
       const buf = new Uint8Array(
         runtimeInstance.exports.memory.buffer,
         bufPtr,
-        bufLen
+        bufLen,
       );
       writeBuf(fd, buf);
     },
   };
 
-  const runtimeInstance = new WebAssembly.Instance(await loadRuntimeModule(), {
-    env: runtimeImportObjects,
-  } satisfies RuntimeImports) as TypedWebAssemblyInstance<RuntimeExports>;
+  const runtimeInstance = new WebAssembly.Instance(
+    await loadRuntimeModule(),
+    {
+      env: runtimeImportObjects,
+    } satisfies RuntimeImports,
+  ) as TypedWebAssemblyInstance<RuntimeExports>;
 
   if (compilerConfig?.enableJit !== undefined) {
     runtimeInstance.exports.compiler_config_enable_jit(
-      Number(compilerConfig.enableJit)
+      Number(compilerConfig.enableJit),
     );
   }
   if (compilerConfig?.enableJitOptimization !== undefined) {
     runtimeInstance.exports.compiler_config_enable_jit_optimization(
-      Number(compilerConfig.enableJitOptimization)
+      Number(compilerConfig.enableJitOptimization),
     );
   }
 
@@ -172,24 +174,22 @@ export async function createRuntime(
     dynamic,
   };
 
-  const errorHandle =
-    <A extends any[], R>(f: (...args: A) => R) =>
-    (...args: A): void => {
-      try {
-        f(...args);
-      } catch (e) {
-        if (
-          e instanceof WebAssembly.Exception &&
-          e.is(runtimeInstance.exports.WEBSCHEMBLY_EXCEPTION)
-        ) {
-          if (exitWhenException) {
-            exit(1);
-          }
-        } else {
-          throw e;
+  const errorHandle = <A extends any[], R>(f: (...args: A) => R) => (...args: A): void => {
+    try {
+      f(...args);
+    } catch (e) {
+      if (
+        e instanceof WebAssembly.Exception
+        && e.is(runtimeInstance.exports.WEBSCHEMBLY_EXCEPTION)
+      ) {
+        if (exitWhenException) {
+          exit(1);
         }
+      } else {
+        throw e;
       }
-    };
+    }
+  };
 
   function mallocString(s: string): [number, number] {
     const buf = new TextEncoder().encode(s);
@@ -217,7 +217,7 @@ export async function createRuntime(
       const srcBufPtr = runtimeInstance.exports.malloc(srcBuf.length);
       new Uint8Array(runtimeInstance.exports.memory.buffer).set(
         srcBuf,
-        srcBufPtr
+        srcBufPtr,
       );
       runtimeInstance.exports.load_src(srcBufPtr, srcBuf.length);
       runtimeInstance.exports.free(srcBufPtr);

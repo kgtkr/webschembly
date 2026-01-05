@@ -24,6 +24,13 @@ pub enum SExpr {
 }
 
 impl SExpr {
+    pub fn to_vec_and_cdr(lsexpr: LSExpr) -> (Vec<LSExpr>, LSExpr) {
+        match lsexpr.value {
+            SExpr::Cons(cons) => cons.into_vec_and_cdr(),
+            _ => (vec![], lsexpr),
+        }
+    }
+
     pub fn to_vec(self) -> Option<Vec<LSExpr>> {
         match self {
             SExpr::Cons(cons) => cons.into_vec(),

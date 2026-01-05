@@ -1,9 +1,9 @@
 [package]
-edition = "2024"
 name = "webschembly-compiler-cli"
 version = "0.1.0"
+edition = "2024"
 
 [dependencies]
 anyhow = "1.0.95"
-clap = {version = "4.5.30", features = ["derive"]}
-webschembly-compiler = {path = "../webschembly-compiler"}
+clap = { version = "4.5.30", features = ["derive"] }
+webschembly-compiler = { path = "../webschembly-compiler" }

@@ -1,20 +1,20 @@
 {
-    "extends": "../tsconfig.base.json",
-    "compilerOptions": {
-        "outDir": "./dist",
-        "rootDir": "./src",
-        "paths": {
-            "webschembly-js/*": [
-                "../webschembly-js/src/*"
-            ]
-        }
-    },
-    "include": [
-        "src/**/*"
-    ],
-    "references": [
-        {
-            "path": "../webschembly-js"
-        }
-    ]
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "paths": {
+      "webschembly-js/*": [
+        "../webschembly-js/src/*"
+      ]
+    }
+  },
+  "include": [
+    "src/**/*"
+  ],
+  "references": [
+    {
+      "path": "../webschembly-js"
+    }
+  ]
 }

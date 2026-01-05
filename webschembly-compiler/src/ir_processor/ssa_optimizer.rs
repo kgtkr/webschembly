@@ -229,7 +229,7 @@ pub fn constant_folding(
                 {
                     func.bbs[*bb_id].instrs[expr_idx].kind = InstrKind::Int(a * b);
                 }
-                InstrKind::DivInt(local1, local2)
+                InstrKind::QuotientInt(local1, local2)
                     if let Some(&InstrKind::Int(a)) =
                         def_use.get_def_non_move_expr(&func.bbs, local1)
                         && let Some(&InstrKind::Int(b)) =
@@ -238,6 +238,16 @@ pub fn constant_folding(
                 {
                     func.bbs[*bb_id].instrs[expr_idx].kind = InstrKind::Int(a / b);
                 }
+                InstrKind::RemainderInt(local1, local2)
+                    if let Some(&InstrKind::Int(a)) =
+                        def_use.get_def_non_move_expr(&func.bbs, local1)
+                        && let Some(&InstrKind::Int(b)) =
+                            def_use.get_def_non_move_expr(&func.bbs, local2)
+                        && b != 0 =>
+                {
+                    func.bbs[*bb_id].instrs[expr_idx].kind = InstrKind::Int(a % b);
+                }
+                // TODO: ModuloInt
                 InstrKind::EqInt(local1, local2)
                     if let Some(&InstrKind::Int(a)) =
                         def_use.get_def_non_move_expr(&func.bbs, local1)

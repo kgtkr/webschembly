@@ -36,9 +36,15 @@ struct ModuleGenerator<'a> {
     display_func: u32,
     display_fd_func: u32,
     string_to_symbol_func: u32,
+    string_ref_func: u32,
+    string_set_func: u32,
+    string_length_func: u32,
+    string_copy_func: u32,
     write_char_func: u32,
     int_to_string_func: u32,
     float_to_string_func: u32,
+    string_eq_func: u32,
+    args_to_list_func: u32,
     increment_branch_counter_func: u32,
     throw_webassembly_exception: u32,
     // wasm section
@@ -96,6 +102,12 @@ impl<'a> ModuleGenerator<'a> {
             write_char_func: 0,
             int_to_string_func: 0,
             float_to_string_func: 0,
+            string_eq_func: 0,
+            string_ref_func: 0,
+            string_copy_func: 0,
+            string_set_func: 0,
+            string_length_func: 0,
+            args_to_list_func: 0,
             increment_branch_counter_func: 0,
             throw_webassembly_exception: 0,
             imports: ImportSection::new(),
@@ -692,6 +704,91 @@ impl<'a> ModuleGenerator<'a> {
             },
         );
 
+        self.string_eq_func = self.add_runtime_function(
+            "string_eq",
+            WasmFuncType {
+                params: vec![
+                    ValType::Ref(RefType {
+                        nullable: true,
+                        heap_type: HeapType::Concrete(self.string_type),
+                    }),
+                    ValType::Ref(RefType {
+                        nullable: true,
+                        heap_type: HeapType::Concrete(self.string_type),
+                    }),
+                ],
+                results: vec![ValType::I32],
+            },
+        );
+
+        self.string_ref_func = self.add_runtime_function(
+            "string_ref",
+            WasmFuncType {
+                params: vec![
+                    ValType::Ref(RefType {
+                        nullable: true,
+                        heap_type: HeapType::Concrete(self.string_type),
+                    }),
+                    ValType::I32,
+                ],
+                results: vec![ValType::I32],
+            },
+        );
+
+        self.string_copy_func = self.add_runtime_function(
+            "string_copy",
+            WasmFuncType {
+                params: vec![ValType::Ref(RefType {
+                    nullable: true,
+                    heap_type: HeapType::Concrete(self.string_type),
+                })],
+                results: vec![ValType::Ref(RefType {
+                    nullable: true,
+                    heap_type: HeapType::Concrete(self.string_type),
+                })],
+            },
+        );
+
+        self.string_set_func = self.add_runtime_function(
+            "string_set",
+            WasmFuncType {
+                params: vec![
+                    ValType::Ref(RefType {
+                        nullable: true,
+                        heap_type: HeapType::Concrete(self.string_type),
+                    }),
+                    ValType::I32,
+                    ValType::I32,
+                ],
+                results: vec![],
+            },
+        );
+
+        self.string_length_func = self.add_runtime_function(
+            "string_length",
+            WasmFuncType {
+                params: vec![ValType::Ref(RefType {
+                    nullable: true,
+                    heap_type: HeapType::Concrete(self.string_type),
+                })],
+                results: vec![ValType::I32],
+            },
+        );
+
+        self.args_to_list_func = self.add_runtime_function(
+            "args_to_list",
+            WasmFuncType {
+                params: vec![
+                    ValType::Ref(RefType {
+                        nullable: true,
+                        heap_type: HeapType::Concrete(self.args_type),
+                    }),
+                    ValType::I32,
+                ],
+                results: vec![ValType::Ref(RefType::EQREF)],
+            },
+        );
+
         self.increment_branch_counter_func = self.add_runtime_function(
             "increment_branch_counter",
             WasmFuncType {
@@ -1057,10 +1154,10 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             ir::InstrKind::CallClosure(..) => {
                 unreachable!("unexpected CallClosure");
             }
-            ir::InstrKind::InstantiateFunc(module_id, func_id, func_index) => {
+            ir::InstrKind::InstantiateFunc(module_id, func_id) => {
                 function.instruction(&Instruction::I32Const(usize::from(*module_id) as i32));
                 function.instruction(&Instruction::I32Const(usize::from(*func_id) as i32));
-                function.instruction(&Instruction::I32Const(*func_index as i32));
+                function.instruction(&Instruction::I32Const(0));
                 function.instruction(&Instruction::Call(
                     self.module_generator.instantiate_func_func,
                 ));
@@ -1190,6 +1287,13 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 function.instruction(&Instruction::I32WrapI64);
                 function.instruction(&Instruction::ArrayNewDefault(
                     self.module_generator.uvector_kind_to_type_idx(*kind),
+                ));
+            }
+            ir::InstrKind::MakeVector(len) => {
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*len)));
+                function.instruction(&Instruction::I32WrapI64);
+                function.instruction(&Instruction::ArrayNewDefault(
+                    self.module_generator.vector_type,
                 ));
             }
             ir::InstrKind::CreateRef(typ) => {
@@ -1488,10 +1592,48 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*rhs)));
                 function.instruction(&Instruction::F64Mul);
             }
-            ir::InstrKind::DivInt(lhs, rhs) => {
+            ir::InstrKind::QuotientInt(lhs, rhs) => {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*lhs)));
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*rhs)));
                 function.instruction(&Instruction::I64DivS);
+            }
+            ir::InstrKind::RemainderInt(lhs, rhs) => {
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*lhs)));
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*rhs)));
+                function.instruction(&Instruction::I64RemS);
+            }
+            ir::InstrKind::ModuloInt(lhs, rhs) => {
+                // rem = lhs % rhs;
+                // if (lhs ^ rhs) < 0 && rem != 0 {
+                //     return rem + rhs;
+                // }
+                // return rem;
+
+                // rem = lhs % rhs;
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*lhs)));
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*rhs)));
+                function.instruction(&Instruction::I64RemS);
+
+                // (lhs ^ rhs) < 0
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*rhs)));
+                function.instruction(&Instruction::I64Const(0));
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*lhs)));
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*rhs)));
+                function.instruction(&Instruction::I64Xor);
+                function.instruction(&Instruction::I64Const(0));
+                function.instruction(&Instruction::I64LtS);
+
+                // rem != 0
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*lhs)));
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*rhs)));
+                function.instruction(&Instruction::I64RemS);
+                function.instruction(&Instruction::I64Const(0));
+                function.instruction(&Instruction::I64Ne);
+
+                function.instruction(&Instruction::I32And);
+
+                function.instruction(&Instruction::Select);
+                function.instruction(&Instruction::I64Add);
             }
             ir::InstrKind::DivFloat(lhs, rhs) => {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*lhs)));
@@ -1598,6 +1740,24 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     field_index: ModuleGenerator::CONS_CDR_FIELD,
                 });
             }
+            ir::InstrKind::SetCar(cons, val) => {
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*cons)));
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
+                function.instruction(&Instruction::StructSet {
+                    struct_type_index: self.module_generator.cons_type,
+                    field_index: ModuleGenerator::CONS_CAR_FIELD,
+                });
+                function.instruction(&Instruction::I32Const(0));
+            }
+            ir::InstrKind::SetCdr(cons, val) => {
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*cons)));
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
+                function.instruction(&Instruction::StructSet {
+                    struct_type_index: self.module_generator.cons_type,
+                    field_index: ModuleGenerator::CONS_CDR_FIELD,
+                });
+                function.instruction(&Instruction::I32Const(0));
+            }
             ir::InstrKind::SymbolToString(val) => {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
                 function.instruction(&Instruction::StructGet {
@@ -1624,6 +1784,39 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*lhs)));
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*rhs)));
                 function.instruction(&Instruction::F64Eq);
+            }
+            ir::InstrKind::EqChar(lhs, rhs) => {
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*lhs)));
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*rhs)));
+                function.instruction(&Instruction::I32Eq);
+            }
+            ir::InstrKind::EqString(lhs, rhs) => {
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*lhs)));
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*rhs)));
+                function.instruction(&Instruction::Call(self.module_generator.string_eq_func));
+            }
+            ir::InstrKind::StringRef(lhs, rhs) => {
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*lhs)));
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*rhs)));
+                function.instruction(&Instruction::I32WrapI64);
+                function.instruction(&Instruction::Call(self.module_generator.string_ref_func));
+            }
+            ir::InstrKind::StringCopy(s) => {
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*s)));
+                function.instruction(&Instruction::Call(self.module_generator.string_copy_func));
+            }
+            ir::InstrKind::StringSet(lhs, rhs, char_val) => {
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*lhs)));
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*rhs)));
+                function.instruction(&Instruction::I32WrapI64);
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*char_val)));
+                function.instruction(&Instruction::Call(self.module_generator.string_set_func));
+                function.instruction(&Instruction::I32Const(0));
+            }
+            ir::InstrKind::StringLength(val) => {
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
+                function.instruction(&Instruction::Call(self.module_generator.string_length_func));
+                function.instruction(&Instruction::I64ExtendI32U);
             }
             ir::InstrKind::LtInt(lhs, rhs) => {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*lhs)));
@@ -1683,6 +1876,11 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*args)));
                 function.instruction(&Instruction::ArrayLen);
                 function.instruction(&Instruction::I64ExtendI32U);
+            }
+            ir::InstrKind::VariadicArgsRest(args, start_idx) => {
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*args)));
+                function.instruction(&Instruction::I32Const(*start_idx as i32));
+                function.instruction(&Instruction::Call(self.module_generator.args_to_list_func));
             }
             ir::InstrKind::CreateMutFuncRef(id) => {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*id)));

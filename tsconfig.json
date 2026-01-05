@@ -1,11 +1,11 @@
 {
-    "include": [],
-    "references": [
-        {
-            "path": "webschembly-js"
-        },
-        {
-            "path": "webschembly-playground"
-        }
-    ]
+  "include": [],
+  "references": [
+    {
+      "path": "webschembly-js"
+    },
+    {
+      "path": "webschembly-playground"
+    }
+  ]
 }

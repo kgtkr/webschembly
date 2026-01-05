@@ -1,0 +1,10 @@
+"Basic: First clause match"
+"Basic: Second clause match"
+"Else: Fallback match"
+10
+20
+"Evaluated once"
+"Arrow: Received value "100
+"Arrow: Skipped false test"
+"Arrow evaluated once"
+"Arrow received "200

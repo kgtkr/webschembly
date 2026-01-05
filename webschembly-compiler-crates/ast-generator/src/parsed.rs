@@ -12,17 +12,22 @@ impl AstPhase for Parsed {
     type XDefine = ();
     type XLambda = ();
     type XIf = ();
+    type XCond = ();
     type XCall = ();
     type XVar = ();
     type XBegin = ();
     type XSet = ();
     type XLet = ();
+    type XNamedLet = ();
     type XLetStar = ();
     type XLetRec = ();
+    type XDo = ();
     type XVector = ();
     type XUVector = ();
     type XQuote = ();
     type XCons = ();
+    type XAnd = ();
+    type XOr = ();
     type XExt = !;
 }
 
@@ -178,6 +183,87 @@ impl Parsed {
             },
             list_pattern![
                 LSExpr {
+                    value: SExpr::Symbol("cond"),
+                    ..
+                } => span,
+                ..cdr
+            ] => {
+                let clauses = cdr
+                    .value
+                    .to_vec()
+                    .ok_or_else(|| compiler_error!("Expected a list of clauses"))?
+                    .into_iter()
+                    .map(|clause| match clause {
+                        list_pattern![
+                            LSExpr {
+                                value: SExpr::Symbol("else"),
+                                ..
+                            },
+                            ..body
+                        ] => {
+                            let body = body
+                                .value
+                                .to_vec()
+                                .ok_or_else(|| compiler_error!("Invalid cond expression"))?
+                                .into_iter()
+                                .map(Self::from_sexpr)
+                                .collect::<Result<Vec<_>>>()?;
+                            Ok(CondClause::Else { body })
+                        }
+                        list_pattern![test,] => {
+                            let test = Self::from_sexpr(test)?;
+                            Ok(CondClause::TestOnly { test: vec![test] })
+                        }
+                        list_pattern![
+                            test,
+                            LSExpr {
+                                value: SExpr::Symbol("=>"),
+                                ..
+                            },
+                            func,
+                        ] => {
+                            let test = Self::from_sexpr(test)?;
+                            let func = Self::from_sexpr(func)?;
+                            Ok(CondClause::Allow {
+                                test: vec![test],
+                                func: vec![func],
+                            })
+                        }
+                        list_pattern![test, ..body] => {
+                            let test = Self::from_sexpr(test)?;
+                            let body = body
+                                .value
+                                .to_vec()
+                                .ok_or_else(|| compiler_error!("Invalid cond expression"))?
+                                .into_iter()
+                                .map(Self::from_sexpr)
+                                .collect::<Result<Vec<_>>>()?;
+                            Ok(CondClause::Test {
+                                test: vec![test],
+                                body,
+                            })
+                        }
+                        _ => Err(compiler_error!("Invalid cond clause")),
+                    })
+                    .collect::<Result<Vec<_>>>()?;
+                Ok(Expr::Cond((), Cond { clauses }).with_span(span))
+            }
+            list_pattern![
+                LSExpr {
+                    value: SExpr::Symbol("let"),
+                    ..
+                } => span,
+                LSExpr {
+                    value: SExpr::Symbol(name),
+                    span: name_span
+                },
+                ..cdr
+            ] => Ok(
+                Expr::NamedLet((), name.with_span(name_span), Self::parse_let_like(cdr)?)
+                    .with_span(span),
+            ),
+            list_pattern![
+                LSExpr {
                     value: SExpr::Symbol("let"),
                     ..
                 } => span,
@@ -197,6 +283,76 @@ impl Parsed {
                 } => span,
                 ..cdr
             ] => Ok(Expr::LetRec((), Self::parse_let_like(cdr)?).with_span(span)),
+            list_pattern![
+                LSExpr {
+                    value: SExpr::Symbol("do"),
+                    ..
+                } => span,
+                bindings,
+                list_pattern![
+                    test,
+                    ..exit_body
+                ],
+                ..body
+            ] => {
+                let bindings = bindings
+                    .value
+                    .to_vec()
+                    .ok_or_else(|| compiler_error!("Expected a list of bindings"))?
+                    .into_iter()
+                    .map(|binding| match binding {
+                        list_pattern![
+                            LSExpr {
+                                value: SExpr::Symbol(name),
+                                ..
+                            } => name_span,
+                            init,
+                            ..step
+                        ] => Ok(DoBinding {
+                            name: name.with_span(name_span),
+                            init: vec![Self::from_sexpr(init)?],
+                            step: match step {
+                                LSExpr {
+                                    value: SExpr::Nil, ..
+                                } => None,
+                                list_pattern!(step,) => Some(vec![Self::from_sexpr(step)?]),
+                                _ => {
+                                    return Err(compiler_error!(
+                                        "Invalid do binding step expression"
+                                    ));
+                                }
+                            },
+                        }
+                        .with_span(binding.span)),
+                        _ => Err(compiler_error!("Invalid binding")),
+                    })
+                    .collect::<Result<Vec<_>>>()?;
+                let test = Self::from_sexpr(test)?;
+                let exit_body = exit_body
+                    .value
+                    .to_vec()
+                    .ok_or_else(|| compiler_error!("Expected a list of expressions"))?
+                    .into_iter()
+                    .map(Self::from_sexpr)
+                    .collect::<Result<Vec<_>>>()?;
+                let body = body
+                    .value
+                    .to_vec()
+                    .ok_or_else(|| compiler_error!("Expected a list of expressions"))?
+                    .into_iter()
+                    .map(Self::from_sexpr)
+                    .collect::<Result<Vec<_>>>()?;
+                Ok(Expr::Do(
+                    (),
+                    Do {
+                        bindings,
+                        test: vec![test],
+                        exit_body,
+                        body,
+                    },
+                )
+                .with_span(span))
+            }
             list_pattern![
                 LSExpr {
                     value: SExpr::Symbol("begin"),
@@ -239,6 +395,38 @@ impl Parsed {
                 }
                 _ => Err(compiler_error!("Invalid set! expression")),
             },
+            list_pattern![
+                LSExpr {
+                    value: SExpr::Symbol("and"),
+                    ..
+                } => span,
+                ..cdr
+            ] => {
+                let exprs = cdr
+                    .value
+                    .to_vec()
+                    .ok_or_else(|| compiler_error!("Expected a list of expressions"))?
+                    .into_iter()
+                    .map(|expr| Self::from_sexpr(expr).map(|e| vec![e]))
+                    .collect::<Result<Vec<_>>>()?;
+                Ok(Expr::And((), exprs).with_span(span))
+            }
+            list_pattern![
+                LSExpr {
+                    value: SExpr::Symbol("or"),
+                    ..
+                } => span,
+                ..cdr
+            ] => {
+                let exprs = cdr
+                    .value
+                    .to_vec()
+                    .ok_or_else(|| compiler_error!("Expected a list of expressions"))?
+                    .into_iter()
+                    .map(|expr| Self::from_sexpr(expr).map(|e| vec![e]))
+                    .collect::<Result<Vec<_>>>()?;
+                Ok(Expr::Or((), exprs).with_span(span))
+            }
             list_pattern![func => span, ..args] => {
                 let func = Self::from_sexpr(func)?;
                 let args = args
@@ -298,16 +486,26 @@ impl Parsed {
     }
 
     fn parse_lambda(span: Span, args: LSExpr, exprs: LSExpr) -> Result<LExpr<Self>> {
+        let (args, variadic_arg) = SExpr::to_vec_and_cdr(args);
         let args = args
-            .value
-            .to_vec()
-            .ok_or_else(|| compiler_error!("Expected a list of symbols"))?
             .into_iter()
             .map(|arg| match arg.value {
                 SExpr::Symbol(s) => Ok(s.with_span(arg.span)),
                 _ => Err(compiler_error!("Expected a symbol")),
             })
             .collect::<Result<Vec<_>>>()?;
+        let variadic_arg = match variadic_arg {
+            LSExpr {
+                value: SExpr::Symbol(s),
+                span,
+            } => Some(s.with_span(span)),
+            LSExpr {
+                value: SExpr::Nil, ..
+            } => None,
+            _ => {
+                return Err(compiler_error!("Invalid variadic argument"));
+            }
+        };
         let exprs = exprs
             .value
             .to_vec()
@@ -315,6 +513,14 @@ impl Parsed {
             .into_iter()
             .map(Self::from_sexpr)
             .collect::<Result<Vec<_>>>()?;
-        Ok(Expr::Lambda((), Lambda { args, body: exprs }).with_span(span))
+        Ok(Expr::Lambda(
+            (),
+            Lambda {
+                args,
+                variadic_arg,
+                body: exprs,
+            },
+        )
+        .with_span(span))
     }
 }
