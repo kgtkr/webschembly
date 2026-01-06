@@ -158,6 +158,11 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Local> {
 }
 
 #[derive(Debug, Clone)]
+pub struct ClosureFuncMeta {
+    pub env_types: Vec<LocalType>,
+}
+
+#[derive(Debug, Clone)]
 pub struct Func {
     pub id: FuncId,
     pub locals: VecMap<LocalId, Local>,
@@ -165,6 +170,7 @@ pub struct Func {
     pub ret_type: LocalType,
     pub bb_entry: BasicBlockId,
     pub bbs: VecMap<BasicBlockId, BasicBlock>,
+    pub closure_meta: Option<ClosureFuncMeta>,
 }
 
 impl HasId for Func {
@@ -343,6 +349,7 @@ impl Module {
                 ret_type: ValType::Nil.into(),
                 bbs,
                 bb_entry,
+                closure_meta: None,
             }
         });
 

@@ -253,6 +253,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             locals: self.builder.locals,
             bb_entry,
             bbs: self.builder.bbs,
+            closure_meta: None,
         }
     }
 
@@ -393,6 +394,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             locals: self.builder.locals,
             bb_entry,
             bbs: self.builder.bbs,
+            closure_meta: Some(ClosureFuncMeta { env_types }),
         }
     }
 

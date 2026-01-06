@@ -220,6 +220,7 @@ impl JitSpecializedArgFunc {
                 }]
                 .into_iter()
                 .collect(),
+                closure_meta: None,
             })
         };
 
@@ -353,6 +354,7 @@ impl JitSpecializedArgFunc {
                 }]
                 .into_iter()
                 .collect(),
+                closure_meta: None,
             }
         });
 
@@ -950,6 +952,7 @@ impl JitSpecializedArgFunc {
                     }]
                     .into_iter()
                     .collect(),
+                    closure_meta: None,
                 });
 
                 (closure_idx, stub_func_id)
@@ -1024,6 +1027,7 @@ impl JitSpecializedArgFunc {
                 locals,
                 bb_entry: BasicBlockId::from(0),
                 bbs,
+                closure_meta: None,
             })
         };
 
