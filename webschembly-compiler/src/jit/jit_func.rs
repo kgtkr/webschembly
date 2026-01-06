@@ -31,7 +31,7 @@ impl JitFunc {
     ) -> Self {
         let env_index_manager = EnvIndexManager::new();
 
-        let mut jit_specialized_args_funcs = FxHashMap::default();
+        let mut jit_specialized_arg_funcs = FxHashMap::default();
         let jit_func = JitSpecializedArgFunc::new(
             module_id,
             global_manager,
@@ -39,12 +39,17 @@ impl JitFunc {
             GLOBAL_LAYOUT_DEFAULT_INDEX,
             jit_ctx,
         );
-        jit_specialized_args_funcs.insert(GLOBAL_LAYOUT_DEFAULT_INDEX, jit_func);
+        jit_specialized_arg_funcs.insert(GLOBAL_LAYOUT_DEFAULT_INDEX, jit_func);
         Self {
-            jit_specialized_arg_funcs: jit_specialized_args_funcs,
+            jit_specialized_arg_funcs,
             env_index_manager,
         }
     }
+}
+
+#[derive(Debug)]
+pub struct JitSpecializedEnvFunc {
+    pub jit_specialized_arg_funcs: FxHashMap<usize, JitSpecializedArgFunc>,
 }
 #[derive(Debug)]
 pub struct JitSpecializedArgFunc {

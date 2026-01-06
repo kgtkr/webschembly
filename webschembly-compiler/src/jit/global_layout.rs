@@ -65,7 +65,7 @@ impl BBIndexManager {
 
 #[derive(Debug)]
 pub struct EnvIndexManager {
-    env_types_to_index: FxBiHashMap<Vec<ValType>, usize>,
+    env_types_to_index: FxBiHashMap<Vec<Option<ValType>>, usize>,
     index_to_table_global: FxHashMap<usize, Global>,
 }
 
@@ -79,7 +79,7 @@ impl EnvIndexManager {
 
     pub fn idx(
         &mut self,
-        env_types: &[ValType],
+        env_types: &[Option<ValType>],
         global_manager: &mut GlobalManager,
     ) -> Option<(Global, usize, IndexFlag)> {
         if let Some(&index) = self.env_types_to_index.get_by_left(env_types) {
@@ -96,7 +96,7 @@ impl EnvIndexManager {
         }
     }
 
-    pub fn env_types(&self, index: usize) -> (&Vec<ValType>, Global) {
+    pub fn env_types(&self, index: usize) -> (&Vec<Option<ValType>>, Global) {
         (
             self.env_types_to_index.get_by_right(&index).unwrap(),
             self.index_to_table_global.get(&index).unwrap().to_import(),
