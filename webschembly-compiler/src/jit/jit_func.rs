@@ -19,7 +19,7 @@ use webschembly_compiler_ir::*;
 #[derive(Debug)]
 pub struct JitFunc {
     pub jit_specialized_env_funcs: FxHashMap<usize, JitSpecializedEnvFunc>,
-    env_index_manager: EnvIndexManager,
+    pub env_index_manager: EnvIndexManager,
 }
 
 impl JitFunc {
@@ -71,6 +71,7 @@ impl JitSpecializedEnvFunc {
             module_id,
             global_manager,
             &func,
+            env_index,
             GLOBAL_LAYOUT_DEFAULT_INDEX,
             jit_ctx,
         );
@@ -84,6 +85,7 @@ impl JitSpecializedEnvFunc {
 #[derive(Debug)]
 pub struct JitSpecializedArgFunc {
     module_id: JitModuleId,
+    env_index: usize,
     func_index: usize,
     func: Func,
     jit_bbs: VecMap<BasicBlockId, JitBB>,
@@ -94,6 +96,7 @@ impl JitSpecializedArgFunc {
         module_id: JitModuleId,
         global_manager: &mut GlobalManager,
         func: &Func,
+        env_index: usize,
         func_index: usize,
         jit_ctx: &mut JitCtx,
     ) -> Self {
@@ -127,6 +130,7 @@ impl JitSpecializedArgFunc {
 
         Self {
             module_id,
+            env_index,
             func_index,
             func,
             jit_bbs,
@@ -138,6 +142,7 @@ impl JitSpecializedArgFunc {
         func_to_globals: &VecMap<FuncId, GlobalId>,
         func_types: &VecMap<FuncId, FuncType>,
         global_manager: &mut GlobalManager,
+        env_index_manager: &mut EnvIndexManager,
         jit_ctx: &mut JitCtx,
     ) -> Module {
         // entry_bbのモジュールをベースに拡張する
@@ -147,6 +152,7 @@ impl JitSpecializedArgFunc {
             self.func.bb_entry,
             GLOBAL_LAYOUT_DEFAULT_INDEX,
             global_manager,
+            env_index_manager,
             jit_ctx,
             false,
         );
@@ -247,7 +253,9 @@ impl JitSpecializedArgFunc {
                     },
                 ]);
 
-                if self.func_index == GLOBAL_LAYOUT_DEFAULT_INDEX {
+                if self.env_index == GLOBAL_LAYOUT_DEFAULT_INDEX
+                    && self.func_index == GLOBAL_LAYOUT_DEFAULT_INDEX
+                {
                     // func_to_globalsはindex=0のためのもの
                     exprs.push(Instr {
                         local: None,
@@ -318,6 +326,7 @@ impl JitSpecializedArgFunc {
                             kind: InstrKind::InstantiateBB(
                                 module_id,
                                 JitFuncId::from(self.func.id),
+                                self.env_index,
                                 self.func_index,
                                 JitBasicBlockId::from(jit_bb.bb_id),
                                 index,
@@ -381,6 +390,7 @@ impl JitSpecializedArgFunc {
         orig_entry_bb_id: BasicBlockId,
         index: usize,
         global_manager: &mut GlobalManager,
+        env_index_manager: &mut EnvIndexManager,
         jit_ctx: &mut JitCtx,
         branch_specialization: bool,
     ) -> Module {
@@ -570,6 +580,7 @@ impl JitSpecializedArgFunc {
                     kind: InstrKind::IncrementBranchCounter(
                         self.module_id,
                         JitFuncId::from(self.func.id),
+                        self.env_index,
                         self.func_index,
                         JitBasicBlockId::from(bb_id),
                         branch_kind,
@@ -730,6 +741,43 @@ impl JitSpecializedArgFunc {
             body_func.bbs[bb_id].instrs = instrs;
         }
 
+        for bb in body_func.bbs.values_mut() {
+            let mut instrs = Vec::new();
+            for instr in &bb.instrs {
+                if let InstrKind::Closure {
+                    envs,
+                    env_types,
+                    module_id,
+                    func_id,
+                    entrypoint_table,
+                    ..
+                } = &instr.kind
+                {
+                    let env_types_for_manager = env_types
+                        .iter()
+                        .map(|t| t.to_type().and_then(|t| t.to_val_type()))
+                        .collect::<Vec<_>>();
+                    let (_, env_index, _) = env_index_manager
+                        .idx(&env_types_for_manager, global_manager)
+                        .unwrap();
+                    instrs.push(Instr {
+                        local: instr.local,
+                        kind: InstrKind::Closure {
+                            envs: envs.clone(),
+                            env_types: env_types.clone(),
+                            env_index,
+                            module_id: *module_id,
+                            func_id: *func_id,
+                            entrypoint_table: *entrypoint_table,
+                        },
+                    });
+                } else {
+                    instrs.push(instr.clone());
+                }
+            }
+            bb.instrs = instrs;
+        }
+
         remove_unreachable_bb(body_func);
         // specialize_call_closureの最適化はPhi命令を処理した後に行う必要があるため最後に行う
         for bb_id in body_func.bbs.keys().collect::<Vec<_>>() {
@@ -816,6 +864,10 @@ impl JitSpecializedArgFunc {
                     id,
                     typ: LocalType::Type(Type::Val(ValType::Int)),
                 });
+                let env_index_local = locals.push_with(|id| Local {
+                    id,
+                    typ: LocalType::Type(Type::Val(ValType::Int)),
+                });
                 let func_ref_local = locals.push_with(|id| Local {
                     id,
                     typ: LocalType::FuncRef,
@@ -840,10 +892,15 @@ impl JitSpecializedArgFunc {
                     kind: InstrKind::ClosureFuncId(closure_local),
                 });
                 exprs.push(Instr {
+                    local: Some(env_index_local),
+                    kind: InstrKind::ClosureEnvIndex(closure_local),
+                });
+                exprs.push(Instr {
                     local: None,
                     kind: InstrKind::InstantiateClosureFunc(
                         module_id_local,
                         func_id_local,
+                        env_index_local,
                         closure_idx,
                     ),
                 });
@@ -993,6 +1050,7 @@ impl JitSpecializedArgFunc {
         func_to_globals: &VecMap<FuncId, GlobalId>,
         func_types: &VecMap<FuncId, FuncType>,
         global_manager: &mut GlobalManager,
+        env_index_manager: &mut EnvIndexManager,
         jit_ctx: &mut JitCtx,
         bb_id: BasicBlockId,
         kind: BranchKind,
@@ -1007,6 +1065,7 @@ impl JitSpecializedArgFunc {
                 source_bb_id,
                 source_index,
                 global_manager,
+                env_index_manager,
                 jit_ctx,
                 true,
             );

@@ -603,6 +603,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                         envs: captures,
                         env_types,
                         func_id: JitFuncId::from(func_id),
+                        env_index: 0,
                         module_id: self.module_generator.id,
                         entrypoint_table: entrypoint_table_local,
                     },

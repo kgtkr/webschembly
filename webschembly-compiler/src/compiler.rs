@@ -122,13 +122,19 @@ impl Compiler {
         &mut self,
         module_id: usize,
         func_id: usize,
+        env_index: usize,
         func_index: usize,
     ) -> ir::Module {
         let module_id = ir::JitModuleId::from(module_id);
         let func_id = ir::FuncId::from(func_id);
         let jit = self.jit.as_mut().expect("JIT is not enabled");
-        let mut module =
-            jit.instantiate_func(&mut self.global_manager, module_id, func_id, func_index);
+        let mut module = jit.instantiate_func(
+            &mut self.global_manager,
+            module_id,
+            func_id,
+            env_index,
+            func_index,
+        );
 
         preprocess_module(&mut module);
         if jit.config().enable_optimization {
@@ -148,6 +154,7 @@ impl Compiler {
         &mut self,
         module_id: usize,
         func_id: usize,
+        env_index: usize,
         func_index: usize,
         bb_id: usize,
         index: usize,
@@ -159,6 +166,7 @@ impl Compiler {
         let mut module = jit.instantiate_bb(
             module_id,
             func_id,
+            env_index,
             func_index,
             bb_id,
             index,
@@ -182,6 +190,7 @@ impl Compiler {
         &mut self,
         module_id: usize,
         func_id: usize,
+        env_index: usize,
         func_index: usize,
         bb_id: usize,
         kind: usize, // 0: Then, 1: Else
@@ -201,6 +210,7 @@ impl Compiler {
             &mut self.global_manager,
             module_id,
             func_id,
+            env_index,
             func_index,
             bb_id,
             kind,

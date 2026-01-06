@@ -232,8 +232,9 @@ impl<'a> ModuleGenerator<'a> {
     const CONS_CDR_FIELD: u32 = 1;
     const CLOSURE_MODULE_ID_FIELD: u32 = 0;
     const CLOSURE_FUNC_ID_FIELD: u32 = 1;
-    const CLOSURE_ENTRYPOINT_TABLE_FIELD: u32 = 2;
-    const CLOSURE_ENVS_FIELD_OFFSET: u32 = 3;
+    const CLOSURE_ENV_INDEX_FIELD: u32 = 2;
+    const CLOSURE_ENTRYPOINT_TABLE_FIELD: u32 = 3;
+    const CLOSURE_ENVS_FIELD_OFFSET: u32 = 4;
 
     const REF_VALUE_FIELD: u32 = 0;
     // const STRING_BUF_BUF_FIELD: u32 = 0;
@@ -493,6 +494,10 @@ impl<'a> ModuleGenerator<'a> {
                 mutable: false,
             });
             fields.push(FieldType {
+                element_type: StorageType::Val(ValType::I32),
+                mutable: false,
+            });
+            fields.push(FieldType {
                 element_type: StorageType::Val(ValType::Ref(RefType {
                     nullable: true,
                     heap_type: HeapType::Concrete(self.entrypoint_table_type),
@@ -620,7 +625,7 @@ impl<'a> ModuleGenerator<'a> {
         self.instantiate_func_func = self.add_runtime_function(
             "instantiate_func",
             WasmFuncType {
-                params: vec![ValType::I32, ValType::I32, ValType::I32],
+                params: vec![ValType::I32, ValType::I32, ValType::I32, ValType::I32],
                 results: vec![ValType::I32],
             },
         );
@@ -628,6 +633,7 @@ impl<'a> ModuleGenerator<'a> {
             "instantiate_bb",
             WasmFuncType {
                 params: vec![
+                    ValType::I32,
                     ValType::I32,
                     ValType::I32,
                     ValType::I32,
@@ -793,6 +799,7 @@ impl<'a> ModuleGenerator<'a> {
             "increment_branch_counter",
             WasmFuncType {
                 params: vec![
+                    ValType::I32,
                     ValType::I32,
                     ValType::I32,
                     ValType::I32,
@@ -1158,23 +1165,27 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 function.instruction(&Instruction::I32Const(usize::from(*module_id) as i32));
                 function.instruction(&Instruction::I32Const(usize::from(*func_id) as i32));
                 function.instruction(&Instruction::I32Const(0));
+                function.instruction(&Instruction::I32Const(0));
                 function.instruction(&Instruction::Call(
                     self.module_generator.instantiate_func_func,
                 ));
             }
-            ir::InstrKind::InstantiateClosureFunc(module_id, func_id, func_index) => {
+            ir::InstrKind::InstantiateClosureFunc(module_id, func_id, env_idx, func_index) => {
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*module_id)));
                 function.instruction(&Instruction::I32WrapI64);
                 function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*func_id)));
+                function.instruction(&Instruction::I32WrapI64);
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*env_idx)));
                 function.instruction(&Instruction::I32WrapI64);
                 function.instruction(&Instruction::I32Const(*func_index as i32));
                 function.instruction(&Instruction::Call(
                     self.module_generator.instantiate_func_func,
                 ));
             }
-            ir::InstrKind::InstantiateBB(module_id, func_id, func_index, bb_id, index) => {
+            ir::InstrKind::InstantiateBB(module_id, func_id, env_idx, func_index, bb_id, index) => {
                 function.instruction(&Instruction::I32Const(usize::from(*module_id) as i32));
                 function.instruction(&Instruction::I32Const(usize::from(*func_id) as i32));
+                function.instruction(&Instruction::I32Const(*env_idx as i32));
                 function.instruction(&Instruction::I32Const(*func_index as i32));
                 function.instruction(&Instruction::I32Const(usize::from(*bb_id) as i32));
                 function.instruction(&Instruction::I32Const(*index as i32));
@@ -1185,6 +1196,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             ir::InstrKind::IncrementBranchCounter(
                 module_id,
                 func_id,
+                env_index,
                 func_index,
                 bb_id,
                 kind,
@@ -1193,6 +1205,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             ) => {
                 function.instruction(&Instruction::I32Const(usize::from(*module_id) as i32));
                 function.instruction(&Instruction::I32Const(usize::from(*func_id) as i32));
+                function.instruction(&Instruction::I32Const(*env_index as i32));
                 function.instruction(&Instruction::I32Const(*func_index as i32));
                 function.instruction(&Instruction::I32Const(usize::from(*bb_id) as i32));
                 function.instruction(&Instruction::I32Const(match kind {
@@ -1331,9 +1344,11 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 module_id,
                 func_id,
                 entrypoint_table,
+                env_index,
             } => {
                 function.instruction(&Instruction::I32Const(usize::from(*module_id) as i32));
                 function.instruction(&Instruction::I32Const(usize::from(*func_id) as i32));
+                function.instruction(&Instruction::I32Const(*env_index as i32));
                 function.instruction(&Instruction::LocalGet(
                     self.local_id_to_idx(*entrypoint_table),
                 ));
@@ -1359,6 +1374,14 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 function.instruction(&Instruction::StructGet {
                     struct_type_index: self.module_generator.closure_type,
                     field_index: ModuleGenerator::CLOSURE_MODULE_ID_FIELD,
+                });
+                function.instruction(&Instruction::I64ExtendI32S);
+            }
+            ir::InstrKind::ClosureEnvIndex(closure) => {
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*closure)));
+                function.instruction(&Instruction::StructGet {
+                    struct_type_index: self.module_generator.closure_type,
+                    field_index: ModuleGenerator::CLOSURE_ENV_INDEX_FIELD,
                 });
                 function.instruction(&Instruction::I64ExtendI32S);
             }

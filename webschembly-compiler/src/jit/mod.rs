@@ -44,11 +44,13 @@ impl Jit {
         global_manager: &mut GlobalManager,
         module_id: JitModuleId,
         func_id: FuncId,
+        env_index: usize,
         func_index: usize,
     ) -> Module {
         self.jit_module[module_id].instantiate_func(
             global_manager,
             func_id,
+            env_index,
             func_index,
             &mut self.ctx,
         )
@@ -58,6 +60,7 @@ impl Jit {
         &mut self,
         module_id: JitModuleId,
         func_id: FuncId,
+        env_index: usize,
         func_index: usize,
         bb_id: BasicBlockId,
         index: usize,
@@ -65,6 +68,7 @@ impl Jit {
     ) -> Module {
         self.jit_module[module_id].instantiate_bb(
             func_id,
+            env_index,
             func_index,
             bb_id,
             index,
@@ -78,6 +82,7 @@ impl Jit {
         global_manager: &mut GlobalManager,
         module_id: JitModuleId,
         func_id: FuncId,
+        env_index: usize,
         func_index: usize,
         bb_id: BasicBlockId,
         kind: BranchKind,
@@ -88,6 +93,7 @@ impl Jit {
             global_manager,
             &mut self.ctx,
             func_id,
+            env_index,
             func_index,
             bb_id,
             kind,

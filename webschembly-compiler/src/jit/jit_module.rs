@@ -3,7 +3,7 @@ use rustc_hash::FxHashMap;
 use super::global_layout::GLOBAL_LAYOUT_MAX_SIZE;
 use super::jit_ctx::JitCtx;
 use super::jit_func::{JitFunc, JitSpecializedArgFunc};
-use crate::{ir_generator::GlobalManager, jit::global_layout::GLOBAL_LAYOUT_DEFAULT_INDEX};
+use crate::ir_generator::GlobalManager;
 use vec_map::{HasId, VecMap};
 use webschembly_compiler_ir::*;
 #[derive(Debug)]
@@ -198,15 +198,13 @@ impl JitModule {
         &mut self,
         global_manager: &mut GlobalManager,
         func_id: FuncId,
+        env_index: usize,
         func_index: usize,
         jit_ctx: &mut JitCtx,
     ) -> Module {
-        let env_index = GLOBAL_LAYOUT_DEFAULT_INDEX;
-
-        let jit_env_func = self
-            .jit_funcs
-            .get_mut(&func_id)
-            .unwrap()
+        let jit_func_entry = self.jit_funcs.get_mut(&func_id).unwrap();
+        let env_index_manager = &mut jit_func_entry.env_index_manager;
+        let jit_env_func = jit_func_entry
             .jit_specialized_env_funcs
             .get_mut(&env_index)
             .unwrap();
@@ -215,6 +213,7 @@ impl JitModule {
             self.module_id,
             global_manager,
             &jit_env_func.func,
+            env_index,
             func_index,
             jit_ctx,
         );
@@ -230,6 +229,7 @@ impl JitModule {
                 &self.func_to_globals,
                 &self.func_types,
                 global_manager,
+                env_index_manager,
                 jit_ctx,
             )
     }
@@ -237,18 +237,16 @@ impl JitModule {
     pub fn instantiate_bb(
         &mut self,
         func_id: FuncId,
+        env_index: usize,
         func_index: usize,
         bb_id: BasicBlockId,
         index: usize,
         global_manager: &mut GlobalManager,
         jit_ctx: &mut JitCtx,
     ) -> Module {
-        let env_index = GLOBAL_LAYOUT_DEFAULT_INDEX;
-
-        let jit_func = self
-            .jit_funcs
-            .get_mut(&func_id)
-            .unwrap()
+        let jit_func_entry = self.jit_funcs.get_mut(&func_id).unwrap();
+        let env_index_manager = &mut jit_func_entry.env_index_manager;
+        let jit_func = jit_func_entry
             .jit_specialized_env_funcs
             .get_mut(&env_index)
             .unwrap()
@@ -262,6 +260,7 @@ impl JitModule {
             bb_id,
             index,
             global_manager,
+            env_index_manager,
             jit_ctx,
             false,
         )
@@ -272,18 +271,16 @@ impl JitModule {
         global_manager: &mut GlobalManager,
         jit_ctx: &mut JitCtx,
         func_id: FuncId,
+        env_index: usize,
         func_index: usize,
         bb_id: BasicBlockId,
         kind: BranchKind,
         source_bb_id: BasicBlockId,
         source_index: usize,
     ) -> Option<Module> {
-        let env_index = GLOBAL_LAYOUT_DEFAULT_INDEX;
-
-        let jit_func = self
-            .jit_funcs
-            .get_mut(&func_id)
-            .unwrap()
+        let jit_func_entry = self.jit_funcs.get_mut(&func_id).unwrap();
+        let env_index_manager = &mut jit_func_entry.env_index_manager;
+        let jit_func = jit_func_entry
             .jit_specialized_env_funcs
             .get_mut(&env_index)
             .unwrap()
@@ -294,6 +291,7 @@ impl JitModule {
             &self.func_to_globals,
             &self.func_types,
             global_manager,
+            env_index_manager,
             jit_ctx,
             bb_id,
             kind,

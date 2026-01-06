@@ -48,6 +48,15 @@ pub enum Type {
     Val(ValType),
 }
 
+impl Type {
+    pub fn to_val_type(&self) -> Option<ValType> {
+        match self {
+            Type::Val(val_type) => Some(*val_type),
+            Type::Obj => None,
+        }
+    }
+}
+
 impl From<ValType> for Type {
     fn from(typ: ValType) -> Self {
         Self::Val(typ)
