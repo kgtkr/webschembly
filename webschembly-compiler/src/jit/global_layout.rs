@@ -65,29 +65,40 @@ impl BBIndexManager {
 
 #[derive(Debug)]
 pub struct EnvIndexManager {
-    env_types_to_index: FxBiHashMap<Vec<Option<ValType>>, usize>,
+    env_types_to_index: FxBiHashMap<VecMapEq<usize, ValType>, usize>,
     index_to_table_global: FxHashMap<usize, Global>,
 }
 
 impl EnvIndexManager {
     pub fn new() -> Self {
+        let mut env_types_to_index = FxBiHashMap::default();
+        env_types_to_index.insert(
+            VecMapEq::from(VecMap::default()),
+            GLOBAL_LAYOUT_DEFAULT_INDEX,
+        );
+        // TODO: index_to_table_globalのデフォルト値
+
         Self {
-            env_types_to_index: FxBiHashMap::default(),
+            env_types_to_index,
             index_to_table_global: FxHashMap::default(),
         }
     }
 
     pub fn idx(
         &mut self,
-        env_types: &[Option<ValType>],
+        env_types: &VecMap<usize, ValType>,
         global_manager: &mut GlobalManager,
     ) -> Option<(Global, usize, IndexFlag)> {
-        if let Some(&index) = self.env_types_to_index.get_by_left(env_types) {
+        if let Some(&index) = self
+            .env_types_to_index
+            .get_by_left(VecMapEq::from_ref(env_types))
+        {
             let global = *self.index_to_table_global.get(&index).unwrap();
             Some((global.to_import(), index, IndexFlag::ExistingInstance))
         } else if self.env_types_to_index.len() < GLOBAL_LAYOUT_MAX_SIZE {
             let index = self.env_types_to_index.len();
-            self.env_types_to_index.insert(env_types.to_vec(), index);
+            self.env_types_to_index
+                .insert(env_types.clone().into(), index);
             let global = global_manager.gen_global(LocalType::EntrypointTable);
             self.index_to_table_global.insert(index, global);
             Some((global, index, IndexFlag::NewInstance))
@@ -96,9 +107,12 @@ impl EnvIndexManager {
         }
     }
 
-    pub fn env_types(&self, index: usize) -> (&Vec<Option<ValType>>, Global) {
+    pub fn env_types(&self, index: usize) -> (&VecMap<usize, ValType>, Global) {
         (
-            self.env_types_to_index.get_by_right(&index).unwrap(),
+            self.env_types_to_index
+                .get_by_right(&index)
+                .unwrap()
+                .as_inner(),
             self.index_to_table_global.get(&index).unwrap().to_import(),
         )
     }
