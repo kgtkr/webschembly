@@ -1336,28 +1336,28 @@ fn closure_func_assign_env_types(
     for bb in func.bbs.values_mut() {
         let mut new_instrs = Vec::new();
         for instr in &bb.instrs {
-            if let InstrKind::ClosureEnv(_, closure, index) = instr.kind {
-                if let Some(Some(val_type)) = env_types.get(index) {
-                    let dest_local = instr.local.unwrap();
+            if let InstrKind::ClosureEnv(_, closure, index) = instr.kind
+                && let Some(Some(val_type)) = env_types.get(index)
+            {
+                let dest_local = instr.local.unwrap();
 
-                    func.locals[dest_local].typ = LocalType::Type(Type::Val(*val_type));
+                func.locals[dest_local].typ = LocalType::Type(Type::Val(*val_type));
 
-                    let obj_local = func.locals.push_with(|id| Local {
-                        id,
-                        typ: LocalType::Type(Type::Obj),
-                    });
-                    assigned_local_to_obj.insert(dest_local, obj_local);
+                let obj_local = func.locals.push_with(|id| Local {
+                    id,
+                    typ: LocalType::Type(Type::Obj),
+                });
+                assigned_local_to_obj.insert(dest_local, obj_local);
 
-                    new_instrs.push(Instr {
-                        local: Some(dest_local),
-                        kind: InstrKind::ClosureEnv(specialized_env_types.clone(), closure, index),
-                    });
-                    new_instrs.push(Instr {
-                        local: Some(obj_local),
-                        kind: InstrKind::ToObj(*val_type, dest_local),
-                    });
-                    continue;
-                }
+                new_instrs.push(Instr {
+                    local: Some(dest_local),
+                    kind: InstrKind::ClosureEnv(specialized_env_types.clone(), closure, index),
+                });
+                new_instrs.push(Instr {
+                    local: Some(obj_local),
+                    kind: InstrKind::ToObj(*val_type, dest_local),
+                });
+                continue;
             }
             new_instrs.push(instr.clone());
         }
