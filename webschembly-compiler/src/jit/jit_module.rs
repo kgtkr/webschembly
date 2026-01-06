@@ -201,22 +201,28 @@ impl JitModule {
         func_index: usize,
         jit_ctx: &mut JitCtx,
     ) -> Module {
+        let env_index = GLOBAL_LAYOUT_DEFAULT_INDEX;
+
+        let jit_env_func = self
+            .jit_funcs
+            .get_mut(&func_id)
+            .unwrap()
+            .jit_specialized_env_funcs
+            .get_mut(&env_index)
+            .unwrap();
+
         let jit_func = JitSpecializedArgFunc::new(
             self.module_id,
             global_manager,
-            &self.module.funcs[func_id],
+            &jit_env_func.func,
             func_index,
             jit_ctx,
         );
-        self.jit_funcs
-            .get_mut(&func_id)
-            .unwrap()
+        jit_env_func
             .jit_specialized_arg_funcs
             .insert(func_index, jit_func);
 
-        self.jit_funcs
-            .get_mut(&func_id)
-            .unwrap()
+        jit_env_func
             .jit_specialized_arg_funcs
             .get_mut(&func_index)
             .unwrap()
@@ -237,9 +243,14 @@ impl JitModule {
         global_manager: &mut GlobalManager,
         jit_ctx: &mut JitCtx,
     ) -> Module {
+        let env_index = GLOBAL_LAYOUT_DEFAULT_INDEX;
+
         let jit_func = self
             .jit_funcs
             .get_mut(&func_id)
+            .unwrap()
+            .jit_specialized_env_funcs
+            .get_mut(&env_index)
             .unwrap()
             .jit_specialized_arg_funcs
             .get_mut(&func_index)
@@ -267,9 +278,14 @@ impl JitModule {
         source_bb_id: BasicBlockId,
         source_index: usize,
     ) -> Option<Module> {
+        let env_index = GLOBAL_LAYOUT_DEFAULT_INDEX;
+
         let jit_func = self
             .jit_funcs
             .get_mut(&func_id)
+            .unwrap()
+            .jit_specialized_env_funcs
+            .get_mut(&env_index)
             .unwrap()
             .jit_specialized_arg_funcs
             .get_mut(&func_index)

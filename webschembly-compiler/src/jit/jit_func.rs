@@ -18,7 +18,7 @@ use webschembly_compiler_ir::*;
 
 #[derive(Debug)]
 pub struct JitFunc {
-    pub jit_specialized_arg_funcs: FxHashMap<usize, JitSpecializedArgFunc>,
+    pub jit_specialized_env_funcs: FxHashMap<usize, JitSpecializedEnvFunc>,
     env_index_manager: EnvIndexManager,
 }
 
@@ -31,17 +31,18 @@ impl JitFunc {
     ) -> Self {
         let env_index_manager = EnvIndexManager::new();
 
-        let mut jit_specialized_arg_funcs = FxHashMap::default();
-        let jit_func = JitSpecializedArgFunc::new(
+        let mut jit_specialized_env_funcs = FxHashMap::default();
+        let jit_env_func = JitSpecializedEnvFunc::new(
             module_id,
             global_manager,
             func,
             GLOBAL_LAYOUT_DEFAULT_INDEX,
+            &env_index_manager,
             jit_ctx,
         );
-        jit_specialized_arg_funcs.insert(GLOBAL_LAYOUT_DEFAULT_INDEX, jit_func);
+        jit_specialized_env_funcs.insert(GLOBAL_LAYOUT_DEFAULT_INDEX, jit_env_func);
         Self {
-            jit_specialized_arg_funcs,
+            jit_specialized_env_funcs,
             env_index_manager,
         }
     }
@@ -50,6 +51,35 @@ impl JitFunc {
 #[derive(Debug)]
 pub struct JitSpecializedEnvFunc {
     pub jit_specialized_arg_funcs: FxHashMap<usize, JitSpecializedArgFunc>,
+    pub func: Func,
+}
+
+impl JitSpecializedEnvFunc {
+    pub fn new(
+        module_id: JitModuleId,
+        global_manager: &mut GlobalManager,
+        func: &Func,
+        env_index: usize,
+        env_index_manager: &EnvIndexManager,
+        jit_ctx: &mut JitCtx,
+    ) -> Self {
+        let mut func = func.clone();
+        closure_func_assign_env_types(&mut func, env_index, env_index_manager);
+
+        let mut jit_specialized_arg_funcs = FxHashMap::default();
+        let jit_func = JitSpecializedArgFunc::new(
+            module_id,
+            global_manager,
+            &func,
+            GLOBAL_LAYOUT_DEFAULT_INDEX,
+            jit_ctx,
+        );
+        jit_specialized_arg_funcs.insert(GLOBAL_LAYOUT_DEFAULT_INDEX, jit_func);
+        Self {
+            jit_specialized_arg_funcs,
+            func,
+        }
+    }
 }
 #[derive(Debug)]
 pub struct JitSpecializedArgFunc {
@@ -1222,6 +1252,66 @@ fn calculate_args_to_pass(
         required_stubs.push((callee.bb_id, index));
     }
     (args_to_pass, type_args, global)
+}
+
+fn closure_func_assign_env_types(
+    func: &mut Func,
+    env_index: usize,
+    env_index_manager: &EnvIndexManager,
+) {
+    if env_index == GLOBAL_LAYOUT_DEFAULT_INDEX {
+        return;
+    }
+
+    let (env_types, _) = env_index_manager.env_types(env_index);
+    let specialized_env_types = env_types
+        .iter()
+        .map(|t| match t {
+            Some(val_type) => LocalType::Type(Type::Val(*val_type)),
+            None => LocalType::Type(Type::Obj),
+        })
+        .collect::<Vec<_>>();
+
+    let mut assigned_local_to_obj = FxHashMap::default();
+
+    for bb in func.bbs.values_mut() {
+        let mut new_instrs = Vec::new();
+        for instr in &bb.instrs {
+            if let InstrKind::ClosureEnv(_, closure, index) = instr.kind {
+                if let Some(Some(val_type)) = env_types.get(index) {
+                    let dest_local = instr.local.unwrap();
+
+                    func.locals[dest_local].typ = LocalType::Type(Type::Val(*val_type));
+
+                    let obj_local = func.locals.push_with(|id| Local {
+                        id,
+                        typ: LocalType::Type(Type::Obj),
+                    });
+                    assigned_local_to_obj.insert(dest_local, obj_local);
+
+                    new_instrs.push(Instr {
+                        local: Some(dest_local),
+                        kind: InstrKind::ClosureEnv(specialized_env_types.clone(), closure, index),
+                    });
+                    new_instrs.push(Instr {
+                        local: Some(obj_local),
+                        kind: InstrKind::ToObj(*val_type, dest_local),
+                    });
+                    continue;
+                }
+            }
+            new_instrs.push(instr.clone());
+        }
+        bb.instrs = new_instrs;
+    }
+
+    for bb in func.bbs.values_mut() {
+        for (local, _) in bb.local_usages_mut() {
+            if let Some(&obj_local) = assigned_local_to_obj.get(local) {
+                *local = obj_local;
+            }
+        }
+    }
 }
 
 fn closure_func_assign_types(
