@@ -1336,8 +1336,8 @@ fn closure_func_assign_env_types(
     for bb in func.bbs.values_mut() {
         let mut new_instrs = Vec::new();
         for instr in &bb.instrs {
-            if let InstrKind::ClosureEnv(_, closure, index) = instr.kind {
-                if let Some(Some(val_type)) = env_types.get(index) {
+            if let InstrKind::ClosureEnv(_, closure, index) = instr.kind
+                && let Some(Some(val_type)) = env_types.get(index) {
                     let dest_local = instr.local.unwrap();
 
                     func.locals[dest_local].typ = LocalType::Type(Type::Val(*val_type));
@@ -1358,7 +1358,6 @@ fn closure_func_assign_env_types(
                     });
                     continue;
                 }
-            }
             new_instrs.push(instr.clone());
         }
         bb.instrs = new_instrs;
