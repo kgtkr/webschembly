@@ -64,7 +64,7 @@ impl JitSpecializedEnvFunc {
         jit_ctx: &mut JitCtx,
     ) -> Self {
         let mut func = func.clone();
-        closure_func_assign_env_types(&mut func, env_index, env_index_manager);
+        closure_func_assign_env_types(&mut func, module_id, env_index, env_index_manager);
 
         let mut jit_specialized_arg_funcs = FxHashMap::default();
         let jit_func = JitSpecializedArgFunc::new(
@@ -734,28 +734,20 @@ impl JitSpecializedArgFunc {
                             kind: InstrKind::EntrypointTable(locals),
                         });
                     }
-                    ref instr => {
-                        instrs.push(instr.clone());
-                    }
-                }
-            }
-
-            body_func.bbs[bb_id].instrs = instrs;
-        }
-
-        for bb in body_func.bbs.values_mut() {
-            let mut instrs = Vec::new();
-            for instr in &bb.instrs {
-                if let InstrKind::Closure {
-                    envs,
-                    env_types,
-                    module_id,
-                    func_id,
-                    entrypoint_table,
-                    ..
-                } = &instr.kind
-                {
-                    let env_types_for_manager = env_types
+                    /*
+                    Instr {
+                        local,
+                        kind:
+                            InstrKind::Closure {
+                                envs,
+                                env_types,
+                                module_id,
+                                func_id,
+                                entrypoint_table,
+                                ..
+                            },
+                    } => {
+                     let env_types_for_manager = env_types
                         .iter()
                         .map(|t| t.to_type().and_then(|t| t.to_val_type()))
                         .collect::<Vec<_>>();
@@ -772,12 +764,15 @@ impl JitSpecializedArgFunc {
                             func_id: *func_id,
                             entrypoint_table: *entrypoint_table,
                         },
-                    });
-                } else {
-                    instrs.push(instr.clone());
+                    });}
+                    */
+                    ref instr => {
+                        instrs.push(instr.clone());
+                    }
                 }
             }
-            bb.instrs = instrs;
+
+            body_func.bbs[bb_id].instrs = instrs;
         }
 
         remove_unreachable_bb(body_func);
@@ -1319,12 +1314,33 @@ fn calculate_args_to_pass(
 
 fn closure_func_assign_env_types(
     func: &mut Func,
+    module_id: JitModuleId,
     env_index: usize,
     env_index_manager: &EnvIndexManager,
 ) {
     if env_index == GLOBAL_LAYOUT_DEFAULT_INDEX {
         return;
     }
+
+    /*
+    // before
+    func f(c: closure, ...)
+        x = closure_env(c, 0)
+
+    // after
+    func f(c2: closure, ...)
+        env_0 = closure_env(c2, 0)
+        env_0_obj = obj<int>(env_0)
+        c = closure(envs = [env_0_obj, ...], ...c2)
+        x = closure_env(c, 0)
+        // 最適化でこうなる
+        x = obj<int>(env_0)
+    */
+
+    let prev_closure_meta = func.closure_meta.as_ref().unwrap();
+    unimplemented!();
+    /*
+    let num_envs = prev_closure_meta.env_types.len();
 
     let (env_types, _) = env_index_manager.env_types(env_index);
     let specialized_env_types = env_types
@@ -1375,6 +1391,7 @@ fn closure_func_assign_env_types(
             }
         }
     }
+    */
 }
 
 fn closure_func_assign_types(

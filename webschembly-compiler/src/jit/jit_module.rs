@@ -125,6 +125,7 @@ impl JitModule {
                 }]
                 .into_iter()
                 .collect(),
+                closure_meta: None,
             });
             stub_func_ids.insert(func.id, id);
         }
