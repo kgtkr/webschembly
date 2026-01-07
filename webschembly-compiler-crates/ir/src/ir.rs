@@ -160,6 +160,8 @@ impl fmt::Display for DisplayInFunc<'_, &'_ Local> {
 #[derive(Debug, Clone)]
 pub struct ClosureFuncMeta {
     pub env_types: Vec<LocalType>,
+    pub module_id: JitModuleId,
+    pub func_id: JitFuncId,
 }
 
 #[derive(Debug, Clone)]

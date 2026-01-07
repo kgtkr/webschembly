@@ -22,7 +22,8 @@
                        (field $func_id i32)
                        (field $env_index i32)
                        ;; (Closure, Args) -> Obj
-                       (field $entrypoint_table (ref null $EntrypointTable)))))
+                       (field $entrypoint_table (ref null $EntrypointTable))
+                       (field $original_entrypoint_table (ref null $EntrypointTable)))))
   (type $ClosureFunc (func (param (ref null $Closure)) (param (ref null $Args)) (result eqref)))
 
   (import "runtime" "malloc" (func $malloc (param i32) (result i32)))

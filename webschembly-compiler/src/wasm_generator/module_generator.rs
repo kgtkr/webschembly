@@ -234,7 +234,8 @@ impl<'a> ModuleGenerator<'a> {
     const CLOSURE_FUNC_ID_FIELD: u32 = 1;
     const CLOSURE_ENV_INDEX_FIELD: u32 = 2;
     const CLOSURE_ENTRYPOINT_TABLE_FIELD: u32 = 3;
-    const CLOSURE_ENVS_FIELD_OFFSET: u32 = 4;
+    const CLOSURE_ORIGINAL_ENTRYPOINT_TABLE_FIELD: u32 = 4;
+    const CLOSURE_ENVS_FIELD_OFFSET: u32 = 5;
 
     const REF_VALUE_FIELD: u32 = 0;
     // const STRING_BUF_BUF_FIELD: u32 = 0;
@@ -495,6 +496,13 @@ impl<'a> ModuleGenerator<'a> {
             });
             fields.push(FieldType {
                 element_type: StorageType::Val(ValType::I32),
+                mutable: false,
+            });
+            fields.push(FieldType {
+                element_type: StorageType::Val(ValType::Ref(RefType {
+                    nullable: true,
+                    heap_type: HeapType::Concrete(self.entrypoint_table_type),
+                })),
                 mutable: false,
             });
             fields.push(FieldType {
@@ -1344,6 +1352,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 module_id,
                 func_id,
                 entrypoint_table,
+                original_entrypoint_table,
                 env_index,
             } => {
                 function.instruction(&Instruction::I32Const(usize::from(*module_id) as i32));
@@ -1351,6 +1360,9 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 function.instruction(&Instruction::I32Const(*env_index as i32));
                 function.instruction(&Instruction::LocalGet(
                     self.local_id_to_idx(*entrypoint_table),
+                ));
+                function.instruction(&Instruction::LocalGet(
+                    self.local_id_to_idx(*original_entrypoint_table),
                 ));
                 for (i, typ) in env_types.iter().enumerate() {
                     match envs[i] {
@@ -1398,6 +1410,13 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 function.instruction(&Instruction::StructGet {
                     struct_type_index: self.module_generator.closure_type,
                     field_index: ModuleGenerator::CLOSURE_ENTRYPOINT_TABLE_FIELD,
+                });
+            }
+            ir::InstrKind::ClosureOriginalEntrypointTable(closure) => {
+                function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*closure)));
+                function.instruction(&Instruction::StructGet {
+                    struct_type_index: self.module_generator.closure_type,
+                    field_index: ModuleGenerator::CLOSURE_ORIGINAL_ENTRYPOINT_TABLE_FIELD,
                 });
             }
             ir::InstrKind::Call(call) => {

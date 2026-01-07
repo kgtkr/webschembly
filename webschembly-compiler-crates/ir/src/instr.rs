@@ -471,6 +471,7 @@ pub enum InstrKind {
         module_id: JitModuleId,
         func_id: JitFuncId,
         entrypoint_table: LocalId,
+        original_entrypoint_table: LocalId, // env_index=0のときのエントリポイントテーブル
     },
     Move(LocalId),
     ToObj(ValType, LocalId),
@@ -490,7 +491,8 @@ pub enum InstrKind {
     ClosureModuleId(LocalId),        // (Closure) -> int
     ClosureFuncId(LocalId),          // (Closure) -> int
     ClosureEntrypointTable(LocalId), // (Closure) -> EntrypointTable
-    ClosureEnvIndex(LocalId),        // (Closure) -> int
+    ClosureOriginalEntrypointTable(LocalId),
+    ClosureEnvIndex(LocalId), // (Closure) -> int
     GlobalSet(GlobalId, LocalId),
     GlobalGet(GlobalId),
     // builtins
@@ -646,6 +648,7 @@ macro_rules! impl_InstrKind_local_usages {
                             module_id: _,
                             func_id: _,
                             entrypoint_table,
+                            original_entrypoint_table,
                         } => {
                             for env in envs {
                                 if let Some(env) = env {
@@ -653,6 +656,7 @@ macro_rules! impl_InstrKind_local_usages {
                                 }
                             }
                             yield (entrypoint_table, LocalUsedFlag::NonPhi);
+                            yield (original_entrypoint_table, LocalUsedFlag::NonPhi);
                         }
                         InstrKind::CallRef(call_ref) => {
                             for id in call_ref.[<local_ids $($suffix)?>]() {
@@ -675,6 +679,7 @@ macro_rules! impl_InstrKind_local_usages {
                         InstrKind::ClosureModuleId(closure) => yield (closure, LocalUsedFlag::NonPhi),
                         InstrKind::ClosureFuncId(closure) => yield (closure, LocalUsedFlag::NonPhi),
                         InstrKind::ClosureEntrypointTable(id) => yield (id, LocalUsedFlag::NonPhi),
+                        InstrKind::ClosureOriginalEntrypointTable(id) => yield (id, LocalUsedFlag::NonPhi),
                         InstrKind::ClosureEnvIndex(closure) => yield (closure, LocalUsedFlag::NonPhi),
                         InstrKind::GlobalSet(_, value) => yield (value, LocalUsedFlag::NonPhi),
                         InstrKind::Display(id) => yield (id, LocalUsedFlag::NonPhi),
@@ -916,6 +921,7 @@ impl InstrKind {
             | InstrKind::ClosureModuleId(..)
             | InstrKind::ClosureFuncId(..)
             | InstrKind::ClosureEntrypointTable(..)
+            | InstrKind::ClosureOriginalEntrypointTable(..)
             | InstrKind::ClosureEnvIndex(..)
             | InstrKind::Is(..)
             | InstrKind::EqObj(..)
@@ -1160,6 +1166,7 @@ impl fmt::Display for DisplayInFunc<'_, &'_ InstrKind> {
                 module_id,
                 func_id,
                 entrypoint_table,
+                original_entrypoint_table,
             } => {
                 write!(f, "closure<")?;
                 for (i, typ) in env_types.iter().enumerate() {
@@ -1170,8 +1177,9 @@ impl fmt::Display for DisplayInFunc<'_, &'_ InstrKind> {
                 }
                 write!(
                     f,
-                    ">(entrypoint_table={}, module_id={}, func_id={}, env_index={}",
+                    ">(entrypoint_table={}, original_entrypoint_table={}, module_id={}, func_id={}, env_index={}",
                     entrypoint_table.display(self.meta),
+                    original_entrypoint_table.display(self.meta),
                     module_id.display(self.meta.meta),
                     func_id.display(self.meta.meta),
                     env_index
@@ -1230,6 +1238,13 @@ impl fmt::Display for DisplayInFunc<'_, &'_ InstrKind> {
             InstrKind::ClosureFuncId(id) => write!(f, "closure_func_id({})", id.display(self.meta)),
             InstrKind::ClosureEntrypointTable(id) => {
                 write!(f, "closure_entrypoint_table({})", id.display(self.meta))
+            }
+            InstrKind::ClosureOriginalEntrypointTable(id) => {
+                write!(
+                    f,
+                    "closure_original_entrypoint_table({})",
+                    id.display(self.meta)
+                )
             }
             InstrKind::ClosureEnvIndex(id) => {
                 write!(f, "closure_env_index({})", id.display(self.meta))

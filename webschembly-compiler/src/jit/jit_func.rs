@@ -64,7 +64,7 @@ impl JitSpecializedEnvFunc {
         jit_ctx: &mut JitCtx,
     ) -> Self {
         let mut func = func.clone();
-        closure_func_assign_env_types(&mut func, module_id, env_index, env_index_manager);
+        closure_func_assign_env_types(&mut func, env_index, env_index_manager);
 
         let mut jit_specialized_arg_funcs = FxHashMap::default();
         let jit_func = JitSpecializedArgFunc::new(
@@ -1314,7 +1314,6 @@ fn calculate_args_to_pass(
 
 fn closure_func_assign_env_types(
     func: &mut Func,
-    module_id: JitModuleId,
     env_index: usize,
     env_index_manager: &EnvIndexManager,
 ) {
@@ -1333,65 +1332,78 @@ fn closure_func_assign_env_types(
         env_0_obj = obj<int>(env_0)
         c = closure(envs = [env_0_obj, ...], ...c2)
         x = closure_env(c, 0)
-        // 最適化でこうなる
-        x = obj<int>(env_0)
+        // 最適化で良い感じになる
     */
 
-    let prev_closure_meta = func.closure_meta.as_ref().unwrap();
-    unimplemented!();
-    /*
-    let num_envs = prev_closure_meta.env_types.len();
+    let closure_meta = func.closure_meta.as_ref().unwrap();
+    let original_env_types = &closure_meta.env_types;
+    let mut new_env_types = original_env_types.clone();
+    let (assign_env_types, _) = env_index_manager.env_types(env_index);
+    for (index, &val_type) in assign_env_types.iter() {
+        new_env_types[index] = val_type.into();
+    }
+    let new_closure_arg = func.locals.push_with(|id| Local {
+        id,
+        typ: LocalType::Type(Type::Val(ValType::Closure)),
+    });
+    let prev_closure_arg = func.args[0];
+    func.args[0] = new_closure_arg;
 
-    let (env_types, _) = env_index_manager.env_types(env_index);
-    let specialized_env_types = env_types
-        .iter()
-        .map(|t| match t {
-            Some(val_type) => LocalType::Type(Type::Val(*val_type)),
-            None => LocalType::Type(Type::Obj),
+    let mut c_envs = Vec::new();
+    let mut preamble_instrs = Vec::new();
+    for (i, &env_type) in new_env_types.iter().enumerate() {
+        let env_local = func.locals.push_with(|id| Local { id, typ: env_type });
+        preamble_instrs.push(Instr {
+            local: Some(env_local),
+            kind: InstrKind::ClosureEnv(new_env_types.clone(), new_closure_arg, i),
+        });
+        if let Some(&val_type) = assign_env_types.get(i) {
+            let env_obj_local = func.locals.push_with(|id| Local {
+                id,
+                typ: LocalType::Type(Type::Obj),
+            });
+            preamble_instrs.push(Instr {
+                local: Some(env_obj_local),
+                kind: InstrKind::ToObj(val_type, env_local),
+            });
+            c_envs.push(env_obj_local);
+        } else {
+            c_envs.push(env_local);
+        }
+    }
+
+    let c_entrypoint_table_local = func.locals.push_with(|id| Local {
+        id,
+        typ: LocalType::EntrypointTable,
+    });
+    preamble_instrs.push(Instr {
+        local: Some(c_entrypoint_table_local),
+        kind: InstrKind::ClosureOriginalEntrypointTable(new_closure_arg),
+    });
+
+    preamble_instrs.push(Instr {
+        local: Some(prev_closure_arg),
+        kind: InstrKind::Closure {
+            envs: c_envs.into_iter().map(Some).collect(),
+            env_types: original_env_types.clone(),
+            env_index: GLOBAL_LAYOUT_DEFAULT_INDEX,
+            module_id: closure_meta.module_id,
+            func_id: closure_meta.func_id,
+            entrypoint_table: c_entrypoint_table_local,
+            original_entrypoint_table: c_entrypoint_table_local,
+        },
+    });
+
+    func.extend_entry_bb(|func, next| {
+        preamble_instrs.push(Instr {
+            local: None,
+            kind: InstrKind::Terminator(next),
+        });
+        func.bbs.push_with(|bb_id| BasicBlock {
+            id: bb_id,
+            instrs: preamble_instrs,
         })
-        .collect::<Vec<_>>();
-
-    let mut assigned_local_to_obj = FxHashMap::default();
-
-    for bb in func.bbs.values_mut() {
-        let mut new_instrs = Vec::new();
-        for instr in &bb.instrs {
-            if let InstrKind::ClosureEnv(_, closure, index) = instr.kind
-                && let Some(Some(val_type)) = env_types.get(index)
-            {
-                let dest_local = instr.local.unwrap();
-
-                func.locals[dest_local].typ = LocalType::Type(Type::Val(*val_type));
-
-                let obj_local = func.locals.push_with(|id| Local {
-                    id,
-                    typ: LocalType::Type(Type::Obj),
-                });
-                assigned_local_to_obj.insert(dest_local, obj_local);
-
-                new_instrs.push(Instr {
-                    local: Some(dest_local),
-                    kind: InstrKind::ClosureEnv(specialized_env_types.clone(), closure, index),
-                });
-                new_instrs.push(Instr {
-                    local: Some(obj_local),
-                    kind: InstrKind::ToObj(*val_type, dest_local),
-                });
-                continue;
-            }
-            new_instrs.push(instr.clone());
-        }
-        bb.instrs = new_instrs;
-    }
-
-    for bb in func.bbs.values_mut() {
-        for (local, _) in bb.local_usages_mut() {
-            if let Some(&obj_local) = assigned_local_to_obj.get(local) {
-                *local = obj_local;
-            }
-        }
-    }
-    */
+    });
 }
 
 fn closure_func_assign_types(
