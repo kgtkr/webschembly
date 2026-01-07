@@ -797,7 +797,7 @@ impl JitSpecializedArgFunc {
                                 module_id,
                                 func_id,
                                 env_index: _,
-                                entrypoint_table,
+                                entrypoint_table: _,
                                 original_entrypoint_table,
                             },
                     } => {
@@ -875,7 +875,7 @@ impl JitSpecializedArgFunc {
                                 module_id: *module_id,
                                 func_id: *func_id,
                                 env_index,
-                                entrypoint_table: *entrypoint_table, // TODO:
+                                entrypoint_table: entrypoint_table_local,
                                 original_entrypoint_table: *original_entrypoint_table,
                             };
 
