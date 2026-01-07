@@ -14,7 +14,10 @@ This project consists of the following components:
 - webschembly-js: JavaScript bindings with CLI execution and REPL capabilities
 - webschembly-playground: Web-based playground
 - webschembly-runtime: Runtime library
+
 - webschembly-runtime-rust: Rust-implemented parts of the runtime library
+
+For a detailed technical overview, see [ARCHITECTURE.md](./ARCHITECTURE.md).
 
 ## Requirements
 
