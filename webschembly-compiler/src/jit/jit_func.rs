@@ -456,6 +456,8 @@ impl JitSpecializedArgFunc {
         // BBに対応する関数を呼び出す
         let mut required_bbs = Vec::new();
 
+        let mut new_entrypoint_table_globals = Vec::new();
+
         while let Some(orig_bb_id) = todo_bb_ids.pop() {
             if processed_bb_ids.contains(&orig_bb_id) {
                 continue;
@@ -856,7 +858,9 @@ impl JitSpecializedArgFunc {
                             .unwrap(); // TODO: 上限に到達したときの処理
                         if env_index != GLOBAL_LAYOUT_DEFAULT_INDEX {
                             let entrypoint_table_global = entrypoint_table_global.unwrap();
-                            if index_flag == IndexFlag::NewInstance {}
+                            if index_flag == IndexFlag::NewInstance {
+                                new_entrypoint_table_globals.push(entrypoint_table_global);
+                            }
                             let entrypoint_table_local = body_func.locals.push_with(|id| Local {
                                 id,
                                 typ: LocalType::EntrypointTable,
@@ -1045,7 +1049,7 @@ impl JitSpecializedArgFunc {
             });
 
             bbs.insert_node({
-                let mut exprs = vec![
+                let mut instrs = vec![
                     Instr {
                         local: Some(func_ref_local),
                         kind: InstrKind::FuncRef(body_func_id),
@@ -1056,6 +1060,36 @@ impl JitSpecializedArgFunc {
                     },
                 ];
 
+                for new_entrypoint_table_global in new_entrypoint_table_globals.iter() {
+                    let mut entrypoint_table_locals = Vec::new();
+                    for index in 0..GLOBAL_LAYOUT_MAX_SIZE {
+                        let stub = locals.push_with(|id| Local {
+                            id,
+                            typ: LocalType::MutFuncRef,
+                        });
+                        instrs.push(Instr {
+                            local: Some(stub),
+                            kind: InstrKind::GlobalGet(jit_ctx.stub_global(index).id),
+                        });
+                        entrypoint_table_locals.push(stub);
+                    }
+                    let entrypoint_table_local = locals.push_with(|id| Local {
+                        id,
+                        typ: LocalType::EntrypointTable,
+                    });
+                    instrs.push(Instr {
+                        local: Some(entrypoint_table_local),
+                        kind: InstrKind::EntrypointTable(entrypoint_table_locals),
+                    });
+                    instrs.push(Instr {
+                        local: None,
+                        kind: InstrKind::GlobalSet(
+                            new_entrypoint_table_global.id,
+                            entrypoint_table_local,
+                        ),
+                    });
+                }
+
                 for &(closure_idx, stub_func_id) in required_closure_idx.iter() {
                     let stub_func_ref_local = locals.push_with(|id| Local {
                         id,
@@ -1065,15 +1099,15 @@ impl JitSpecializedArgFunc {
                         id,
                         typ: LocalType::MutFuncRef,
                     });
-                    exprs.push(Instr {
+                    instrs.push(Instr {
                         local: Some(stub_func_ref_local),
                         kind: InstrKind::FuncRef(stub_func_id),
                     });
-                    exprs.push(Instr {
+                    instrs.push(Instr {
                         local: Some(stub_mut_func_ref_local),
                         kind: InstrKind::GlobalGet(jit_ctx.stub_global(closure_idx).id),
                     });
-                    exprs.push(Instr {
+                    instrs.push(Instr {
                         local: None,
                         kind: InstrKind::SetMutFuncRef(
                             stub_mut_func_ref_local,
@@ -1082,7 +1116,7 @@ impl JitSpecializedArgFunc {
                     });
                 }
 
-                exprs.push(Instr {
+                instrs.push(Instr {
                     local: None,
                     kind: InstrKind::Terminator(TerminatorInstr::Exit(ExitInstr::Return(
                         func_ref_local,
@@ -1091,7 +1125,7 @@ impl JitSpecializedArgFunc {
 
                 BasicBlock {
                     id: BasicBlockId::from(0),
-                    instrs: exprs,
+                    instrs,
                 }
             });
 
