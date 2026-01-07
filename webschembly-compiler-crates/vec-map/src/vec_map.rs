@@ -41,6 +41,10 @@ where
         }
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.vec.iter().all(|v| v.is_none())
+    }
+
     pub fn entry(&mut self, key: K) -> Entry<'_, K, V> {
         if self.get(key).is_some() {
             Entry::Occupied(OccupiedEntry { key, map: self })

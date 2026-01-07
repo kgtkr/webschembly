@@ -4,6 +4,8 @@ use super::global_layout::GLOBAL_LAYOUT_MAX_SIZE;
 use super::jit_ctx::JitCtx;
 use super::jit_func::{JitFunc, JitSpecializedArgFunc};
 use crate::ir_generator::GlobalManager;
+use crate::jit::global_layout::EnvIndexManager;
+use crate::jit::jit_func::JitSpecializedEnvFunc;
 use vec_map::{HasId, VecMap};
 use webschembly_compiler_ir::*;
 #[derive(Debug)]
@@ -13,6 +15,7 @@ pub struct JitModule {
     jit_funcs: FxHashMap<FuncId, JitFunc>,
     func_to_globals: VecMap<FuncId, GlobalId>,
     func_types: VecMap<FuncId, FuncType>,
+    pub env_index_managers: FxHashMap<FuncId, EnvIndexManager>,
 }
 
 impl HasId for JitModule {
@@ -32,8 +35,20 @@ impl JitModule {
         let mut jit_funcs = FxHashMap::default();
         let mut func_to_globals = VecMap::default();
 
+        let env_index_managers = module
+            .funcs
+            .keys()
+            .map(|func_id| (func_id, EnvIndexManager::new()))
+            .collect::<FxHashMap<_, _>>();
+
         for func in module.funcs.values() {
-            let jit_func = JitFunc::new(global_manager, module_id, jit_ctx, func);
+            let jit_func = JitFunc::new(
+                global_manager,
+                module_id,
+                jit_ctx,
+                func,
+                &env_index_managers[&func.id],
+            );
             let global = global_manager.gen_global(LocalType::FuncRef);
             func_to_globals.insert(func.id, global.id);
             jit_funcs.insert(func.id, jit_func);
@@ -51,6 +66,7 @@ impl JitModule {
             jit_funcs,
             func_to_globals,
             func_types,
+            env_index_managers,
         }
     }
 
@@ -204,11 +220,19 @@ impl JitModule {
         jit_ctx: &mut JitCtx,
     ) -> Module {
         let jit_func_entry = self.jit_funcs.get_mut(&func_id).unwrap();
-        let env_index_manager = &mut jit_func_entry.env_index_manager;
         let jit_env_func = jit_func_entry
             .jit_specialized_env_funcs
-            .get_mut(&env_index)
-            .unwrap();
+            .entry(env_index)
+            .or_insert_with(|| {
+                JitSpecializedEnvFunc::new(
+                    self.module_id,
+                    global_manager,
+                    self.module.funcs.get(func_id).unwrap(),
+                    env_index,
+                    self.env_index_managers.get(&func_id).unwrap(),
+                    jit_ctx,
+                )
+            });
 
         let jit_func = JitSpecializedArgFunc::new(
             self.module_id,
@@ -230,7 +254,7 @@ impl JitModule {
                 &self.func_to_globals,
                 &self.func_types,
                 global_manager,
-                env_index_manager,
+                &mut self.env_index_managers,
                 jit_ctx,
             )
     }
@@ -246,7 +270,6 @@ impl JitModule {
         jit_ctx: &mut JitCtx,
     ) -> Module {
         let jit_func_entry = self.jit_funcs.get_mut(&func_id).unwrap();
-        let env_index_manager = &mut jit_func_entry.env_index_manager;
         let jit_func = jit_func_entry
             .jit_specialized_env_funcs
             .get_mut(&env_index)
@@ -261,7 +284,7 @@ impl JitModule {
             bb_id,
             index,
             global_manager,
-            env_index_manager,
+            &mut self.env_index_managers,
             jit_ctx,
             false,
         )
@@ -280,7 +303,6 @@ impl JitModule {
         source_index: usize,
     ) -> Option<Module> {
         let jit_func_entry = self.jit_funcs.get_mut(&func_id).unwrap();
-        let env_index_manager = &mut jit_func_entry.env_index_manager;
         let jit_func = jit_func_entry
             .jit_specialized_env_funcs
             .get_mut(&env_index)
@@ -292,7 +314,7 @@ impl JitModule {
             &self.func_to_globals,
             &self.func_types,
             global_manager,
-            env_index_manager,
+            &mut self.env_index_managers,
             jit_ctx,
             bb_id,
             kind,

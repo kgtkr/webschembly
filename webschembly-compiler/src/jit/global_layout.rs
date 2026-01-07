@@ -76,7 +76,6 @@ impl EnvIndexManager {
             VecMapEq::from(VecMap::default()),
             GLOBAL_LAYOUT_DEFAULT_INDEX,
         );
-        // TODO: index_to_table_globalのデフォルト値
 
         Self {
             env_types_to_index,
@@ -88,32 +87,36 @@ impl EnvIndexManager {
         &mut self,
         env_types: &VecMap<usize, ValType>,
         global_manager: &mut GlobalManager,
-    ) -> Option<(Global, usize, IndexFlag)> {
+    ) -> Option<(Option<Global>, usize, IndexFlag)> {
         if let Some(&index) = self
             .env_types_to_index
             .get_by_left(VecMapEq::from_ref(env_types))
         {
-            let global = *self.index_to_table_global.get(&index).unwrap();
-            Some((global.to_import(), index, IndexFlag::ExistingInstance))
+            let global = self.index_to_table_global.get(&index);
+            debug_assert!(index == GLOBAL_LAYOUT_DEFAULT_INDEX || global.is_some());
+            Some((global.copied(), index, IndexFlag::ExistingInstance))
         } else if self.env_types_to_index.len() < GLOBAL_LAYOUT_MAX_SIZE {
             let index = self.env_types_to_index.len();
             self.env_types_to_index
                 .insert(env_types.clone().into(), index);
             let global = global_manager.gen_global(LocalType::EntrypointTable);
             self.index_to_table_global.insert(index, global);
-            Some((global, index, IndexFlag::NewInstance))
+            Some((Some(global), index, IndexFlag::NewInstance))
         } else {
             None
         }
     }
 
-    pub fn env_types(&self, index: usize) -> (&VecMap<usize, ValType>, Global) {
+    pub fn env_types(&self, index: usize) -> (&VecMap<usize, ValType>, Option<Global>) {
+        debug_assert!(
+            index == GLOBAL_LAYOUT_DEFAULT_INDEX || self.index_to_table_global.contains_key(&index)
+        );
         (
             self.env_types_to_index
                 .get_by_right(&index)
                 .unwrap()
                 .as_inner(),
-            self.index_to_table_global.get(&index).unwrap().to_import(),
+            self.index_to_table_global.get(&index).copied(),
         )
     }
 }
