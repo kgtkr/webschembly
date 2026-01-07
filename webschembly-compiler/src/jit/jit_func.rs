@@ -829,7 +829,7 @@ impl JitSpecializedArgFunc {
                                         }
                                     })
                             {
-                                env_types_for_manager.push(typed_obj.typ);
+                                env_types_for_manager.insert(i, typed_obj.typ);
                                 new_env_types.push(LocalType::from(typed_obj.typ));
                                 if envs[i].is_some() {
                                     new_envs.push(Some(typed_obj.val_local));
