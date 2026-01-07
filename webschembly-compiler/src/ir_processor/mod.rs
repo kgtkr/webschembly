@@ -4,3 +4,4 @@ pub mod desugar;
 pub mod optimizer;
 pub mod ssa;
 pub mod ssa_optimizer;
+pub mod register_allocation;

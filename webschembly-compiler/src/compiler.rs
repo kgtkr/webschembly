@@ -5,6 +5,7 @@ use crate::ir_generator::GlobalManager;
 use crate::ir_processor::desugar::desugar;
 use crate::ir_processor::optimizer::remove_unreachable_bb;
 use crate::ir_processor::optimizer::remove_unused_local;
+use crate::ir_processor::register_allocation::register_allocation;
 use crate::ir_processor::ssa::split_critical_edges;
 use crate::ir_processor::ssa::{debug_assert_ssa, remove_phi};
 use crate::ir_processor::ssa_optimizer::ModuleInliner;
@@ -269,7 +270,7 @@ fn postprocess(module: &mut ir::Module, global_manager: &mut GlobalManager) {
 
         split_critical_edges(func);
         remove_phi(func);
-        // TODO: レジスタ割り付け
+        register_allocation(func);
 
         remove_unused_local(func);
     }
