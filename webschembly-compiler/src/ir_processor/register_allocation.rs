@@ -71,12 +71,9 @@ pub fn register_allocation(func: &mut Func) {
         let mut register_to_local_id: FxHashMap<usize, LocalId> = FxHashMap::default();
 
         for (local, reg) in allocation {
-            let new_id = *register_to_local_id.entry(reg).or_insert_with(|| {
-                new_locals.push_with(|id| Local {
-                    id,
-                    typ: ty,
-                })
-            });
+            let new_id = *register_to_local_id
+                .entry(reg)
+                .or_insert_with(|| new_locals.push_with(|id| Local { id, typ: ty }));
             new_local_map.insert(local, new_id);
         }
     }
@@ -208,17 +205,19 @@ fn build_intervals(func: &Func) -> Vec<Interval> {
 
             // Output (Def)
             if let Some(local) = instr.local
-                && let Some(interval) = interval_map.get_mut(&local) {
-                    interval.start = pos + 1; // Allow reuse if use ends at pos
-                }
+                && let Some(interval) = interval_map.get_mut(&local)
+            {
+                interval.start = pos + 1; // Allow reuse if use ends at pos
+            }
 
             // Input (Use)
             for (local, flag) in instr.local_usages() {
                 if let LocalFlag::Used(_) = flag
-                    && let Some(interval) = interval_map.get_mut(local) {
-                        interval.end = std::cmp::max(interval.end, pos);
-                        interval.start = std::cmp::min(interval.start, blk_start);
-                    }
+                    && let Some(interval) = interval_map.get_mut(local)
+                {
+                    interval.end = std::cmp::max(interval.end, pos);
+                    interval.start = std::cmp::min(interval.start, blk_start);
+                }
             }
         }
     }
@@ -247,26 +246,11 @@ mod tests {
 
         let int_type: LocalType = Type::Val(ValType::Int).into();
 
-        let v0 = locals.push_with(|id| Local {
-            id,
-            typ: int_type,
-        });
-        let v1 = locals.push_with(|id| Local {
-            id,
-            typ: int_type,
-        });
-        let v2 = locals.push_with(|id| Local {
-            id,
-            typ: int_type,
-        });
-        let v3 = locals.push_with(|id| Local {
-            id,
-            typ: int_type,
-        });
-        let v4 = locals.push_with(|id| Local {
-            id,
-            typ: int_type,
-        });
+        let v0 = locals.push_with(|id| Local { id, typ: int_type });
+        let v1 = locals.push_with(|id| Local { id, typ: int_type });
+        let v2 = locals.push_with(|id| Local { id, typ: int_type });
+        let v3 = locals.push_with(|id| Local { id, typ: int_type });
+        let v4 = locals.push_with(|id| Local { id, typ: int_type });
 
         let instr0 = Instr {
             local: Some(v2),
