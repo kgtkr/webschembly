@@ -856,7 +856,7 @@ impl JitSpecializedArgFunc {
                             .unwrap(); // TODO: 上限に到達したときの処理
                         if env_index != GLOBAL_LAYOUT_DEFAULT_INDEX {
                             let entrypoint_table_global = entrypoint_table_global.unwrap();
-                            if index_flag == IndexFlag::NewInstance {}
+                            index_flag == IndexFlag::NewInstance;
                             let entrypoint_table_local = body_func.locals.push_with(|id| Local {
                                 id,
                                 typ: LocalType::EntrypointTable,
