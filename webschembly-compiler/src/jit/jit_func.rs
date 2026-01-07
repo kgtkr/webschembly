@@ -1,9 +1,12 @@
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use super::global_layout::{
-    BBIndexManager, ClosureArgs, ClosureGlobalLayout, GLOBAL_LAYOUT_DEFAULT_INDEX,
-    GLOBAL_LAYOUT_MAX_SIZE, IndexFlag,
+use super::bb_index_manager::{BB_LAYOUT_DEFAULT_INDEX, BBIndex, BBIndexManager};
+use super::closure_global_layout::{
+    CLOSURE_LAYOUT_DEFAULT_INDEX, CLOSURE_LAYOUT_MAX_SIZE, ClosureArgs, ClosureGlobalLayout,
+    ClosureIndex,
 };
+use super::env_index_manager::{ENV_LAYOUT_DEFAULT_INDEX, EnvIndex, EnvIndexManager};
+use super::index_flag::IndexFlag;
 use super::jit_ctx::JitCtx;
 use crate::fxbihashmap::FxBiHashMap;
 use crate::ir_generator::GlobalManager;
@@ -12,13 +15,12 @@ use crate::ir_processor::dataflow::{analyze_liveness, calc_def_use};
 use crate::ir_processor::optimizer::remove_unreachable_bb;
 use crate::ir_processor::ssa::{DefUseChain, build_ssa};
 use crate::ir_processor::ssa_optimizer::{SsaOptimizerConfig, ssa_optimize};
-use crate::jit::global_layout::EnvIndexManager;
 use vec_map::{HasId, VecMap};
 use webschembly_compiler_ir::*;
 
 #[derive(Debug)]
 pub struct JitFunc {
-    pub jit_specialized_env_funcs: FxHashMap<usize, JitSpecializedEnvFunc>,
+    pub jit_specialized_env_funcs: FxHashMap<EnvIndex, JitSpecializedEnvFunc>,
 }
 
 impl JitFunc {
@@ -34,11 +36,11 @@ impl JitFunc {
             module_id,
             global_manager,
             func,
-            GLOBAL_LAYOUT_DEFAULT_INDEX,
+            ENV_LAYOUT_DEFAULT_INDEX,
             env_index_manager,
             jit_ctx,
         );
-        jit_specialized_env_funcs.insert(GLOBAL_LAYOUT_DEFAULT_INDEX, jit_env_func);
+        jit_specialized_env_funcs.insert(ENV_LAYOUT_DEFAULT_INDEX, jit_env_func);
         Self {
             jit_specialized_env_funcs,
         }
@@ -47,7 +49,7 @@ impl JitFunc {
 
 #[derive(Debug)]
 pub struct JitSpecializedEnvFunc {
-    pub jit_specialized_arg_funcs: FxHashMap<usize, JitSpecializedArgFunc>,
+    pub jit_specialized_arg_funcs: FxHashMap<ClosureIndex, JitSpecializedArgFunc>,
     pub func: Func,
 }
 
@@ -56,7 +58,7 @@ impl JitSpecializedEnvFunc {
         module_id: JitModuleId,
         global_manager: &mut GlobalManager,
         func: &Func,
-        env_index: usize,
+        env_index: EnvIndex,
         env_index_manager: &EnvIndexManager,
         jit_ctx: &mut JitCtx,
     ) -> Self {
@@ -69,10 +71,10 @@ impl JitSpecializedEnvFunc {
             global_manager,
             &func,
             env_index,
-            GLOBAL_LAYOUT_DEFAULT_INDEX,
+            CLOSURE_LAYOUT_DEFAULT_INDEX,
             jit_ctx,
         );
-        jit_specialized_arg_funcs.insert(GLOBAL_LAYOUT_DEFAULT_INDEX, jit_func);
+        jit_specialized_arg_funcs.insert(CLOSURE_LAYOUT_DEFAULT_INDEX, jit_func);
         Self {
             jit_specialized_arg_funcs,
             func,
@@ -82,8 +84,8 @@ impl JitSpecializedEnvFunc {
 #[derive(Debug)]
 pub struct JitSpecializedArgFunc {
     module_id: JitModuleId,
-    env_index: usize,
-    func_index: usize,
+    env_index: EnvIndex,
+    func_index: ClosureIndex,
     func: Func,
     jit_bbs: VecMap<BasicBlockId, JitBB>,
 }
@@ -93,8 +95,8 @@ impl JitSpecializedArgFunc {
         module_id: JitModuleId,
         global_manager: &mut GlobalManager,
         func: &Func,
-        env_index: usize,
-        func_index: usize,
+        env_index: EnvIndex,
+        func_index: ClosureIndex,
         jit_ctx: &mut JitCtx,
     ) -> Self {
         let mut func = func.clone();
@@ -147,7 +149,7 @@ impl JitSpecializedArgFunc {
             func_to_globals,
             func_types,
             self.func.bb_entry,
-            GLOBAL_LAYOUT_DEFAULT_INDEX,
+            BB_LAYOUT_DEFAULT_INDEX,
             global_manager,
             env_index_managers,
             jit_ctx,
@@ -184,7 +186,7 @@ impl JitSpecializedArgFunc {
 
             let (_, bb_global) = self.jit_bbs[self.func.bb_entry]
                 .bb_index_manager
-                .type_args(GLOBAL_LAYOUT_DEFAULT_INDEX);
+                .type_args(BB_LAYOUT_DEFAULT_INDEX);
 
             module.funcs.push_with(|id| Func {
                 id,
@@ -251,8 +253,8 @@ impl JitSpecializedArgFunc {
                     },
                 ]);
 
-                if self.env_index == GLOBAL_LAYOUT_DEFAULT_INDEX
-                    && self.func_index == GLOBAL_LAYOUT_DEFAULT_INDEX
+                if self.env_index == ENV_LAYOUT_DEFAULT_INDEX
+                    && self.func_index == CLOSURE_LAYOUT_DEFAULT_INDEX
                 {
                     // func_to_globalsはindex=0のためのもの
                     exprs.push(Instr {
@@ -274,7 +276,7 @@ impl JitSpecializedArgFunc {
             self.add_bb_stub_func(
                 self.module_id,
                 bb_id,
-                GLOBAL_LAYOUT_DEFAULT_INDEX,
+                BB_LAYOUT_DEFAULT_INDEX,
                 &mut module,
             );
         }
@@ -286,7 +288,7 @@ impl JitSpecializedArgFunc {
         &self,
         module_id: JitModuleId,
         bb_id: BasicBlockId,
-        index: usize,
+        index: BBIndex,
         module: &mut Module,
     ) {
         let jit_bb = &self.jit_bbs[bb_id];
@@ -324,10 +326,10 @@ impl JitSpecializedArgFunc {
                             kind: InstrKind::InstantiateBB(
                                 module_id,
                                 JitFuncId::from(self.func.id),
-                                self.env_index,
-                                self.func_index,
+                                self.env_index.0,
+                                self.func_index.0,
                                 JitBasicBlockId::from(jit_bb.bb_id),
-                                index,
+                                index.0,
                             ),
                         },
                         Instr {
@@ -387,7 +389,7 @@ impl JitSpecializedArgFunc {
         func_to_globals: &VecMap<FuncId, GlobalId>,
         func_types: &VecMap<FuncId, FuncType>,
         orig_entry_bb_id: BasicBlockId,
-        index: usize,
+        index: BBIndex,
         global_manager: &mut GlobalManager,
         env_index_managers: &mut FxHashMap<FuncId, EnvIndexManager>,
         jit_ctx: &mut JitCtx,
@@ -581,12 +583,12 @@ impl JitSpecializedArgFunc {
                     kind: InstrKind::IncrementBranchCounter(
                         self.module_id,
                         JitFuncId::from(self.func.id),
-                        self.env_index,
-                        self.func_index,
+                        self.env_index.0,
+                        self.func_index.0,
                         JitBasicBlockId::from(bb_id),
                         branch_kind,
                         JitBasicBlockId::from(orig_entry_bb_id),
-                        index,
+                        index.0,
                     ),
                 });
             }
@@ -717,14 +719,14 @@ impl JitSpecializedArgFunc {
                         kind: InstrKind::EntrypointTable(_),
                     } => {
                         let mut locals = Vec::new();
-                        for index in 0..GLOBAL_LAYOUT_MAX_SIZE {
+                        for index in 0..CLOSURE_LAYOUT_MAX_SIZE {
                             let stub = body_func.locals.push_with(|id| Local {
                                 id,
                                 typ: LocalType::MutFuncRef,
                             });
                             instrs.push(Instr {
                                 local: Some(stub),
-                                kind: InstrKind::GlobalGet(jit_ctx.stub_global(index).id),
+                                kind: InstrKind::GlobalGet(jit_ctx.stub_global(ClosureIndex(index)).id),
                             });
                             locals.push(stub);
                         }
@@ -857,7 +859,7 @@ impl JitSpecializedArgFunc {
                         let (entrypoint_table_global, env_index, index_flag) = env_index_manager
                             .idx(&env_types_for_manager, global_manager)
                             .unwrap(); // TODO: 上限に到達したときの処理
-                        if env_index != GLOBAL_LAYOUT_DEFAULT_INDEX {
+                        if env_index != ENV_LAYOUT_DEFAULT_INDEX {
                             let entrypoint_table_global = entrypoint_table_global.unwrap();
                             if index_flag == IndexFlag::NewInstance {
                                 new_entrypoint_table_globals.push(entrypoint_table_global);
@@ -875,7 +877,7 @@ impl JitSpecializedArgFunc {
                                 env_types: new_env_types.clone(),
                                 module_id: *module_id,
                                 func_id: *func_id,
-                                env_index,
+                                env_index: env_index.0,
                                 entrypoint_table: entrypoint_table_local,
                                 original_entrypoint_table: *original_entrypoint_table,
                             };
@@ -987,8 +989,8 @@ impl JitSpecializedArgFunc {
                     kind: InstrKind::InstantiateClosureFunc(
                         module_id_local,
                         func_id_local,
-                        env_index_local,
-                        closure_idx,
+                        env_index_local.into(),
+                        closure_idx.0,
                     ),
                 });
                 exprs.push(Instr {
@@ -1006,7 +1008,7 @@ impl JitSpecializedArgFunc {
                 exprs.push(Instr {
                     local: None,
                     kind: InstrKind::SetEntrypointTable(
-                        closure_idx,
+                        closure_idx.0,
                         entrypoint_table_local,
                         mut_func_ref_local,
                     ),
@@ -1020,7 +1022,7 @@ impl JitSpecializedArgFunc {
                             closure: closure_local,
                             args: arg_locals,
                             arg_types,
-                            func_index: closure_idx,
+                            func_index: closure_idx.0,
                         },
                     ))),
                 });
@@ -1068,14 +1070,14 @@ impl JitSpecializedArgFunc {
 
                 for new_entrypoint_table_global in new_entrypoint_table_globals.iter() {
                     let mut entrypoint_table_locals = Vec::new();
-                    for index in 0..GLOBAL_LAYOUT_MAX_SIZE {
+                    for index in 0..CLOSURE_LAYOUT_MAX_SIZE {
                         let stub = locals.push_with(|id| Local {
                             id,
                             typ: LocalType::MutFuncRef,
                         });
                         instrs.push(Instr {
                             local: Some(stub),
-                            kind: InstrKind::GlobalGet(jit_ctx.stub_global(index).id),
+                            kind: InstrKind::GlobalGet(jit_ctx.stub_global(ClosureIndex(index)).id),
                         });
                         entrypoint_table_locals.push(stub);
                     }
@@ -1158,7 +1160,7 @@ impl JitSpecializedArgFunc {
         };
 
         for (bb_id, index) in &required_stubs {
-            self.add_bb_stub_func(self.module_id, *bb_id, *index, &mut module);
+            self.add_bb_stub_func(self.module_id, *bb_id, BBIndex(*index), &mut module);
         }
 
         module
@@ -1182,7 +1184,7 @@ impl JitSpecializedArgFunc {
                 func_to_globals,
                 func_types,
                 source_bb_id,
-                source_index,
+                BBIndex(source_index),
                 global_manager,
                 env_index_managers,
                 jit_ctx,
@@ -1200,13 +1202,13 @@ fn specialize_call_closure(
     def_use_chain: &DefUseChain,
     bbs: &VecMap<BasicBlockId, BasicBlock>,
     closure_global_layout: &mut ClosureGlobalLayout,
-    required_closure_idx: &mut Vec<usize>,
+    required_closure_idx: &mut Vec<ClosureIndex>,
 ) -> Option<InstrCallClosure> {
-    if call_closure.func_index != GLOBAL_LAYOUT_DEFAULT_INDEX {
+    if call_closure.func_index != CLOSURE_LAYOUT_DEFAULT_INDEX.0 {
         return None;
     }
 
-    // func_index == GLOBAL_LAYOUT_DEFAULT_INDEX なら引数は[Args]を仮定してよい
+    // func_index == CLOSURE_LAYOUT_DEFAULT_INDEX なら引数は[Args]を仮定してよい
     let InstrKind::VariadicArgs(args) =
         def_use_chain.get_def_non_move_expr(bbs, call_closure.args[0])?
     else {
@@ -1239,14 +1241,14 @@ fn specialize_call_closure(
     if flag == IndexFlag::NewInstance {
         required_closure_idx.push(closure_index);
     }
-    Some(if closure_index == GLOBAL_LAYOUT_DEFAULT_INDEX {
+    Some(if closure_index == CLOSURE_LAYOUT_DEFAULT_INDEX {
         call_closure.clone()
     } else {
         InstrCallClosure {
             closure: call_closure.closure,
             args: fixed_args,
             arg_types,
-            func_index: closure_index,
+            func_index: closure_index.0,
         }
     })
 }
@@ -1427,17 +1429,17 @@ fn calculate_args_to_pass(
         });
 
     if flag == IndexFlag::NewInstance {
-        required_stubs.push((callee.bb_id, index));
+        required_stubs.push((callee.bb_id, index.0));
     }
     (args_to_pass, type_args, global)
 }
 
 fn closure_func_assign_env_types(
     func: &mut Func,
-    env_index: usize,
+    env_index: EnvIndex,
     env_index_manager: &EnvIndexManager,
 ) {
-    if env_index == GLOBAL_LAYOUT_DEFAULT_INDEX {
+    if env_index == ENV_LAYOUT_DEFAULT_INDEX {
         return;
     }
 
@@ -1506,7 +1508,7 @@ fn closure_func_assign_env_types(
         kind: InstrKind::Closure {
             envs: c_envs.into_iter().map(Some).collect(),
             env_types: original_env_types.clone(),
-            env_index: GLOBAL_LAYOUT_DEFAULT_INDEX,
+            env_index: ENV_LAYOUT_DEFAULT_INDEX.0,
             module_id: closure_meta.module_id,
             func_id: closure_meta.func_id,
             entrypoint_table: c_entrypoint_table_local,
@@ -1528,7 +1530,7 @@ fn closure_func_assign_env_types(
 
 fn closure_func_assign_types(
     func: &mut Func,
-    func_index: usize,
+    func_index: ClosureIndex,
     closure_global_layout: &ClosureGlobalLayout,
 ) {
     let ClosureArgs::Specified(args_type) = closure_global_layout.arg_types(func_index) else {

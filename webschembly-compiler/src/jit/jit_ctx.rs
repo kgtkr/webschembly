@@ -1,6 +1,6 @@
 use rustc_hash::FxHashMap;
 
-use super::global_layout::ClosureGlobalLayout;
+use super::closure_global_layout::{ClosureGlobalLayout, ClosureIndex};
 use super::jit_config::JitConfig;
 use webschembly_compiler_ir::*;
 
@@ -10,9 +10,9 @@ pub struct JitCtx {
     closure_global_layout: ClosureGlobalLayout,
     // 1つ以上のモジュールがインスタンス化されているか
     is_instantiated: bool,
-    // 0..GLOBAL_LAYOUT_MAX_SIZEまでのindexに対応する関数のスタブが入ったMutFuncRef
+    // 0..CLOSURE_LAYOUT_MAX_SIZEまでのindexに対応する関数のスタブが入ったMutFuncRef
     // func_indexがインスタンス化されるときにMutFuncRefにFuncRefがセットされる
-    stub_globals: FxHashMap<usize, Global>,
+    stub_globals: FxHashMap<ClosureIndex, Global>,
     // instantiate_funcの結果を保存するグローバル
     instantiate_func_global: Option<Global>,
 }
@@ -32,7 +32,7 @@ impl JitCtx {
         self.config
     }
 
-    pub fn stub_global(&self, index: usize) -> Global {
+    pub fn stub_global(&self, index: ClosureIndex) -> Global {
         debug_assert!(self.is_instantiated);
         self.stub_globals[&index]
     }
@@ -48,7 +48,7 @@ impl JitCtx {
 
     pub fn init_instantiated(
         &mut self,
-        stub_globals: FxHashMap<usize, Global>,
+        stub_globals: FxHashMap<ClosureIndex, Global>,
         instantiate_func_global: Global,
     ) {
         debug_assert!(!self.is_instantiated);
