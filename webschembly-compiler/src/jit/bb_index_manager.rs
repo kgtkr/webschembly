@@ -23,10 +23,7 @@ impl BBIndexManager {
     pub fn new(global: Global) -> Self {
         let mut type_params_to_index = FxBiHashMap::default();
         let mut index_to_global = FxHashMap::default();
-        type_params_to_index.insert(
-            VecMapEq::from(VecMap::default()),
-            BB_LAYOUT_DEFAULT_INDEX,
-        );
+        type_params_to_index.insert(VecMapEq::from(VecMap::default()), BB_LAYOUT_DEFAULT_INDEX);
         index_to_global.insert(BB_LAYOUT_DEFAULT_INDEX, global);
         Self {
             type_params_to_index,

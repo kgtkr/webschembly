@@ -19,13 +19,16 @@ pub struct EnvIndexManager {
     index_to_table_global: FxHashMap<EnvIndex, Global>,
 }
 
+impl Default for EnvIndexManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl EnvIndexManager {
     pub fn new() -> Self {
         let mut env_types_to_index = FxBiHashMap::default();
-        env_types_to_index.insert(
-            VecMapEq::from(VecMap::default()),
-            ENV_LAYOUT_DEFAULT_INDEX,
-        );
+        env_types_to_index.insert(VecMapEq::from(VecMap::default()), ENV_LAYOUT_DEFAULT_INDEX);
 
         Self {
             env_types_to_index,

@@ -273,12 +273,7 @@ impl JitSpecializedArgFunc {
         });
 
         for bb_id in self.jit_bbs.keys() {
-            self.add_bb_stub_func(
-                self.module_id,
-                bb_id,
-                BB_LAYOUT_DEFAULT_INDEX,
-                &mut module,
-            );
+            self.add_bb_stub_func(self.module_id, bb_id, BB_LAYOUT_DEFAULT_INDEX, &mut module);
         }
 
         module
@@ -726,7 +721,9 @@ impl JitSpecializedArgFunc {
                             });
                             instrs.push(Instr {
                                 local: Some(stub),
-                                kind: InstrKind::GlobalGet(jit_ctx.stub_global(ClosureIndex(index)).id),
+                                kind: InstrKind::GlobalGet(
+                                    jit_ctx.stub_global(ClosureIndex(index)).id,
+                                ),
                             });
                             locals.push(stub);
                         }
@@ -989,7 +986,7 @@ impl JitSpecializedArgFunc {
                     kind: InstrKind::InstantiateClosureFunc(
                         module_id_local,
                         func_id_local,
-                        env_index_local.into(),
+                        env_index_local,
                         closure_idx.0,
                     ),
                 });
