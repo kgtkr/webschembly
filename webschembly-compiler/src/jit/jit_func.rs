@@ -743,6 +743,7 @@ impl JitSpecializedArgFunc {
         }
 
         remove_unreachable_bb(body_func);
+        let mut all_preamble_instrs = FxHashMap::default();
         // specialize_call_closureなどの最適化はPhi命令を処理した後に行う必要があるため最後に行う
         for bb_id in body_func.bbs.keys().collect::<Vec<_>>() {
             // ClosureSetEnvを収集する
@@ -897,6 +898,11 @@ impl JitSpecializedArgFunc {
                 }
             }
 
+            all_preamble_instrs.insert(bb_id, preamble_instrs);
+        }
+
+        // DefUseChainを壊さないために最後に追加する
+        for (bb_id, mut preamble_instrs) in all_preamble_instrs {
             body_func.bbs[bb_id]
                 .instrs
                 .splice(0..0, preamble_instrs.drain(..));
