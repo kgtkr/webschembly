@@ -7,12 +7,27 @@ use crate::ir_processor::optimizer::remove_unreachable_bb;
 const LIMIT_BB_COUNT: usize = 100;
 
 pub fn inline_module(module: &mut Module) {
+    let mut global_map = FxHashMap::default();
+    let entry_func = &module.funcs[module.entry];
+    // Scan entry function for GlobalSet with ConstantClosure
+    for bb in entry_func.bbs.values() {
+        for instr in &bb.instrs {
+            if let InstrKind::GlobalSet(global_id, val_local) = instr.kind {
+                if let LocalType::Type(Type::Val(ValType::Closure(Some(constant)))) =
+                    entry_func.locals[val_local.into()].typ
+                {
+                    global_map.insert(global_id, constant);
+                }
+            }
+        }
+    }
+
     let mut new_funcs = VecMap::new();
 
     for (func_id_usize, func) in module.funcs.iter() {
         let _func_id = FuncId::from(func_id_usize);
         let mut new_func = func.clone();
-        run_inlining(&mut new_func, module);
+        run_inlining(&mut new_func, module, &global_map);
         new_funcs.insert(func_id_usize, new_func);
     }
 
@@ -30,7 +45,11 @@ struct TailCallInfo {
     arg_phis: Vec<LocalId>,
 }
 
-fn run_inlining(func: &mut Func, module: &Module) {
+fn run_inlining(
+    func: &mut Func,
+    module: &Module,
+    global_map: &FxHashMap<GlobalId, ConstantClosure>,
+) {
     let mut ctx = InlineContext {
         module,
         tail_instances: FxHashMap::default(),
@@ -54,9 +73,21 @@ fn run_inlining(func: &mut Func, module: &Module) {
             for (idx, instr) in bb.instrs.iter().enumerate() {
                 if let InstrKind::CallClosure(call) = &instr.kind {
                     let closure_local = call.closure;
+                    let mut constant_opt = None;
+
                     if let LocalType::Type(Type::Val(ValType::Closure(Some(constant)))) =
                         func.locals[closure_local.into()].typ
                     {
+                        constant_opt = Some(constant);
+                    } else if let Some(def_instr) = find_local_def(func, closure_local) {
+                        if let InstrKind::GlobalGet(global_id) = def_instr.kind {
+                            if let Some(&constant) = global_map.get(&global_id) {
+                                constant_opt = Some(constant);
+                            }
+                        }
+                    }
+
+                    if let Some(constant) = constant_opt {
                         call_found = Some((idx, constant, call.clone()));
                         break;
                     }
@@ -91,9 +122,21 @@ fn run_inlining(func: &mut Func, module: &Module) {
             let bb = &func.bbs[bb_id.into()];
             if let TerminatorInstr::Exit(ExitInstr::TailCallClosure(call)) = bb.terminator() {
                 let closure_local = call.closure;
+                let mut constant_opt = None;
+
                 if let LocalType::Type(Type::Val(ValType::Closure(Some(constant)))) =
                     func.locals[closure_local.into()].typ
                 {
+                    constant_opt = Some(constant);
+                } else if let Some(def_instr) = find_local_def(func, closure_local) {
+                    if let InstrKind::GlobalGet(global_id) = def_instr.kind {
+                        if let Some(&constant) = global_map.get(&global_id) {
+                            constant_opt = Some(constant);
+                        }
+                    }
+                }
+
+                if let Some(constant) = constant_opt {
                     tail_call_found = Some((constant, call.clone()));
                 }
             }
@@ -133,6 +176,28 @@ fn run_inlining(func: &mut Func, module: &Module) {
             }
         }
     }
+}
+
+fn find_local_def(func: &Func, local: LocalId) -> Option<&Instr> {
+    // Simple scan for single definition (SSA-like), but inefficient.
+    // However, for GlobalGet, it's usually near the top.
+    // Optimally, use DefUseChain or similar, but we don't have it here easily.
+    // We scan all blocks? No, that's too slow.
+    // But typically instructions are defined before use in the same block or dominator.
+    // For now, scan all instructions in all blocks (very slow!).
+    // BETTER: Build a def map at start of inlining?
+    // OR: Just scan the current block backwards? GlobalGet is usually in the same block for simple code.
+    // Let's scan ALL blocks for now as a quick fix, optimizing later if needed.
+    // Actually, `webschembly_compiler_ir` might have a helper?
+    // I'll implement a simple full scan.
+    for bb in func.bbs.values() {
+        for instr in &bb.instrs {
+            if instr.local == Some(local) {
+                return Some(instr);
+            }
+        }
+    }
+    None
 }
 
 fn inline_non_tail(
@@ -274,13 +339,6 @@ fn inline_non_tail(
 
     if let Some(dst) = result_local {
         if !phi_incomings.is_empty() {
-            let id_val: usize = continuation_bb_id.into();
-            if id_val == 69 {
-                panic!(
-                    "DEBUG_INLINE_HIT_69: BEFORE INSERT: {:#?}",
-                    func.bbs[continuation_bb_id.into()].instrs
-                );
-            }
             func.bbs[continuation_bb_id.into()].instrs.insert(
                 0,
                 Instr {
@@ -291,12 +349,6 @@ fn inline_non_tail(
                     },
                 },
             );
-            if id_val == 69 {
-                panic!(
-                    "DEBUG_INLINE_HIT_69: AFTER INSERT: {:#?}",
-                    func.bbs[continuation_bb_id.into()].instrs
-                );
-            }
         }
     }
 
