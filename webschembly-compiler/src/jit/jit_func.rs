@@ -612,6 +612,10 @@ impl JitSpecializedArgFunc {
                     if let Some(&InstrKind::ToObj(typ, val_local)) =
                         def_use_chain.get_def_non_move_expr(&body_func.bbs, obj_local)
                     {
+                        let mut typ = typ;
+                        if let LocalType::Type(Type::Val(t)) = body_func.locals[val_local].typ {
+                            typ = t;
+                        }
                         Some(TypedObj { typ, val_local })
                     } else {
                         typed_objs.get(&obj_local).copied()
@@ -762,6 +766,7 @@ impl JitSpecializedArgFunc {
                         call_closure,
                         &def_use_chain,
                         &body_func.bbs,
+                        &body_func.locals,
                         jit_ctx.closure_global_layout(),
                         &mut required_closure_idx,
                     ) =>
@@ -779,6 +784,7 @@ impl JitSpecializedArgFunc {
                         call_closure,
                         &def_use_chain,
                         &body_func.bbs,
+                        &body_func.locals,
                         jit_ctx.closure_global_layout(),
                         &mut required_closure_idx,
                     ) =>
@@ -822,6 +828,12 @@ impl JitSpecializedArgFunc {
                                             def_use_chain
                                                 .get_def_non_move_expr(&body_func.bbs, value_local)
                                         {
+                                            let mut typ = typ;
+                                            if let LocalType::Type(Type::Val(t)) =
+                                                body_func.locals[val_local].typ
+                                            {
+                                                typ = t;
+                                            }
                                             Some(TypedObj { typ, val_local })
                                         } else {
                                             None
@@ -1207,6 +1219,7 @@ fn specialize_call_closure(
     call_closure: &InstrCallClosure,
     def_use_chain: &DefUseChain,
     bbs: &VecMap<BasicBlockId, BasicBlock>,
+    locals: &VecMap<LocalId, Local>,
     closure_global_layout: &mut ClosureGlobalLayout,
     required_closure_idx: &mut Vec<ClosureArgIndex>,
 ) -> Option<InstrCallClosure> {
@@ -1228,6 +1241,10 @@ fn specialize_call_closure(
             def_use_chain.get_def_non_move_expr(bbs, obj_arg)
         {
             fixed_args.push(val_local);
+            let mut typ = typ;
+            if let LocalType::Type(Type::Val(t)) = locals[val_local].typ {
+                typ = t;
+            }
             fixed_arg_types.push(Type::from(typ));
         } else {
             fixed_args.push(obj_arg);

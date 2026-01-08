@@ -371,7 +371,8 @@ pub fn constant_folding(
                     if let Some(&InstrKind::ToObj(typ2, _)) =
                         def_use.get_def_non_move_expr(&func.bbs, src) =>
                 {
-                    func.bbs[*bb_id].instrs[expr_idx].kind = InstrKind::Bool(typ1 == typ2);
+                    func.bbs[*bb_id].instrs[expr_idx].kind =
+                        InstrKind::Bool(typ1.remove_constant() == typ2.remove_constant());
                 }
                 InstrKind::ClosureEnv(_, closure, index)
                     if let Some(InstrKind::Closure { envs, .. }) =
