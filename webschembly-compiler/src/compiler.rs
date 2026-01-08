@@ -273,6 +273,8 @@ fn postprocess(module: &mut ir::Module, global_manager: &mut GlobalManager) {
         register_allocation(func);
 
         remove_unused_local(func);
+
+        crate::ir_processor::remove_constant::remove_constant(func);
     }
 
     // モジュールごとにグローバルを真面目に管理するのは大変なのでここで計算

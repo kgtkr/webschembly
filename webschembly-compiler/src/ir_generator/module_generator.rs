@@ -559,7 +559,12 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             ast::Expr::Lambda(x, lambda) => {
                 let func_id = self.module_generator.gen_func(x, ast.span, lambda);
                 let func_local = self.builder.local(LocalType::FuncRef);
-                let val_type_local = self.builder.local(Type::Val(ValType::Closure(None)));
+                let val_type_local = self.builder.local(Type::Val(ValType::Closure(Some(
+                    ConstantClosure {
+                        func_id: JitFuncId::from(func_id),
+                        env_index: ClosureEnvIndex(0),
+                    },
+                ))));
                 self.builder.exprs.push(Instr {
                     local: Some(func_local),
                     kind: InstrKind::FuncRef(func_id),
@@ -617,7 +622,13 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 });
                 self.builder.exprs.push(Instr {
                     local: result,
-                    kind: InstrKind::ToObj(ValType::Closure(None), val_type_local),
+                    kind: InstrKind::ToObj(
+                        ValType::Closure(Some(ConstantClosure {
+                            func_id: JitFuncId::from(func_id),
+                            env_index: ClosureEnvIndex(0),
+                        })),
+                        val_type_local,
+                    ),
                 });
             }
             ast::Expr::If(_, ast::If { cond, then, els }) => {
