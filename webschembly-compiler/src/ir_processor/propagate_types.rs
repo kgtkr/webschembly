@@ -56,12 +56,14 @@ pub fn propagate_types(func: &mut Func) {
                 if let Some(dest) = instr.local {
                     let old_val = *lattice.get(dest).unwrap_or(&LatticeValue::Top);
                     let new_val = match &instr.kind {
+                        /*
                         InstrKind::Closure {
                             func_id, env_index, ..
                         } => LatticeValue::Constant(ConstantClosure {
                             func_id: *func_id,
                             env_index: ClosureEnvIndex(*env_index),
                         }),
+                        */
                         InstrKind::Move(src) => *lattice.get(*src).unwrap_or(&LatticeValue::Top),
                         InstrKind::Phi {
                             incomings,

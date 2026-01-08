@@ -883,6 +883,7 @@ impl JitSpecializedArgFunc {
                             if let Some(local) = body_func.bbs[bb_id].instrs[instr_idx].local {
                                 body_func.locals[local].typ =
                                     (ValType::Closure(Some(ConstantClosure {
+                                        module_id: *module_id,
                                         func_id: *func_id,
                                         env_index: ClosureEnvIndex(env_index.0),
                                     })))

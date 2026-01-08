@@ -562,6 +562,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 let val_type_local =
                     self.builder
                         .local(Type::Val(ValType::Closure(Some(ConstantClosure {
+                            module_id: self.module_generator.id,
                             func_id: JitFuncId::from(func_id),
                             env_index: ClosureEnvIndex(0),
                         }))));

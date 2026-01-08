@@ -209,6 +209,7 @@ impl fmt::Display for Display<'_, BBIndex> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ConstantClosure {
+    pub module_id: JitModuleId,
     pub func_id: JitFuncId,
     pub env_index: ClosureEnvIndex,
 }
@@ -223,7 +224,8 @@ impl fmt::Display for Display<'_, ConstantClosure> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "constant_closure({}, {})",
+            "constant_closure({}, {}, {})",
+            self.value.module_id.display(self.meta),
             self.value.func_id.display(self.meta),
             self.value.env_index.display(self.meta)
         )
