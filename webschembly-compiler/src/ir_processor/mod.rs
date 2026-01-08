@@ -1,6 +1,7 @@
 pub mod cfg_analyzer;
 pub mod dataflow;
 pub mod desugar;
+pub mod inline;
 pub mod optimizer;
 pub mod propagate_types;
 pub mod register_allocation;

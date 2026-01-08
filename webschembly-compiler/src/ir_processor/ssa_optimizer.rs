@@ -449,7 +449,7 @@ impl Default for SsaOptimizerConfig {
         SsaOptimizerConfig {
             enable_cse: true,
             enable_dce: true,
-            enable_inlining: false, // true,
+            enable_inlining: true,
             iterations: 5,
         }
     }

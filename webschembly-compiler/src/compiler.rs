@@ -8,9 +8,7 @@ use crate::ir_processor::optimizer::remove_unused_local;
 use crate::ir_processor::register_allocation::register_allocation;
 use crate::ir_processor::ssa::split_critical_edges;
 use crate::ir_processor::ssa::{debug_assert_ssa, remove_phi};
-use crate::ir_processor::ssa_optimizer::ModuleInliner;
 use crate::ir_processor::ssa_optimizer::SsaOptimizerConfig;
-use crate::ir_processor::ssa_optimizer::inlining;
 use crate::ir_processor::ssa_optimizer::ssa_optimize;
 use crate::jit::{Jit, JitConfig};
 use crate::lexer;
@@ -243,13 +241,8 @@ fn preprocess_module(module: &mut ir::Module) {
 }
 
 fn optimize_module(module: &mut ir::Module, config: SsaOptimizerConfig) {
-    let mut module_inliner = ModuleInliner::new(module);
-    let n = 5;
-    for i in 0..n {
-        if config.enable_inlining {
-            // inliningはInstrKind::Closureのfunc_idに依存しているので、JIT後のモジュールには使えない
-            inlining(module, &mut module_inliner, i == n - 1);
-        }
+    let n = 10;
+    for _ in 0..n {
         for func in module.funcs.values_mut() {
             ssa_optimize(
                 func,
@@ -258,6 +251,9 @@ fn optimize_module(module: &mut ir::Module, config: SsaOptimizerConfig) {
                     ..config
                 },
             );
+        }
+        if config.enable_inlining {
+            crate::ir_processor::inline::inline_module(module);
         }
     }
 }
