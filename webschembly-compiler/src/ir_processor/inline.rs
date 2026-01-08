@@ -15,9 +15,9 @@ pub fn inline_module(module: &mut Module) {
             if let InstrKind::GlobalSet(global_id, val_local) = instr.kind
                 && let LocalType::Type(Type::Val(ValType::Closure(Some(constant)))) =
                     entry_func.locals[val_local].typ
-                {
-                    global_map.insert(global_id, constant);
-                }
+            {
+                global_map.insert(global_id, constant);
+            }
         }
     }
 
@@ -80,9 +80,10 @@ fn run_inlining(
                         constant_opt = Some(constant);
                     } else if let Some(def_instr) = find_local_def(func, closure_local)
                         && let InstrKind::GlobalGet(global_id) = def_instr.kind
-                            && let Some(&constant) = global_map.get(&global_id) {
-                                constant_opt = Some(constant);
-                            }
+                        && let Some(&constant) = global_map.get(&global_id)
+                    {
+                        constant_opt = Some(constant);
+                    }
 
                     if let Some(constant) = constant_opt {
                         call_found = Some((idx, constant, call.clone()));
@@ -127,9 +128,10 @@ fn run_inlining(
                     constant_opt = Some(constant);
                 } else if let Some(def_instr) = find_local_def(func, closure_local)
                     && let InstrKind::GlobalGet(global_id) = def_instr.kind
-                        && let Some(&constant) = global_map.get(&global_id) {
-                            constant_opt = Some(constant);
-                        }
+                    && let Some(&constant) = global_map.get(&global_id)
+                {
+                    constant_opt = Some(constant);
+                }
 
                 if let Some(constant) = constant_opt {
                     tail_call_found = Some((constant, call.clone()));
@@ -209,9 +211,7 @@ fn inline_non_tail(
     let continuation_bb_id = continuation_bb_id;
     let original_terminator = func.bbs[caller_bb_id].terminator().clone();
 
-    let instrs_after = func.bbs[caller_bb_id]
-        .instrs
-        .split_off(instr_idx + 1);
+    let instrs_after = func.bbs[caller_bb_id].instrs.split_off(instr_idx + 1);
     func.bbs[caller_bb_id].instrs.pop();
 
     func.bbs.insert_node(BasicBlock {
@@ -268,9 +268,10 @@ fn inline_non_tail(
         for instr in &old_bb.instrs {
             let mut new_instr = instr.clone();
             if let Some(local) = new_instr.local
-                && let Some(&mapped) = local_map.get(&local) {
-                    new_instr.local = Some(mapped);
-                }
+                && let Some(&mapped) = local_map.get(&local)
+            {
+                new_instr.local = Some(mapped);
+            }
             rewrite_usages(&mut new_instr.kind, &local_map);
             for bb_ref in new_instr.kind.bb_ids_mut() {
                 if let Some(&mapped) = bb_map.get(bb_ref) {
@@ -332,18 +333,19 @@ fn inline_non_tail(
     }
 
     if let Some(dst) = result_local
-        && !phi_incomings.is_empty() {
-            func.bbs[continuation_bb_id].instrs.insert(
-                0,
-                Instr {
-                    local: Some(dst),
-                    kind: InstrKind::Phi {
-                        incomings: phi_incomings,
-                        non_exhaustive: false,
-                    },
+        && !phi_incomings.is_empty()
+    {
+        func.bbs[continuation_bb_id].instrs.insert(
+            0,
+            Instr {
+                local: Some(dst),
+                kind: InstrKind::Phi {
+                    incomings: phi_incomings,
+                    non_exhaustive: false,
                 },
-            );
-        }
+            },
+        );
+    }
 
     let new_entry_id = bb_map[&callee.bb_entry];
 
@@ -381,13 +383,14 @@ fn inline_tail(
             let entry_bb = &mut func.bbs[info.entry_bb];
             for instr in &mut entry_bb.instrs {
                 if let InstrKind::Phi { incomings, .. } = &mut instr.kind
-                    && instr.local == Some(phi_local) {
-                        incomings.push(PhiIncomingValue {
-                            local: val,
-                            bb: caller_bb_id,
-                        });
-                        break;
-                    }
+                    && instr.local == Some(phi_local)
+                {
+                    incomings.push(PhiIncomingValue {
+                        local: val,
+                        bb: caller_bb_id,
+                    });
+                    break;
+                }
             }
         }
         *func.bbs[caller_bb_id].terminator_mut() = TerminatorInstr::Jump(info.entry_bb);
@@ -464,9 +467,10 @@ fn inline_tail(
         for instr in &old_bb.instrs {
             let mut new_instr = instr.clone();
             if let Some(local) = new_instr.local
-                && let Some(&mapped) = local_map.get(&local) {
-                    new_instr.local = Some(mapped);
-                }
+                && let Some(&mapped) = local_map.get(&local)
+            {
+                new_instr.local = Some(mapped);
+            }
             rewrite_usages(&mut new_instr.kind, &local_map);
             for bb_ref in new_instr.kind.bb_ids_mut() {
                 if let Some(&mapped) = bb_map.get(bb_ref) {
