@@ -7,8 +7,8 @@ use super::jit_func::{JitFunc, JitSpecializedArgFunc};
 use crate::ir_generator::GlobalManager;
 use crate::jit::jit_func::JitSpecializedEnvFunc;
 use vec_map::{HasId, VecMap};
-use webschembly_compiler_ir::{BBIndex, ClosureArgIndex, ClosureEnvIndex};
 use webschembly_compiler_ir::*;
+use webschembly_compiler_ir::{BBIndex, ClosureArgIndex, ClosureEnvIndex};
 #[derive(Debug)]
 pub struct JitModule {
     module_id: JitModuleId,

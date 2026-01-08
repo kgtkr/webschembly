@@ -1,15 +1,14 @@
 use crate::ir_generator::GlobalManager;
 use vec_map::VecMap;
 
-
 mod jit_config;
 mod jit_module;
 pub use jit_config::JitConfig;
 use jit_module::JitModule;
 mod jit_ctx;
 use jit_ctx::JitCtx;
-use webschembly_compiler_ir::{BBIndex, ClosureArgIndex, ClosureEnvIndex};
 use webschembly_compiler_ir::*;
+use webschembly_compiler_ir::{BBIndex, ClosureArgIndex, ClosureEnvIndex};
 pub mod bb_index_manager;
 
 pub mod closure_global_layout;
@@ -57,7 +56,6 @@ impl Jit {
         self.jit_module[module_id].instantiate_func(
             global_manager,
             func_id,
-
             env_index,
             func_index,
             &mut self.ctx,
