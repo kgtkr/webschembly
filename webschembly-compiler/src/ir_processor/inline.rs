@@ -116,6 +116,23 @@ fn run_inlining(func: &mut Func, module: &Module) {
         func.bbs.iter().count()
     );
     remove_unreachable_bb(func);
+
+    // Verify Phi position
+    for (id, bb) in func.bbs.iter() {
+        let mut phi_mode = true;
+        for (idx, instr) in bb.instrs.iter().enumerate() {
+            if let InstrKind::Phi { .. } = instr.kind {
+                if !phi_mode {
+                    panic!(
+                        "INLINE_MODULE_END: Phi at non-start! BB: {:?}, Index: {}, Instrs: {:#?}",
+                        id, idx, bb.instrs
+                    );
+                }
+            } else if !matches!(instr.kind, InstrKind::Nop) {
+                phi_mode = false;
+            }
+        }
+    }
 }
 
 fn inline_non_tail(
@@ -257,6 +274,13 @@ fn inline_non_tail(
 
     if let Some(dst) = result_local {
         if !phi_incomings.is_empty() {
+            let id_val: usize = continuation_bb_id.into();
+            if id_val == 69 {
+                panic!(
+                    "DEBUG_INLINE_HIT_69: BEFORE INSERT: {:#?}",
+                    func.bbs[continuation_bb_id.into()].instrs
+                );
+            }
             func.bbs[continuation_bb_id.into()].instrs.insert(
                 0,
                 Instr {
@@ -267,10 +291,17 @@ fn inline_non_tail(
                     },
                 },
             );
+            if id_val == 69 {
+                panic!(
+                    "DEBUG_INLINE_HIT_69: AFTER INSERT: {:#?}",
+                    func.bbs[continuation_bb_id.into()].instrs
+                );
+            }
         }
     }
 
     let new_entry_id = bb_map[&callee.bb_entry];
+
     log::debug!(
         "Inlining non-tail: Caller {:?} -> Cont {:?}, Entry {:?}",
         caller_bb_id,

@@ -1081,6 +1081,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     if let ir::InstrKind::Terminator(..) = expr.kind {
                         debug_assert!(expr.local.is_none());
                         debug_assert_eq!(i, bb.instrs.len() - 1);
+                        // debug_assert_eq!(i, bb.instrs.len() - 1);
                     } else {
                         self.gen_assign(function, expr);
                     }
