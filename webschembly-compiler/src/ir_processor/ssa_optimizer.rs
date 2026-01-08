@@ -4,7 +4,7 @@ use crate::ir_processor::{
     cfg_analyzer::{DomTreeNode, build_dom_tree, calc_doms, calc_predecessors, calculate_rpo},
     optimizer::remove_unreachable_bb,
     propagate_types::propagate_types,
-    ssa::{debug_assert_ssa, DefUseChain},
+    ssa::{DefUseChain, debug_assert_ssa},
 };
 use vec_map::VecMap;
 use webschembly_compiler_ir::*;

@@ -622,10 +622,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 });
                 self.builder.exprs.push(Instr {
                     local: result,
-                    kind: InstrKind::ToObj(
-                        ValType::Closure(None),
-                        val_type_local,
-                    ),
+                    kind: InstrKind::ToObj(ValType::Closure(None), val_type_local),
                 });
             }
             ast::Expr::If(_, ast::If { cond, then, els }) => {
