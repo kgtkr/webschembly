@@ -6,3 +6,4 @@ pub mod register_allocation;
 pub mod ssa;
 pub mod ssa_optimizer;
 pub mod remove_constant;
+pub mod propagate_types;

@@ -1,5 +1,4 @@
 use webschembly_compiler_ir::Func;
-use webschembly_compiler_ir::InstrKind;
 
 pub fn remove_constant(func: &mut Func) {
     for local in func.locals.values_mut() {

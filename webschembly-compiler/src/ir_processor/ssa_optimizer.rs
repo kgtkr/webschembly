@@ -3,7 +3,8 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use crate::ir_processor::{
     cfg_analyzer::{DomTreeNode, build_dom_tree, calc_doms, calc_predecessors, calculate_rpo},
     optimizer::remove_unreachable_bb,
-    ssa::{DefUseChain, debug_assert_ssa},
+    propagate_types::propagate_types,
+    ssa::{debug_assert_ssa, DefUseChain},
 };
 use vec_map::VecMap;
 use webschembly_compiler_ir::*;
@@ -461,6 +462,8 @@ pub fn ssa_optimize(func: &mut Func, config: SsaOptimizerConfig) {
     let predecessors = calc_predecessors(&func.bbs);
     let doms = calc_doms(&func.bbs, &rpo, func.bb_entry, &predecessors);
     let dom_tree = build_dom_tree(&func.bbs, &rpo, func.bb_entry, &doms);
+
+    propagate_types(func);
 
     for _ in 0..config.iterations {
         debug_assert_ssa(func);

@@ -868,6 +868,14 @@ impl JitSpecializedArgFunc {
                                 local: Some(entrypoint_table_local),
                                 kind: InstrKind::GlobalGet(entrypoint_table_global.id),
                             });
+                            if let Some(local) = body_func.bbs[bb_id].instrs[instr_idx].local {
+                                body_func.locals[local].typ =
+                                    (ValType::Closure(Some(ConstantClosure {
+                                        func_id: *func_id,
+                                        env_index: ClosureEnvIndex(env_index.0),
+                                    })))
+                                    .into();
+                            }
                             body_func.bbs[bb_id].instrs[instr_idx].kind = InstrKind::Closure {
                                 envs: new_envs,
                                 env_types: new_env_types.clone(),
@@ -1073,7 +1081,9 @@ impl JitSpecializedArgFunc {
                         });
                         instrs.push(Instr {
                             local: Some(stub),
-                            kind: InstrKind::GlobalGet(jit_ctx.stub_global(ClosureArgIndex(index)).id),
+                            kind: InstrKind::GlobalGet(
+                                jit_ctx.stub_global(ClosureArgIndex(index)).id,
+                            ),
                         });
                         entrypoint_table_locals.push(stub);
                     }
