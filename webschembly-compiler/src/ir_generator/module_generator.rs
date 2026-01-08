@@ -623,10 +623,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 self.builder.exprs.push(Instr {
                     local: result,
                     kind: InstrKind::ToObj(
-                        ValType::Closure(Some(ConstantClosure {
-                            func_id: JitFuncId::from(func_id),
-                            env_index: ClosureEnvIndex(0),
-                        })),
+                        ValType::Closure(None),
                         val_type_local,
                     ),
                 });
