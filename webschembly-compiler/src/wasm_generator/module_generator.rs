@@ -931,7 +931,7 @@ impl<'a> ModuleGenerator<'a> {
                     nullable: true,
                     heap_type: HeapType::Concrete(self.cons_type),
                 }),
-                ir::ValType::Closure => ValType::Ref(RefType {
+                ir::ValType::Closure(_) => ValType::Ref(RefType {
                     nullable: true,
                     heap_type: HeapType::Concrete(self.closure_type),
                 }),
@@ -979,7 +979,7 @@ impl<'a> ModuleGenerator<'a> {
             ir::LocalType::Type(ir::Type::Val(ir::ValType::Cons)) => {
                 Instruction::RefNull(HeapType::Concrete(self.cons_type))
             }
-            ir::LocalType::Type(ir::Type::Val(ir::ValType::Closure)) => {
+            ir::LocalType::Type(ir::Type::Val(ir::ValType::Closure(_))) => {
                 Instruction::RefNull(HeapType::Concrete(self.closure_type))
             }
             ir::LocalType::Type(ir::Type::Val(ir::ValType::Vector)) => {
@@ -1488,7 +1488,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                         self.module_generator.cons_type,
                     )));
                 }
-                ir::ValType::Closure => {
+                ir::ValType::Closure(_) => {
                     function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
                     function.instruction(&Instruction::RefCastNonNull(HeapType::Concrete(
                         self.module_generator.closure_type,
@@ -1551,7 +1551,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 ir::ValType::Cons => {
                     function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
                 }
-                ir::ValType::Closure => {
+                ir::ValType::Closure(_) => {
                     function.instruction(&Instruction::LocalGet(self.local_id_to_idx(*val)));
                 }
                 ir::ValType::Vector => {
@@ -1699,7 +1699,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                         ir::ValType::Symbol => self.module_generator.symbol_type,
                         ir::ValType::Nil => self.module_generator.nil_type,
                         ir::ValType::Cons => self.module_generator.cons_type,
-                        ir::ValType::Closure => self.module_generator.closure_type,
+                        ir::ValType::Closure(_) => self.module_generator.closure_type,
                         ir::ValType::Vector => self.module_generator.vector_type,
                         ir::ValType::UVector(kind) => {
                             self.module_generator.uvector_kind_to_type_idx(*kind)

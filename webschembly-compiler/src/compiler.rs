@@ -133,8 +133,8 @@ impl Compiler {
             &mut self.global_manager,
             module_id,
             func_id,
-            crate::jit::env_index_manager::EnvIndex(env_index),
-            crate::jit::closure_global_layout::ClosureIndex(func_index),
+            ir::ClosureEnvIndex(env_index),
+            ir::ClosureArgIndex(func_index),
         );
 
         preprocess_module(&mut module);
@@ -167,10 +167,10 @@ impl Compiler {
         let mut module = jit.instantiate_bb(
             module_id,
             func_id,
-            crate::jit::env_index_manager::EnvIndex(env_index),
-            crate::jit::closure_global_layout::ClosureIndex(func_index),
+            ir::ClosureEnvIndex(env_index),
+            ir::ClosureArgIndex(func_index),
             bb_id,
-            crate::jit::bb_index_manager::BBIndex(index),
+            ir::BBIndex(index),
             &mut self.global_manager,
         );
         preprocess_module(&mut module);
@@ -211,12 +211,12 @@ impl Compiler {
             &mut self.global_manager,
             module_id,
             func_id,
-            crate::jit::env_index_manager::EnvIndex(env_index),
-            crate::jit::closure_global_layout::ClosureIndex(func_index),
+            ir::ClosureEnvIndex(env_index),
+            ir::ClosureArgIndex(func_index),
             bb_id,
             kind,
             ir::BasicBlockId::from(source_bb_id),
-            crate::jit::bb_index_manager::BBIndex(source_index),
+            ir::BBIndex(source_index),
         )
         .map(|mut module| {
             preprocess_module(&mut module);
