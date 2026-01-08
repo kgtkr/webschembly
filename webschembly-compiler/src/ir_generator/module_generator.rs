@@ -253,6 +253,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             locals: self.builder.locals,
             bb_entry,
             bbs: self.builder.bbs,
+            closure_meta: None,
         }
     }
 
@@ -393,6 +394,11 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             locals: self.builder.locals,
             bb_entry,
             bbs: self.builder.bbs,
+            closure_meta: Some(ClosureFuncMeta {
+                env_types,
+                module_id: self.module_generator.id,
+                func_id: self.id.into(),
+            }),
         }
     }
 
@@ -603,8 +609,10 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                         envs: captures,
                         env_types,
                         func_id: JitFuncId::from(func_id),
+                        env_index: 0,
                         module_id: self.module_generator.id,
                         entrypoint_table: entrypoint_table_local,
+                        original_entrypoint_table: entrypoint_table_local,
                     },
                 });
                 self.builder.exprs.push(Instr {

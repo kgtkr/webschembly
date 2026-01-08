@@ -1,9 +1,12 @@
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use super::global_layout::{
-    BBIndexManager, ClosureArgs, ClosureGlobalLayout, GLOBAL_LAYOUT_DEFAULT_INDEX,
-    GLOBAL_LAYOUT_MAX_SIZE, IndexFlag,
+use super::bb_index_manager::{BB_LAYOUT_DEFAULT_INDEX, BBIndex, BBIndexManager};
+use super::closure_global_layout::{
+    CLOSURE_LAYOUT_DEFAULT_INDEX, CLOSURE_LAYOUT_MAX_SIZE, ClosureArgs, ClosureGlobalLayout,
+    ClosureIndex,
 };
+use super::env_index_manager::{ENV_LAYOUT_DEFAULT_INDEX, EnvIndex, EnvIndexManager};
+use super::index_flag::IndexFlag;
 use super::jit_ctx::JitCtx;
 use crate::fxbihashmap::FxBiHashMap;
 use crate::ir_generator::GlobalManager;
@@ -16,19 +19,84 @@ use vec_map::{HasId, VecMap};
 use webschembly_compiler_ir::*;
 
 #[derive(Debug)]
-pub struct JitSpecializedFunc {
-    module_id: JitModuleId,
-    func_index: usize,
-    func: Func,
-    jit_bbs: VecMap<BasicBlockId, JitBB>,
+pub struct JitFunc {
+    pub jit_specialized_env_funcs: FxHashMap<EnvIndex, JitSpecializedEnvFunc>,
 }
 
-impl JitSpecializedFunc {
+impl JitFunc {
+    pub fn new(
+        global_manager: &mut GlobalManager,
+        module_id: JitModuleId,
+        jit_ctx: &mut JitCtx,
+        func: &Func,
+        env_index_manager: &EnvIndexManager,
+    ) -> Self {
+        let mut jit_specialized_env_funcs = FxHashMap::default();
+        let jit_env_func = JitSpecializedEnvFunc::new(
+            module_id,
+            global_manager,
+            func,
+            ENV_LAYOUT_DEFAULT_INDEX,
+            env_index_manager,
+            jit_ctx,
+        );
+        jit_specialized_env_funcs.insert(ENV_LAYOUT_DEFAULT_INDEX, jit_env_func);
+        Self {
+            jit_specialized_env_funcs,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct JitSpecializedEnvFunc {
+    pub jit_specialized_arg_funcs: FxHashMap<ClosureIndex, JitSpecializedArgFunc>,
+    pub func: Func,
+}
+
+impl JitSpecializedEnvFunc {
     pub fn new(
         module_id: JitModuleId,
         global_manager: &mut GlobalManager,
         func: &Func,
-        func_index: usize,
+        env_index: EnvIndex,
+        env_index_manager: &EnvIndexManager,
+        jit_ctx: &mut JitCtx,
+    ) -> Self {
+        let mut func = func.clone();
+        closure_func_assign_env_types(&mut func, env_index, env_index_manager);
+
+        let mut jit_specialized_arg_funcs = FxHashMap::default();
+        let jit_func = JitSpecializedArgFunc::new(
+            module_id,
+            global_manager,
+            &func,
+            env_index,
+            CLOSURE_LAYOUT_DEFAULT_INDEX,
+            jit_ctx,
+        );
+        jit_specialized_arg_funcs.insert(CLOSURE_LAYOUT_DEFAULT_INDEX, jit_func);
+        Self {
+            jit_specialized_arg_funcs,
+            func,
+        }
+    }
+}
+#[derive(Debug)]
+pub struct JitSpecializedArgFunc {
+    module_id: JitModuleId,
+    env_index: EnvIndex,
+    func_index: ClosureIndex,
+    func: Func,
+    jit_bbs: VecMap<BasicBlockId, JitBB>,
+}
+
+impl JitSpecializedArgFunc {
+    pub fn new(
+        module_id: JitModuleId,
+        global_manager: &mut GlobalManager,
+        func: &Func,
+        env_index: EnvIndex,
+        func_index: ClosureIndex,
         jit_ctx: &mut JitCtx,
     ) -> Self {
         let mut func = func.clone();
@@ -61,6 +129,7 @@ impl JitSpecializedFunc {
 
         Self {
             module_id,
+            env_index,
             func_index,
             func,
             jit_bbs,
@@ -72,6 +141,7 @@ impl JitSpecializedFunc {
         func_to_globals: &VecMap<FuncId, GlobalId>,
         func_types: &VecMap<FuncId, FuncType>,
         global_manager: &mut GlobalManager,
+        env_index_managers: &mut FxHashMap<FuncId, EnvIndexManager>,
         jit_ctx: &mut JitCtx,
     ) -> Module {
         // entry_bbのモジュールをベースに拡張する
@@ -79,8 +149,9 @@ impl JitSpecializedFunc {
             func_to_globals,
             func_types,
             self.func.bb_entry,
-            GLOBAL_LAYOUT_DEFAULT_INDEX,
+            BB_LAYOUT_DEFAULT_INDEX,
             global_manager,
+            env_index_managers,
             jit_ctx,
             false,
         );
@@ -115,7 +186,7 @@ impl JitSpecializedFunc {
 
             let (_, bb_global) = self.jit_bbs[self.func.bb_entry]
                 .bb_index_manager
-                .type_args(GLOBAL_LAYOUT_DEFAULT_INDEX);
+                .type_args(BB_LAYOUT_DEFAULT_INDEX);
 
             module.funcs.push_with(|id| Func {
                 id,
@@ -148,6 +219,7 @@ impl JitSpecializedFunc {
                 }]
                 .into_iter()
                 .collect(),
+                closure_meta: None,
             })
         };
 
@@ -181,7 +253,9 @@ impl JitSpecializedFunc {
                     },
                 ]);
 
-                if self.func_index == GLOBAL_LAYOUT_DEFAULT_INDEX {
+                if self.env_index == ENV_LAYOUT_DEFAULT_INDEX
+                    && self.func_index == CLOSURE_LAYOUT_DEFAULT_INDEX
+                {
                     // func_to_globalsはindex=0のためのもの
                     exprs.push(Instr {
                         local: None,
@@ -199,12 +273,7 @@ impl JitSpecializedFunc {
         });
 
         for bb_id in self.jit_bbs.keys() {
-            self.add_bb_stub_func(
-                self.module_id,
-                bb_id,
-                GLOBAL_LAYOUT_DEFAULT_INDEX,
-                &mut module,
-            );
+            self.add_bb_stub_func(self.module_id, bb_id, BB_LAYOUT_DEFAULT_INDEX, &mut module);
         }
 
         module
@@ -214,7 +283,7 @@ impl JitSpecializedFunc {
         &self,
         module_id: JitModuleId,
         bb_id: BasicBlockId,
-        index: usize,
+        index: BBIndex,
         module: &mut Module,
     ) {
         let jit_bb = &self.jit_bbs[bb_id];
@@ -252,9 +321,10 @@ impl JitSpecializedFunc {
                             kind: InstrKind::InstantiateBB(
                                 module_id,
                                 JitFuncId::from(self.func.id),
-                                self.func_index,
+                                self.env_index.0,
+                                self.func_index.0,
                                 JitBasicBlockId::from(jit_bb.bb_id),
-                                index,
+                                index.0,
                             ),
                         },
                         Instr {
@@ -278,6 +348,7 @@ impl JitSpecializedFunc {
                 }]
                 .into_iter()
                 .collect(),
+                closure_meta: None,
             }
         });
 
@@ -313,8 +384,9 @@ impl JitSpecializedFunc {
         func_to_globals: &VecMap<FuncId, GlobalId>,
         func_types: &VecMap<FuncId, FuncType>,
         orig_entry_bb_id: BasicBlockId,
-        index: usize,
+        index: BBIndex,
         global_manager: &mut GlobalManager,
+        env_index_managers: &mut FxHashMap<FuncId, EnvIndexManager>,
         jit_ctx: &mut JitCtx,
         branch_specialization: bool,
     ) -> Module {
@@ -380,6 +452,8 @@ impl JitSpecializedFunc {
         // マージはしないが遅延コンパイルで呼び出すBBの一覧
         // BBに対応する関数を呼び出す
         let mut required_bbs = Vec::new();
+
+        let mut new_entrypoint_table_globals = Vec::new();
 
         while let Some(orig_bb_id) = todo_bb_ids.pop() {
             if processed_bb_ids.contains(&orig_bb_id) {
@@ -504,11 +578,12 @@ impl JitSpecializedFunc {
                     kind: InstrKind::IncrementBranchCounter(
                         self.module_id,
                         JitFuncId::from(self.func.id),
-                        self.func_index,
+                        self.env_index.0,
+                        self.func_index.0,
                         JitBasicBlockId::from(bb_id),
                         branch_kind,
                         JitBasicBlockId::from(orig_entry_bb_id),
-                        index,
+                        index.0,
                     ),
                 });
             }
@@ -639,14 +714,16 @@ impl JitSpecializedFunc {
                         kind: InstrKind::EntrypointTable(_),
                     } => {
                         let mut locals = Vec::new();
-                        for index in 0..GLOBAL_LAYOUT_MAX_SIZE {
+                        for index in 0..CLOSURE_LAYOUT_MAX_SIZE {
                             let stub = body_func.locals.push_with(|id| Local {
                                 id,
                                 typ: LocalType::MutFuncRef,
                             });
                             instrs.push(Instr {
                                 local: Some(stub),
-                                kind: InstrKind::GlobalGet(jit_ctx.stub_global(index).id),
+                                kind: InstrKind::GlobalGet(
+                                    jit_ctx.stub_global(ClosureIndex(index)).id,
+                                ),
                             });
                             locals.push(stub);
                         }
@@ -665,8 +742,18 @@ impl JitSpecializedFunc {
         }
 
         remove_unreachable_bb(body_func);
-        // specialize_call_closureの最適化はPhi命令を処理した後に行う必要があるため最後に行う
+        let mut all_preamble_instrs = FxHashMap::default();
+        // specialize_call_closureなどの最適化はPhi命令を処理した後に行う必要があるため最後に行う
         for bb_id in body_func.bbs.keys().collect::<Vec<_>>() {
+            // ClosureSetEnvを収集する
+            let mut closure_set_envs = FxHashMap::default();
+            for (instr_idx, instr) in body_func.bbs[bb_id].instrs.iter().enumerate() {
+                if let InstrKind::ClosureSetEnv(_, closure_local, i, value_local) = instr.kind {
+                    closure_set_envs.insert((closure_local, i), (value_local, instr_idx));
+                }
+            }
+
+            let mut preamble_instrs = Vec::new();
             for instr_idx in 0..body_func.bbs[bb_id].instrs.len() {
                 match &body_func.bbs[bb_id].instrs[instr_idx] {
                     Instr {
@@ -701,10 +788,123 @@ impl JitSpecializedFunc {
                             TerminatorInstr::Exit(ExitInstr::TailCallClosure(new_call_closure)),
                         );
                     }
+                    Instr {
+                        local,
+                        kind:
+                            InstrKind::Closure {
+                                envs,
+                                env_types,
+                                module_id,
+                                func_id,
+                                env_index: _,
+                                entrypoint_table: _,
+                                original_entrypoint_table,
+                            },
+                    } => {
+                        // Noneで初期化されたenvは同じBB内のSetEnv命令のみ特殊化の対象とする
+                        let mut env_types_for_manager = VecMap::new();
+                        let mut new_env_types = Vec::new();
+                        let mut new_envs = Vec::new();
+
+                        // 書き換えるべきClosureSetEnv命令
+                        let mut rewrite_closure_set_envs = Vec::new();
+                        for (i, env_type) in env_types.iter().enumerate() {
+                            if env_type == &LocalType::Type(Type::Obj)
+                                && let Some(typed_obj) = envs[i]
+                                    .or_else(|| {
+                                        local.and_then(|local| {
+                                            closure_set_envs
+                                                .get(&(local, i))
+                                                .map(|(val_local, _)| *val_local)
+                                        })
+                                    })
+                                    .and_then(|value_local| {
+                                        if let Some(&InstrKind::ToObj(typ, val_local)) =
+                                            def_use_chain
+                                                .get_def_non_move_expr(&body_func.bbs, value_local)
+                                        {
+                                            Some(TypedObj { typ, val_local })
+                                        } else {
+                                            None
+                                        }
+                                    })
+                            {
+                                env_types_for_manager.insert(i, typed_obj.typ);
+                                new_env_types.push(LocalType::from(typed_obj.typ));
+                                if envs[i].is_some() {
+                                    new_envs.push(Some(typed_obj.val_local));
+                                } else {
+                                    let set_env_instr_idx =
+                                        closure_set_envs.get(&(local.unwrap(), i)).unwrap().1;
+                                    rewrite_closure_set_envs.push((
+                                        set_env_instr_idx,
+                                        local.unwrap(),
+                                        i,
+                                        typed_obj.val_local,
+                                    ));
+                                    new_envs.push(None);
+                                }
+                            } else {
+                                new_env_types.push(*env_type);
+                                new_envs.push(envs[i]);
+                            }
+                        }
+
+                        let env_index_manager = env_index_managers
+                            .get_mut(&FuncId::from(*func_id))
+                            .expect("EnvIndexManager not found");
+                        let (entrypoint_table_global, env_index, index_flag) = env_index_manager
+                            .idx(&env_types_for_manager, global_manager)
+                            .unwrap(); // TODO: 上限に到達したときの処理
+                        if env_index != ENV_LAYOUT_DEFAULT_INDEX {
+                            let entrypoint_table_global = entrypoint_table_global.unwrap();
+                            if index_flag == IndexFlag::NewInstance {
+                                new_entrypoint_table_globals.push(entrypoint_table_global);
+                            }
+                            let entrypoint_table_local = body_func.locals.push_with(|id| Local {
+                                id,
+                                typ: LocalType::EntrypointTable,
+                            });
+                            preamble_instrs.push(Instr {
+                                local: Some(entrypoint_table_local),
+                                kind: InstrKind::GlobalGet(entrypoint_table_global.id),
+                            });
+                            body_func.bbs[bb_id].instrs[instr_idx].kind = InstrKind::Closure {
+                                envs: new_envs,
+                                env_types: new_env_types.clone(),
+                                module_id: *module_id,
+                                func_id: *func_id,
+                                env_index: env_index.0,
+                                entrypoint_table: entrypoint_table_local,
+                                original_entrypoint_table: *original_entrypoint_table,
+                            };
+
+                            for (set_env_instr_idx, closure_local, i, value_local) in
+                                &rewrite_closure_set_envs
+                            {
+                                body_func.bbs[bb_id].instrs[*set_env_instr_idx].kind =
+                                    InstrKind::ClosureSetEnv(
+                                        new_env_types.clone(),
+                                        *closure_local,
+                                        *i,
+                                        *value_local,
+                                    );
+                            }
+                        }
+                    }
 
                     _ => {}
                 }
             }
+
+            all_preamble_instrs.insert(bb_id, preamble_instrs);
+        }
+
+        // DefUseChainを壊さないために最後に追加する
+        for (bb_id, mut preamble_instrs) in all_preamble_instrs {
+            body_func.bbs[bb_id]
+                .instrs
+                .splice(0..0, preamble_instrs.drain(..));
         }
 
         remove_unreachable_bb(body_func);
@@ -750,6 +950,10 @@ impl JitSpecializedFunc {
                     id,
                     typ: LocalType::Type(Type::Val(ValType::Int)),
                 });
+                let env_index_local = locals.push_with(|id| Local {
+                    id,
+                    typ: LocalType::Type(Type::Val(ValType::Int)),
+                });
                 let func_ref_local = locals.push_with(|id| Local {
                     id,
                     typ: LocalType::FuncRef,
@@ -774,11 +978,16 @@ impl JitSpecializedFunc {
                     kind: InstrKind::ClosureFuncId(closure_local),
                 });
                 exprs.push(Instr {
+                    local: Some(env_index_local),
+                    kind: InstrKind::ClosureEnvIndex(closure_local),
+                });
+                exprs.push(Instr {
                     local: None,
                     kind: InstrKind::InstantiateClosureFunc(
                         module_id_local,
                         func_id_local,
-                        closure_idx,
+                        env_index_local,
+                        closure_idx.0,
                     ),
                 });
                 exprs.push(Instr {
@@ -796,7 +1005,7 @@ impl JitSpecializedFunc {
                 exprs.push(Instr {
                     local: None,
                     kind: InstrKind::SetEntrypointTable(
-                        closure_idx,
+                        closure_idx.0,
                         entrypoint_table_local,
                         mut_func_ref_local,
                     ),
@@ -810,7 +1019,7 @@ impl JitSpecializedFunc {
                             closure: closure_local,
                             args: arg_locals,
                             arg_types,
-                            func_index: closure_idx,
+                            func_index: closure_idx.0,
                         },
                     ))),
                 });
@@ -827,6 +1036,7 @@ impl JitSpecializedFunc {
                     }]
                     .into_iter()
                     .collect(),
+                    closure_meta: None,
                 });
 
                 (closure_idx, stub_func_id)
@@ -844,7 +1054,7 @@ impl JitSpecializedFunc {
             });
 
             bbs.insert_node({
-                let mut exprs = vec![
+                let mut instrs = vec![
                     Instr {
                         local: Some(func_ref_local),
                         kind: InstrKind::FuncRef(body_func_id),
@@ -855,6 +1065,36 @@ impl JitSpecializedFunc {
                     },
                 ];
 
+                for new_entrypoint_table_global in new_entrypoint_table_globals.iter() {
+                    let mut entrypoint_table_locals = Vec::new();
+                    for index in 0..CLOSURE_LAYOUT_MAX_SIZE {
+                        let stub = locals.push_with(|id| Local {
+                            id,
+                            typ: LocalType::MutFuncRef,
+                        });
+                        instrs.push(Instr {
+                            local: Some(stub),
+                            kind: InstrKind::GlobalGet(jit_ctx.stub_global(ClosureIndex(index)).id),
+                        });
+                        entrypoint_table_locals.push(stub);
+                    }
+                    let entrypoint_table_local = locals.push_with(|id| Local {
+                        id,
+                        typ: LocalType::EntrypointTable,
+                    });
+                    instrs.push(Instr {
+                        local: Some(entrypoint_table_local),
+                        kind: InstrKind::EntrypointTable(entrypoint_table_locals),
+                    });
+                    instrs.push(Instr {
+                        local: None,
+                        kind: InstrKind::GlobalSet(
+                            new_entrypoint_table_global.id,
+                            entrypoint_table_local,
+                        ),
+                    });
+                }
+
                 for &(closure_idx, stub_func_id) in required_closure_idx.iter() {
                     let stub_func_ref_local = locals.push_with(|id| Local {
                         id,
@@ -864,15 +1104,15 @@ impl JitSpecializedFunc {
                         id,
                         typ: LocalType::MutFuncRef,
                     });
-                    exprs.push(Instr {
+                    instrs.push(Instr {
                         local: Some(stub_func_ref_local),
                         kind: InstrKind::FuncRef(stub_func_id),
                     });
-                    exprs.push(Instr {
+                    instrs.push(Instr {
                         local: Some(stub_mut_func_ref_local),
                         kind: InstrKind::GlobalGet(jit_ctx.stub_global(closure_idx).id),
                     });
-                    exprs.push(Instr {
+                    instrs.push(Instr {
                         local: None,
                         kind: InstrKind::SetMutFuncRef(
                             stub_mut_func_ref_local,
@@ -881,7 +1121,7 @@ impl JitSpecializedFunc {
                     });
                 }
 
-                exprs.push(Instr {
+                instrs.push(Instr {
                     local: None,
                     kind: InstrKind::Terminator(TerminatorInstr::Exit(ExitInstr::Return(
                         func_ref_local,
@@ -890,7 +1130,7 @@ impl JitSpecializedFunc {
 
                 BasicBlock {
                     id: BasicBlockId::from(0),
-                    instrs: exprs,
+                    instrs,
                 }
             });
 
@@ -901,6 +1141,7 @@ impl JitSpecializedFunc {
                 locals,
                 bb_entry: BasicBlockId::from(0),
                 bbs,
+                closure_meta: None,
             })
         };
 
@@ -916,7 +1157,7 @@ impl JitSpecializedFunc {
         };
 
         for (bb_id, index) in &required_stubs {
-            self.add_bb_stub_func(self.module_id, *bb_id, *index, &mut module);
+            self.add_bb_stub_func(self.module_id, *bb_id, BBIndex(*index), &mut module);
         }
 
         module
@@ -927,6 +1168,7 @@ impl JitSpecializedFunc {
         func_to_globals: &VecMap<FuncId, GlobalId>,
         func_types: &VecMap<FuncId, FuncType>,
         global_manager: &mut GlobalManager,
+        env_index_managers: &mut FxHashMap<FuncId, EnvIndexManager>,
         jit_ctx: &mut JitCtx,
         bb_id: BasicBlockId,
         kind: BranchKind,
@@ -939,8 +1181,9 @@ impl JitSpecializedFunc {
                 func_to_globals,
                 func_types,
                 source_bb_id,
-                source_index,
+                BBIndex(source_index),
                 global_manager,
+                env_index_managers,
                 jit_ctx,
                 true,
             );
@@ -956,13 +1199,13 @@ fn specialize_call_closure(
     def_use_chain: &DefUseChain,
     bbs: &VecMap<BasicBlockId, BasicBlock>,
     closure_global_layout: &mut ClosureGlobalLayout,
-    required_closure_idx: &mut Vec<usize>,
+    required_closure_idx: &mut Vec<ClosureIndex>,
 ) -> Option<InstrCallClosure> {
-    if call_closure.func_index != GLOBAL_LAYOUT_DEFAULT_INDEX {
+    if call_closure.func_index != CLOSURE_LAYOUT_DEFAULT_INDEX.0 {
         return None;
     }
 
-    // func_index == GLOBAL_LAYOUT_DEFAULT_INDEX なら引数は[Args]を仮定してよい
+    // func_index == CLOSURE_LAYOUT_DEFAULT_INDEX なら引数は[Args]を仮定してよい
     let InstrKind::VariadicArgs(args) =
         def_use_chain.get_def_non_move_expr(bbs, call_closure.args[0])?
     else {
@@ -995,14 +1238,14 @@ fn specialize_call_closure(
     if flag == IndexFlag::NewInstance {
         required_closure_idx.push(closure_index);
     }
-    Some(if closure_index == GLOBAL_LAYOUT_DEFAULT_INDEX {
+    Some(if closure_index == CLOSURE_LAYOUT_DEFAULT_INDEX {
         call_closure.clone()
     } else {
         InstrCallClosure {
             closure: call_closure.closure,
             args: fixed_args,
             arg_types,
-            func_index: closure_index,
+            func_index: closure_index.0,
         }
     })
 }
@@ -1183,14 +1426,108 @@ fn calculate_args_to_pass(
         });
 
     if flag == IndexFlag::NewInstance {
-        required_stubs.push((callee.bb_id, index));
+        required_stubs.push((callee.bb_id, index.0));
     }
     (args_to_pass, type_args, global)
 }
 
+fn closure_func_assign_env_types(
+    func: &mut Func,
+    env_index: EnvIndex,
+    env_index_manager: &EnvIndexManager,
+) {
+    if env_index == ENV_LAYOUT_DEFAULT_INDEX {
+        return;
+    }
+
+    /*
+    // before
+    func f(c: closure, ...)
+        x = closure_env(c, 0)
+
+    // after
+    func f(c2: closure, ...)
+        env_0 = closure_env(c2, 0)
+        env_0_obj = obj<int>(env_0)
+        c = closure(envs = [env_0_obj, ...], ...c2)
+        x = closure_env(c, 0)
+        // 最適化で良い感じになる
+    */
+
+    let closure_meta = func.closure_meta.as_ref().unwrap();
+    let original_env_types = &closure_meta.env_types;
+    let mut new_env_types = original_env_types.clone();
+    let (assign_env_types, _) = env_index_manager.env_types(env_index);
+    for (index, &val_type) in assign_env_types.iter() {
+        new_env_types[index] = val_type.into();
+    }
+    let new_closure_arg = func.locals.push_with(|id| Local {
+        id,
+        typ: LocalType::Type(Type::Val(ValType::Closure)),
+    });
+    let prev_closure_arg = func.args[0];
+    func.args[0] = new_closure_arg;
+
+    let mut c_envs = Vec::new();
+    let mut preamble_instrs = Vec::new();
+    for (i, &env_type) in new_env_types.iter().enumerate() {
+        let env_local = func.locals.push_with(|id| Local { id, typ: env_type });
+        preamble_instrs.push(Instr {
+            local: Some(env_local),
+            kind: InstrKind::ClosureEnv(new_env_types.clone(), new_closure_arg, i),
+        });
+        if let Some(&val_type) = assign_env_types.get(i) {
+            let env_obj_local = func.locals.push_with(|id| Local {
+                id,
+                typ: LocalType::Type(Type::Obj),
+            });
+            preamble_instrs.push(Instr {
+                local: Some(env_obj_local),
+                kind: InstrKind::ToObj(val_type, env_local),
+            });
+            c_envs.push(env_obj_local);
+        } else {
+            c_envs.push(env_local);
+        }
+    }
+
+    let c_entrypoint_table_local = func.locals.push_with(|id| Local {
+        id,
+        typ: LocalType::EntrypointTable,
+    });
+    preamble_instrs.push(Instr {
+        local: Some(c_entrypoint_table_local),
+        kind: InstrKind::ClosureOriginalEntrypointTable(new_closure_arg),
+    });
+
+    preamble_instrs.push(Instr {
+        local: Some(prev_closure_arg),
+        kind: InstrKind::Closure {
+            envs: c_envs.into_iter().map(Some).collect(),
+            env_types: original_env_types.clone(),
+            env_index: ENV_LAYOUT_DEFAULT_INDEX.0,
+            module_id: closure_meta.module_id,
+            func_id: closure_meta.func_id,
+            entrypoint_table: c_entrypoint_table_local,
+            original_entrypoint_table: c_entrypoint_table_local,
+        },
+    });
+
+    func.extend_entry_bb(|func, next| {
+        preamble_instrs.push(Instr {
+            local: None,
+            kind: InstrKind::Terminator(next),
+        });
+        func.bbs.push_with(|bb_id| BasicBlock {
+            id: bb_id,
+            instrs: preamble_instrs,
+        })
+    });
+}
+
 fn closure_func_assign_types(
     func: &mut Func,
-    func_index: usize,
+    func_index: ClosureIndex,
     closure_global_layout: &ClosureGlobalLayout,
 ) {
     let ClosureArgs::Specified(args_type) = closure_global_layout.arg_types(func_index) else {

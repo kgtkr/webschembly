@@ -5,6 +5,7 @@ use crate::ir_generator::GlobalManager;
 use crate::ir_processor::desugar::desugar;
 use crate::ir_processor::optimizer::remove_unreachable_bb;
 use crate::ir_processor::optimizer::remove_unused_local;
+use crate::ir_processor::register_allocation::register_allocation;
 use crate::ir_processor::ssa::split_critical_edges;
 use crate::ir_processor::ssa::{debug_assert_ssa, remove_phi};
 use crate::ir_processor::ssa_optimizer::ModuleInliner;
@@ -122,13 +123,19 @@ impl Compiler {
         &mut self,
         module_id: usize,
         func_id: usize,
+        env_index: usize,
         func_index: usize,
     ) -> ir::Module {
         let module_id = ir::JitModuleId::from(module_id);
         let func_id = ir::FuncId::from(func_id);
         let jit = self.jit.as_mut().expect("JIT is not enabled");
-        let mut module =
-            jit.instantiate_func(&mut self.global_manager, module_id, func_id, func_index);
+        let mut module = jit.instantiate_func(
+            &mut self.global_manager,
+            module_id,
+            func_id,
+            crate::jit::env_index_manager::EnvIndex(env_index),
+            crate::jit::closure_global_layout::ClosureIndex(func_index),
+        );
 
         preprocess_module(&mut module);
         if jit.config().enable_optimization {
@@ -148,6 +155,7 @@ impl Compiler {
         &mut self,
         module_id: usize,
         func_id: usize,
+        env_index: usize,
         func_index: usize,
         bb_id: usize,
         index: usize,
@@ -159,9 +167,10 @@ impl Compiler {
         let mut module = jit.instantiate_bb(
             module_id,
             func_id,
-            func_index,
+            crate::jit::env_index_manager::EnvIndex(env_index),
+            crate::jit::closure_global_layout::ClosureIndex(func_index),
             bb_id,
-            index,
+            crate::jit::bb_index_manager::BBIndex(index),
             &mut self.global_manager,
         );
         preprocess_module(&mut module);
@@ -182,6 +191,7 @@ impl Compiler {
         &mut self,
         module_id: usize,
         func_id: usize,
+        env_index: usize,
         func_index: usize,
         bb_id: usize,
         kind: usize, // 0: Then, 1: Else
@@ -201,11 +211,12 @@ impl Compiler {
             &mut self.global_manager,
             module_id,
             func_id,
-            func_index,
+            crate::jit::env_index_manager::EnvIndex(env_index),
+            crate::jit::closure_global_layout::ClosureIndex(func_index),
             bb_id,
             kind,
             ir::BasicBlockId::from(source_bb_id),
-            source_index,
+            crate::jit::bb_index_manager::BBIndex(source_index),
         )
         .map(|mut module| {
             preprocess_module(&mut module);
@@ -259,7 +270,7 @@ fn postprocess(module: &mut ir::Module, global_manager: &mut GlobalManager) {
 
         split_critical_edges(func);
         remove_phi(func);
-        // TODO: レジスタ割り付け
+        register_allocation(func);
 
         remove_unused_local(func);
     }

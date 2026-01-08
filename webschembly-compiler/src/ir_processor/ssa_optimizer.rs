@@ -746,6 +746,7 @@ fn inlining_func(
         ret_type: module.funcs[func_id].ret_type,
         args,
         bbs,
+        closure_meta: module.funcs[func_id].closure_meta.clone(),
     }
 }
 
