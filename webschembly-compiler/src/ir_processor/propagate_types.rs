@@ -183,9 +183,7 @@ mod tests {
                 },
                 Instr {
                     local: None,
-                    kind: InstrKind::Terminator(
-                        TerminatorInstr::Exit(ExitInstr::Return(l1)),
-                    ),
+                    kind: InstrKind::Terminator(TerminatorInstr::Exit(ExitInstr::Return(l1))),
                 },
             ],
         });
