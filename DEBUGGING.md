@@ -9,7 +9,7 @@ To debug specific Scheme files or tests, use `just run` within the `webschembly-
 ### Environment Variables
 
 - `LOG_STDOUT=1`: Enables `log::debug!` output from the runtime and compiler (if configured). Use this to see runtime execution trace, JIT instantiation events, and error messages.
- - `println!` output is not visible here. Please use `log::debug!` instead.
+- `println!` output is not visible here. Please use `log::debug!` instead.
 - `LOG=1`: Dumps the generated Intermediate Representation (IR) and Wasm binaries to the `webschembly-js/log/` directory.
 
 ### Command Examples
