@@ -100,6 +100,15 @@ fn char<'a, E: ErrorBound<'a>>(input: LocatedStr<'a>) -> IResult<LocatedStr<'a>,
     }
 }
 
+fn directive<'a, E: ErrorBound<'a>>(
+    input: LocatedStr<'a>,
+) -> IResult<LocatedStr<'a>, TokenKind, E> {
+    let (input, _) = tag("[")(input)?;
+    let (input, ident) = identifier_like(input)?;
+    let (input, _) = tag("]")(input)?;
+    Ok((input, TokenKind::Directive(ident.to_string())))
+}
+
 fn token_kind<'a, E: ErrorBound<'a>>(
     input: LocatedStr<'a>,
 ) -> IResult<LocatedStr<'a>, TokenKind, E> {
@@ -112,6 +121,7 @@ fn token_kind<'a, E: ErrorBound<'a>>(
         tag("#t").map(|_| TokenKind::Bool(true)),
         tag("#f").map(|_| TokenKind::Bool(false)),
         tag("'").map(|_| TokenKind::Quote),
+        directive,
         string,
         char,
         // 順番に意味がある
