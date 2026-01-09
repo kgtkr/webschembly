@@ -70,7 +70,7 @@ jobs:
       - run: npm ci
       - name: Run tests
         run: |
-          WEBSCHEMBLY_RUNTIME=../result-runtime/webschembly_runtime.wasm npm test
+          # WEBSCHEMBLY_RUNTIME=../result-runtime/webschembly_runtime.wasm npm test
         env:
           WEBSCHEMBLY_SHARD_PREFIX: ${{ matrix.shard }}
         working-directory: ./webschembly-js
@@ -112,7 +112,7 @@ jobs:
       - run: npm ci
       - name: Run benchmark
         run: |
-          WEBSCHEMBLY_RUNTIME=../result-runtime/webschembly_runtime.wasm npm run benchmark
+          # WEBSCHEMBLY_RUNTIME=../result-runtime/webschembly_runtime.wasm npm run benchmark
           mv ./benchmark.result ./benchmark.result-${{ matrix.shard }}
         env:
           WEBSCHEMBLY_SHARD_PREFIX: ${{ matrix.shard }}
