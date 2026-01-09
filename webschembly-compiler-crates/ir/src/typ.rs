@@ -3,6 +3,8 @@ TypeもしくはmutableなTypeを表す
 Type自体にRefを含めて再帰的にしてしまうと無限種類の型を作れるようになってしまうので、IRではそれを避けるためこのような構造になっている
 TODO: LocalTypeという名前は適切ではない
 */
+use crate::id::ConstantClosure;
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, derive_more::Display)]
 pub enum LocalType {
     #[display("ref<{}>", _0)]
@@ -38,6 +40,14 @@ impl LocalType {
             _ => None,
         }
     }
+
+    pub fn remove_constant(self) -> Self {
+        match self {
+            LocalType::Ref(typ) => LocalType::Ref(typ.remove_constant()),
+            LocalType::Type(typ) => LocalType::Type(typ.remove_constant()),
+            _ => self,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, derive_more::Display)]
@@ -53,6 +63,13 @@ impl Type {
         match self {
             Type::Val(val_type) => Some(*val_type),
             Type::Obj => None,
+        }
+    }
+
+    pub fn remove_constant(self) -> Self {
+        match self {
+            Type::Val(val_type) => Type::Val(val_type.remove_constant()),
+            Type::Obj => Type::Obj,
         }
     }
 }
@@ -88,7 +105,16 @@ pub enum ValType {
     #[display("uvector<{0}>", _0)]
     UVector(UVectorKind),
     #[display("closure")]
-    Closure,
+    Closure(Option<ConstantClosure>),
+}
+
+impl ValType {
+    pub fn remove_constant(self) -> Self {
+        match self {
+            ValType::Closure(_) => ValType::Closure(None),
+            _ => self,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, derive_more::Display)]

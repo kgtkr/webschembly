@@ -8,15 +8,12 @@ use crate::ir_generator::GlobalManager;
 use super::index_flag::IndexFlag;
 
 pub const ENV_LAYOUT_MAX_SIZE: usize = 32;
-pub const ENV_LAYOUT_DEFAULT_INDEX: EnvIndex = EnvIndex(0);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct EnvIndex(pub usize);
+pub const ENV_LAYOUT_DEFAULT_INDEX: ClosureEnvIndex = ClosureEnvIndex(0);
 
 #[derive(Debug)]
 pub struct EnvIndexManager {
-    env_types_to_index: FxBiHashMap<VecMapEq<usize, ValType>, EnvIndex>,
-    index_to_table_global: FxHashMap<EnvIndex, Global>,
+    env_types_to_index: FxBiHashMap<VecMapEq<usize, ValType>, ClosureEnvIndex>,
+    index_to_table_global: FxHashMap<ClosureEnvIndex, Global>,
 }
 
 impl Default for EnvIndexManager {
@@ -40,7 +37,7 @@ impl EnvIndexManager {
         &mut self,
         env_types: &VecMap<usize, ValType>,
         global_manager: &mut GlobalManager,
-    ) -> Option<(Option<Global>, EnvIndex, IndexFlag)> {
+    ) -> Option<(Option<Global>, ClosureEnvIndex, IndexFlag)> {
         if let Some(&index) = self
             .env_types_to_index
             .get_by_left(VecMapEq::from_ref(env_types))
@@ -49,7 +46,7 @@ impl EnvIndexManager {
             debug_assert!(index == ENV_LAYOUT_DEFAULT_INDEX || global.is_some());
             Some((global.copied(), index, IndexFlag::ExistingInstance))
         } else if self.env_types_to_index.len() < ENV_LAYOUT_MAX_SIZE {
-            let index = EnvIndex(self.env_types_to_index.len());
+            let index = ClosureEnvIndex(self.env_types_to_index.len());
             self.env_types_to_index
                 .insert(env_types.clone().into(), index);
             let global = global_manager.gen_global(LocalType::EntrypointTable);
@@ -60,7 +57,7 @@ impl EnvIndexManager {
         }
     }
 
-    pub fn env_types(&self, index: EnvIndex) -> (&VecMap<usize, ValType>, Option<Global>) {
+    pub fn env_types(&self, index: ClosureEnvIndex) -> (&VecMap<usize, ValType>, Option<Global>) {
         debug_assert!(
             index == ENV_LAYOUT_DEFAULT_INDEX || self.index_to_table_global.contains_key(&index)
         );

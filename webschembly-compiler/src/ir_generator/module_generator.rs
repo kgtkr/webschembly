@@ -266,7 +266,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
         let bb_entry = self.builder.bbs.allocate_key();
         self.builder.current_bb_id = Some(bb_entry);
 
-        let self_closure = self.builder.local(Type::Val(ValType::Closure));
+        let self_closure = self.builder.local(Type::Val(ValType::Closure(None)));
         let args = self.builder.local(LocalType::VariadicArgs);
         let args_len_local = self.builder.local(Type::Val(ValType::Int));
         let expected_args_len_local = self.builder.local(Type::Val(ValType::Int));
@@ -559,7 +559,13 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
             ast::Expr::Lambda(x, lambda) => {
                 let func_id = self.module_generator.gen_func(x, ast.span, lambda);
                 let func_local = self.builder.local(LocalType::FuncRef);
-                let val_type_local = self.builder.local(Type::Val(ValType::Closure));
+                let val_type_local =
+                    self.builder
+                        .local(Type::Val(ValType::Closure(Some(ConstantClosure {
+                            module_id: self.module_generator.id,
+                            func_id: JitFuncId::from(func_id),
+                            env_index: ClosureEnvIndex(0),
+                        }))));
                 self.builder.exprs.push(Instr {
                     local: Some(func_local),
                     kind: InstrKind::FuncRef(func_id),
@@ -617,7 +623,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                 });
                 self.builder.exprs.push(Instr {
                     local: result,
-                    kind: InstrKind::ToObj(ValType::Closure, val_type_local),
+                    kind: InstrKind::ToObj(ValType::Closure(None), val_type_local),
                 });
             }
             ast::Expr::If(_, ast::If { cond, then, els }) => {
@@ -887,7 +893,7 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     let is_closure_local = self.builder.local(Type::Val(ValType::Bool));
                     self.builder.exprs.push(Instr {
                         local: Some(is_closure_local),
-                        kind: InstrKind::Is(ValType::Closure, obj_func_local),
+                        kind: InstrKind::Is(ValType::Closure(None), obj_func_local),
                     });
 
                     let then_bb_id = self.builder.bbs.allocate_key();
@@ -912,10 +918,10 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
 
                     self.builder.current_bb_id = Some(then_bb_id);
 
-                    let closure_local = self.builder.local(ValType::Closure);
+                    let closure_local = self.builder.local(ValType::Closure(None));
                     self.builder.exprs.push(Instr {
                         local: Some(closure_local),
-                        kind: InstrKind::FromObj(ValType::Closure, obj_func_local),
+                        kind: InstrKind::FromObj(ValType::Closure(None), obj_func_local),
                     });
 
                     let args_local = self.builder.local(LocalType::VariadicArgs);
@@ -1449,7 +1455,7 @@ impl BuiltinConversionRule {
                 ir_gen: |ctx, arg1| {
                     ctx.builder.exprs.push(Instr {
                         local: Some(ctx.dest),
-                        kind: InstrKind::Is(ValType::Closure, arg1),
+                        kind: InstrKind::Is(ValType::Closure(None), arg1),
                     });
                 },
             }],

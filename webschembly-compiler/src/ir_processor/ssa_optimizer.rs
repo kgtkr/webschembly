@@ -3,6 +3,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use crate::ir_processor::{
     cfg_analyzer::{DomTreeNode, build_dom_tree, calc_doms, calc_predecessors, calculate_rpo},
     optimizer::remove_unreachable_bb,
+    propagate_types::propagate_types,
     ssa::{DefUseChain, debug_assert_ssa},
 };
 use vec_map::VecMap;
@@ -370,7 +371,8 @@ pub fn constant_folding(
                     if let Some(&InstrKind::ToObj(typ2, _)) =
                         def_use.get_def_non_move_expr(&func.bbs, src) =>
                 {
-                    func.bbs[*bb_id].instrs[expr_idx].kind = InstrKind::Bool(typ1 == typ2);
+                    func.bbs[*bb_id].instrs[expr_idx].kind =
+                        InstrKind::Bool(typ1.remove_constant() == typ2.remove_constant());
                 }
                 InstrKind::ClosureEnv(_, closure, index)
                     if let Some(InstrKind::Closure { envs, .. }) =
@@ -447,7 +449,7 @@ impl Default for SsaOptimizerConfig {
         SsaOptimizerConfig {
             enable_cse: true,
             enable_dce: true,
-            enable_inlining: false, // true,
+            enable_inlining: true,
             iterations: 5,
         }
     }
@@ -461,6 +463,8 @@ pub fn ssa_optimize(func: &mut Func, config: SsaOptimizerConfig) {
     let predecessors = calc_predecessors(&func.bbs);
     let doms = calc_doms(&func.bbs, &rpo, func.bb_entry, &predecessors);
     let dom_tree = build_dom_tree(&func.bbs, &rpo, func.bb_entry, &doms);
+
+    propagate_types(func);
 
     for _ in 0..config.iterations {
         debug_assert_ssa(func);

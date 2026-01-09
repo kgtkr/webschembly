@@ -1,11 +1,10 @@
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use super::bb_index_manager::{BB_LAYOUT_DEFAULT_INDEX, BBIndex, BBIndexManager};
+use super::bb_index_manager::{BB_LAYOUT_DEFAULT_INDEX, BBIndexManager};
 use super::closure_global_layout::{
     CLOSURE_LAYOUT_DEFAULT_INDEX, CLOSURE_LAYOUT_MAX_SIZE, ClosureArgs, ClosureGlobalLayout,
-    ClosureIndex,
 };
-use super::env_index_manager::{ENV_LAYOUT_DEFAULT_INDEX, EnvIndex, EnvIndexManager};
+use super::env_index_manager::{ENV_LAYOUT_DEFAULT_INDEX, EnvIndexManager};
 use super::index_flag::IndexFlag;
 use super::jit_ctx::JitCtx;
 use crate::fxbihashmap::FxBiHashMap;
@@ -20,7 +19,7 @@ use webschembly_compiler_ir::*;
 
 #[derive(Debug)]
 pub struct JitFunc {
-    pub jit_specialized_env_funcs: FxHashMap<EnvIndex, JitSpecializedEnvFunc>,
+    pub jit_specialized_env_funcs: FxHashMap<ClosureEnvIndex, JitSpecializedEnvFunc>,
 }
 
 impl JitFunc {
@@ -49,7 +48,7 @@ impl JitFunc {
 
 #[derive(Debug)]
 pub struct JitSpecializedEnvFunc {
-    pub jit_specialized_arg_funcs: FxHashMap<ClosureIndex, JitSpecializedArgFunc>,
+    pub jit_specialized_arg_funcs: FxHashMap<ClosureArgIndex, JitSpecializedArgFunc>,
     pub func: Func,
 }
 
@@ -58,7 +57,7 @@ impl JitSpecializedEnvFunc {
         module_id: JitModuleId,
         global_manager: &mut GlobalManager,
         func: &Func,
-        env_index: EnvIndex,
+        env_index: ClosureEnvIndex,
         env_index_manager: &EnvIndexManager,
         jit_ctx: &mut JitCtx,
     ) -> Self {
@@ -84,8 +83,8 @@ impl JitSpecializedEnvFunc {
 #[derive(Debug)]
 pub struct JitSpecializedArgFunc {
     module_id: JitModuleId,
-    env_index: EnvIndex,
-    func_index: ClosureIndex,
+    env_index: ClosureEnvIndex,
+    func_index: ClosureArgIndex,
     func: Func,
     jit_bbs: VecMap<BasicBlockId, JitBB>,
 }
@@ -95,8 +94,8 @@ impl JitSpecializedArgFunc {
         module_id: JitModuleId,
         global_manager: &mut GlobalManager,
         func: &Func,
-        env_index: EnvIndex,
-        func_index: ClosureIndex,
+        env_index: ClosureEnvIndex,
+        func_index: ClosureArgIndex,
         jit_ctx: &mut JitCtx,
     ) -> Self {
         let mut func = func.clone();
@@ -613,6 +612,10 @@ impl JitSpecializedArgFunc {
                     if let Some(&InstrKind::ToObj(typ, val_local)) =
                         def_use_chain.get_def_non_move_expr(&body_func.bbs, obj_local)
                     {
+                        let mut typ = typ;
+                        if let LocalType::Type(Type::Val(t)) = body_func.locals[val_local].typ {
+                            typ = t;
+                        }
                         Some(TypedObj { typ, val_local })
                     } else {
                         typed_objs.get(&obj_local).copied()
@@ -722,7 +725,7 @@ impl JitSpecializedArgFunc {
                             instrs.push(Instr {
                                 local: Some(stub),
                                 kind: InstrKind::GlobalGet(
-                                    jit_ctx.stub_global(ClosureIndex(index)).id,
+                                    jit_ctx.stub_global(ClosureArgIndex(index)).id,
                                 ),
                             });
                             locals.push(stub);
@@ -763,6 +766,7 @@ impl JitSpecializedArgFunc {
                         call_closure,
                         &def_use_chain,
                         &body_func.bbs,
+                        &body_func.locals,
                         jit_ctx.closure_global_layout(),
                         &mut required_closure_idx,
                     ) =>
@@ -780,6 +784,7 @@ impl JitSpecializedArgFunc {
                         call_closure,
                         &def_use_chain,
                         &body_func.bbs,
+                        &body_func.locals,
                         jit_ctx.closure_global_layout(),
                         &mut required_closure_idx,
                     ) =>
@@ -823,6 +828,12 @@ impl JitSpecializedArgFunc {
                                             def_use_chain
                                                 .get_def_non_move_expr(&body_func.bbs, value_local)
                                         {
+                                            let mut typ = typ;
+                                            if let LocalType::Type(Type::Val(t)) =
+                                                body_func.locals[val_local].typ
+                                            {
+                                                typ = t;
+                                            }
                                             Some(TypedObj { typ, val_local })
                                         } else {
                                             None
@@ -869,6 +880,15 @@ impl JitSpecializedArgFunc {
                                 local: Some(entrypoint_table_local),
                                 kind: InstrKind::GlobalGet(entrypoint_table_global.id),
                             });
+                            if let Some(local) = body_func.bbs[bb_id].instrs[instr_idx].local {
+                                body_func.locals[local].typ =
+                                    (ValType::Closure(Some(ConstantClosure {
+                                        module_id: *module_id,
+                                        func_id: *func_id,
+                                        env_index: ClosureEnvIndex(env_index.0),
+                                    })))
+                                    .into();
+                            }
                             body_func.bbs[bb_id].instrs[instr_idx].kind = InstrKind::Closure {
                                 envs: new_envs,
                                 env_types: new_env_types.clone(),
@@ -916,7 +936,7 @@ impl JitSpecializedArgFunc {
                 let mut args = Vec::new();
                 let closure_local = locals.push_with(|id| Local {
                     id,
-                    typ: ValType::Closure.into(),
+                    typ: ValType::Closure(None).into(),
                 });
                 let mut arg_locals = Vec::new();
                 args.push(closure_local);
@@ -1074,7 +1094,9 @@ impl JitSpecializedArgFunc {
                         });
                         instrs.push(Instr {
                             local: Some(stub),
-                            kind: InstrKind::GlobalGet(jit_ctx.stub_global(ClosureIndex(index)).id),
+                            kind: InstrKind::GlobalGet(
+                                jit_ctx.stub_global(ClosureArgIndex(index)).id,
+                            ),
                         });
                         entrypoint_table_locals.push(stub);
                     }
@@ -1198,8 +1220,9 @@ fn specialize_call_closure(
     call_closure: &InstrCallClosure,
     def_use_chain: &DefUseChain,
     bbs: &VecMap<BasicBlockId, BasicBlock>,
+    locals: &VecMap<LocalId, Local>,
     closure_global_layout: &mut ClosureGlobalLayout,
-    required_closure_idx: &mut Vec<ClosureIndex>,
+    required_closure_idx: &mut Vec<ClosureArgIndex>,
 ) -> Option<InstrCallClosure> {
     if call_closure.func_index != CLOSURE_LAYOUT_DEFAULT_INDEX.0 {
         return None;
@@ -1219,6 +1242,10 @@ fn specialize_call_closure(
             def_use_chain.get_def_non_move_expr(bbs, obj_arg)
         {
             fixed_args.push(val_local);
+            let mut typ = typ;
+            if let LocalType::Type(Type::Val(t)) = locals[val_local].typ {
+                typ = t;
+            }
             fixed_arg_types.push(Type::from(typ));
         } else {
             fixed_args.push(obj_arg);
@@ -1433,7 +1460,7 @@ fn calculate_args_to_pass(
 
 fn closure_func_assign_env_types(
     func: &mut Func,
-    env_index: EnvIndex,
+    env_index: ClosureEnvIndex,
     env_index_manager: &EnvIndexManager,
 ) {
     if env_index == ENV_LAYOUT_DEFAULT_INDEX {
@@ -1463,7 +1490,7 @@ fn closure_func_assign_env_types(
     }
     let new_closure_arg = func.locals.push_with(|id| Local {
         id,
-        typ: LocalType::Type(Type::Val(ValType::Closure)),
+        typ: LocalType::Type(Type::Val(ValType::Closure(None))),
     });
     let prev_closure_arg = func.args[0];
     func.args[0] = new_closure_arg;
@@ -1527,7 +1554,7 @@ fn closure_func_assign_env_types(
 
 fn closure_func_assign_types(
     func: &mut Func,
-    func_index: ClosureIndex,
+    func_index: ClosureArgIndex,
     closure_global_layout: &ClosureGlobalLayout,
 ) {
     let ClosureArgs::Specified(args_type) = closure_global_layout.arg_types(func_index) else {
@@ -1541,7 +1568,7 @@ fn closure_func_assign_types(
             .map(|&arg| func.locals[arg].typ)
             .collect::<Vec<_>>(),
         vec![
-            LocalType::Type(Type::Val(ValType::Closure)),
+            LocalType::Type(Type::Val(ValType::Closure(None))),
             LocalType::VariadicArgs
         ]
     );

@@ -92,7 +92,7 @@ fn desugar_call_closure(
         func_type: FuncType {
             args: {
                 let mut args = Vec::new();
-                args.push(ValType::Closure.into());
+                args.push(ValType::Closure(None).into());
                 args.extend(call_closure.arg_types);
                 args
             },

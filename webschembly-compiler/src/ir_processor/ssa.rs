@@ -210,7 +210,10 @@ fn assert_ssa(func: &Func) {
                     phi_area = false;
                 }
             } else if let InstrKind::Phi { .. } = expr.kind {
-                panic!("phi instruction must be at the beginning of a basic block");
+                panic!(
+                    "phi instruction must be at the beginning of a basic block. BB: {:?}, Instrs: {:#?}",
+                    bb.id, bb.instrs
+                );
             }
         }
     }

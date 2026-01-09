@@ -1,9 +1,6 @@
 use crate::ir_generator::GlobalManager;
 use vec_map::VecMap;
 
-use bb_index_manager::BBIndex;
-use closure_global_layout::ClosureIndex;
-use env_index_manager::EnvIndex;
 mod jit_config;
 mod jit_module;
 pub use jit_config::JitConfig;
@@ -11,7 +8,9 @@ use jit_module::JitModule;
 mod jit_ctx;
 use jit_ctx::JitCtx;
 use webschembly_compiler_ir::*;
+use webschembly_compiler_ir::{BBIndex, ClosureArgIndex, ClosureEnvIndex};
 pub mod bb_index_manager;
+
 pub mod closure_global_layout;
 pub mod env_index_manager;
 pub mod index_flag;
@@ -51,8 +50,8 @@ impl Jit {
         global_manager: &mut GlobalManager,
         module_id: JitModuleId,
         func_id: FuncId,
-        env_index: EnvIndex,
-        func_index: ClosureIndex,
+        env_index: ClosureEnvIndex,
+        func_index: ClosureArgIndex,
     ) -> Module {
         self.jit_module[module_id].instantiate_func(
             global_manager,
@@ -67,8 +66,8 @@ impl Jit {
         &mut self,
         module_id: JitModuleId,
         func_id: FuncId,
-        env_index: EnvIndex,
-        func_index: ClosureIndex,
+        env_index: ClosureEnvIndex,
+        func_index: ClosureArgIndex,
         bb_id: BasicBlockId,
         index: BBIndex,
         global_manager: &mut GlobalManager,
@@ -89,8 +88,8 @@ impl Jit {
         global_manager: &mut GlobalManager,
         module_id: JitModuleId,
         func_id: FuncId,
-        env_index: EnvIndex,
-        func_index: ClosureIndex,
+        env_index: ClosureEnvIndex,
+        func_index: ClosureArgIndex,
         bb_id: BasicBlockId,
         kind: BranchKind,
         source_bb_id: BasicBlockId,
