@@ -447,7 +447,7 @@ impl Default for SsaOptimizerConfig {
         SsaOptimizerConfig {
             enable_cse: true,
             enable_dce: true,
-            enable_inlining: false, // true,
+            enable_inlining: true,
             iterations: 5,
         }
     }
@@ -522,8 +522,8 @@ fn inlining_func(
         required_func_ids
     };
 
-    if required_func_ids.is_empty()
-    // && func_inliner.merge_func_infos.is_empty() /* これがないとnon_exhaustiveなphiが残る */ TODO: コメント解除すると matmul-64.b.scm で無限ループする
+    if required_func_ids.is_empty() && func_inliner.merge_func_infos.is_empty()
+    // TODO: matmul-64.b.scm で無限ループする
     {
         // required_func_ids={} なら自身をそのまま返すべき
         return module.funcs[func_id].clone();
