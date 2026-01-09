@@ -3,6 +3,7 @@ import * as fs from "fs/promises";
 import * as path from "path";
 
 const shardPrefix = process.env.WEBSCHEMBLY_SHARD_PREFIX || "";
+const fileFilter = process.env.WEBSCHEMBLY_FILE_FILTER || "";
 export const fixtureDir = "fixtures";
 
 function shouldIncludePath(entryPath: string): boolean {
@@ -16,6 +17,14 @@ function shouldIncludePath(entryPath: string): boolean {
     .padStart(256, "0");
 
   return hashBinary.startsWith(shardPrefix);
+}
+
+function shouldIncludeFile(entryPath: string): boolean {
+  if (!fileFilter) {
+    return true;
+  }
+
+  return entryPath.includes(fileFilter);
 }
 
 async function readDirRec(
@@ -35,7 +44,7 @@ async function readDirRec(
     if (entry.isDirectory()) {
       await readDirRec(basePath, entryPath, result);
     } else {
-      if (shouldIncludePath(entryPath)) {
+      if (shouldIncludePath(entryPath) && shouldIncludeFile(entryPath)) {
         result.push(entryPath);
       }
     }
