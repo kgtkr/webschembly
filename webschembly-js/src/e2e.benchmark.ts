@@ -123,6 +123,12 @@ for (const filename of filenames) {
   }
 }
 
+let count = 0;
+bench.addEventListener("cycle", (e) => {
+  count++;
+  console.log(`${count}/${bench.tasks.length}`);
+});
+
 await bench.run();
 console.table(bench.table());
 
