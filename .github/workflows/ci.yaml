@@ -136,7 +136,7 @@ jobs:
           merge-multiple: true
       - name: Combine benchmark results
         run: |
-          cat ./benchmark-results/* > ./benchmark.result
+          cat ./benchmark-results/* | tee ./benchmark.result
       - name: Store benchmark result
         uses: benchmark-action/github-action-benchmark@v1
         with:
