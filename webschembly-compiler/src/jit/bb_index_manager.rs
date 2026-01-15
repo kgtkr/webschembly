@@ -10,9 +10,6 @@ use super::index_flag::IndexFlag;
 pub const BB_LAYOUT_MAX_SIZE: usize = 32;
 pub const BB_LAYOUT_DEFAULT_INDEX: BBIndex = BBIndex(0);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct BBIndex(pub usize);
-
 #[derive(Debug)]
 pub struct BBIndexManager {
     type_params_to_index: FxBiHashMap<VecMapEq<TypeParamId, ValType>, BBIndex>,

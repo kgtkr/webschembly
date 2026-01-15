@@ -161,3 +161,73 @@ impl fmt::Display for Display<'_, JitBasicBlockId> {
         Ok(())
     }
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, From, Into)]
+pub struct ClosureEnvIndex(pub usize);
+
+impl ClosureEnvIndex {
+    pub fn display<'a>(&self, meta: &'a Meta) -> Display<'a, ClosureEnvIndex> {
+        Display { value: *self, meta }
+    }
+}
+
+impl fmt::Display for Display<'_, ClosureEnvIndex> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "closure_env{}", self.value.0)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, From, Into)]
+pub struct ClosureArgIndex(pub usize);
+
+impl ClosureArgIndex {
+    pub fn display<'a>(&self, meta: &'a Meta) -> Display<'a, ClosureArgIndex> {
+        Display { value: *self, meta }
+    }
+}
+
+impl fmt::Display for Display<'_, ClosureArgIndex> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "closure_arg{}", self.value.0)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, From, Into)]
+pub struct BBIndex(pub usize);
+
+impl BBIndex {
+    pub fn display<'a>(&self, meta: &'a Meta) -> Display<'a, BBIndex> {
+        Display { value: *self, meta }
+    }
+}
+
+impl fmt::Display for Display<'_, BBIndex> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "bb_index{}", self.value.0)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ConstantClosure {
+    pub module_id: JitModuleId,
+    pub func_id: JitFuncId,
+    pub env_index: ClosureEnvIndex,
+}
+
+impl ConstantClosure {
+    pub fn display<'a>(&self, meta: &'a Meta) -> Display<'a, ConstantClosure> {
+        Display { value: *self, meta }
+    }
+}
+
+impl fmt::Display for Display<'_, ConstantClosure> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "constant_closure({}, {}, {})",
+            self.value.module_id.display(self.meta),
+            self.value.func_id.display(self.meta),
+            self.value.env_index.display(self.meta)
+        )
+    }
+}

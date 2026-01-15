@@ -1,14 +1,14 @@
 use rustc_hash::FxHashMap;
 
-use super::bb_index_manager::BBIndex;
-use super::closure_global_layout::{CLOSURE_LAYOUT_MAX_SIZE, ClosureIndex};
-use super::env_index_manager::{EnvIndex, EnvIndexManager};
+use super::closure_global_layout::CLOSURE_LAYOUT_MAX_SIZE;
+use super::env_index_manager::EnvIndexManager;
 use super::jit_ctx::JitCtx;
 use super::jit_func::{JitFunc, JitSpecializedArgFunc};
 use crate::ir_generator::GlobalManager;
 use crate::jit::jit_func::JitSpecializedEnvFunc;
 use vec_map::{HasId, VecMap};
 use webschembly_compiler_ir::*;
+use webschembly_compiler_ir::{BBIndex, ClosureArgIndex, ClosureEnvIndex};
 #[derive(Debug)]
 pub struct JitModule {
     module_id: JitModuleId,
@@ -170,7 +170,7 @@ impl JitModule {
             if !jit_ctx.is_instantiated() {
                 let mut stub_globals = FxHashMap::default();
                 for func_index in 0..CLOSURE_LAYOUT_MAX_SIZE {
-                    let func_index = ClosureIndex(func_index);
+                    let func_index = ClosureArgIndex(func_index);
                     let stub_global = global_manager.gen_global(LocalType::MutFuncRef);
                     stub_globals.insert(func_index, stub_global);
                     let stub_local = entry_func.locals.push_with(|id| Local {
@@ -217,8 +217,8 @@ impl JitModule {
         &mut self,
         global_manager: &mut GlobalManager,
         func_id: FuncId,
-        env_index: EnvIndex,
-        func_index: ClosureIndex,
+        env_index: ClosureEnvIndex,
+        func_index: ClosureArgIndex,
         jit_ctx: &mut JitCtx,
     ) -> Module {
         let jit_func_entry = self.jit_funcs.get_mut(&func_id).unwrap();
@@ -264,8 +264,8 @@ impl JitModule {
     pub fn instantiate_bb(
         &mut self,
         func_id: FuncId,
-        env_index: EnvIndex,
-        func_index: ClosureIndex,
+        env_index: ClosureEnvIndex,
+        func_index: ClosureArgIndex,
         bb_id: BasicBlockId,
         index: BBIndex,
         global_manager: &mut GlobalManager,
@@ -297,8 +297,8 @@ impl JitModule {
         global_manager: &mut GlobalManager,
         jit_ctx: &mut JitCtx,
         func_id: FuncId,
-        env_index: EnvIndex,
-        func_index: ClosureIndex,
+        env_index: ClosureEnvIndex,
+        func_index: ClosureArgIndex,
         bb_id: BasicBlockId,
         kind: BranchKind,
         source_bb_id: BasicBlockId,
