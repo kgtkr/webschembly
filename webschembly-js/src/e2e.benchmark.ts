@@ -24,6 +24,9 @@ const compilerConfigs: CompilerConfig[] = [
   {},
   // { enableJitOptimization: false },
   { enableJit: false },
+  { enableJitSmallBlockFusion: false, enableJitLargeBlockFusion: false },
+  { enableJitSmallBlockFusion: false, enableJitLargeBlockFusion: true },
+  { enableJitSmallBlockFusion: true, enableJitLargeBlockFusion: false },
 ];
 
 const runtimeModule = new WebAssembly.Module(

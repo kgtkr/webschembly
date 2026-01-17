@@ -14,6 +14,8 @@ export type RuntimeConfig = {
 export type CompilerConfig = {
   enableJit?: boolean;
   enableJitOptimization?: boolean;
+  enableJitSmallBlockFusion?: boolean;
+  enableJitLargeBlockFusion?: boolean;
 };
 
 export function compilerConfigToString(config: CompilerConfig): string {
@@ -72,6 +74,8 @@ export type RuntimeExports = {
   init: () => void;
   compiler_config_enable_jit: (enable: number) => void;
   compiler_config_enable_jit_optimization: (enable: number) => void;
+  compiler_config_enable_jit_block_fusion: (enable: number) => void;
+  compiler_config_enable_jit_large_block_fusion: (enable: number) => void;
 };
 
 export type ModuleImports = {
@@ -103,15 +107,16 @@ export async function createRuntime(
         bufPtr,
         bufSize,
       );
-      const ir = irBufPtr === 0
-        ? null
-        : new TextDecoder().decode(
-          new Uint8Array(
-            runtimeInstance.exports.memory.buffer,
-            irBufPtr,
-            irBufSize,
-          ),
-        );
+      const ir =
+        irBufPtr === 0
+          ? null
+          : new TextDecoder().decode(
+              new Uint8Array(
+                runtimeInstance.exports.memory.buffer,
+                irBufPtr,
+                irBufSize,
+              ),
+            );
 
       logger.instantiate(buf, ir);
 
@@ -149,12 +154,9 @@ export async function createRuntime(
     },
   };
 
-  const runtimeInstance = new WebAssembly.Instance(
-    await loadRuntimeModule(),
-    {
-      env: runtimeImportObjects,
-    } satisfies RuntimeImports,
-  ) as TypedWebAssemblyInstance<RuntimeExports>;
+  const runtimeInstance = new WebAssembly.Instance(await loadRuntimeModule(), {
+    env: runtimeImportObjects,
+  } satisfies RuntimeImports) as TypedWebAssemblyInstance<RuntimeExports>;
 
   if (compilerConfig?.enableJit !== undefined) {
     runtimeInstance.exports.compiler_config_enable_jit(
@@ -167,6 +169,18 @@ export async function createRuntime(
     );
   }
 
+  if (compilerConfig?.enableJitSmallBlockFusion !== undefined) {
+    runtimeInstance.exports.compiler_config_enable_jit_block_fusion(
+      Number(compilerConfig.enableJitSmallBlockFusion),
+    );
+  }
+
+  if (compilerConfig?.enableJitLargeBlockFusion !== undefined) {
+    runtimeInstance.exports.compiler_config_enable_jit_large_block_fusion(
+      Number(compilerConfig.enableJitLargeBlockFusion),
+    );
+  }
+
   runtimeInstance.exports.init();
 
   const importObject: ModuleImports = {
@@ -174,22 +188,24 @@ export async function createRuntime(
     dynamic,
   };
 
-  const errorHandle = <A extends any[], R>(f: (...args: A) => R) => (...args: A): void => {
-    try {
-      f(...args);
-    } catch (e) {
-      if (
-        e instanceof WebAssembly.Exception
-        && e.is(runtimeInstance.exports.WEBSCHEMBLY_EXCEPTION)
-      ) {
-        if (exitWhenException) {
-          exit(1);
+  const errorHandle =
+    <A extends any[], R>(f: (...args: A) => R) =>
+    (...args: A): void => {
+      try {
+        f(...args);
+      } catch (e) {
+        if (
+          e instanceof WebAssembly.Exception &&
+          e.is(runtimeInstance.exports.WEBSCHEMBLY_EXCEPTION)
+        ) {
+          if (exitWhenException) {
+            exit(1);
+          }
+        } else {
+          throw e;
         }
-      } else {
-        throw e;
       }
-    }
-  };
+    };
 
   function mallocString(s: string): [number, number] {
     const buf = new TextEncoder().encode(s);

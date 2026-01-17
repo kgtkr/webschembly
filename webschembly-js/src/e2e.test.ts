@@ -3,7 +3,11 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import { beforeAll, describe, expect, test } from "vitest";
 import { createNodeRuntimeEnv } from "./node-runtime-env";
-import { type CompilerConfig, compilerConfigToString, createRuntime } from "./runtime";
+import {
+  type CompilerConfig,
+  compilerConfigToString,
+  createRuntime,
+} from "./runtime";
 import * as testUtils from "./test-utils";
 
 function concatBufs(bufs: Uint8Array[]) {
@@ -23,6 +27,9 @@ const compilerConfigs: CompilerConfig[] = [
   {},
   { enableJitOptimization: false },
   { enableJit: false },
+  { enableJitSmallBlockFusion: false, enableJitLargeBlockFusion: false },
+  { enableJitSmallBlockFusion: false, enableJitLargeBlockFusion: true },
+  { enableJitSmallBlockFusion: true, enableJitLargeBlockFusion: false },
 ];
 
 describe("E2E test", async () => {
