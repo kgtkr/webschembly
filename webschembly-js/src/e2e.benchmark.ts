@@ -3,10 +3,22 @@ import { Bench, type BenchOptions } from "tinybench";
 import * as fs from "fs/promises";
 import * as path from "path";
 import { createNodeRuntimeEnv } from "./node-runtime-env";
-import { type CompilerConfig, compilerConfigToString, createRuntime, type Runtime, type SchemeValue } from "./runtime";
+import {
+  type CompilerConfig,
+  compilerConfigToString,
+  createRuntime,
+  type Runtime,
+  type SchemeValue,
+} from "./runtime";
 import * as testUtils from "./test-utils";
+import { createRequire } from "module";
+const require = createRequire(import.meta.url);
+const GUILE_HOOT_DIR = process.env.GUILE_HOOT_DIR;
+const Hoot = require(GUILE_HOOT_DIR + "/reflect-js/reflect.js");
 
-const filenames = (await testUtils.getAllFixtureFilenames()).filter((file) => file.endsWith(".b.scm"));
+const filenames = (await testUtils.getAllFixtureFilenames()).filter((file) =>
+  file.endsWith(".b.scm"),
+);
 console.log("Benchmarking files:", filenames.join(", "));
 const compilerConfigs: CompilerConfig[] = [
   {},
@@ -28,10 +40,10 @@ const benchOptions: BenchOptions = {
 const bench = new Bench(
   process.env["BENCH_DEV"]
     ? {
-      ...benchOptions,
-      iterations: 10,
-      warmupIterations: 5,
-    }
+        ...benchOptions,
+        iterations: 10,
+        warmupIterations: 5,
+      }
     : benchOptions,
 );
 
@@ -121,6 +133,33 @@ for (const filename of filenames) {
       }
     }
   }
+
+  {
+    let runClosure: any;
+    bench.add(
+      `${filename}, hoot`,
+      () => {
+        runClosure.call();
+      },
+      {
+        beforeEach: async () => {
+          let [run] = await Hoot.Scheme.load_main(
+            path.join(
+              testUtils.fixtureDir,
+              filename.replace(/\.scm$/, ".hoot.wasm"),
+            ),
+            {
+              reflect_wasm_dir: GUILE_HOOT_DIR + "/reflect-wasm",
+            },
+          );
+          runClosure = run;
+        },
+        afterEach: () => {
+          // noop
+        },
+      },
+    );
+  }
 }
 
 let count = 0;
@@ -137,11 +176,9 @@ const outputFile = await fs.open("benchmark.result", "w");
 bench.tasks.forEach((task) => {
   const result = task.result!;
   outputFile.write(
-    `${task.name} x ${
-      result.throughput.mean.toFixed(
-        2,
-      )
-    } ops/sec ±${result.latency.rme.toFixed(2)}% (${result.latency.samples.length} runs sampled)\n`,
+    `${task.name} x ${result.throughput.mean.toFixed(
+      2,
+    )} ops/sec ±${result.latency.rme.toFixed(2)}% (${result.latency.samples.length} runs sampled)\n`,
   );
 });
 await outputFile.close();

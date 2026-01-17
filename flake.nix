@@ -59,8 +59,11 @@
               # for benchmarking
               pkgs.guile-hoot
               pkgs.guile
-              pkgs.bigloo
+              # pkgs.bigloo
             ];
+            env = {
+              GUILE_HOOT_DIR = "${pkgs.guile-hoot}/share/guile-hoot/0.7.0";
+            };
           };
         };
     };

@@ -1,11 +1,11 @@
 BINARYEN_ARGS ?= $(shell cat ../binaryen-args.txt)
-SCM := $(wildcard fixtures/**/*.scm)
+SCM := $(shell find fixtures -name ".*" -prune -o -name "*.scm")
 LIST := $(patsubst %.scm,%,$(SCM))
 WASM := $(patsubst %.scm,%.wasm,$(SCM))
 WASMS := $(patsubst %.scm,%.wasms,$(SCM))
 WAT := $(patsubst %.scm,%.wat,$(SCM))
 
-BENCH_SCM := $(wildcard fixtures/**/*.b.scm)
+BENCH_SCM := $(filter %.b.scm, $(SCM))
 HOOT_SRC := $(patsubst %.scm,%.hoot.ss,$(BENCH_SCM))
 HOOT_WASM := $(patsubst %.scm,%.hoot.wasm,$(BENCH_SCM))
 
@@ -46,9 +46,10 @@ $(WEBSCHEMBLY_COMPILER_CLI):
 %.wat: %.wasm
 	wasm-dis $< -o $@
 
-%.hoot.ss: %.scm fixtures/hoot-header.txt
+%.hoot.ss: %.scm fixtures/hoot-header.txt fixtures/hoot-footer.txt
 	cat fixtures/hoot-header.txt > $@
 	cat $< >> $@
+	cat fixtures/hoot-footer.txt >> $@
 
 %.hoot.wasm: %.hoot.ss
 	guild compile-wasm -O3 -o $@ $<

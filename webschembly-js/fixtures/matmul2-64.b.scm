@@ -29,9 +29,9 @@
     (loop-i 0 a b size c)
     c))
 
-(define size 2)
-(define mat-a #f64(1.0 2.0 3.0 4.0))
-(define mat-b #f64(5.0 6.0 7.0 8.0))
+(set! size 2)
+(set! mat-a #f64(1.0 2.0 3.0 4.0))
+(set! mat-b #f64(5.0 6.0 7.0 8.0))
 (write (matrix-multiply mat-a mat-b size))
 (newline)
 
