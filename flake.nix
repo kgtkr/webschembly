@@ -26,7 +26,6 @@
         inputs.make-shell.flakeModules.default
         ./rust.nix
         ./js.nix
-        ./latex.nix
         ./devcontainer.nix
       ];
       perSystem = { self', pkgs, system, ... }:
