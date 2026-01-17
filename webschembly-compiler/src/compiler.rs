@@ -15,6 +15,8 @@ use crate::ir_processor::ssa_optimizer::ssa_optimize;
 use crate::jit::{Jit, JitConfig};
 use crate::lexer;
 use crate::sexpr_parser;
+use crate::stdlib::generate_stdlib;
+use crate::token::TokenKind;
 use webschembly_compiler_ast_generator::ASTGenerator;
 use webschembly_compiler_error::compiler_error;
 use webschembly_compiler_ir as ir;
@@ -73,7 +75,16 @@ impl Compiler {
         input: &str,
         is_stdlib: bool,
     ) -> webschembly_compiler_error::Result<ir::Module> {
-        let tokens = lexer::lex(input)?;
+        let raw_tokens = lexer::lex(input)?;
+        let mut tokens = Vec::new();
+        for token in raw_tokens {
+            if let TokenKind::Directive("include-stdlib") = token.kind {
+                tokens.extend_from_slice(&lexer::lex(&generate_stdlib())?);
+            } else {
+                tokens.push(token);
+            }
+        }
+
         let sexprs =
             sexpr_parser::parse(tokens.as_slice()).map_err(|e| compiler_error!("{}", e))?;
         let ast = self.ast_generator.gen_ast(sexprs)?;

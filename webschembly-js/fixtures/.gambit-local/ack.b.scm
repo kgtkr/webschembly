@@ -1,0 +1,14 @@
+;;; ACK -- One of the Kernighan and Van Wyk benchmarks.
+
+(define (ack m n)
+  (define (ack m n)
+    (cond ((= m 0) (+ n 1))
+      ((= n 0) (ack (- m 1) 1))
+      (else (ack (- m 1) (ack m (- n 1))))))
+  (ack m n))
+
+(define (run)
+  (ack 3 9))
+
+(write (run))
+(newline)

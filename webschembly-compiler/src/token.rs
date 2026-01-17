@@ -19,6 +19,7 @@ pub enum TokenKind {
     Dot,
     Eof,
     Char(char),
+    Directive(String),
 }
 
 #[derive(Debug, Clone)]
