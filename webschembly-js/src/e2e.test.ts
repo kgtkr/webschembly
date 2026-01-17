@@ -24,7 +24,6 @@ function concatBufs(bufs: Uint8Array[]) {
 const snapshotDir = "e2e_snapshots";
 
 const compilerConfigs: CompilerConfig[] = [
-  {},
   { enableJitOptimization: false },
   { enableJit: false },
   { enableJitSmallBlockFusion: false, enableJitLargeBlockFusion: false },

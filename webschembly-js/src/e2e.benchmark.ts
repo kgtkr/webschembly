@@ -21,7 +21,6 @@ const filenames = (await testUtils.getAllFixtureFilenames()).filter((file) =>
 );
 console.log("Benchmarking files:", filenames.join(", "));
 const compilerConfigs: CompilerConfig[] = [
-  {},
   // { enableJitOptimization: false },
   { enableJit: false },
   { enableJitSmallBlockFusion: false, enableJitLargeBlockFusion: false },
