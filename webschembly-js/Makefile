@@ -6,8 +6,9 @@ WASMS := $(patsubst %.scm,%.wasms,$(SCM))
 WAT := $(patsubst %.scm,%.wat,$(SCM))
 
 BENCH_SCM := $(filter %.b.scm, $(SCM))
-HOOT_SRC := $(patsubst %.scm,%.hoot.ss,$(BENCH_SCM))
-HOOT_WASM := $(patsubst %.scm,%.hoot.wasm,$(BENCH_SCM))
+HOOT_BENCH_SCM := $(filter-out fixtures/matmul%, $(BENCH_SCM))
+HOOT_SRC := $(patsubst %.scm,%.hoot.ss,$(HOOT_BENCH_SCM))
+HOOT_WASM := $(patsubst %.scm,%.hoot.wasm,$(HOOT_BENCH_SCM))
 
 LOCAL_WEBSCHEMBLY_RUNTIME := ../webschembly-runtime/webschembly_runtime.wasm
 WEBSCHEMBLY_RUNTIME ?= $(LOCAL_WEBSCHEMBLY_RUNTIME)

@@ -135,6 +135,14 @@ for (const filename of filenames) {
   }
 
   {
+    const hootWasm = path.join(
+      testUtils.fixtureDir,
+      filename.replace(/\.scm$/, ".hoot.wasm"),
+    );
+    if (!(await fs.stat(hootWasm).catch(() => false))) {
+      continue;
+    }
+
     let runClosure: any;
     bench.add(
       `${filename}, hoot`,
@@ -143,15 +151,9 @@ for (const filename of filenames) {
       },
       {
         beforeEach: async () => {
-          let [run] = await Hoot.Scheme.load_main(
-            path.join(
-              testUtils.fixtureDir,
-              filename.replace(/\.scm$/, ".hoot.wasm"),
-            ),
-            {
-              reflect_wasm_dir: GUILE_HOOT_DIR + "/reflect-wasm",
-            },
-          );
+          let [run] = await Hoot.Scheme.load_main(hootWasm, {
+            reflect_wasm_dir: GUILE_HOOT_DIR + "/reflect-wasm",
+          });
           runClosure = run;
         },
         afterEach: () => {
