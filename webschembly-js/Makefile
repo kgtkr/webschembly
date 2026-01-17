@@ -1,9 +1,13 @@
 BINARYEN_ARGS ?= $(shell cat ../binaryen-args.txt)
-SCM := $(wildcard fixtures/*.scm)
+SCM := $(wildcard fixtures/**/*.scm)
 LIST := $(patsubst %.scm,%,$(SCM))
 WASM := $(patsubst %.scm,%.wasm,$(SCM))
 WASMS := $(patsubst %.scm,%.wasms,$(SCM))
 WAT := $(patsubst %.scm,%.wat,$(SCM))
+
+BENCH_SCM := $(wildcard fixtures/**/*.b.scm)
+HOOT_SRC := $(patsubst %.scm,%.hoot.ss,$(BENCH_SCM))
+HOOT_WASM := $(patsubst %.scm,%.hoot.wasm,$(BENCH_SCM))
 
 LOCAL_WEBSCHEMBLY_RUNTIME := ../webschembly-runtime/webschembly_runtime.wasm
 WEBSCHEMBLY_RUNTIME ?= $(LOCAL_WEBSCHEMBLY_RUNTIME)
@@ -42,6 +46,13 @@ $(WEBSCHEMBLY_COMPILER_CLI):
 %.wat: %.wasm
 	wasm-dis $< -o $@
 
+%.hoot.ss: %.scm fixtures/hoot-header.txt
+	cat fixtures/hoot-header.txt > $@
+	cat $< >> $@
+
+%.hoot.wasm: %.hoot.ss
+	guild compile-wasm -O3 -o $@ $<
+
 .PHONY: clean
 clean:
 	rm -f $(WASM) $(WAT)
@@ -50,8 +61,13 @@ clean:
 .PHONY: all
 all: $(WASM) $(WAT)
 
+.PHONY: hoot
+hoot: $(HOOT_WASM)
+
 benchmark.result: $(WEBSCHEMBLY_RUNTIME)
 	WEBSCHEMBLY_RUNTIME=$(WEBSCHEMBLY_RUNTIME) npm run benchmark
 
 .PHONY: benchmark
 benchmark: benchmark.result
+
+.SECONDARY:

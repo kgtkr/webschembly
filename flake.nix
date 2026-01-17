@@ -56,6 +56,10 @@
               (pkgs.callPackage ./schemat.nix { })
               pkgs.treefmt
               pkgs.dprint
+              # for benchmarking
+              pkgs.guile-hoot
+              pkgs.guile
+              pkgs.bigloo
             ];
           };
         };
