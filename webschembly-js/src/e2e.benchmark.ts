@@ -16,6 +16,7 @@ const require = createRequire(import.meta.url);
 const GUILE_HOOT_DIR = process.env.GUILE_HOOT_DIR;
 const Hoot = require(GUILE_HOOT_DIR + "/reflect-js/reflect.js");
 
+type WarmupKind = "none" | "static" | "dynamic";
 const filenames = (await testUtils.getAllFixtureFilenames()).filter((file) =>
   file.endsWith(".b.scm"),
 );
@@ -50,7 +51,7 @@ const bench = new Bench(
 );
 
 for (const filename of filenames) {
-  for (const warmup of [false, true]) {
+  for (const warmup of ["none", "static", "dynamic"] as const) {
     for (const compilerConfig of compilerConfigs) {
       const srcBuf = await fs.readFile(
         path.join(testUtils.fixtureDir, filename),
@@ -58,18 +59,19 @@ for (const filename of filenames) {
 
       let runtime: Runtime;
 
-      if (warmup) {
+      if (warmup !== "none") {
         let runClosure: SchemeValue;
         let runArgs: SchemeValue;
         let afterWarmup = false;
         bench.add(
-          `${filename},with warmup,${compilerConfigToString(compilerConfig)}`,
+          `${filename},with ${warmup === "dynamic" ? "dynamic " : ""}warmup,${compilerConfigToString(compilerConfig)}`,
           () => {
             runtime.instance.exports.call_closure(runClosure, runArgs);
           },
           {
             beforeEach: async () => {
               afterWarmup = false;
+              let i = 0;
               runtime = await createRuntime(
                 await createNodeRuntimeEnv({
                   runtimeName: filename,
@@ -83,6 +85,8 @@ for (const filename of filenames) {
                         throw new Error(
                           "instantiate should not be called after warmup",
                         );
+                      } else if (warmup === "dynamic") {
+                        i = 0;
                       }
                     },
                   },
@@ -96,8 +100,9 @@ for (const filename of filenames) {
               runClosure = runtime.getGlobal("run");
               runArgs = runtime.instance.exports.new_args(0);
               // branch specializationのthresholdが20なので少し多めの30回実行する
-              for (let i = 0; i < 30; i++) {
+              while (i < 30) {
                 runtime.instance.exports.call_closure(runClosure, runArgs);
+                i++;
               }
               afterWarmup = true;
             },
@@ -157,6 +162,9 @@ for (const filename of filenames) {
             reflect_wasm_dir: GUILE_HOOT_DIR + "/reflect-wasm",
           });
           runClosure = run;
+          for (let i = 0; i < 30; i++) {
+            runClosure.call();
+          }
         },
         afterEach: () => {
           // noop
