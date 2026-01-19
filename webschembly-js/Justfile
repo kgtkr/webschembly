@@ -32,6 +32,9 @@ run src: build-runtime
 benchmark: build-runtime-release
 	{{LOG_DIR_ENV}}{{WEBSCHEMBLY_RUNTIME_ENV}}npm run benchmark
 
+benchmark-turbofan-only: build-runtime-release
+	{{LOG_DIR_ENV}}{{WEBSCHEMBLY_RUNTIME_ENV}}npm run benchmark-turbofan-only
+
 benchmark-dev: build-runtime
 	{{LOG_DIR_ENV}}{{WEBSCHEMBLY_RUNTIME_ENV}}BENCH_DEV=1 npm run benchmark
 
