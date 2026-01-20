@@ -23,8 +23,10 @@
       (loop (- repeat 1) (my-try n))
       result)))
 
-(define (run)
-  (go 200000))
+(define arg 200000)
 
-(write (run))
+(define (run arg)
+  (go arg))
+
+(write (run arg))
 (newline)

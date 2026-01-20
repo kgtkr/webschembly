@@ -45,7 +45,9 @@
 (set! mat-a (f64vector-iota (* size size) 1000.0 0.2))
 (set! mat-b (f64vector-iota (* size size) 2000.0 0.1))
 
-(define (run)
-  (matrix-multiply mat-a mat-b size))
-(write (run))
+(define arg mat-b)
+
+(define (run arg)
+  (matrix-multiply mat-a arg size))
+(write (run arg))
 (newline)

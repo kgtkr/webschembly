@@ -1,6 +1,7 @@
 import { Bench, type BenchOptions } from "tinybench";
 
 import * as fs from "fs/promises";
+import { createRequire } from "module";
 import * as path from "path";
 import { createNodeRuntimeEnv } from "./node-runtime-env.js";
 import {
@@ -11,15 +12,12 @@ import {
   type SchemeValue,
 } from "./runtime.js";
 import * as testUtils from "./test-utils.js";
-import { createRequire } from "module";
 const require = createRequire(import.meta.url);
 const GUILE_HOOT_DIR = process.env.GUILE_HOOT_DIR;
 const Hoot = require(GUILE_HOOT_DIR + "/reflect-js/reflect.js");
 
 type WarmupKind = "none" | "static" | "dynamic";
-const filenames = (await testUtils.getAllFixtureFilenames()).filter((file) =>
-  file.endsWith(".b.scm"),
-);
+const filenames = (await testUtils.getAllFixtureFilenames()).filter((file) => file.endsWith(".b.scm"));
 console.log("Benchmarking files:", filenames.join(", "));
 const compilerConfigs: CompilerConfig[] = [
   // { enableJitOptimization: false },
@@ -43,19 +41,21 @@ const benchOptions: BenchOptions = {
 const bench = new Bench(
   process.env["BENCH_DEV"]
     ? {
-        ...benchOptions,
-        iterations: 1,
-        warmupIterations: 0,
-      }
+      ...benchOptions,
+      iterations: 1,
+      warmupIterations: 0,
+    }
     : benchOptions,
 );
 
 for (const filename of filenames) {
   for (const warmup of ["none", "static", "dynamic"] satisfies WarmupKind[]) {
-    for (const compilerConfig of compilerConfigs.filter(
-      // JITが無効の時dynamic warmupとstatic warmupは同じなので除外
-      (c) => !(warmup === "dynamic" && c.enableJit === false),
-    )) {
+    for (
+      const compilerConfig of compilerConfigs.filter(
+        // JITが無効の時dynamic warmupとstatic warmupは同じなので除外
+        (c) => !(warmup === "dynamic" && c.enableJit === false),
+      )
+    ) {
       const srcBuf = await fs.readFile(
         path.join(testUtils.fixtureDir, filename),
       );
@@ -101,7 +101,9 @@ for (const filename of filenames) {
               runtime.loadStdlib();
               runtime.loadSrc(srcBuf);
               runClosure = runtime.getGlobal("run");
-              runArgs = runtime.instance.exports.new_args(0);
+              const argValue = runtime.getGlobal("arg");
+              runArgs = runtime.instance.exports.new_args(1);
+              runtime.instance.exports.set_args(runArgs, 0, argValue);
               // branch specializationのthresholdが20なので少し多めの30回実行する
               while (i < 30) {
                 runtime.instance.exports.call_closure(runClosure, runArgs);
@@ -156,25 +158,25 @@ for (const filename of filenames) {
     }
 
     let runClosure: any;
+    let argValue: any;
     const originalStdoutWrite = process.stdout.write;
     const originalStderrWrite = process.stderr.write;
 
     bench.add(
       `${filename},hoot`,
       () => {
-        runClosure.call();
+        runClosure.call(argValue);
       },
       {
         beforeEach: async () => {
           process.stdout.write = () => true;
           process.stderr.write = () => true;
 
-          let [run] = await Hoot.Scheme.load_main(hootWasm, {
+          [runClosure, argValue] = await Hoot.Scheme.load_main(hootWasm, {
             reflect_wasm_dir: GUILE_HOOT_DIR + "/reflect-wasm",
           });
-          runClosure = run;
           for (let i = 0; i < 30; i++) {
-            runClosure.call();
+            runClosure.call(argValue);
           }
           globalThis.gc!();
         },
@@ -201,9 +203,11 @@ const outputFile = await fs.open("benchmark.result", "w");
 bench.tasks.forEach((task) => {
   const result = task.result!;
   outputFile.write(
-    `${task.name} x ${result.throughput.mean.toFixed(
-      2,
-    )} ops/sec ±${result.latency.rme.toFixed(2)}% (${result.latency.samples.length} runs sampled)\n`,
+    `${task.name} x ${
+      result.throughput.mean.toFixed(
+        2,
+      )
+    } ops/sec ±${result.latency.rme.toFixed(2)}% (${result.latency.samples.length} runs sampled)\n`,
   );
 });
 await outputFile.close();

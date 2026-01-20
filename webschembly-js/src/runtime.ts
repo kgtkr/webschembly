@@ -63,7 +63,7 @@ export type RuntimeExports = {
   WEBSCHEMBLY_EXCEPTION: WebAssembly.ExceptionTag;
   get_global_id: (namePtr: number, nameLen: number) => number;
   new_args: (elemSize: number) => SchemeValue;
-  set_args: (args: SchemeValue, index: number, value: number) => void;
+  set_args: (args: SchemeValue, index: number, value: SchemeValue) => void;
   call_closure: (closure: SchemeValue, args: SchemeValue) => SchemeValue;
   malloc: (size: number) => number;
   free: (ptr: number) => void;
@@ -84,7 +84,7 @@ export type ModuleImports = {
 };
 
 export type ModuleExports = {
-  start: () => number;
+  start: () => SchemeValue;
 };
 
 export type TypedWebAssemblyInstance<Exports> = WebAssembly.Instance & {
@@ -107,16 +107,15 @@ export async function createRuntime(
         bufPtr,
         bufSize,
       );
-      const ir =
-        irBufPtr === 0
-          ? null
-          : new TextDecoder().decode(
-              new Uint8Array(
-                runtimeInstance.exports.memory.buffer,
-                irBufPtr,
-                irBufSize,
-              ),
-            );
+      const ir = irBufPtr === 0
+        ? null
+        : new TextDecoder().decode(
+          new Uint8Array(
+            runtimeInstance.exports.memory.buffer,
+            irBufPtr,
+            irBufSize,
+          ),
+        );
 
       logger.instantiate(buf, ir);
 
@@ -154,9 +153,12 @@ export async function createRuntime(
     },
   };
 
-  const runtimeInstance = new WebAssembly.Instance(await loadRuntimeModule(), {
-    env: runtimeImportObjects,
-  } satisfies RuntimeImports) as TypedWebAssemblyInstance<RuntimeExports>;
+  const runtimeInstance = new WebAssembly.Instance(
+    await loadRuntimeModule(),
+    {
+      env: runtimeImportObjects,
+    } satisfies RuntimeImports,
+  ) as TypedWebAssemblyInstance<RuntimeExports>;
 
   if (compilerConfig?.enableJit !== undefined) {
     runtimeInstance.exports.compiler_config_enable_jit(
@@ -188,24 +190,22 @@ export async function createRuntime(
     dynamic,
   };
 
-  const errorHandle =
-    <A extends any[], R>(f: (...args: A) => R) =>
-    (...args: A): void => {
-      try {
-        f(...args);
-      } catch (e) {
-        if (
-          e instanceof WebAssembly.Exception &&
-          e.is(runtimeInstance.exports.WEBSCHEMBLY_EXCEPTION)
-        ) {
-          if (exitWhenException) {
-            exit(1);
-          }
-        } else {
-          throw e;
+  const errorHandle = <A extends any[], R>(f: (...args: A) => R) => (...args: A): void => {
+    try {
+      f(...args);
+    } catch (e) {
+      if (
+        e instanceof WebAssembly.Exception
+        && e.is(runtimeInstance.exports.WEBSCHEMBLY_EXCEPTION)
+      ) {
+        if (exitWhenException) {
+          exit(1);
         }
+      } else {
+        throw e;
       }
-    };
+    }
+  };
 
   function mallocString(s: string): [number, number] {
     const buf = new TextEncoder().encode(s);
