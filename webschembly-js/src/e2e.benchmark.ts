@@ -105,6 +105,7 @@ for (const filename of filenames) {
                 i++;
               }
               afterWarmup = true;
+              globalThis.gc!();
             },
             afterEach: () => {
               runtime.cleanup();
@@ -131,6 +132,7 @@ for (const filename of filenames) {
                 },
               );
               runtime.loadStdlib();
+              globalThis.gc!();
             },
             afterEach: () => {
               runtime.cleanup();
@@ -152,7 +154,7 @@ for (const filename of filenames) {
 
     let runClosure: any;
     bench.add(
-      `${filename}, hoot`,
+      `${filename},hoot`,
       () => {
         runClosure.call();
       },
@@ -165,6 +167,7 @@ for (const filename of filenames) {
           for (let i = 0; i < 30; i++) {
             runClosure.call();
           }
+          globalThis.gc!();
         },
         afterEach: () => {
           // noop
@@ -194,3 +197,14 @@ bench.tasks.forEach((task) => {
   );
 });
 await outputFile.close();
+
+// json形式で生データを保存
+await fs.writeFile(
+  "benchmark.result.json",
+  JSON.stringify(
+    bench.tasks.map((task) => ({
+      name: task.name,
+      samples: task.result!.latency.samples,
+    })),
+  ),
+);

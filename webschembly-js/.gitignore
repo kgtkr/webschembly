@@ -9,3 +9,4 @@ bin/*
 /node_modules/
 *.log
 *.ss
+*.result.json
