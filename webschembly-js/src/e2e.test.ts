@@ -1,14 +1,13 @@
-import * as fsLegacy from "fs";
 import * as fs from "fs/promises";
 import * as path from "path";
 import { beforeAll, describe, expect, test } from "vitest";
-import { createNodeRuntimeEnv } from "./node-runtime-env";
+import { createNodeRuntimeEnv } from "./node-runtime-env.js";
 import {
   type CompilerConfig,
   compilerConfigToString,
   createRuntime,
-} from "./runtime";
-import * as testUtils from "./test-utils";
+} from "./runtime.js";
+import * as testUtils from "./test-utils.js";
 
 function concatBufs(bufs: Uint8Array[]) {
   const bufLen = bufs.map((buf) => buf.length).reduce((a, b) => a + b, 0);

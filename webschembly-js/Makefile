@@ -66,10 +66,4 @@ all: $(WASM) $(WAT)
 .PHONY: hoot
 hoot: $(HOOT_WASM)
 
-benchmark.result: $(WEBSCHEMBLY_RUNTIME)
-	WEBSCHEMBLY_RUNTIME=$(WEBSCHEMBLY_RUNTIME) npm run benchmark
-
-.PHONY: benchmark
-benchmark: benchmark.result
-
 .SECONDARY:

@@ -5,8 +5,8 @@
   "scripts": {
     "build": "tsc",
     "test": "vitest run",
-    "benchmark": "tsx --expose-gc src/e2e.benchmark.ts",
-    "benchmark-turbofan-only": "tsx --expose-gc --no-liftoff src/e2e.benchmark.ts"
+    "benchmark": "npm run build && node --expose-gc dist/e2e.benchmark.js",
+    "benchmark-turbofan-only": "npm run build && node --expose-gc --no-liftoff dist/e2e.benchmark.js"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

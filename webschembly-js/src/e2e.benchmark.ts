@@ -2,15 +2,15 @@ import { Bench, type BenchOptions } from "tinybench";
 
 import * as fs from "fs/promises";
 import * as path from "path";
-import { createNodeRuntimeEnv } from "./node-runtime-env";
+import { createNodeRuntimeEnv } from "./node-runtime-env.js";
 import {
   type CompilerConfig,
   compilerConfigToString,
   createRuntime,
   type Runtime,
   type SchemeValue,
-} from "./runtime";
-import * as testUtils from "./test-utils";
+} from "./runtime.js";
+import * as testUtils from "./test-utils.js";
 import { createRequire } from "module";
 const require = createRequire(import.meta.url);
 const GUILE_HOOT_DIR = process.env.GUILE_HOOT_DIR;
@@ -51,8 +51,11 @@ const bench = new Bench(
 );
 
 for (const filename of filenames) {
-  for (const warmup of ["none", "static", "dynamic"] as const) {
-    for (const compilerConfig of compilerConfigs) {
+  for (const warmup of ["none", "static", "dynamic"] satisfies WarmupKind[]) {
+    for (const compilerConfig of compilerConfigs.filter(
+      // JITが無効の時dynamic warmupとstatic warmupは同じなので除外
+      (c) => !(warmup === "dynamic" && c.enableJit === false),
+    )) {
       const srcBuf = await fs.readFile(
         path.join(testUtils.fixtureDir, filename),
       );

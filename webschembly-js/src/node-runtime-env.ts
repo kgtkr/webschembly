@@ -2,7 +2,7 @@ import * as fsSync from "fs";
 import * as fs from "fs/promises";
 
 import * as path from "path";
-import { type RuntimeEnv, type RuntimeLogger } from "./runtime";
+import { type RuntimeEnv, type RuntimeLogger } from "./runtime.js";
 
 export async function createLogger({
   logDir = process.env.LOG_DIR || null,

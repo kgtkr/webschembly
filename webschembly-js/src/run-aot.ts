@@ -1,6 +1,10 @@
 import * as fs from "fs";
-import { createNodeRuntimeEnv } from "./node-runtime-env";
-import { type RuntimeExports, type RuntimeImportsEnv, type TypedWebAssemblyInstance } from "./runtime";
+import { createNodeRuntimeEnv } from "./node-runtime-env.js";
+import {
+  type RuntimeExports,
+  type RuntimeImportsEnv,
+  type TypedWebAssemblyInstance,
+} from "./runtime.js";
 
 const wasmName = process.argv[2];
 if (!wasmName) {
