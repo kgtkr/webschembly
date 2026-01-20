@@ -44,8 +44,8 @@ const bench = new Bench(
   process.env["BENCH_DEV"]
     ? {
         ...benchOptions,
-        iterations: 10,
-        warmupIterations: 5,
+        iterations: 1,
+        warmupIterations: 0,
       }
     : benchOptions,
 );
@@ -156,6 +156,9 @@ for (const filename of filenames) {
     }
 
     let runClosure: any;
+    const originalStdoutWrite = process.stdout.write;
+    const originalStderrWrite = process.stderr.write;
+
     bench.add(
       `${filename},hoot`,
       () => {
@@ -163,6 +166,9 @@ for (const filename of filenames) {
       },
       {
         beforeEach: async () => {
+          process.stdout.write = () => true;
+          process.stderr.write = () => true;
+
           let [run] = await Hoot.Scheme.load_main(hootWasm, {
             reflect_wasm_dir: GUILE_HOOT_DIR + "/reflect-wasm",
           });
@@ -173,7 +179,8 @@ for (const filename of filenames) {
           globalThis.gc!();
         },
         afterEach: () => {
-          // noop
+          process.stdout.write = originalStdoutWrite;
+          process.stderr.write = originalStderrWrite;
         },
       },
     );
