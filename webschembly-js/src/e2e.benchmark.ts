@@ -53,7 +53,7 @@ for (const filename of filenames) {
     for (
       const compilerConfig of compilerConfigs.filter(
         // JITが無効の時dynamic warmupとstatic warmupは同じなので除外
-        (c) => !(warmup === "dynamic" && c.enableJit === false),
+        (c) => !(warmup === "static" && c.enableJit === false),
       )
     ) {
       const srcBuf = await fs.readFile(
