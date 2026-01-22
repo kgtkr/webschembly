@@ -6,7 +6,7 @@ use closure_global_layout::ClosureIndex;
 use env_index_manager::EnvIndex;
 mod jit_config;
 mod jit_module;
-pub use jit_config::JitConfig;
+pub use jit_config::{BlockFusionConfig, JitConfig};
 use jit_module::JitModule;
 mod jit_ctx;
 use jit_ctx::JitCtx;

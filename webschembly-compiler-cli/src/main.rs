@@ -36,6 +36,8 @@ fn main() -> anyhow::Result<()> {
         FlatConfig {
             enable_jit: args.jit,
             enable_jit_optimization: true,
+            enable_jit_small_block_fusion: true,
+            enable_jit_large_block_fusion: true,
         }
         .into(),
     );

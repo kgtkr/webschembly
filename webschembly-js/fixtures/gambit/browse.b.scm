@@ -186,10 +186,12 @@
         ((null? p))
         (my-match (car pats) (car p) '())))))
 
-(define (run)
-  (browse '((*a ?b *b ?b a *a a *b *a)
-            (*a *b *b *a (*a) (*b))
-            (? ? * (b a) * ? ?))))
+(define arg '((*a ?b *b ?b a *a a *b *a)
+              (*a *b *b *a (*a) (*b))
+              (? ? * (b a) * ? ?)))
 
-(write (run))
+(define (run arg)
+  (browse arg))
+
+(write (run arg))
 (newline)

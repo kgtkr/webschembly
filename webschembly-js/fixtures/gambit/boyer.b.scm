@@ -552,7 +552,13 @@
 
 (setup)
 
-(define (run)
+(define arg (quote (implies (and (implies x y)
+                             (and (implies y z)
+                               (and (implies z u)
+                                 (implies u w))))
+                    (implies x w))))
+
+(define (run arg)
   (test
     (quote ((x f (plus (plus a b)
                   (plus c (zero))))
@@ -564,11 +570,7 @@
               (difference x y))
             (w lessp (remainder a b)
               (member a (length b)))))
-    (quote (implies (and (implies x y)
-                     (and (implies y z)
-                       (and (implies z u)
-                         (implies u w))))
-            (implies x w)))))
+    arg))
 
-(write (run))
+(write (run arg))
 (newline)
