@@ -17,6 +17,10 @@ build-runtime:
 build-runtime-release:
 	make -C "{{WEBSCHEMBLY_RUNTIME_DIR}}" CARGO_RELEASE=1 "{{WEBSCHEMBLY_RUNTIME_FILE}}"
 
+[private]
+build-hoot:
+	make hoot
+
 test: build-runtime
 	{{LOG_DIR_ENV}}{{WEBSCHEMBLY_RUNTIME_ENV}}npm test
 
@@ -29,13 +33,13 @@ repl: build-runtime
 run src: build-runtime
 	{{LOG_DIR_ENV}}{{WEBSCHEMBLY_RUNTIME_ENV}}npx tsx src/run.ts "{{src}}"
 
-benchmark: build-runtime-release
+benchmark: build-runtime-release build-hoot
 	{{LOG_DIR_ENV}}{{WEBSCHEMBLY_RUNTIME_ENV}}npm run benchmark
 
-benchmark-turbofan-only: build-runtime-release
+benchmark-turbofan-only: build-runtime-release build-hoot
 	{{LOG_DIR_ENV}}{{WEBSCHEMBLY_RUNTIME_ENV}}npm run benchmark-turbofan-only
 
-benchmark-dev: build-runtime
+benchmark-dev: build-runtime build-hoot
 	{{LOG_DIR_ENV}}{{WEBSCHEMBLY_RUNTIME_ENV}}BENCH_DEV=1 npm run benchmark
 
 run-aot wasm:
