@@ -14,10 +14,13 @@ import {
 import * as testUtils from "./test-utils.js";
 const require = createRequire(import.meta.url);
 const GUILE_HOOT_DIR = process.env.GUILE_HOOT_DIR;
-const Hoot = require(GUILE_HOOT_DIR + "/reflect-js/reflect.js");
+const Hoot =
+  GUILE_HOOT_DIR && require(GUILE_HOOT_DIR + "/reflect-js/reflect.js");
 
 type WarmupKind = "none" | "static" | "dynamic";
-const filenames = (await testUtils.getAllFixtureFilenames()).filter((file) => file.endsWith(".b.scm"));
+const filenames = (await testUtils.getAllFixtureFilenames()).filter((file) =>
+  file.endsWith(".b.scm"),
+);
 console.log("Benchmarking files:", filenames.join(", "));
 const compilerConfigs: CompilerConfig[] = [
   // { enableJitOptimization: false },
@@ -41,21 +44,19 @@ const benchOptions: BenchOptions = {
 const bench = new Bench(
   process.env["BENCH_DEV"]
     ? {
-      ...benchOptions,
-      iterations: 1,
-      warmupIterations: 0,
-    }
+        ...benchOptions,
+        iterations: 1,
+        warmupIterations: 0,
+      }
     : benchOptions,
 );
 
 for (const filename of filenames) {
   for (const warmup of ["none", "static", "dynamic"] satisfies WarmupKind[]) {
-    for (
-      const compilerConfig of compilerConfigs.filter(
-        // JITが無効の時dynamic warmupとstatic warmupは同じなので除外
-        (c) => !(warmup === "static" && c.enableJit === false),
-      )
-    ) {
+    for (const compilerConfig of compilerConfigs.filter(
+      // JITが無効の時dynamic warmupとstatic warmupは同じなので除外
+      (c) => !(warmup === "static" && c.enableJit === false),
+    )) {
       const srcBuf = await fs.readFile(
         path.join(testUtils.fixtureDir, filename),
       );
@@ -148,15 +149,11 @@ for (const filename of filenames) {
     }
   }
 
-  {
-    const hootWasm = path.join(
-      testUtils.fixtureDir,
-      filename.replace(/\.scm$/, ".hoot.wasm"),
-    );
-    if (!(await fs.stat(hootWasm).catch(() => false))) {
-      continue;
-    }
-
+  const hootWasm = path.join(
+    testUtils.fixtureDir,
+    filename.replace(/\.scm$/, ".hoot.wasm"),
+  );
+  if (Hoot && (await fs.stat(hootWasm).catch(() => false))) {
     let runClosure: any;
     let argValue: any;
     const originalStdoutWrite = process.stdout.write;
@@ -203,11 +200,9 @@ const outputFile = await fs.open("benchmark.result", "w");
 bench.tasks.forEach((task) => {
   const result = task.result!;
   outputFile.write(
-    `${task.name} x ${
-      result.throughput.mean.toFixed(
-        2,
-      )
-    } ops/sec ±${result.latency.rme.toFixed(2)}% (${result.latency.samples.length} runs sampled)\n`,
+    `${task.name} x ${result.throughput.mean.toFixed(
+      2,
+    )} ops/sec ±${result.latency.rme.toFixed(2)}% (${result.latency.samples.length} runs sampled)\n`,
   );
 });
 await outputFile.close();
