@@ -15,10 +15,13 @@ import * as testUtils from "./test-utils.js";
 const require = createRequire(import.meta.url);
 const kindShardPrefix = process.env.WEBSCHEMBLY_KIND_SHARD_PREFIX || "";
 const GUILE_HOOT_DIR = process.env.GUILE_HOOT_DIR;
-const Hoot = GUILE_HOOT_DIR && require(GUILE_HOOT_DIR + "/reflect-js/reflect.js");
+const Hoot =
+  GUILE_HOOT_DIR && require(GUILE_HOOT_DIR + "/reflect-js/reflect.js");
 
 type WarmupKind = "none" | "static" | "dynamic";
-const filenames = (await testUtils.getAllFixtureFilenames()).filter((file) => file.endsWith(".b.scm"));
+const filenames = (await testUtils.getAllFixtureFilenames()).filter((file) =>
+  file.endsWith(".b.scm"),
+);
 console.log("Benchmarking files:", filenames.join(", "));
 const compilerConfigs: CompilerConfig[] = [
   // { enableJitOptimization: false },
@@ -37,13 +40,13 @@ const runtimeModule = new WebAssembly.Module(
 
 type BenchmarkKind =
   | {
-    type: "webschembly";
-    compilerConfig: CompilerConfig;
-    warmup: WarmupKind;
-  }
+      type: "webschembly";
+      compilerConfig: CompilerConfig;
+      warmup: WarmupKind;
+    }
   | {
-    type: "hoot";
-  };
+      type: "hoot";
+    };
 
 function getAllBenchmarkKinds(): BenchmarkKind[] {
   const kinds: BenchmarkKind[] = [];
@@ -75,11 +78,9 @@ function benchmarkKindToString(kind: BenchmarkKind): string {
     if (kind.warmup === "none") {
       return compilerConfigToString(kind.compilerConfig);
     } else {
-      return `with ${kind.warmup === "dynamic" ? "dynamic " : ""}warmup,${
-        compilerConfigToString(
-          kind.compilerConfig,
-        )
-      }`;
+      return `with ${kind.warmup === "dynamic" ? "dynamic " : ""}warmup,${compilerConfigToString(
+        kind.compilerConfig,
+      )}`;
     }
   } else {
     return "hoot";
@@ -98,11 +99,17 @@ const benchOptions: BenchOptions = {
 const bench = new Bench(
   process.env["BENCH_DEV"]
     ? {
-      ...benchOptions,
-      iterations: 1,
-      warmupIterations: 0,
-    }
-    : benchOptions,
+        ...benchOptions,
+        iterations: 1,
+        warmupIterations: 0,
+      }
+    : process.env["BENCH_DEV_CI"]
+      ? {
+          ...benchOptions,
+          iterations: 8,
+          warmupIterations: 0,
+        }
+      : benchOptions,
 );
 
 for (const filename of filenames) {
@@ -257,11 +264,9 @@ const outputFile = await fs.open("benchmark.result", "w");
 bench.tasks.forEach((task) => {
   const result = task.result!;
   outputFile.write(
-    `${task.name} x ${
-      result.throughput.mean.toFixed(
-        2,
-      )
-    } ops/sec ±${result.latency.rme.toFixed(2)}% (${result.latency.samples.length} runs sampled)\n`,
+    `${task.name} x ${result.throughput.mean.toFixed(
+      2,
+    )} ops/sec ±${result.latency.rme.toFixed(2)}% (${result.latency.samples.length} runs sampled)\n`,
   );
 });
 await outputFile.close();

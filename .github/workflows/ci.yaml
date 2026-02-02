@@ -136,7 +136,7 @@ jobs:
           WEBSCHEMBLY_SHARD_PREFIX: ${{ matrix.shard }}
           WEBSCHEMBLY_KIND_SHARD_PREFIX: ${{ matrix.kind_shard }}
           WEBSCHEMBLY_RUNTIME: ../result-runtime/webschembly_runtime.wasm
-          BENCH_DEV: ${{ github.ref != 'refs/heads/master' && '1' || '' }}
+          BENCH_DEV_CI: ${{ github.ref != 'refs/heads/master' && '1' || '' }}
         working-directory: ./webschembly-js
       - uses: actions/upload-artifact@v4
         with:
