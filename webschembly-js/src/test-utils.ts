@@ -6,17 +6,21 @@ const shardPrefix = process.env.WEBSCHEMBLY_SHARD_PREFIX || "";
 const fileFilter = process.env.WEBSCHEMBLY_FILE_FILTER || "";
 export const fixtureDir = "fixtures";
 
-function shouldIncludePath(entryPath: string): boolean {
-  if (!shardPrefix) {
+export function isShaPrefix(str: string, prefix: string): boolean {
+  if (!prefix) {
     return true;
   }
 
-  const hash = createHash("sha256").update(entryPath).digest("hex");
+  const hash = createHash("sha256").update(str).digest("hex");
   const hashBinary = BigInt("0x" + hash)
     .toString(2)
     .padStart(256, "0");
 
-  return hashBinary.startsWith(shardPrefix);
+  return hashBinary.startsWith(prefix);
+}
+
+function shouldIncludePath(entryPath: string): boolean {
+  return isShaPrefix(entryPath, shardPrefix);
 }
 
 function shouldIncludeFile(entryPath: string): boolean {

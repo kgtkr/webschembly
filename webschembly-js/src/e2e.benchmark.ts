@@ -13,6 +13,7 @@ import {
 } from "./runtime.js";
 import * as testUtils from "./test-utils.js";
 const require = createRequire(import.meta.url);
+const kindShardPrefix = process.env.WEBSCHEMBLY_KIND_SHARD_PREFIX || "";
 const GUILE_HOOT_DIR = process.env.GUILE_HOOT_DIR;
 const Hoot = GUILE_HOOT_DIR && require(GUILE_HOOT_DIR + "/reflect-js/reflect.js");
 
@@ -31,8 +32,61 @@ const noLiftoff = process.env["NO_LIFTOFF"] === "1";
 const noLiftoffPrefix = noLiftoff ? "no_liftoff," : "";
 
 const runtimeModule = new WebAssembly.Module(
-  await fs.readFile(process.env["WEBSCHEMBLY_RUNTIME"]!),
+  (await fs.readFile(process.env["WEBSCHEMBLY_RUNTIME"]!)) as any,
 );
+
+type BenchmarkKind =
+  | {
+    type: "webschembly";
+    compilerConfig: CompilerConfig;
+    warmup: WarmupKind;
+  }
+  | {
+    type: "hoot";
+  };
+
+function getAllBenchmarkKinds(): BenchmarkKind[] {
+  const kinds: BenchmarkKind[] = [];
+  for (const compilerConfig of compilerConfigs) {
+    for (const warmup of ["none", "static", "dynamic"] satisfies WarmupKind[]) {
+      // JITが無効の時dynamic warmupとstatic warmupは同じなので除外
+      if (warmup === "static" && compilerConfig.enableJit === false) {
+        continue;
+      }
+      // noLiftoffのときはdynamicのみ含める
+      if (noLiftoff && warmup !== "dynamic") {
+        continue;
+      }
+      kinds.push({
+        type: "webschembly",
+        compilerConfig,
+        warmup,
+      });
+    }
+  }
+  if (Hoot) {
+    kinds.push({ type: "hoot" });
+  }
+  return kinds;
+}
+
+function benchmarkKindToString(kind: BenchmarkKind): string {
+  if (kind.type === "webschembly") {
+    if (kind.warmup === "none") {
+      return compilerConfigToString(kind.compilerConfig);
+    } else {
+      return `with ${kind.warmup === "dynamic" ? "dynamic " : ""}warmup,${
+        compilerConfigToString(
+          kind.compilerConfig,
+        )
+      }`;
+    }
+  } else {
+    return "hoot";
+  }
+}
+
+const benchmarkKinds = getAllBenchmarkKinds();
 
 // time[ms]経つ and iterations回という条件でベンチマークが終了する仕様になっている
 // そのためsetupに時間が掛かるが本体は速いベンチマークだと数時間掛かってしまう
@@ -52,16 +106,14 @@ const bench = new Bench(
 );
 
 for (const filename of filenames) {
-  for (const warmup of ["none", "static", "dynamic"] satisfies WarmupKind[]) {
-    for (
-      const compilerConfig of compilerConfigs.filter(
-        // JITが無効の時dynamic warmupとstatic warmupは同じなので除外
-        (c) =>
-          !(warmup === "static" && c.enableJit === false)
-          // noLiftoffのときはdynamicのみ含める
-          && !(noLiftoff && warmup !== "dynamic"),
-      )
-    ) {
+  for (const benchmarkKind of benchmarkKinds) {
+    const benchmarkKindName = benchmarkKindToString(benchmarkKind);
+    if (!testUtils.isShaPrefix(benchmarkKindName, kindShardPrefix)) {
+      continue;
+    }
+    const benchmarkName = `${filename},${noLiftoffPrefix}${benchmarkKindName}`;
+    if (benchmarkKind.type === "webschembly") {
+      const { compilerConfig, warmup } = benchmarkKind;
       const srcBuf = await fs.readFile(
         path.join(testUtils.fixtureDir, filename),
       );
@@ -73,9 +125,7 @@ for (const filename of filenames) {
         let runArgs: SchemeValue;
         let afterWarmup = false;
         bench.add(
-          `${filename},${noLiftoffPrefix}with ${warmup === "dynamic" ? "dynamic " : ""}warmup,${
-            compilerConfigToString(compilerConfig)
-          }`,
+          benchmarkName,
           () => {
             runtime.instance.exports.call_closure(runClosure, runArgs);
           },
@@ -127,7 +177,7 @@ for (const filename of filenames) {
         );
       } else {
         bench.add(
-          `${filename},${noLiftoffPrefix}${compilerConfigToString(compilerConfig)}`,
+          benchmarkName,
           () => {
             runtime.loadSrc(srcBuf);
           },
@@ -153,43 +203,43 @@ for (const filename of filenames) {
           },
         );
       }
-    }
-  }
+    } else {
+      const hootWasm = path.join(
+        testUtils.fixtureDir,
+        filename.replace(/\.scm$/, ".hoot.wasm"),
+      );
+      if (await fs.stat(hootWasm).catch(() => false)) {
+        let runClosure: any;
+        let argValue: any;
+        const originalStdoutWrite = process.stdout.write;
+        const originalStderrWrite = process.stderr.write;
 
-  const hootWasm = path.join(
-    testUtils.fixtureDir,
-    filename.replace(/\.scm$/, ".hoot.wasm"),
-  );
-  if (Hoot && (await fs.stat(hootWasm).catch(() => false))) {
-    let runClosure: any;
-    let argValue: any;
-    const originalStdoutWrite = process.stdout.write;
-    const originalStderrWrite = process.stderr.write;
-
-    bench.add(
-      `${filename},${noLiftoffPrefix}hoot`,
-      () => {
-        runClosure.call(argValue);
-      },
-      {
-        beforeEach: async () => {
-          process.stdout.write = () => true;
-          process.stderr.write = () => true;
-
-          [runClosure, argValue] = await Hoot.Scheme.load_main(hootWasm, {
-            reflect_wasm_dir: GUILE_HOOT_DIR + "/reflect-wasm",
-          });
-          for (let i = 0; i < 30; i++) {
+        bench.add(
+          benchmarkName,
+          () => {
             runClosure.call(argValue);
-          }
-          globalThis.gc!();
-        },
-        afterEach: () => {
-          process.stdout.write = originalStdoutWrite;
-          process.stderr.write = originalStderrWrite;
-        },
-      },
-    );
+          },
+          {
+            beforeEach: async () => {
+              process.stdout.write = () => true;
+              process.stderr.write = () => true;
+
+              [runClosure, argValue] = await Hoot.Scheme.load_main(hootWasm, {
+                reflect_wasm_dir: GUILE_HOOT_DIR + "/reflect-wasm",
+              });
+              for (let i = 0; i < 30; i++) {
+                runClosure.call(argValue);
+              }
+              globalThis.gc!();
+            },
+            afterEach: () => {
+              process.stdout.write = originalStdoutWrite;
+              process.stderr.write = originalStderrWrite;
+            },
+          },
+        );
+      }
+    }
   }
 }
 
