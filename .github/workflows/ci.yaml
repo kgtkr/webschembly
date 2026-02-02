@@ -101,7 +101,7 @@ jobs:
             echo "kind-shard-matrix=$(generate_shards 2)" >> $GITHUB_OUTPUT
           else
             echo "shard-matrix=$(generate_shards 4)" >> $GITHUB_OUTPUT
-            echo "kind-shard-matrix=$(generate_shards 4)" >> $GITHUB_OUTPUT
+            echo "kind-shard-matrix=$(generate_shards 2)" >> $GITHUB_OUTPUT
           fi
   e2e-benchmark:
     needs: [build, setup-matrix]
