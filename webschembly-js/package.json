@@ -6,7 +6,7 @@
     "build": "tsc",
     "test": "vitest run",
     "benchmark": "npm run build && node --expose-gc dist/e2e.benchmark.js",
-    "benchmark-turbofan-only": "npm run build && node --expose-gc --no-liftoff dist/e2e.benchmark.js"
+    "benchmark-turbofan-only": "npm run build && NO_LIFTOFF=1 node --expose-gc --no-liftoff dist/e2e.benchmark.js"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

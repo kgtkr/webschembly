@@ -27,6 +27,9 @@ const compilerConfigs: CompilerConfig[] = [
   { enableJitSmallBlockFusion: true, enableJitLargeBlockFusion: false },
 ];
 
+const noLiftoff = process.env["NO_LIFTOFF"] === "1";
+const noLiftoffPrefix = noLiftoff ? "no_liftoff," : "";
+
 const runtimeModule = new WebAssembly.Module(
   await fs.readFile(process.env["WEBSCHEMBLY_RUNTIME"]!),
 );
@@ -53,7 +56,10 @@ for (const filename of filenames) {
     for (
       const compilerConfig of compilerConfigs.filter(
         // JITが無効の時dynamic warmupとstatic warmupは同じなので除外
-        (c) => !(warmup === "static" && c.enableJit === false),
+        (c) =>
+          !(warmup === "static" && c.enableJit === false)
+          // noLiftoffのときはdynamicのみ含める
+          && !(noLiftoff && warmup !== "dynamic"),
       )
     ) {
       const srcBuf = await fs.readFile(
@@ -67,7 +73,9 @@ for (const filename of filenames) {
         let runArgs: SchemeValue;
         let afterWarmup = false;
         bench.add(
-          `${filename},with ${warmup === "dynamic" ? "dynamic " : ""}warmup,${compilerConfigToString(compilerConfig)}`,
+          `${filename},${noLiftoffPrefix}with ${warmup === "dynamic" ? "dynamic " : ""}warmup,${
+            compilerConfigToString(compilerConfig)
+          }`,
           () => {
             runtime.instance.exports.call_closure(runClosure, runArgs);
           },
@@ -119,7 +127,7 @@ for (const filename of filenames) {
         );
       } else {
         bench.add(
-          `${filename},${compilerConfigToString(compilerConfig)}`,
+          `${filename},${noLiftoffPrefix}${compilerConfigToString(compilerConfig)}`,
           () => {
             runtime.loadSrc(srcBuf);
           },
@@ -159,7 +167,7 @@ for (const filename of filenames) {
     const originalStderrWrite = process.stderr.write;
 
     bench.add(
-      `${filename},hoot`,
+      `${filename},${noLiftoffPrefix}hoot`,
       () => {
         runClosure.call(argValue);
       },
