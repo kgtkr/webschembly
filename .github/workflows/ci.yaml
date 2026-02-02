@@ -86,16 +86,16 @@ jobs:
             local bits=$1
             local max=$((2 ** bits))
             local result="["
-            
+
             for ((i = 0; i < max; i++)); do
               result+="\"$(printf "%0${bits}d" "$i")\""
               [ $i -lt $((max - 1)) ] && result+=","
             done
-            
+
             result+="]"
             echo "$result"
           }
-          
+
           if [ "${{ github.ref }}" != "refs/heads/master" ]; then
             echo "shard-matrix=$(generate_shards 2)" >> $GITHUB_OUTPUT
             echo "kind-shard-matrix=$(generate_shards 2)" >> $GITHUB_OUTPUT
