@@ -26,7 +26,6 @@
         inputs.make-shell.flakeModules.default
         ./rust.nix
         ./js.nix
-        ./latex.nix
         ./devcontainer.nix
       ];
       perSystem = { self', pkgs, system, ... }:
@@ -57,7 +56,14 @@
               (pkgs.callPackage ./schemat.nix { })
               pkgs.treefmt
               pkgs.dprint
+              # for benchmarking
+              pkgs.guile-hoot
+              pkgs.guile
+              # pkgs.bigloo
             ];
+            env = {
+              GUILE_HOOT_DIR = "${pkgs.guile-hoot}/share/guile-hoot/0.7.0";
+            };
           };
         };
     };

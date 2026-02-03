@@ -14,6 +14,8 @@ export type RuntimeConfig = {
 export type CompilerConfig = {
   enableJit?: boolean;
   enableJitOptimization?: boolean;
+  enableJitSmallBlockFusion?: boolean;
+  enableJitLargeBlockFusion?: boolean;
 };
 
 export function compilerConfigToString(config: CompilerConfig): string {
@@ -61,7 +63,7 @@ export type RuntimeExports = {
   WEBSCHEMBLY_EXCEPTION: WebAssembly.ExceptionTag;
   get_global_id: (namePtr: number, nameLen: number) => number;
   new_args: (elemSize: number) => SchemeValue;
-  set_args: (args: SchemeValue, index: number, value: number) => void;
+  set_args: (args: SchemeValue, index: number, value: SchemeValue) => void;
   call_closure: (closure: SchemeValue, args: SchemeValue) => SchemeValue;
   malloc: (size: number) => number;
   free: (ptr: number) => void;
@@ -72,6 +74,8 @@ export type RuntimeExports = {
   init: () => void;
   compiler_config_enable_jit: (enable: number) => void;
   compiler_config_enable_jit_optimization: (enable: number) => void;
+  compiler_config_enable_jit_block_fusion: (enable: number) => void;
+  compiler_config_enable_jit_large_block_fusion: (enable: number) => void;
 };
 
 export type ModuleImports = {
@@ -80,7 +84,7 @@ export type ModuleImports = {
 };
 
 export type ModuleExports = {
-  start: () => number;
+  start: () => SchemeValue;
 };
 
 export type TypedWebAssemblyInstance<Exports> = WebAssembly.Instance & {
@@ -164,6 +168,18 @@ export async function createRuntime(
   if (compilerConfig?.enableJitOptimization !== undefined) {
     runtimeInstance.exports.compiler_config_enable_jit_optimization(
       Number(compilerConfig.enableJitOptimization),
+    );
+  }
+
+  if (compilerConfig?.enableJitSmallBlockFusion !== undefined) {
+    runtimeInstance.exports.compiler_config_enable_jit_block_fusion(
+      Number(compilerConfig.enableJitSmallBlockFusion),
+    );
+  }
+
+  if (compilerConfig?.enableJitLargeBlockFusion !== undefined) {
+    runtimeInstance.exports.compiler_config_enable_jit_large_block_fusion(
+      Number(compilerConfig.enableJitLargeBlockFusion),
     );
   }
 

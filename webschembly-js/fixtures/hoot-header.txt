@@ -1,0 +1,5 @@
+(import
+    (scheme base)
+    (scheme write)
+    (scheme cxr))
+(define (fatal-error . args) (apply error "Fatal error: " args))

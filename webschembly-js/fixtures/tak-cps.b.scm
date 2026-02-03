@@ -11,7 +11,9 @@
                   (tak-cps v1 v2 v3 k)))))))))
   (tak-cps x y z (lambda (x) x)))
 
-(define (run)
-  (tak 18 12 6))
-(write (run))
+(define arg 6)
+
+(define (run arg)
+  (tak 18 12 arg))
+(write (run arg))
 (newline)

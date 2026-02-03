@@ -15,6 +15,7 @@ use crate::ir_processor::dataflow::{analyze_liveness, calc_def_use};
 use crate::ir_processor::optimizer::remove_unreachable_bb;
 use crate::ir_processor::ssa::{DefUseChain, build_ssa};
 use crate::ir_processor::ssa_optimizer::{SsaOptimizerConfig, ssa_optimize};
+use crate::jit::BlockFusionConfig;
 use vec_map::{HasId, VecMap};
 use webschembly_compiler_ir::*;
 
@@ -515,10 +516,27 @@ impl JitSpecializedArgFunc {
                                         BranchKind::Then,
                                     ));
                                 }
-                                DominantBranchKind::Both => {
-                                    todo_bb_ids.push(orig_then_bb_id);
-                                    todo_bb_ids.push(orig_else_bb_id);
-                                }
+                                DominantBranchKind::Both => match jit_ctx.config().block_fusion {
+                                    BlockFusionConfig::Disabled => {
+                                        unreachable!();
+                                    }
+                                    BlockFusionConfig::SmallFusion => {
+                                        required_bbs.push((
+                                            orig_then_bb_id,
+                                            then_types,
+                                            BranchKind::Then,
+                                        ));
+                                        required_bbs.push((
+                                            orig_else_bb_id,
+                                            Vec::new(),
+                                            BranchKind::Else,
+                                        ));
+                                    }
+                                    BlockFusionConfig::LargeFusion => {
+                                        todo_bb_ids.push(orig_then_bb_id);
+                                        todo_bb_ids.push(orig_else_bb_id);
+                                    }
+                                },
                             }
                         } else {
                             required_bbs.push((orig_then_bb_id, then_types, BranchKind::Then));
@@ -572,7 +590,9 @@ impl JitSpecializedArgFunc {
                 }
             }
 
-            if !branch_specialization {
+            if !branch_specialization
+                && jit_ctx.config().block_fusion != BlockFusionConfig::Disabled
+            {
                 instrs.push(Instr {
                     local: None,
                     kind: InstrKind::IncrementBranchCounter(

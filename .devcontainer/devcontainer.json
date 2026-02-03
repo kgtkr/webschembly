@@ -10,8 +10,7 @@
       "extensions": [
         "rust-lang.rust-analyzer",
         "esbenp.prettier-vscode",
-        "jnoortheen.nix-ide",
-        "James-Yu.latex-workshop"
+        "jnoortheen.nix-ide"
       ]
     }
   },

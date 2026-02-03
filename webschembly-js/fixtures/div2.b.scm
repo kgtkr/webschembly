@@ -16,10 +16,10 @@
           (cons (cadr x) z)))))
   (loop l '() '()))
 
-(define l (create-n 100))
+(define arg (create-n 100))
 
-(define (run)
-  (div2 l))
+(define (run arg)
+  (div2 arg))
 
-(write (run))
+(write (run arg))
 (newline)

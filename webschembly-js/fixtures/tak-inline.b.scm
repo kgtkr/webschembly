@@ -7,7 +7,9 @@
         (tak-rec (- z 1) x y))))
   (tak-rec x y z))
 
-(define (run)
-  (tak 18 12 6))
-(write (run))
+(define arg 6)
+
+(define (run arg)
+  (tak 18 12 arg))
+(write (run arg))
 (newline)

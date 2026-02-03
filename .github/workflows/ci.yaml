@@ -74,31 +74,45 @@ jobs:
         env:
           WEBSCHEMBLY_SHARD_PREFIX: ${{ matrix.shard }}
         working-directory: ./webschembly-js
+  setup-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      shard-matrix: ${{ steps.set-matrix.outputs.shard-matrix }}
+      kind-shard-matrix: ${{ steps.set-matrix.outputs.kind-shard-matrix }}
+    steps:
+      - id: set-matrix
+        run: |
+          generate_shards() {
+            local bits=$1
+            local max=$((2 ** bits))
+            local result="["
+
+            for ((i = 0; i < max; i++)); do
+              result+="\"$(printf "%0${bits}d" "$i")\""
+              [ $i -lt $((max - 1)) ] && result+=","
+            done
+
+            result+="]"
+            echo "$result"
+          }
+
+          if [ "${{ github.ref }}" != "refs/heads/master" ]; then
+            echo "shard-matrix=$(generate_shards 2)" >> $GITHUB_OUTPUT
+            echo "kind-shard-matrix=$(generate_shards 2)" >> $GITHUB_OUTPUT
+          else
+            echo "shard-matrix=$(generate_shards 4)" >> $GITHUB_OUTPUT
+            echo "kind-shard-matrix=$(generate_shards 2)" >> $GITHUB_OUTPUT
+          fi
   e2e-benchmark:
-    needs: build
+    needs: [build, setup-matrix]
     permissions:
       contents: read
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        shard: [
-          "0000",
-          "0001",
-          "0010",
-          "0011",
-          "0100",
-          "0101",
-          "0110",
-          "0111",
-          "1000",
-          "1001",
-          "1010",
-          "1011",
-          "1100",
-          "1101",
-          "1110",
-          "1111",
-        ]
+        shard: ${{ fromJson(needs.setup-matrix.outputs.shard-matrix) }}
+        kind_shard: ${{ fromJson(needs.setup-matrix.outputs.kind-shard-matrix) }}
+        no_liftoff: [true, false]
     steps:
       - uses: actions/checkout@v3
       - uses: DeterminateSystems/nix-installer-action@main
@@ -112,15 +126,22 @@ jobs:
       - run: npm ci
       - name: Run benchmark
         run: |
-          WEBSCHEMBLY_RUNTIME=../result-runtime/webschembly_runtime.wasm npm run benchmark
-          mv ./benchmark.result ./benchmark.result-${{ matrix.shard }}
+          if [ "${{ matrix.no_liftoff }}" = "true" ]; then
+            npm run benchmark-turbofan-only
+          else
+            npm run benchmark
+          fi
+          mv ./benchmark.result ./benchmark.result-${{ matrix.shard }}-${{ matrix.kind_shard }}-${{ matrix.no_liftoff }}
         env:
           WEBSCHEMBLY_SHARD_PREFIX: ${{ matrix.shard }}
+          WEBSCHEMBLY_KIND_SHARD_PREFIX: ${{ matrix.kind_shard }}
+          WEBSCHEMBLY_RUNTIME: ../result-runtime/webschembly_runtime.wasm
+          BENCH_DEV_CI: ${{ github.ref != 'refs/heads/master' && '1' || '' }}
         working-directory: ./webschembly-js
       - uses: actions/upload-artifact@v4
         with:
-          name: benchmark-result-${{ matrix.shard }}
-          path: ./webschembly-js/benchmark.result-${{ matrix.shard }}
+          name: benchmark-result-${{ matrix.shard }}-${{ matrix.kind_shard }}-${{ matrix.no_liftoff }}
+          path: ./webschembly-js/benchmark.result-${{ matrix.shard }}-${{ matrix.kind_shard }}-${{ matrix.no_liftoff }}
   store-benchmark-results:
     needs: e2e-benchmark
     runs-on: ubuntu-latest

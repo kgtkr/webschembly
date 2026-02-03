@@ -12,6 +12,7 @@ use crate::ir_processor::ssa_optimizer::ModuleInliner;
 use crate::ir_processor::ssa_optimizer::SsaOptimizerConfig;
 use crate::ir_processor::ssa_optimizer::inlining;
 use crate::ir_processor::ssa_optimizer::ssa_optimize;
+use crate::jit::BlockFusionConfig;
 use crate::jit::{Jit, JitConfig};
 use crate::lexer;
 use crate::sexpr_parser;
@@ -33,6 +34,8 @@ pub struct Compiler {
 pub struct FlatConfig {
     pub enable_jit: bool,
     pub enable_jit_optimization: bool,
+    pub enable_jit_small_block_fusion: bool,
+    pub enable_jit_large_block_fusion: bool,
 }
 
 impl From<FlatConfig> for Config {
@@ -41,6 +44,13 @@ impl From<FlatConfig> for Config {
             jit: if config.enable_jit {
                 Some(JitConfig {
                     enable_optimization: config.enable_jit_optimization,
+                    block_fusion: if config.enable_jit_large_block_fusion {
+                        BlockFusionConfig::LargeFusion
+                    } else if config.enable_jit_small_block_fusion {
+                        BlockFusionConfig::SmallFusion
+                    } else {
+                        BlockFusionConfig::Disabled
+                    },
                 })
             } else {
                 None
