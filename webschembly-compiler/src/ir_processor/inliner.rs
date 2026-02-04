@@ -1,31 +1,21 @@
 use rustc_hash::FxHashMap;
 
 use crate::ir_processor::ssa::DefUseChain;
-use vec_map::VecMap;
 use webschembly_compiler_ir::*;
 
 pub fn inlining(module: &mut Module, module_inliner: &mut ModuleInliner, last: bool) {
-    let mut funcs = VecMap::new();
-
-    for func_id in module.funcs.keys() {
-        let func = inlining_func(
+    for func_id in module.funcs.keys().collect::<Vec<_>>() {
+        inlining_func(
             module,
             func_id,
             module_inliner.func_inliners.get_mut(&func_id).unwrap(),
             last,
         );
-        funcs.insert_node(func);
     }
-
-    module.funcs = funcs;
 }
 
-fn inlining_func(
-    module: &Module,
-    func_id: FuncId,
-    func_inliner: &mut FuncInliner,
-    last: bool,
-) -> Func {
+fn inlining_func(module: &mut Module, func_id: FuncId, func_inliner: &mut FuncInliner, last: bool) {
+    // 無駄なクローン
     let mut func = module.funcs[func_id].clone();
     let analyze_result = FuncAnalyzeResult::new(&func);
 
@@ -141,7 +131,7 @@ fn inlining_func(
         });
     }
 
-    func
+    module.funcs.insert_node(func);
 }
 
 #[derive(Debug, Clone)]
