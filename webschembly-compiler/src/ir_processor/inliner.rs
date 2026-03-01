@@ -59,21 +59,36 @@ fn inlining_func(module: &mut Module, func_id: FuncId, func_inliner: &mut FuncIn
             func.bbs.insert_node(new_bb);
         }
 
-        func_inliner.merge_func_infos.insert(
-            required_func_id,
-            MergeFuncInfo {
-                args_phi_bb: func.bbs.allocate_key(),
-                args_phi_incomings: module.funcs[required_func_id]
-                    .args
-                    .iter()
-                    .map(|arg| ArgInfo {
-                        local: local_map[arg],
-                        incomings: Vec::new(),
-                    })
-                    .collect(),
-                entry_bb_id: bb_map[&module.funcs[required_func_id].bb_entry],
+        let args_phi_bb = func.bbs.allocate_key();
+        func.bbs.insert_node(BasicBlock {
+            id: args_phi_bb,
+            instrs: {
+                let mut instrs = Vec::new();
+                for (i, &arg) in module.funcs[required_func_id].args.iter().enumerate() {
+                    instrs.push(Instr {
+                        local: Some(local_map[&arg]),
+                        kind: InstrKind::Phi {
+                            incomings: Vec::new(),
+                            // i == 0は必ずクロージャであり、毎回引数は変わらない(本当？)ので、non_exhaustive=falseにしてよい
+                            // かなり怪しい仮定
+                            non_exhaustive: i != 0,
+                        },
+                    });
+                }
+
+                instrs.push(Instr {
+                    local: None,
+                    kind: InstrKind::Terminator(TerminatorInstr::Jump(
+                        bb_map[&module.funcs[required_func_id].bb_entry],
+                    )),
+                });
+                instrs
             },
-        );
+        });
+
+        func_inliner
+            .merge_func_infos
+            .insert(required_func_id, MergeFuncInfo { args_phi_bb });
     }
 
     // CallClosure命令をジャンプ命令に書き換え
@@ -92,43 +107,28 @@ fn inlining_func(module: &mut Module, func_id: FuncId, func_inliner: &mut FuncIn
         *new_bb.terminator_mut() = TerminatorInstr::Jump(args_phi_bb);
 
         for (i, &arg) in call.args.iter().enumerate() {
-            func_inliner
-                .merge_func_infos
-                .get_mut(&call.func_id)
-                .unwrap()
-                .args_phi_incomings[i]
-                .incomings
-                .push(PhiIncomingValue {
+            let args_phi_bb = &mut func.bbs[args_phi_bb];
+            // 引数が使われていないとNopになる可能性がある
+            if let InstrKind::Phi { incomings, .. } = &mut args_phi_bb.instrs[i].kind {
+                incomings.push(PhiIncomingValue {
                     local: arg,
                     bb: bb_id,
                 });
+            }
         }
     }
 
-    for merge_func_info in func_inliner.merge_func_infos.values() {
-        let mut instrs = merge_func_info
-            .args_phi_incomings
-            .iter()
-            .enumerate()
-            .map(|(i, arg_info)| Instr {
-                local: Some(arg_info.local),
-                // i == 0は必ずクロージャであり、毎回引数は変わらない(本当？)ので、non_exhaustive=falseにしてよい
-                kind: InstrKind::Phi {
-                    incomings: arg_info.incomings.clone(),
-                    non_exhaustive: i != 0 && !last,
-                },
-            })
-            .collect::<Vec<_>>();
-
-        instrs.push(Instr {
-            local: None,
-            kind: InstrKind::Terminator(TerminatorInstr::Jump(merge_func_info.entry_bb_id)),
-        });
-
-        func.bbs.insert_node(BasicBlock {
-            id: merge_func_info.args_phi_bb,
-            instrs,
-        });
+    if last {
+        for merge_func_info in func_inliner.merge_func_infos.values() {
+            // args_phi_bbの内容を更新
+            // すべてのphiをnon_exhaustive=falseにする
+            let args_phi_bb = &mut func.bbs[merge_func_info.args_phi_bb];
+            for instr in &mut args_phi_bb.instrs {
+                if let InstrKind::Phi { non_exhaustive, .. } = &mut instr.kind {
+                    *non_exhaustive = false;
+                }
+            }
+        }
     }
 
     module.funcs.insert_node(func);
@@ -177,15 +177,6 @@ impl FuncAnalyzeResult {
 struct MergeFuncInfo {
     // argsのphiノード用
     args_phi_bb: BasicBlockId,
-    // エントリーBB
-    entry_bb_id: BasicBlockId,
-    args_phi_incomings: Vec<ArgInfo>,
-}
-
-#[derive(Debug, Clone)]
-struct ArgInfo {
-    local: LocalId,
-    incomings: Vec<PhiIncomingValue>,
 }
 
 #[derive(Debug, Clone, Default)]
