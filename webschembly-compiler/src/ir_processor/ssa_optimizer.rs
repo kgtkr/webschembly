@@ -32,7 +32,7 @@ pub fn dead_code_elimination(func: &mut Func, def_use: &mut DefUseChain) {
         }
     }
     while let Some(def) = worklist.pop() {
-        let instr = &mut func.bbs[def.bb_id].instrs[def.expr_idx];
+        let instr = &mut func.bbs[def.bb_id].instrs[def.instr_idx];
         instr.local = None;
         def_use.remove(def.local);
 
@@ -158,13 +158,13 @@ pub fn eliminate_redundant_obj(func: &mut Func, def_use: &DefUseChain) {
             l3 = from_obj<string>(l1) // ここは到達不能であるので無視してよい
         }
         */
-        match func.bbs[def.bb_id].instrs[def.expr_idx].kind {
+        match func.bbs[def.bb_id].instrs[def.instr_idx].kind {
             InstrKind::ToObj(typ1, src) => {
                 if let Some(src_expr) = def_use.get_def_non_move_expr(&func.bbs, src)
                     && let InstrKind::FromObj(typ2, obj_src) = *src_expr
                     && typ1 == typ2
                 {
-                    func.bbs[def.bb_id].instrs[def.expr_idx].kind = InstrKind::Move(obj_src);
+                    func.bbs[def.bb_id].instrs[def.instr_idx].kind = InstrKind::Move(obj_src);
                 }
             }
             InstrKind::FromObj(typ1, src) => {
@@ -172,7 +172,7 @@ pub fn eliminate_redundant_obj(func: &mut Func, def_use: &DefUseChain) {
                     && let InstrKind::ToObj(typ2, obj_src) = *src_expr
                     && typ1 == typ2
                 {
-                    func.bbs[def.bb_id].instrs[def.expr_idx].kind = InstrKind::Move(obj_src);
+                    func.bbs[def.bb_id].instrs[def.instr_idx].kind = InstrKind::Move(obj_src);
                 }
             }
             _ => {}
@@ -190,9 +190,9 @@ pub fn constant_folding(
     // ClosureSetEnvは各Closure/indexに対して一度のみしか実行されないことが保証されているため定数畳み込み可能
     let mut closure_set_envs = FxHashMap::default();
     for bb_id in func.bbs.keys() {
-        for (expr_idx, instr) in func.bbs[bb_id].instrs.iter().enumerate() {
+        for (instr_idx, instr) in func.bbs[bb_id].instrs.iter().enumerate() {
             if let InstrKind::ClosureSetEnv(_, closure_local, index, val_local) = instr.kind {
-                closure_set_envs.insert((closure_local, index), (val_local, bb_id, expr_idx));
+                closure_set_envs.insert((closure_local, index), (val_local, bb_id, instr_idx));
             }
         }
     }
@@ -202,8 +202,8 @@ pub fn constant_folding(
     rpo_nodes.sort_by_key(|id| rpo.get(id).unwrap());
 
     for bb_id in &rpo_nodes {
-        for expr_idx in 0..func.bbs[*bb_id].instrs.len() {
-            let instr = &func.bbs[*bb_id].instrs[expr_idx];
+        for instr_idx in 0..func.bbs[*bb_id].instrs.len() {
+            let instr = &func.bbs[*bb_id].instrs[instr_idx];
             match instr.kind {
                 InstrKind::AddInt(local1, local2)
                     if let Some(&InstrKind::Int(a)) =
@@ -211,7 +211,7 @@ pub fn constant_folding(
                         && let Some(&InstrKind::Int(b)) =
                             def_use.get_def_non_move_expr(&func.bbs, local2) =>
                 {
-                    func.bbs[*bb_id].instrs[expr_idx].kind = InstrKind::Int(a + b);
+                    func.bbs[*bb_id].instrs[instr_idx].kind = InstrKind::Int(a + b);
                 }
                 InstrKind::SubInt(local1, local2)
                     if let Some(&InstrKind::Int(a)) =
@@ -219,7 +219,7 @@ pub fn constant_folding(
                         && let Some(&InstrKind::Int(b)) =
                             def_use.get_def_non_move_expr(&func.bbs, local2) =>
                 {
-                    func.bbs[*bb_id].instrs[expr_idx].kind = InstrKind::Int(a - b);
+                    func.bbs[*bb_id].instrs[instr_idx].kind = InstrKind::Int(a - b);
                 }
                 InstrKind::MulInt(local1, local2)
                     if let Some(&InstrKind::Int(a)) =
@@ -227,7 +227,7 @@ pub fn constant_folding(
                         && let Some(&InstrKind::Int(b)) =
                             def_use.get_def_non_move_expr(&func.bbs, local2) =>
                 {
-                    func.bbs[*bb_id].instrs[expr_idx].kind = InstrKind::Int(a * b);
+                    func.bbs[*bb_id].instrs[instr_idx].kind = InstrKind::Int(a * b);
                 }
                 InstrKind::QuotientInt(local1, local2)
                     if let Some(&InstrKind::Int(a)) =
@@ -236,7 +236,7 @@ pub fn constant_folding(
                             def_use.get_def_non_move_expr(&func.bbs, local2)
                         && b != 0 =>
                 {
-                    func.bbs[*bb_id].instrs[expr_idx].kind = InstrKind::Int(a / b);
+                    func.bbs[*bb_id].instrs[instr_idx].kind = InstrKind::Int(a / b);
                 }
                 InstrKind::RemainderInt(local1, local2)
                     if let Some(&InstrKind::Int(a)) =
@@ -245,7 +245,7 @@ pub fn constant_folding(
                             def_use.get_def_non_move_expr(&func.bbs, local2)
                         && b != 0 =>
                 {
-                    func.bbs[*bb_id].instrs[expr_idx].kind = InstrKind::Int(a % b);
+                    func.bbs[*bb_id].instrs[instr_idx].kind = InstrKind::Int(a % b);
                 }
                 // TODO: ModuloInt
                 InstrKind::EqInt(local1, local2)
@@ -254,7 +254,7 @@ pub fn constant_folding(
                         && let Some(&InstrKind::Int(b)) =
                             def_use.get_def_non_move_expr(&func.bbs, local2) =>
                 {
-                    func.bbs[*bb_id].instrs[expr_idx].kind = InstrKind::Bool(a == b);
+                    func.bbs[*bb_id].instrs[instr_idx].kind = InstrKind::Bool(a == b);
                 }
                 InstrKind::LtInt(local1, local2)
                     if let Some(&InstrKind::Int(a)) =
@@ -262,7 +262,7 @@ pub fn constant_folding(
                         && let Some(&InstrKind::Int(b)) =
                             def_use.get_def_non_move_expr(&func.bbs, local2) =>
                 {
-                    func.bbs[*bb_id].instrs[expr_idx].kind = InstrKind::Bool(a < b);
+                    func.bbs[*bb_id].instrs[instr_idx].kind = InstrKind::Bool(a < b);
                 }
                 InstrKind::GtInt(local1, local2)
                     if let Some(&InstrKind::Int(a)) =
@@ -270,7 +270,7 @@ pub fn constant_folding(
                         && let Some(&InstrKind::Int(b)) =
                             def_use.get_def_non_move_expr(&func.bbs, local2) =>
                 {
-                    func.bbs[*bb_id].instrs[expr_idx].kind = InstrKind::Bool(a > b);
+                    func.bbs[*bb_id].instrs[instr_idx].kind = InstrKind::Bool(a > b);
                 }
                 InstrKind::LeInt(local1, local2)
                     if let Some(&InstrKind::Int(a)) =
@@ -278,7 +278,7 @@ pub fn constant_folding(
                         && let Some(&InstrKind::Int(b)) =
                             def_use.get_def_non_move_expr(&func.bbs, local2) =>
                 {
-                    func.bbs[*bb_id].instrs[expr_idx].kind = InstrKind::Bool(a <= b);
+                    func.bbs[*bb_id].instrs[instr_idx].kind = InstrKind::Bool(a <= b);
                 }
                 InstrKind::GeInt(local1, local2)
                     if let Some(&InstrKind::Int(a)) =
@@ -286,29 +286,29 @@ pub fn constant_folding(
                         && let Some(&InstrKind::Int(b)) =
                             def_use.get_def_non_move_expr(&func.bbs, local2) =>
                 {
-                    func.bbs[*bb_id].instrs[expr_idx].kind = InstrKind::Bool(a >= b);
+                    func.bbs[*bb_id].instrs[instr_idx].kind = InstrKind::Bool(a >= b);
                 }
                 InstrKind::Not(local)
                     if let Some(&InstrKind::Bool(a)) =
                         def_use.get_def_non_move_expr(&func.bbs, local) =>
                 {
-                    func.bbs[*bb_id].instrs[expr_idx].kind = InstrKind::Bool(!a);
+                    func.bbs[*bb_id].instrs[instr_idx].kind = InstrKind::Bool(!a);
                 }
                 InstrKind::And(local1, local2) => {
                     let expr1 = def_use.get_def_non_move_expr(&func.bbs, local1);
                     let expr2 = def_use.get_def_non_move_expr(&func.bbs, local2);
                     match (expr1, expr2) {
                         (Some(&InstrKind::Bool(a)), Some(&InstrKind::Bool(b))) => {
-                            func.bbs[*bb_id].instrs[expr_idx].kind = InstrKind::Bool(a && b);
+                            func.bbs[*bb_id].instrs[instr_idx].kind = InstrKind::Bool(a && b);
                         }
                         (Some(&InstrKind::Bool(false)), _) | (_, Some(&InstrKind::Bool(false))) => {
-                            func.bbs[*bb_id].instrs[expr_idx].kind = InstrKind::Bool(false);
+                            func.bbs[*bb_id].instrs[instr_idx].kind = InstrKind::Bool(false);
                         }
                         (Some(&InstrKind::Bool(true)), _) => {
-                            func.bbs[*bb_id].instrs[expr_idx].kind = InstrKind::Move(local2);
+                            func.bbs[*bb_id].instrs[instr_idx].kind = InstrKind::Move(local2);
                         }
                         (_, Some(&InstrKind::Bool(true))) => {
-                            func.bbs[*bb_id].instrs[expr_idx].kind = InstrKind::Move(local1);
+                            func.bbs[*bb_id].instrs[instr_idx].kind = InstrKind::Move(local1);
                         }
                         _ => {}
                     }
@@ -318,16 +318,16 @@ pub fn constant_folding(
                     let expr2 = def_use.get_def_non_move_expr(&func.bbs, local2);
                     match (expr1, expr2) {
                         (Some(&InstrKind::Bool(a)), Some(&InstrKind::Bool(b))) => {
-                            func.bbs[*bb_id].instrs[expr_idx].kind = InstrKind::Bool(a || b);
+                            func.bbs[*bb_id].instrs[instr_idx].kind = InstrKind::Bool(a || b);
                         }
                         (Some(&InstrKind::Bool(true)), _) | (_, Some(&InstrKind::Bool(true))) => {
-                            func.bbs[*bb_id].instrs[expr_idx].kind = InstrKind::Bool(true);
+                            func.bbs[*bb_id].instrs[instr_idx].kind = InstrKind::Bool(true);
                         }
                         (Some(&InstrKind::Bool(false)), _) => {
-                            func.bbs[*bb_id].instrs[expr_idx].kind = InstrKind::Move(local2);
+                            func.bbs[*bb_id].instrs[instr_idx].kind = InstrKind::Move(local2);
                         }
                         (_, Some(&InstrKind::Bool(false))) => {
-                            func.bbs[*bb_id].instrs[expr_idx].kind = InstrKind::Move(local1);
+                            func.bbs[*bb_id].instrs[instr_idx].kind = InstrKind::Move(local1);
                         }
                         _ => {}
                     }
@@ -337,40 +337,40 @@ pub fn constant_folding(
                         def_use.get_def_non_move_expr(&func.bbs, local)
                         && index < args.len() =>
                 {
-                    func.bbs[*bb_id].instrs[expr_idx].kind = InstrKind::Move(args[index]);
+                    func.bbs[*bb_id].instrs[instr_idx].kind = InstrKind::Move(args[index]);
                 }
                 InstrKind::VariadicArgsLength(local)
                     if let Some(InstrKind::VariadicArgs(args)) =
                         def_use.get_def_non_move_expr(&func.bbs, local) =>
                 {
-                    func.bbs[*bb_id].instrs[expr_idx].kind = InstrKind::Int(args.len() as i64);
+                    func.bbs[*bb_id].instrs[instr_idx].kind = InstrKind::Int(args.len() as i64);
                 }
                 InstrKind::VectorLength(local)
                     if let Some(InstrKind::Vector(elements)) =
                         def_use.get_def_non_move_expr(&func.bbs, local) =>
                 {
                     // Vectorは可変だが長さは変わらないので定数畳み込みできる
-                    func.bbs[*bb_id].instrs[expr_idx].kind = InstrKind::Int(elements.len() as i64);
+                    func.bbs[*bb_id].instrs[instr_idx].kind = InstrKind::Int(elements.len() as i64);
                 }
                 InstrKind::ToObj(typ1, src)
                     if let Some(src_expr) = def_use.get_def_non_move_expr(&func.bbs, src)
                         && let InstrKind::FromObj(typ2, obj_src) = *src_expr
                         && typ1 == typ2 =>
                 {
-                    func.bbs[*bb_id].instrs[expr_idx].kind = InstrKind::Move(obj_src);
+                    func.bbs[*bb_id].instrs[instr_idx].kind = InstrKind::Move(obj_src);
                 }
                 InstrKind::FromObj(typ1, src)
                     if let Some(src_expr) = def_use.get_def_non_move_expr(&func.bbs, src)
                         && let InstrKind::ToObj(typ2, obj_src) = *src_expr
                         && typ1 == typ2 =>
                 {
-                    func.bbs[*bb_id].instrs[expr_idx].kind = InstrKind::Move(obj_src);
+                    func.bbs[*bb_id].instrs[instr_idx].kind = InstrKind::Move(obj_src);
                 }
                 InstrKind::Is(typ1, src)
                     if let Some(&InstrKind::ToObj(typ2, _)) =
                         def_use.get_def_non_move_expr(&func.bbs, src) =>
                 {
-                    func.bbs[*bb_id].instrs[expr_idx].kind = InstrKind::Bool(typ1 == typ2);
+                    func.bbs[*bb_id].instrs[instr_idx].kind = InstrKind::Bool(typ1 == typ2);
                 }
                 InstrKind::ClosureEnv(_, closure, index)
                     if let Some(InstrKind::Closure { envs, .. }) =
@@ -378,13 +378,13 @@ pub fn constant_folding(
                 {
                     let env = envs[index];
                     if let Some(env) = env {
-                        func.bbs[*bb_id].instrs[expr_idx].kind = InstrKind::Move(env)
-                    } else if let Some(&(env, bb_id2, expr_idx2)) =
+                        func.bbs[*bb_id].instrs[instr_idx].kind = InstrKind::Move(env)
+                    } else if let Some(&(env, bb_id2, instr_idx2)) =
                         closure_set_envs.get(&(closure, index))
                         && doms[bb_id].contains(&bb_id2)
-                        && (bb_id2 != *bb_id || expr_idx2 < expr_idx)
+                        && (bb_id2 != *bb_id || instr_idx2 < instr_idx)
                     {
-                        func.bbs[*bb_id].instrs[expr_idx].kind = InstrKind::Move(env);
+                        func.bbs[*bb_id].instrs[instr_idx].kind = InstrKind::Move(env);
                     }
                 }
                 InstrKind::EqObj(local1, local2)
@@ -394,17 +394,17 @@ pub fn constant_folding(
                             def_use.get_def_non_move_expr(&func.bbs, local2) =>
                 {
                     if typ1 != typ2 {
-                        func.bbs[*bb_id].instrs[expr_idx].kind = InstrKind::Bool(false);
+                        func.bbs[*bb_id].instrs[instr_idx].kind = InstrKind::Bool(false);
                     } else if typ1 == ValType::Bool {
                         if let Some(&InstrKind::Bool(a)) =
                             def_use.get_def_non_move_expr(&func.bbs, src1)
                             && let Some(&InstrKind::Bool(b)) =
                                 def_use.get_def_non_move_expr(&func.bbs, src2)
                         {
-                            func.bbs[*bb_id].instrs[expr_idx].kind = InstrKind::Bool(a == b);
+                            func.bbs[*bb_id].instrs[instr_idx].kind = InstrKind::Bool(a == b);
                         }
                     } else if typ1 == ValType::Nil {
-                        func.bbs[*bb_id].instrs[expr_idx].kind = InstrKind::Bool(true);
+                        func.bbs[*bb_id].instrs[instr_idx].kind = InstrKind::Bool(true);
                     } else if typ1 == ValType::Int {
                         // Int参照の中身が同じ時のEqの結果は未規定なので畳み込んでもよい
                         if let Some(&InstrKind::Int(a)) =
@@ -412,7 +412,7 @@ pub fn constant_folding(
                             && let Some(&InstrKind::Int(b)) =
                                 def_use.get_def_non_move_expr(&func.bbs, src2)
                         {
-                            func.bbs[*bb_id].instrs[expr_idx].kind = InstrKind::Bool(a == b);
+                            func.bbs[*bb_id].instrs[instr_idx].kind = InstrKind::Bool(a == b);
                         }
                     }
                 }
@@ -421,10 +421,10 @@ pub fn constant_folding(
                         def_use.get_def_non_move_expr(&func.bbs, cond) =>
                 {
                     if value {
-                        func.bbs[*bb_id].instrs[expr_idx].kind =
+                        func.bbs[*bb_id].instrs[instr_idx].kind =
                             InstrKind::Terminator(TerminatorInstr::Jump(then_bb));
                     } else {
-                        func.bbs[*bb_id].instrs[expr_idx].kind =
+                        func.bbs[*bb_id].instrs[instr_idx].kind =
                             InstrKind::Terminator(TerminatorInstr::Jump(else_bb));
                     }
                 }
