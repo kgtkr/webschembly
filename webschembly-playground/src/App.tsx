@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import playgroundWorker from './playground.worker?worker';
+import type { WorkerRequest, WorkerResponse } from './worker-types';
 
 const exampleCode =
     `(define (factorial n)
@@ -18,25 +19,8 @@ export default function App() {
     const [isRunning, setIsRunning] = useState(false);
     const [runtimeModule, setRuntimeModule] = useState<WebAssembly.Module | null>(null);
     const workerRef = useRef<Worker | null>(null);
-    const timerRef = useRef<number | null>(null);
-    const [startTime, setStartTime] = useState<number | null>(null);
     const [finalDurationMs, setFinalDurationMs] = useState<number | null>(null);
     const [elapsedMs, setElapsedMs] = useState(0);
-
-    useEffect(() => {
-        if (isRunning && startTime !== null) {
-            const updateTimer = () => {
-                setElapsedMs(performance.now() - startTime);
-                timerRef.current = requestAnimationFrame(updateTimer);
-            };
-            timerRef.current = requestAnimationFrame(updateTimer);
-            return () => {
-                if (timerRef.current !== null) cancelAnimationFrame(timerRef.current);
-            };
-        } else {
-            if (timerRef.current !== null) cancelAnimationFrame(timerRef.current);
-        }
-    }, [isRunning, startTime]);
 
     const formatTime = () => {
         if (!isRunning && finalDurationMs !== null) {
@@ -53,7 +37,6 @@ export default function App() {
             workerRef.current.terminate();
             workerRef.current = null;
         }
-        setFinalDurationMs(performance.now() - (startTime ?? performance.now()));
         setIsRunning(false);
         setStderr((prev) => prev + (prev ? '\n' : '') + 'Execution terminated by user.');
         setExitCode((prev) => prev === null ? 130 : prev);
@@ -74,24 +57,27 @@ export default function App() {
         setStderr('');
         setExitCode(null);
 
-        const now = performance.now();
-        setStartTime(now);
         setFinalDurationMs(null);
         setElapsedMs(0);
 
         const worker = new playgroundWorker();
         workerRef.current = worker;
-        worker.postMessage({ src, runtimeModule });
+        const req: WorkerRequest = { src, runtimeModule };
+        worker.postMessage(req);
 
-        worker.addEventListener('message', (event) => {
-            const { exitCode: code, stdout: out, stderr: err, durationMs } = event.data;
-            setExitCode(code);
-            setStdout(out);
-            setStderr(err);
-            setFinalDurationMs(durationMs);
-            setIsRunning(false);
-            worker.terminate();
-            workerRef.current = null;
+        worker.addEventListener('message', (event: MessageEvent<WorkerResponse>) => {
+            const res = event.data;
+            if (res.kind === 'progress') {
+                setElapsedMs(res.elapsedMs);
+            } else if (res.kind === 'finish') {
+                setExitCode(res.exitCode);
+                setStdout(res.stdout);
+                setStderr(res.stderr);
+                setFinalDurationMs(res.durationMs);
+                setIsRunning(false);
+                worker.terminate();
+                workerRef.current = null;
+            }
         });
     };
 

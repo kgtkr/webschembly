@@ -1,12 +1,10 @@
 import { createRuntime } from "webschembly-js/runtime";
+import type { WorkerRequest, WorkerResponse } from "./worker-types";
 
-self.addEventListener("message", async (event) => {
+self.addEventListener("message", async (event: MessageEvent<WorkerRequest>) => {
   const {
     src,
     runtimeModule,
-  }: {
-    src: string;
-    runtimeModule: WebAssembly.Module;
   } = event.data;
 
   const srcBuf = new TextEncoder().encode(src);
@@ -44,16 +42,29 @@ self.addEventListener("message", async (event) => {
   );
 
   const start = performance.now();
-  runtime.loadStdlib();
-  runtime.loadSrc(srcBuf);
-  runtime.cleanup();
+  let progressInterval: number | null = null;
+  progressInterval = self.setInterval(() => {
+    const elapsedMs = performance.now() - start;
+    self.postMessage({ kind: 'progress', elapsedMs } satisfies WorkerResponse);
+  }, 100);
+
+  try {
+    runtime.loadStdlib();
+    runtime.loadSrc(srcBuf);
+    runtime.cleanup();
+  } finally {
+    if (progressInterval !== null) {
+      self.clearInterval(progressInterval);
+    }
+  }
+
   const end = performance.now();
   const durationMs = end - start;
 
   const stdout = new TextDecoder().decode(concatBufs(stdoutBufs));
   const stderr = new TextDecoder().decode(concatBufs(stderrBufs));
 
-  self.postMessage({ exitCode, stdout, stderr, durationMs });
+  self.postMessage({ kind: 'finish', exitCode, stdout, stderr, durationMs } satisfies WorkerResponse);
 });
 
 function concatBufs(bufs: Uint8Array[]) {
