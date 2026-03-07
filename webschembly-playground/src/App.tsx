@@ -17,6 +17,47 @@ export default function App() {
     const [exitCode, setExitCode] = useState<number | null>(null);
     const [isRunning, setIsRunning] = useState(false);
     const [runtimeModule, setRuntimeModule] = useState<WebAssembly.Module | null>(null);
+    const workerRef = useRef<Worker | null>(null);
+    const timerRef = useRef<number | null>(null);
+    const [startTime, setStartTime] = useState<number | null>(null);
+    const [finalDurationMs, setFinalDurationMs] = useState<number | null>(null);
+    const [elapsedMs, setElapsedMs] = useState(0);
+
+    useEffect(() => {
+        if (isRunning && startTime !== null) {
+            const updateTimer = () => {
+                setElapsedMs(performance.now() - startTime);
+                timerRef.current = requestAnimationFrame(updateTimer);
+            };
+            timerRef.current = requestAnimationFrame(updateTimer);
+            return () => {
+                if (timerRef.current !== null) cancelAnimationFrame(timerRef.current);
+            };
+        } else {
+            if (timerRef.current !== null) cancelAnimationFrame(timerRef.current);
+        }
+    }, [isRunning, startTime]);
+
+    const formatTime = () => {
+        if (!isRunning && finalDurationMs !== null) {
+            return `${finalDurationMs.toFixed(2)} ms`;
+        } else if (isRunning) {
+            const s = Math.floor(elapsedMs / 1000);
+            return `${s} s`;
+        }
+        return '';
+    };
+
+    const handleStop = () => {
+        if (workerRef.current) {
+            workerRef.current.terminate();
+            workerRef.current = null;
+        }
+        setFinalDurationMs(performance.now() - (startTime ?? performance.now()));
+        setIsRunning(false);
+        setStderr((prev) => prev + (prev ? '\n' : '') + 'Execution terminated by user.');
+        setExitCode((prev) => prev === null ? 130 : prev);
+    };
 
     useEffect(() => {
         fetch(import.meta.env.BASE_URL + 'wasm/webschembly_runtime.wasm')
@@ -33,16 +74,24 @@ export default function App() {
         setStderr('');
         setExitCode(null);
 
+        const now = performance.now();
+        setStartTime(now);
+        setFinalDurationMs(null);
+        setElapsedMs(0);
+
         const worker = new playgroundWorker();
+        workerRef.current = worker;
         worker.postMessage({ src, runtimeModule });
 
         worker.addEventListener('message', (event) => {
-            const { exitCode: code, stdout: out, stderr: err } = event.data;
+            const { exitCode: code, stdout: out, stderr: err, durationMs } = event.data;
             setExitCode(code);
             setStdout(out);
             setStderr(err);
+            setFinalDurationMs(durationMs);
             setIsRunning(false);
             worker.terminate();
+            workerRef.current = null;
         });
     };
 
@@ -56,16 +105,30 @@ export default function App() {
                 <div className="editor-section panel">
                     <div className="section-header">
                         <h2>Source Code</h2>
-                        <button
-                            className={`run-button ${isRunning ? 'running' : ''}`}
-                            onClick={handleRun}
-                            disabled={isRunning || !runtimeModule}
-                        >
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M5 3L19 12L5 21V3Z" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                            </svg>
-                            {isRunning ? 'Running...' : 'Run Code'}
-                        </button>
+                        <div className="editor-controls">
+                            {(isRunning || finalDurationMs !== null) && (
+                                <div className="timer">{formatTime()}</div>
+                            )}
+                            {isRunning ? (
+                                <button className="stop-button" onClick={handleStop}>
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                        <rect x="6" y="6" width="12" height="12" fill="currentColor" />
+                                    </svg>
+                                    Stop
+                                </button>
+                            ) : (
+                                <button
+                                    className={`run-button`}
+                                    onClick={handleRun}
+                                    disabled={!runtimeModule}
+                                >
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                        <path d="M5 3L19 12L5 21V3Z" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                                    </svg>
+                                    Run Code
+                                </button>
+                            )}
+                        </div>
                     </div>
                     <textarea
                         className="code-editor"

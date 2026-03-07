@@ -43,14 +43,17 @@ self.addEventListener("message", async (event) => {
     {},
   );
 
+  const start = performance.now();
   runtime.loadStdlib();
   runtime.loadSrc(srcBuf);
   runtime.cleanup();
+  const end = performance.now();
+  const durationMs = end - start;
 
   const stdout = new TextDecoder().decode(concatBufs(stdoutBufs));
   const stderr = new TextDecoder().decode(concatBufs(stderrBufs));
 
-  self.postMessage({ exitCode, stdout, stderr });
+  self.postMessage({ exitCode, stdout, stderr, durationMs });
 });
 
 function concatBufs(bufs: Uint8Array[]) {
