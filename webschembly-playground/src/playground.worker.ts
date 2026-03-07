@@ -42,21 +42,10 @@ self.addEventListener("message", async (event: MessageEvent<WorkerRequest>) => {
   );
 
   const start = performance.now();
-  let progressInterval: number | null = null;
-  progressInterval = self.setInterval(() => {
-    const elapsedMs = performance.now() - start;
-    self.postMessage({ kind: 'progress', elapsedMs } satisfies WorkerResponse);
-  }, 100);
 
-  try {
-    runtime.loadStdlib();
-    runtime.loadSrc(srcBuf);
-    runtime.cleanup();
-  } finally {
-    if (progressInterval !== null) {
-      self.clearInterval(progressInterval);
-    }
-  }
+  runtime.loadStdlib();
+  runtime.loadSrc(srcBuf);
+  runtime.cleanup();
 
   const end = performance.now();
   const durationMs = end - start;

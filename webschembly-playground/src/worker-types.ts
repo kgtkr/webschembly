@@ -5,10 +5,6 @@ export type WorkerRequest = {
 
 export type WorkerResponse =
     | {
-        kind: 'progress';
-        elapsedMs: number;
-    }
-    | {
         kind: 'finish';
         exitCode: number;
         stdout: string;

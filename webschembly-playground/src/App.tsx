@@ -20,14 +20,12 @@ export default function App() {
     const [runtimeModule, setRuntimeModule] = useState<WebAssembly.Module | null>(null);
     const workerRef = useRef<Worker | null>(null);
     const [finalDurationMs, setFinalDurationMs] = useState<number | null>(null);
-    const [elapsedMs, setElapsedMs] = useState(0);
 
     const formatTime = () => {
         if (!isRunning && finalDurationMs !== null) {
             return `${finalDurationMs.toFixed(2)} ms`;
         } else if (isRunning) {
-            const s = Math.floor(elapsedMs / 1000);
-            return `${s} s`;
+            return 'Running...';
         }
         return '';
     };
@@ -58,7 +56,6 @@ export default function App() {
         setExitCode(null);
 
         setFinalDurationMs(null);
-        setElapsedMs(0);
 
         const worker = new playgroundWorker();
         workerRef.current = worker;
@@ -67,9 +64,8 @@ export default function App() {
 
         worker.addEventListener('message', (event: MessageEvent<WorkerResponse>) => {
             const res = event.data;
-            if (res.kind === 'progress') {
-                setElapsedMs(res.elapsedMs);
-            } else if (res.kind === 'finish') {
+
+            if (res.kind === 'finish') {
                 setExitCode(res.exitCode);
                 setStdout(res.stdout);
                 setStderr(res.stderr);
