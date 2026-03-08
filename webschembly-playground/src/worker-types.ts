@@ -1,13 +1,12 @@
 export type WorkerRequest = {
-    src: string;
-    runtimeModule: WebAssembly.Module;
+  src: string;
+  runtimeModule: WebAssembly.Module;
 };
 
-export type WorkerResponse =
-    | {
-        kind: 'finish';
-        exitCode: number;
-        stdout: string;
-        stderr: string;
-        durationMs: number;
-    };
+export type WorkerResponse = {
+  kind: "finish";
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+  durationMs: number;
+};

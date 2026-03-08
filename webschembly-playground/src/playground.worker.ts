@@ -53,7 +53,7 @@ self.addEventListener("message", async (event: MessageEvent<WorkerRequest>) => {
   const stdout = new TextDecoder().decode(concatBufs(stdoutBufs));
   const stderr = new TextDecoder().decode(concatBufs(stderrBufs));
 
-  self.postMessage({ kind: 'finish', exitCode, stdout, stderr, durationMs } satisfies WorkerResponse);
+  self.postMessage({ kind: "finish", exitCode, stdout, stderr, durationMs } satisfies WorkerResponse);
 });
 
 function concatBufs(bufs: Uint8Array[]) {
