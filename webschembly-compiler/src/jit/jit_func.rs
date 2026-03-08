@@ -24,9 +24,7 @@ pub struct JitFunc {
     pub jit_specialized_env_funcs: FxHashMap<EnvIndex, JitSpecializedEnvFunc>,
 }
 
-unsafe extern "C" {
-    pub fn js_webschembly_jit_log(buf_ptr: i32, buf_len: i32);
-}
+use super::event::JitLogEvent;
 
 impl JitFunc {
     pub fn new(
@@ -148,9 +146,9 @@ impl JitSpecializedArgFunc {
         global_manager: &mut GlobalManager,
         env_index_managers: &mut FxHashMap<FuncId, EnvIndexManager>,
         jit_ctx: &mut JitCtx,
-    ) -> Module {
+    ) -> (Module, Vec<JitLogEvent>) {
         // entry_bbのモジュールをベースに拡張する
-        let mut module = self.generate_bb_module(
+        let (mut module, jit_events) = self.generate_bb_module(
             func_to_globals,
             func_types,
             self.func.bb_entry,
@@ -281,7 +279,7 @@ impl JitSpecializedArgFunc {
             self.add_bb_stub_func(self.module_id, bb_id, BB_LAYOUT_DEFAULT_INDEX, &mut module);
         }
 
-        module
+        (module, jit_events)
     }
 
     fn add_bb_stub_func(
@@ -394,7 +392,7 @@ impl JitSpecializedArgFunc {
         env_index_managers: &mut FxHashMap<FuncId, EnvIndexManager>,
         jit_ctx: &mut JitCtx,
         branch_specialization: bool,
-    ) -> Module {
+    ) -> (Module, Vec<JitLogEvent>) {
         let mut required_closure_idx = Vec::new();
 
         {
@@ -585,24 +583,22 @@ impl JitSpecializedArgFunc {
             .map(|(bb_id, _, _)| *bb_id)
             .collect::<FxHashSet<BasicBlockId>>();
 
+        let mut jit_events = Vec::new();
+
         if jit_ctx.config().enable_log {
             let successors: Vec<usize> = required_bbs
                 .iter()
                 .map(|(bb_id, _, _)| (*bb_id).into())
                 .collect();
-            let log_msg = format!(
-                r#"{{"type":"bb","module_id":{},"func_id":{},"env_index":{},"func_index":{},"bb_id":{},"index":{},"successors":{:?}}}"#,
-                usize::from(self.module_id),
-                usize::from(self.func.id),
-                self.env_index.0,
-                self.func_index.0,
-                usize::from(orig_entry_bb_id),
-                index.0,
-                successors
-            );
-            unsafe {
-                js_webschembly_jit_log(log_msg.as_ptr() as i32, log_msg.len() as i32);
-            }
+            jit_events.push(JitLogEvent::BasicBlock {
+                module_id: usize::from(self.module_id),
+                func_id: usize::from(self.func.id),
+                env_index: self.env_index.0,
+                func_index: self.func_index.0,
+                bb_id: usize::from(orig_entry_bb_id),
+                index: index.0,
+                successors,
+            });
         }
 
         for (bb_id, types, branch_kind) in required_bbs {
@@ -1205,7 +1201,7 @@ impl JitSpecializedArgFunc {
             self.add_bb_stub_func(self.module_id, *bb_id, BBIndex(*index), &mut module);
         }
 
-        module
+        (module, jit_events)
     }
 
     pub fn increment_branch_counter(
@@ -1219,10 +1215,10 @@ impl JitSpecializedArgFunc {
         kind: BranchKind,
         source_bb_id: BasicBlockId,
         source_index: usize,
-    ) -> Option<Module> {
+    ) -> Option<(Module, Vec<JitLogEvent>)> {
         self.jit_bbs[bb_id].branch_counter.increment(kind);
         if self.jit_bbs[bb_id].branch_counter.should_specialize() {
-            let module = self.generate_bb_module(
+            let (module, jit_events) = self.generate_bb_module(
                 func_to_globals,
                 func_types,
                 source_bb_id,
@@ -1232,7 +1228,7 @@ impl JitSpecializedArgFunc {
                 jit_ctx,
                 true,
             );
-            Some(module)
+            Some((module, jit_events))
         } else {
             None
         }

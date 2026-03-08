@@ -220,7 +220,7 @@ impl JitModule {
         env_index: EnvIndex,
         func_index: ClosureIndex,
         jit_ctx: &mut JitCtx,
-    ) -> Module {
+    ) -> (Module, Vec<super::event::JitLogEvent>) {
         let jit_func_entry = self.jit_funcs.get_mut(&func_id).unwrap();
         let jit_env_func = jit_func_entry
             .jit_specialized_env_funcs
@@ -270,7 +270,7 @@ impl JitModule {
         index: BBIndex,
         global_manager: &mut GlobalManager,
         jit_ctx: &mut JitCtx,
-    ) -> Module {
+    ) -> (Module, Vec<super::event::JitLogEvent>) {
         let jit_func_entry = self.jit_funcs.get_mut(&func_id).unwrap();
         let jit_func = jit_func_entry
             .jit_specialized_env_funcs
@@ -303,7 +303,7 @@ impl JitModule {
         kind: BranchKind,
         source_bb_id: BasicBlockId,
         source_index: BBIndex,
-    ) -> Option<Module> {
+    ) -> Option<(Module, Vec<super::event::JitLogEvent>)> {
         let jit_func_entry = self.jit_funcs.get_mut(&func_id).unwrap();
         let jit_func = jit_func_entry
             .jit_specialized_env_funcs

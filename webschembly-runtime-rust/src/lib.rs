@@ -378,12 +378,13 @@ pub extern "C" fn instantiate_func(
     );
     let (wasm, ir) = COMPILER.with(|compiler| {
         let mut compiler = RefMut::map(compiler.borrow_mut(), |c| c.as_mut().unwrap());
-        let module = compiler.instantiate_func(
+        let (module, jit_events) = compiler.instantiate_func(
             module_id as usize,
             func_id as usize,
             env_index as usize,
             func_index as usize,
         );
+        process_jit_events(jit_events);
         let wasm = webschembly_compiler::wasm_generator::generate(&module);
         let ir = if cfg!(debug_assertions) {
             let ir = format!("{}", module.display());
@@ -427,7 +428,7 @@ pub extern "C" fn instantiate_bb(
     );
     let (wasm, ir) = COMPILER.with(|compiler| {
         let mut compiler = RefMut::map(compiler.borrow_mut(), |c| c.as_mut().unwrap());
-        let module = compiler.instantiate_bb(
+        let (module, jit_events) = compiler.instantiate_bb(
             module_id as usize,
             func_id as usize,
             env_index as usize,
@@ -435,6 +436,7 @@ pub extern "C" fn instantiate_bb(
             bb_id as usize,
             index as usize,
         );
+        process_jit_events(jit_events);
         let wasm = webschembly_compiler::wasm_generator::generate(&module);
         let ir = if cfg!(debug_assertions) {
             let ir = format!("{}", module.display());
@@ -482,7 +484,8 @@ pub extern "C" fn increment_branch_counter(
                 source_bb_id as usize,
                 source_index as usize,
             )
-            .map(|module| {
+            .map(|(module, jit_events)| {
+                process_jit_events(jit_events);
                 let wasm = webschembly_compiler::wasm_generator::generate(&module);
                 let ir = if cfg!(debug_assertions) {
                     let ir = format!("{}", module.display());
@@ -516,4 +519,31 @@ pub extern "C" fn increment_branch_counter(
             }
         }
     });
+}
+
+fn process_jit_events(events: Vec<webschembly_compiler::jit::event::JitLogEvent>) {
+    for event in events {
+        match event {
+            webschembly_compiler::jit::event::JitLogEvent::BasicBlock {
+                module_id,
+                func_id,
+                env_index,
+                func_index,
+                bb_id,
+                index,
+                successors,
+            } => {
+                let log_msg = format!(
+                    r#"{{"type":"bb","module_id":{},"func_id":{},"env_index":{},"func_index":{},"bb_id":{},"index":{},"successors":{:?}}}"#,
+                    module_id, func_id, env_index, func_index, bb_id, index, successors
+                );
+                unsafe {
+                    crate::env::js_webschembly_jit_log(
+                        log_msg.as_ptr() as i32,
+                        log_msg.len() as i32,
+                    );
+                }
+            }
+        }
+    }
 }
