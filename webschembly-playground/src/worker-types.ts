@@ -1,6 +1,7 @@
 export type WorkerRequest = {
   src: string;
   runtimeModule: WebAssembly.Module;
+  enableJitLog: boolean;
 };
 
 export type WorkerResponse = {
@@ -9,4 +10,7 @@ export type WorkerResponse = {
   stdout: string;
   stderr: string;
   durationMs: number;
+} | {
+  kind: "jit_log";
+  data: any;
 };

@@ -318,3 +318,18 @@ body {
     min-height: 400px;
   }
 }
+
+/* React Flow Dark Theme Overrides */
+.react-flow__controls-button {
+  background-color: var(--panel-bg) !important;
+  fill: var(--text-primary) !important;
+  border-bottom: 1px solid var(--panel-border) !important;
+}
+
+.react-flow__controls-button:hover {
+  background-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.react-flow__panel {
+  background-color: transparent !important;
+}

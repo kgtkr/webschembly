@@ -38,6 +38,7 @@ fn main() -> anyhow::Result<()> {
             enable_jit_optimization: true,
             enable_jit_small_block_fusion: true,
             enable_jit_large_block_fusion: true,
+            enable_jit_log: false,
         }
         .into(),
     );

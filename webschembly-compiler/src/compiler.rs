@@ -36,6 +36,7 @@ pub struct FlatConfig {
     pub enable_jit_optimization: bool,
     pub enable_jit_small_block_fusion: bool,
     pub enable_jit_large_block_fusion: bool,
+    pub enable_jit_log: bool,
 }
 
 impl From<FlatConfig> for Config {
@@ -51,6 +52,7 @@ impl From<FlatConfig> for Config {
                     } else {
                         BlockFusionConfig::Disabled
                     },
+                    enable_log: config.enable_jit_log,
                 })
             } else {
                 None
@@ -146,11 +148,11 @@ impl Compiler {
         func_id: usize,
         env_index: usize,
         func_index: usize,
-    ) -> ir::Module {
+    ) -> (ir::Module, Vec<crate::jit::event::JitLogEvent>) {
         let module_id = ir::JitModuleId::from(module_id);
         let func_id = ir::FuncId::from(func_id);
         let jit = self.jit.as_mut().expect("JIT is not enabled");
-        let mut module = jit.instantiate_func(
+        let (mut module, jit_events) = jit.instantiate_func(
             &mut self.global_manager,
             module_id,
             func_id,
@@ -169,7 +171,7 @@ impl Compiler {
             );
         }
         postprocess(&mut module, &mut self.global_manager);
-        module
+        (module, jit_events)
     }
 
     pub fn instantiate_bb(
@@ -180,12 +182,12 @@ impl Compiler {
         func_index: usize,
         bb_id: usize,
         index: usize,
-    ) -> ir::Module {
+    ) -> (ir::Module, Vec<crate::jit::event::JitLogEvent>) {
         let module_id = ir::JitModuleId::from(module_id);
         let func_id = ir::FuncId::from(func_id);
         let bb_id = ir::BasicBlockId::from(bb_id);
         let jit = self.jit.as_mut().expect("JIT is not enabled");
-        let mut module = jit.instantiate_bb(
+        let (mut module, jit_events) = jit.instantiate_bb(
             module_id,
             func_id,
             crate::jit::env_index_manager::EnvIndex(env_index),
@@ -205,7 +207,7 @@ impl Compiler {
             );
         }
         postprocess(&mut module, &mut self.global_manager);
-        module
+        (module, jit_events)
     }
 
     pub fn increment_branch_counter(
@@ -218,7 +220,7 @@ impl Compiler {
         kind: usize, // 0: Then, 1: Else
         source_bb_id: usize,
         source_index: usize,
-    ) -> Option<ir::Module> {
+    ) -> Option<(ir::Module, Vec<crate::jit::event::JitLogEvent>)> {
         let module_id = ir::JitModuleId::from(module_id);
         let func_id = ir::FuncId::from(func_id);
         let bb_id = ir::BasicBlockId::from(bb_id);
@@ -239,7 +241,7 @@ impl Compiler {
             ir::BasicBlockId::from(source_bb_id),
             crate::jit::bb_index_manager::BBIndex(source_index),
         )
-        .map(|mut module| {
+        .map(|(mut module, jit_events)| {
             preprocess_module(&mut module);
             if jit.config().enable_optimization {
                 optimize_module(
@@ -251,7 +253,7 @@ impl Compiler {
                 );
             }
             postprocess(&mut module, &mut self.global_manager);
-            module
+            (module, jit_events)
         })
     }
 }

@@ -24,6 +24,8 @@ pub struct JitFunc {
     pub jit_specialized_env_funcs: FxHashMap<EnvIndex, JitSpecializedEnvFunc>,
 }
 
+use super::event::JitLogEvent;
+
 impl JitFunc {
     pub fn new(
         global_manager: &mut GlobalManager,
@@ -144,9 +146,9 @@ impl JitSpecializedArgFunc {
         global_manager: &mut GlobalManager,
         env_index_managers: &mut FxHashMap<FuncId, EnvIndexManager>,
         jit_ctx: &mut JitCtx,
-    ) -> Module {
+    ) -> (Module, Vec<JitLogEvent>) {
         // entry_bbのモジュールをベースに拡張する
-        let mut module = self.generate_bb_module(
+        let (mut module, jit_events) = self.generate_bb_module(
             func_to_globals,
             func_types,
             self.func.bb_entry,
@@ -277,7 +279,7 @@ impl JitSpecializedArgFunc {
             self.add_bb_stub_func(self.module_id, bb_id, BB_LAYOUT_DEFAULT_INDEX, &mut module);
         }
 
-        module
+        (module, jit_events)
     }
 
     fn add_bb_stub_func(
@@ -390,7 +392,7 @@ impl JitSpecializedArgFunc {
         env_index_managers: &mut FxHashMap<FuncId, EnvIndexManager>,
         jit_ctx: &mut JitCtx,
         branch_specialization: bool,
-    ) -> Module {
+    ) -> (Module, Vec<JitLogEvent>) {
         let mut required_closure_idx = Vec::new();
 
         {
@@ -580,7 +582,11 @@ impl JitSpecializedArgFunc {
             .iter()
             .map(|(bb_id, _, _)| *bb_id)
             .collect::<FxHashSet<BasicBlockId>>();
-        for (bb_id, types, branch_kind) in required_bbs {
+
+        // log用のエッジ一覧
+        let mut edges = Vec::new();
+
+        for &(bb_id, ref types, branch_kind) in required_bbs.iter() {
             let mut instrs = Vec::new();
             for instr in &body_func.bbs[bb_id].instrs {
                 // ジャンプ先のBBのPhiはここに移動
@@ -614,7 +620,7 @@ impl JitSpecializedArgFunc {
             そこで、型が確定しているならfrom_obj命令を追加して型情報を伝搬させる
             */
             let mut typed_objs = FxHashMap::default();
-            for (obj_local, typ) in types {
+            for &(obj_local, typ) in types {
                 let val_local = body_func.locals.push_with(|id| Local {
                     id,
                     typ: typ.into(),
@@ -627,7 +633,7 @@ impl JitSpecializedArgFunc {
             }
 
             let callee_jit_bb = &mut self.jit_bbs[bb_id];
-            let (locals_to_pass, type_args, index_global) = calculate_args_to_pass(
+            let (locals_to_pass, type_args, index_global, next_bb_index) = calculate_args_to_pass(
                 &callee_jit_bb.info,
                 |obj_local| {
                     if let Some(&InstrKind::ToObj(typ, val_local)) =
@@ -644,6 +650,10 @@ impl JitSpecializedArgFunc {
                 &mut required_stubs,
                 global_manager,
             );
+
+            if jit_ctx.config().enable_log {
+                edges.push((bb_id, next_bb_index));
+            }
 
             let func_ref_local = body_func.locals.push_with(|id| Local {
                 id,
@@ -672,6 +682,58 @@ impl JitSpecializedArgFunc {
 
             body_func.bbs[bb_id].instrs = instrs;
         }
+
+        let mut jit_events = Vec::new();
+
+        if jit_ctx.config().enable_log && !branch_specialization
+        // workaround: BB融合はまだ未対応
+        {
+            let (type_args, _) = self.jit_bbs[orig_entry_bb_id]
+                .bb_index_manager
+                .type_args(index);
+            let successors: Vec<(usize, usize)> = edges
+                .iter()
+                .map(|&(bb_id, bb_index)| (bb_id.into(), bb_index.0))
+                .collect();
+            let env_types = env_index_managers[&self.func.id]
+                .env_types(self.env_index)
+                .0
+                .iter()
+                .map(|(k, v)| format!("{k}={v}"))
+                .collect::<Vec<_>>()
+                .join(",");
+            let arg_types = if let ClosureArgs::Specified(args) =
+                jit_ctx.closure_global_layout().arg_types(self.func_index)
+            {
+                args.iter()
+                    .map(|v| format!("{v}"))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            } else {
+                "variadic".to_string()
+            };
+            let bb_types = type_args
+                .iter()
+                .map(|(k, v)| format!("{}={v}", usize::from(k)))
+                .collect::<Vec<_>>()
+                .join(",");
+            let display = format!(
+                "func{} envs:{{{env_types}}} args:{{{arg_types}}} bb{} {{{bb_types}}}",
+                usize::from(self.func.id),
+                usize::from(orig_entry_bb_id)
+            );
+            jit_events.push(JitLogEvent::BasicBlock {
+                module_id: usize::from(self.module_id),
+                func_id: usize::from(self.func.id),
+                env_index: self.env_index.0,
+                func_index: self.func_index.0,
+                bb_id: usize::from(orig_entry_bb_id),
+                index: index.0,
+                successors,
+                display,
+            });
+        }
+
         for &bb_id in &processed_bb_ids {
             let mut instrs = Vec::new();
             for instr in &body_func.bbs[bb_id].instrs {
@@ -1180,7 +1242,7 @@ impl JitSpecializedArgFunc {
             self.add_bb_stub_func(self.module_id, *bb_id, BBIndex(*index), &mut module);
         }
 
-        module
+        (module, jit_events)
     }
 
     pub fn increment_branch_counter(
@@ -1194,10 +1256,10 @@ impl JitSpecializedArgFunc {
         kind: BranchKind,
         source_bb_id: BasicBlockId,
         source_index: usize,
-    ) -> Option<Module> {
+    ) -> Option<(Module, Vec<JitLogEvent>)> {
         self.jit_bbs[bb_id].branch_counter.increment(kind);
         if self.jit_bbs[bb_id].branch_counter.should_specialize() {
-            let module = self.generate_bb_module(
+            let (module, jit_events) = self.generate_bb_module(
                 func_to_globals,
                 func_types,
                 source_bb_id,
@@ -1207,7 +1269,7 @@ impl JitSpecializedArgFunc {
                 jit_ctx,
                 true,
             );
-            Some(module)
+            Some((module, jit_events))
         } else {
             None
         }
@@ -1410,7 +1472,7 @@ fn calculate_args_to_pass(
     bb_index_manager: &mut BBIndexManager,
     required_stubs: &mut Vec<(BasicBlockId, usize)>,
     global_manager: &mut GlobalManager,
-) -> (Vec<LocalId>, VecMap<TypeParamId, ValType>, Global) {
+) -> (Vec<LocalId>, VecMap<TypeParamId, ValType>, Global, BBIndex) {
     let mut type_args = VecMap::new();
     let mut args_to_pass = Vec::new();
     // BBIndexManagerが満杯だったときのためのフォールバック
@@ -1448,7 +1510,7 @@ fn calculate_args_to_pass(
     if flag == IndexFlag::NewInstance {
         required_stubs.push((callee.bb_id, index.0));
     }
-    (args_to_pass, type_args, global)
+    (args_to_pass, type_args, global, index)
 }
 
 fn closure_func_assign_env_types(

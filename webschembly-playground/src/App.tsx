@@ -1,17 +1,23 @@
 import { useEffect, useRef, useState } from "react";
+import { JitGraph, type JitLogEvent } from "./JitGraph";
 import playgroundWorker from "./playground.worker?worker";
 import type { WorkerRequest, WorkerResponse } from "./worker-types";
 
-const exampleCode = `(define (factorial n)
-  (if (= n 0)
-      1
-      (* n (factorial (- n 1)))))
-(write (factorial 5))
+const exampleCode = `(define (sum n)
+  (define (sum-rec n m)
+    (if (= n 0)
+      m
+      (sum-rec (- n 1) (+ m n))))
+  (sum-rec n 0))
+
+(write (sum 100))
 (newline)
 `;
 
 export default function App() {
   const [src, setSrc] = useState(exampleCode);
+  const [enableJitLog, setEnableJitLog] = useState(false);
+  const [jitLogs, setJitLogs] = useState<JitLogEvent[]>([]);
   const [stdout, setStdout] = useState("");
   const [stderr, setStderr] = useState("");
   const [exitCode, setExitCode] = useState<number | null>(null);
@@ -55,10 +61,11 @@ export default function App() {
     setExitCode(null);
 
     setFinalDurationMs(null);
+    setJitLogs([]);
 
     const worker = new playgroundWorker();
     workerRef.current = worker;
-    const req: WorkerRequest = { src, runtimeModule };
+    const req: WorkerRequest = { src, runtimeModule, enableJitLog };
     worker.postMessage(req);
 
     worker.addEventListener("message", (event: MessageEvent<WorkerResponse>) => {
@@ -72,6 +79,8 @@ export default function App() {
         setIsRunning(false);
         worker.terminate();
         workerRef.current = null;
+      } else if (res.kind === "jit_log") {
+        setJitLogs((prev) => [...prev, res.data]);
       }
     });
   };
@@ -116,6 +125,16 @@ export default function App() {
                     Run Code
                   </button>
                 )}
+              <div className="visualize-toggle">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={enableJitLog}
+                    onChange={(e) => setEnableJitLog(e.target.checked)}
+                  />
+                  Visualize JIT CFG (Pre-alpha)
+                </label>
+              </div>
             </div>
           </div>
           <textarea
@@ -140,6 +159,14 @@ export default function App() {
               {exitCode !== null ? exitCode : "-"}
             </div>
           </div>
+          {enableJitLog && (
+            <div className="output-panel panel graph-panel">
+              <h3>JIT CFG</h3>
+              <div className="graph-container" style={{ height: "400px" }}>
+                <JitGraph logs={jitLogs} />
+              </div>
+            </div>
+          )}
         </div>
       </main>
     </div>
