@@ -35,6 +35,7 @@ const runtimeImportObjects: RuntimeImportsEnv = {
     );
     runtimeEnv.writeBuf(fd, buf);
   },
+  js_webschembly_jit_log: () => {},
 };
 
 const wasmBuf = new Uint8Array(fs.readFileSync(wasmName));
