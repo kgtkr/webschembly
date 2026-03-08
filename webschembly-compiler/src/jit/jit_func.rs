@@ -591,7 +591,8 @@ impl JitSpecializedArgFunc {
                 .map(|(bb_id, _, _)| (*bb_id).into())
                 .collect();
             let log_msg = format!(
-                r#"{{"type":"bb","func_id":{},"env_index":{},"func_index":{},"bb_id":{},"index":{},"successors":{:?}}}"#,
+                r#"{{"type":"bb","module_id":{},"func_id":{},"env_index":{},"func_index":{},"bb_id":{},"index":{},"successors":{:?}}}"#,
+                usize::from(self.module_id),
                 usize::from(self.func.id),
                 self.env_index.0,
                 self.func_index.0,

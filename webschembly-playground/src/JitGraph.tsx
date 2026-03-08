@@ -14,6 +14,7 @@ import dagre from 'dagre';
 
 export type JitLogEvent = {
     type: "bb";
+    module_id: number,
     func_id: number;
     env_index: number;
     func_index: number;
@@ -71,19 +72,19 @@ export function JitGraph({ logs }: JitGraphProps) {
 
         for (const log of logs) {
             if (log.type === "bb") {
-                const nodeId = `bb-${log.func_id}-${log.env_index}-${log.func_index}-${log.bb_id}-${log.index}`;
+                const nodeId = `bb-${log.module_id}-${log.func_id}-${log.env_index}-${log.func_index}-${log.bb_id}-${log.index}`;
                 if (!existingNodes.has(nodeId)) {
                     existingNodes.add(nodeId);
                     nodes.push({
                         id: nodeId,
                         position: { x: 0, y: 0 },
-                        data: { label: `func:${log.func_id} env:${log.env_index} c:${log.func_index} bb:${log.bb_id} i:${log.index}` },
+                        data: { label: `module:${log.module_id} func:${log.func_id} env:${log.env_index} c:${log.func_index} bb:${log.bb_id} i:${log.index}` },
                         style: { border: '1px solid #777', padding: '10px', borderRadius: '5px', background: '#fff', color: '#1e293b' }
                     });
                 }
 
                 for (const succ of log.successors) {
-                    const targetId = `bb-${log.func_id}-${log.env_index}-${log.func_index}-${succ}-0`; // Assuming successor index 0 for simplicity if not provided. In our current implementation, successors are just bb_ids, the index isn't passed for successors directly in the log yet, but let's just draw an edge to the base bb for now or assuming default index.
+                    const targetId = `bb-${log.module_id}-${log.func_id}-${log.env_index}-${log.func_index}-${succ}-0`; // Assuming successor index 0 for simplicity if not provided. In our current implementation, successors are just bb_ids, the index isn't passed for successors directly in the log yet, but let's just draw an edge to the base bb for now or assuming default index.
                     const edgeId = `${nodeId}->${targetId}`;
                     if (!existingEdges.has(edgeId)) {
                         existingEdges.add(edgeId);
