@@ -21,7 +21,7 @@ export type JitLogEvent = {
   bb_id: number;
   index: number;
   successors: [number, number][];
-  display: string
+  display: string;
 };
 
 type JitGraphProps = {
@@ -64,7 +64,7 @@ const getLayoutedElements = (nodes: Node[], edges: Edge[], direction = "TB") => 
 };
 
 export function JitGraph({ logs }: JitGraphProps) {
-  console.log(logs)
+  console.log(logs);
   const { nodes: initialNodes, edges: initialEdges } = useMemo(() => {
     const nodes: Node[] = [];
     const edges: Edge[] = [];
@@ -107,7 +107,8 @@ export function JitGraph({ logs }: JitGraphProps) {
         }
 
         for (const [succ_bb, succ_bb_idx] of log.successors) {
-          const targetId = `bb-${log.module_id}-${log.func_id}-${log.env_index}-${log.func_index}-${succ_bb}-${succ_bb_idx}`;
+          const targetId =
+            `bb-${log.module_id}-${log.func_id}-${log.env_index}-${log.func_index}-${succ_bb}-${succ_bb_idx}`;
 
           if (!genuineNodeIds.has(targetId) && !existingNodes.has(targetId)) {
             existingNodes.add(targetId);
