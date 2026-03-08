@@ -5,6 +5,7 @@ self.addEventListener("message", async (event: MessageEvent<WorkerRequest>) => {
   const {
     src,
     runtimeModule,
+    enableJitLog,
   } = event.data;
 
   const srcBuf = new TextEncoder().encode(src);
@@ -23,6 +24,9 @@ self.addEventListener("message", async (event: MessageEvent<WorkerRequest>) => {
         instantiate: (buf) => {
           console.log("instantiate:", buf);
         },
+        logJit: (data) => {
+          self.postMessage({ kind: "jit_log", data } satisfies WorkerResponse);
+        },
       },
       loadRuntimeModule: async () => runtimeModule,
       writeBuf: (fd, buf) => {
@@ -38,7 +42,11 @@ self.addEventListener("message", async (event: MessageEvent<WorkerRequest>) => {
         }
       },
     },
-    {},
+    {
+      compilerConfig: {
+        enableJitLog,
+      },
+    },
   );
 
   const start = performance.now();

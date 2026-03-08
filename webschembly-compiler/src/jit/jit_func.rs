@@ -24,6 +24,10 @@ pub struct JitFunc {
     pub jit_specialized_env_funcs: FxHashMap<EnvIndex, JitSpecializedEnvFunc>,
 }
 
+unsafe extern "C" {
+    pub fn js_webschembly_jit_log(buf_ptr: i32, buf_len: i32);
+}
+
 impl JitFunc {
     pub fn new(
         global_manager: &mut GlobalManager,
@@ -580,6 +584,26 @@ impl JitSpecializedArgFunc {
             .iter()
             .map(|(bb_id, _, _)| *bb_id)
             .collect::<FxHashSet<BasicBlockId>>();
+
+        if jit_ctx.config().enable_log {
+            let successors: Vec<usize> = required_bbs
+                .iter()
+                .map(|(bb_id, _, _)| (*bb_id).into())
+                .collect();
+            let log_msg = format!(
+                r#"{{"type":"bb","func_id":{},"env_index":{},"func_index":{},"bb_id":{},"index":{},"successors":{:?}}}"#,
+                usize::from(self.func.id),
+                self.env_index.0,
+                self.func_index.0,
+                usize::from(orig_entry_bb_id),
+                index.0,
+                successors
+            );
+            unsafe {
+                js_webschembly_jit_log(log_msg.as_ptr() as i32, log_msg.len() as i32);
+            }
+        }
+
         for (bb_id, types, branch_kind) in required_bbs {
             let mut instrs = Vec::new();
             for instr in &body_func.bbs[bb_id].instrs {

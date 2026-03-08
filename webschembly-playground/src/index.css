@@ -23,16 +23,12 @@ body {
   font-family: var(--font-sans);
   background-color: var(--bg-color);
   background-image:
-    radial-gradient(
-      circle at 15% 10%,
+    radial-gradient(circle at 15% 10%,
       rgba(59, 130, 246, 0.15) 0%,
-      transparent 40%
-    ),
-    radial-gradient(
-    circle at 85% 90%,
-    rgba(16, 185, 129, 0.1) 0%,
-    transparent 40%
-  );
+      transparent 40%),
+    radial-gradient(circle at 85% 90%,
+      rgba(16, 185, 129, 0.1) 0%,
+      transparent 40%);
   background-attachment: fixed;
   color: var(--text-primary);
   min-height: 100vh;
@@ -317,4 +313,19 @@ body {
   .editor-section {
     min-height: 400px;
   }
+}
+
+/* React Flow Dark Theme Overrides */
+.react-flow__controls-button {
+  background-color: var(--panel-bg) !important;
+  fill: var(--text-primary) !important;
+  border-bottom: 1px solid var(--panel-border) !important;
+}
+
+.react-flow__controls-button:hover {
+  background-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.react-flow__panel {
+  background-color: transparent !important;
 }

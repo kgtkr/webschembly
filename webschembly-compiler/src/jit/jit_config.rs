@@ -2,6 +2,7 @@
 pub struct JitConfig {
     pub enable_optimization: bool,
     pub block_fusion: BlockFusionConfig,
+    pub enable_log: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -22,6 +23,7 @@ impl JitConfig {
         Self {
             enable_optimization: true,
             block_fusion: BlockFusionConfig::LargeFusion,
+            enable_log: false,
         }
     }
 }

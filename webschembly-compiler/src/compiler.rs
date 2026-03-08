@@ -36,6 +36,7 @@ pub struct FlatConfig {
     pub enable_jit_optimization: bool,
     pub enable_jit_small_block_fusion: bool,
     pub enable_jit_large_block_fusion: bool,
+    pub enable_jit_log: bool,
 }
 
 impl From<FlatConfig> for Config {
@@ -51,6 +52,7 @@ impl From<FlatConfig> for Config {
                     } else {
                         BlockFusionConfig::Disabled
                     },
+                    enable_log: config.enable_jit_log,
                 })
             } else {
                 None

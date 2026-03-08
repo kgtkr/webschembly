@@ -16,6 +16,7 @@ export type CompilerConfig = {
   enableJitOptimization?: boolean;
   enableJitSmallBlockFusion?: boolean;
   enableJitLargeBlockFusion?: boolean;
+  enableJitLog?: boolean;
 };
 
 export function compilerConfigToString(config: CompilerConfig): string {
@@ -28,6 +29,7 @@ export function compilerConfigToString(config: CompilerConfig): string {
 export type RuntimeLogger = {
   log: (s: string) => void;
   instantiate: (buf: Uint8Array, ir: string | null) => void;
+  logJit?: (data: any) => void;
 };
 
 export type Runtime = {
@@ -51,6 +53,7 @@ export type RuntimeImportsEnv = {
     fromSrc: number,
   ) => void;
   js_webschembly_log: (bufPtr: number, bufLen: number) => void;
+  js_webschembly_jit_log: (bufPtr: number, bufLen: number) => void;
   js_write_buf: (fd: number, bufPtr: number, bufLen: number) => void;
 };
 
@@ -76,6 +79,7 @@ export type RuntimeExports = {
   compiler_config_enable_jit_optimization: (enable: number) => void;
   compiler_config_enable_jit_block_fusion: (enable: number) => void;
   compiler_config_enable_jit_large_block_fusion: (enable: number) => void;
+  compiler_config_enable_jit_log: (enable: number) => void;
 };
 
 export type ModuleImports = {
@@ -143,6 +147,18 @@ export async function createRuntime(
       );
       logger.log(s);
     },
+    js_webschembly_jit_log: (bufPtr, bufLen) => {
+      if (logger.logJit) {
+        const s = new TextDecoder().decode(
+          new Uint8Array(runtimeInstance.exports.memory.buffer, bufPtr, bufLen),
+        );
+        try {
+          logger.logJit(JSON.parse(s));
+        } catch (e) {
+          console.error("Failed to parse JIT log:", e);
+        }
+      }
+    },
     js_write_buf: (fd, bufPtr, bufLen) => {
       const buf = new Uint8Array(
         runtimeInstance.exports.memory.buffer,
@@ -180,6 +196,12 @@ export async function createRuntime(
   if (compilerConfig?.enableJitLargeBlockFusion !== undefined) {
     runtimeInstance.exports.compiler_config_enable_jit_large_block_fusion(
       Number(compilerConfig.enableJitLargeBlockFusion),
+    );
+  }
+
+  if (compilerConfig?.enableJitLog !== undefined) {
+    runtimeInstance.exports.compiler_config_enable_jit_log(
+      Number(compilerConfig.enableJitLog),
     );
   }
 

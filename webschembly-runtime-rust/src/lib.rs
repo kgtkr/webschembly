@@ -152,6 +152,7 @@ thread_local!(
             enable_jit_optimization: true,
             enable_jit_small_block_fusion: true,
             enable_jit_large_block_fusion: true,
+            enable_jit_log: false,
         })
     };
 );
@@ -185,6 +186,14 @@ pub extern "C" fn compiler_config_enable_jit_large_block_fusion(enable: i32) {
     let enable = enable != 0;
     COMPILER_CONFIG.with(|c| {
         c.borrow_mut().enable_jit_large_block_fusion = enable;
+    });
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn compiler_config_enable_jit_log(enable: i32) {
+    let enable = enable != 0;
+    COMPILER_CONFIG.with(|c| {
+        c.borrow_mut().enable_jit_log = enable;
     });
 }
 
