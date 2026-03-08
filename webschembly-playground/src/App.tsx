@@ -3,11 +3,14 @@ import { JitGraph, type JitLogEvent } from "./JitGraph";
 import playgroundWorker from "./playground.worker?worker";
 import type { WorkerRequest, WorkerResponse } from "./worker-types";
 
-const exampleCode = `(define (factorial n)
-  (if (= n 0)
-      1
-      (* n (factorial (- n 1)))))
-(write (factorial 5))
+const exampleCode = `(define (sum n)
+  (define (sum-rec n m)
+    (if (= n 0)
+      m
+      (sum-rec (- n 1) (+ m n))))
+  (sum-rec n 0))
+
+(write (sum 100))
 (newline)
 `;
 

@@ -21,6 +21,7 @@ export type JitLogEvent = {
   bb_id: number;
   index: number;
   successors: number[];
+  display: string
 };
 
 type JitGraphProps = {
@@ -70,8 +71,20 @@ export function JitGraph({ logs }: JitGraphProps) {
     const existingNodes = new Set<string>();
     const existingEdges = new Set<string>();
 
+    const genuineNodeIds = new Set<string>();
     for (const log of logs) {
-      if (log.type === "bb") {
+      if (log.type === "bb" && log.module_id === 1) {
+        genuineNodeIds.add(
+          `bb-${log.module_id}-${log.func_id}-${log.env_index}-${log.func_index}-${log.bb_id}-${log.index}`
+        );
+      }
+    }
+
+    for (const log of logs) {
+      if (log.type === "bb"
+        && log.module_id === 1 // workaround: 入力ファイルのみ対象にする
+
+      ) {
         const nodeId =
           `bb-${log.module_id}-${log.func_id}-${log.env_index}-${log.func_index}-${log.bb_id}-${log.index}`;
         if (!existingNodes.has(nodeId)) {
@@ -81,7 +94,7 @@ export function JitGraph({ logs }: JitGraphProps) {
             position: { x: 0, y: 0 },
             data: {
               label:
-                `module:${log.module_id} func:${log.func_id} env:${log.env_index} c:${log.func_index} bb:${log.bb_id} i:${log.index}`,
+                log.display,
             },
             style: {
               border: "1px solid #777",
@@ -95,6 +108,25 @@ export function JitGraph({ logs }: JitGraphProps) {
 
         for (const succ of log.successors) {
           const targetId = `bb-${log.module_id}-${log.func_id}-${log.env_index}-${log.func_index}-${succ}-0`; // Assuming successor index 0 for simplicity if not provided. In our current implementation, successors are just bb_ids, the index isn't passed for successors directly in the log yet, but let's just draw an edge to the base bb for now or assuming default index.
+
+          if (!genuineNodeIds.has(targetId) && !existingNodes.has(targetId)) {
+            existingNodes.add(targetId);
+            nodes.push({
+              id: targetId,
+              position: { x: 0, y: 0 },
+              data: {
+                label: "stub",
+              },
+              style: {
+                border: "1px dashed #777",
+                padding: "10px",
+                borderRadius: "5px",
+                background: "#f8fafc",
+                color: "#64748b",
+              },
+            });
+          }
+
           const edgeId = `${nodeId}->${targetId}`;
           if (!existingEdges.has(edgeId)) {
             existingEdges.add(edgeId);

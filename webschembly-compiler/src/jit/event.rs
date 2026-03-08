@@ -12,5 +12,6 @@ pub enum JitLogEvent {
         bb_id: usize,
         index: usize,
         successors: Vec<usize>,
+        display: String,
     },
 }

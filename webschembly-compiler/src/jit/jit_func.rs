@@ -585,11 +585,40 @@ impl JitSpecializedArgFunc {
 
         let mut jit_events = Vec::new();
 
-        if jit_ctx.config().enable_log {
+        if jit_ctx.config().enable_log && !branch_specialization
+        // workaround: BB融合はまだ未対応
+        {
             let successors: Vec<usize> = required_bbs
                 .iter()
                 .map(|(bb_id, _, _)| (*bb_id).into())
                 .collect();
+            let env_types = env_index_managers[&self.func.id]
+                .env_types(self.env_index)
+                .0
+                .iter()
+                .map(|(k, v)| format!("{k}={v}"))
+                .collect::<Vec<_>>()
+                .join(",");
+            let arg_types = if let ClosureArgs::Specified(args) =
+                jit_ctx.closure_global_layout().arg_types(self.func_index)
+            {
+                args.iter()
+                    .map(|v| format!("{v}"))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            } else {
+                "variadic".to_string()
+            };
+            let bb_types = type_args
+                .iter()
+                .map(|(k, v)| format!("{}={v}", usize::from(k)))
+                .collect::<Vec<_>>()
+                .join(",");
+            let display = format!(
+                "func{} envs:{{{env_types}}} args:{{{arg_types}}} bb{} {{{bb_types}}}",
+                usize::from(self.func.id),
+                usize::from(orig_entry_bb_id)
+            );
             jit_events.push(JitLogEvent::BasicBlock {
                 module_id: usize::from(self.module_id),
                 func_id: usize::from(self.func.id),
@@ -598,6 +627,7 @@ impl JitSpecializedArgFunc {
                 bb_id: usize::from(orig_entry_bb_id),
                 index: index.0,
                 successors,
+                display,
             });
         }
 
