@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
+import { JitGraph, type JitLogEvent } from "./JitGraph";
 import playgroundWorker from "./playground.worker?worker";
 import type { WorkerRequest, WorkerResponse } from "./worker-types";
-import { JitGraph, type JitLogEvent } from "./JitGraph";
 
 const exampleCode = `(define (factorial n)
   (if (= n 0)
