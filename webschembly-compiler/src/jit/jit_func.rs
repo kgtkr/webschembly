@@ -583,14 +583,117 @@ impl JitSpecializedArgFunc {
             .map(|(bb_id, _, _)| *bb_id)
             .collect::<FxHashSet<BasicBlockId>>();
 
+        // log用のエッジ一覧
+        let mut edges = Vec::new();
+
+        for &(bb_id, ref types, branch_kind) in required_bbs.iter() {
+            let mut instrs = Vec::new();
+            for instr in &body_func.bbs[bb_id].instrs {
+                // ジャンプ先のBBのPhiはここに移動
+                // TODO: 型代入を考慮しなくてよい理由を明記
+                if let InstrKind::Phi { .. } = instr.kind {
+                    instrs.push(instr.clone());
+                }
+            }
+
+            if !branch_specialization
+                && jit_ctx.config().block_fusion != BlockFusionConfig::Disabled
+            {
+                instrs.push(Instr {
+                    local: None,
+                    kind: InstrKind::IncrementBranchCounter(
+                        self.module_id,
+                        JitFuncId::from(self.func.id),
+                        self.env_index.0,
+                        self.func_index.0,
+                        JitBasicBlockId::from(bb_id),
+                        branch_kind,
+                        JitBasicBlockId::from(orig_entry_bb_id),
+                        index.0,
+                    ),
+                });
+            }
+
+            /*
+            Is命令によって分岐している場合、この分岐で型が確定する
+            しかし、このbb moduleにはその後に存在するはずのfrom_obj命令が存在しないためこの情報を使った最適化が行えない
+            そこで、型が確定しているならfrom_obj命令を追加して型情報を伝搬させる
+            */
+            let mut typed_objs = FxHashMap::default();
+            for &(obj_local, typ) in types {
+                let val_local = body_func.locals.push_with(|id| Local {
+                    id,
+                    typ: typ.into(),
+                });
+                instrs.push(Instr {
+                    local: Some(val_local),
+                    kind: InstrKind::FromObj(typ, obj_local),
+                });
+                typed_objs.insert(obj_local, TypedObj { typ, val_local });
+            }
+
+            let callee_jit_bb = &mut self.jit_bbs[bb_id];
+            let (locals_to_pass, type_args, index_global, next_bb_index) = calculate_args_to_pass(
+                &callee_jit_bb.info,
+                |obj_local| {
+                    if let Some(&InstrKind::ToObj(typ, val_local)) =
+                        def_use_chain.get_def_non_move_expr(&body_func.bbs, obj_local)
+                    {
+                        Some(TypedObj { typ, val_local })
+                    } else {
+                        typed_objs.get(&obj_local).copied()
+                    }
+                },
+                &assigned_local_to_obj,
+                &new_ids,
+                &mut callee_jit_bb.bb_index_manager,
+                &mut required_stubs,
+                global_manager,
+            );
+
+            if jit_ctx.config().enable_log {
+                edges.push((bb_id, next_bb_index));
+            }
+
+            let func_ref_local = body_func.locals.push_with(|id| Local {
+                id,
+                typ: LocalType::FuncRef,
+            });
+
+            instrs.extend([
+                Instr {
+                    local: Some(func_ref_local),
+                    kind: InstrKind::GlobalGet(index_global.id),
+                },
+                Instr {
+                    local: None,
+                    kind: InstrKind::Terminator(TerminatorInstr::Exit(ExitInstr::TailCallRef(
+                        InstrCallRef {
+                            func: func_ref_local,
+                            args: locals_to_pass,
+                            func_type: FuncType {
+                                args: self.jit_bbs[bb_id].info.arg_types(&self.func, &type_args),
+                                ret: body_func.ret_type,
+                            },
+                        },
+                    ))),
+                },
+            ]);
+
+            body_func.bbs[bb_id].instrs = instrs;
+        }
+
         let mut jit_events = Vec::new();
 
         if jit_ctx.config().enable_log && !branch_specialization
         // workaround: BB融合はまだ未対応
         {
-            let successors: Vec<usize> = required_bbs
+            let (type_args, _) = self.jit_bbs[orig_entry_bb_id]
+                .bb_index_manager
+                .type_args(index);
+            let successors: Vec<(usize, usize)> = edges
                 .iter()
-                .map(|(bb_id, _, _)| (*bb_id).into())
+                .map(|&(bb_id, bb_index)| (bb_id.into(), bb_index.0))
                 .collect();
             let env_types = env_index_managers[&self.func.id]
                 .env_types(self.env_index)
@@ -631,98 +734,6 @@ impl JitSpecializedArgFunc {
             });
         }
 
-        for (bb_id, types, branch_kind) in required_bbs {
-            let mut instrs = Vec::new();
-            for instr in &body_func.bbs[bb_id].instrs {
-                // ジャンプ先のBBのPhiはここに移動
-                // TODO: 型代入を考慮しなくてよい理由を明記
-                if let InstrKind::Phi { .. } = instr.kind {
-                    instrs.push(instr.clone());
-                }
-            }
-
-            if !branch_specialization
-                && jit_ctx.config().block_fusion != BlockFusionConfig::Disabled
-            {
-                instrs.push(Instr {
-                    local: None,
-                    kind: InstrKind::IncrementBranchCounter(
-                        self.module_id,
-                        JitFuncId::from(self.func.id),
-                        self.env_index.0,
-                        self.func_index.0,
-                        JitBasicBlockId::from(bb_id),
-                        branch_kind,
-                        JitBasicBlockId::from(orig_entry_bb_id),
-                        index.0,
-                    ),
-                });
-            }
-
-            /*
-            Is命令によって分岐している場合、この分岐で型が確定する
-            しかし、このbb moduleにはその後に存在するはずのfrom_obj命令が存在しないためこの情報を使った最適化が行えない
-            そこで、型が確定しているならfrom_obj命令を追加して型情報を伝搬させる
-            */
-            let mut typed_objs = FxHashMap::default();
-            for (obj_local, typ) in types {
-                let val_local = body_func.locals.push_with(|id| Local {
-                    id,
-                    typ: typ.into(),
-                });
-                instrs.push(Instr {
-                    local: Some(val_local),
-                    kind: InstrKind::FromObj(typ, obj_local),
-                });
-                typed_objs.insert(obj_local, TypedObj { typ, val_local });
-            }
-
-            let callee_jit_bb = &mut self.jit_bbs[bb_id];
-            let (locals_to_pass, type_args, index_global) = calculate_args_to_pass(
-                &callee_jit_bb.info,
-                |obj_local| {
-                    if let Some(&InstrKind::ToObj(typ, val_local)) =
-                        def_use_chain.get_def_non_move_expr(&body_func.bbs, obj_local)
-                    {
-                        Some(TypedObj { typ, val_local })
-                    } else {
-                        typed_objs.get(&obj_local).copied()
-                    }
-                },
-                &assigned_local_to_obj,
-                &new_ids,
-                &mut callee_jit_bb.bb_index_manager,
-                &mut required_stubs,
-                global_manager,
-            );
-
-            let func_ref_local = body_func.locals.push_with(|id| Local {
-                id,
-                typ: LocalType::FuncRef,
-            });
-
-            instrs.extend([
-                Instr {
-                    local: Some(func_ref_local),
-                    kind: InstrKind::GlobalGet(index_global.id),
-                },
-                Instr {
-                    local: None,
-                    kind: InstrKind::Terminator(TerminatorInstr::Exit(ExitInstr::TailCallRef(
-                        InstrCallRef {
-                            func: func_ref_local,
-                            args: locals_to_pass,
-                            func_type: FuncType {
-                                args: self.jit_bbs[bb_id].info.arg_types(&self.func, &type_args),
-                                ret: body_func.ret_type,
-                            },
-                        },
-                    ))),
-                },
-            ]);
-
-            body_func.bbs[bb_id].instrs = instrs;
-        }
         for &bb_id in &processed_bb_ids {
             let mut instrs = Vec::new();
             for instr in &body_func.bbs[bb_id].instrs {
@@ -1461,7 +1472,7 @@ fn calculate_args_to_pass(
     bb_index_manager: &mut BBIndexManager,
     required_stubs: &mut Vec<(BasicBlockId, usize)>,
     global_manager: &mut GlobalManager,
-) -> (Vec<LocalId>, VecMap<TypeParamId, ValType>, Global) {
+) -> (Vec<LocalId>, VecMap<TypeParamId, ValType>, Global, BBIndex) {
     let mut type_args = VecMap::new();
     let mut args_to_pass = Vec::new();
     // BBIndexManagerが満杯だったときのためのフォールバック
@@ -1499,7 +1510,7 @@ fn calculate_args_to_pass(
     if flag == IndexFlag::NewInstance {
         required_stubs.push((callee.bb_id, index.0));
     }
-    (args_to_pass, type_args, global)
+    (args_to_pass, type_args, global, index)
 }
 
 fn closure_func_assign_env_types(

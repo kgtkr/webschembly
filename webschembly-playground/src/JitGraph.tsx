@@ -20,7 +20,7 @@ export type JitLogEvent = {
   func_index: number;
   bb_id: number;
   index: number;
-  successors: number[];
+  successors: [number, number][];
   display: string
 };
 
@@ -64,6 +64,7 @@ const getLayoutedElements = (nodes: Node[], edges: Edge[], direction = "TB") => 
 };
 
 export function JitGraph({ logs }: JitGraphProps) {
+  console.log(logs)
   const { nodes: initialNodes, edges: initialEdges } = useMemo(() => {
     const nodes: Node[] = [];
     const edges: Edge[] = [];
@@ -106,8 +107,8 @@ export function JitGraph({ logs }: JitGraphProps) {
           });
         }
 
-        for (const succ of log.successors) {
-          const targetId = `bb-${log.module_id}-${log.func_id}-${log.env_index}-${log.func_index}-${succ}-0`; // Assuming successor index 0 for simplicity if not provided. In our current implementation, successors are just bb_ids, the index isn't passed for successors directly in the log yet, but let's just draw an edge to the base bb for now or assuming default index.
+        for (const [succ_bb, succ_bb_idx] of log.successors) {
+          const targetId = `bb-${log.module_id}-${log.func_id}-${log.env_index}-${log.func_index}-${succ_bb}-${succ_bb_idx}`;
 
           if (!genuineNodeIds.has(targetId) && !existingNodes.has(targetId)) {
             existingNodes.add(targetId);
