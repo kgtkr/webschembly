@@ -1,5 +1,9 @@
-#[derive(Debug, Clone, PartialEq, Eq)]
+use serde::Serialize;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "type")]
 pub enum JitLogEvent {
+    #[serde(rename = "bb")]
     BasicBlock {
         module_id: usize,
         func_id: usize,

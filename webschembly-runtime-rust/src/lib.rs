@@ -523,27 +523,9 @@ pub extern "C" fn increment_branch_counter(
 
 fn process_jit_events(events: Vec<webschembly_compiler::jit::event::JitLogEvent>) {
     for event in events {
-        match event {
-            webschembly_compiler::jit::event::JitLogEvent::BasicBlock {
-                module_id,
-                func_id,
-                env_index,
-                func_index,
-                bb_id,
-                index,
-                successors,
-            } => {
-                let log_msg = format!(
-                    r#"{{"type":"bb","module_id":{},"func_id":{},"env_index":{},"func_index":{},"bb_id":{},"index":{},"successors":{:?}}}"#,
-                    module_id, func_id, env_index, func_index, bb_id, index, successors
-                );
-                unsafe {
-                    crate::env::js_webschembly_jit_log(
-                        log_msg.as_ptr() as i32,
-                        log_msg.len() as i32,
-                    );
-                }
-            }
+        let log_msg = serde_json::to_string(&event).unwrap();
+        unsafe {
+            crate::env::js_webschembly_jit_log(log_msg.as_ptr() as i32, log_msg.len() as i32);
         }
     }
 }

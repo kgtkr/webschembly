@@ -10,6 +10,7 @@ nom = "7.1.3"
 nom_locate = "4.2.0"
 ordered-float = { workspace = true }
 rustc-hash = { workspace = true }
+serde = { version = "1.0.228", features = ["derive"] }
 stacker = "0.1.22"
 strum = { workspace = true }
 vec-map = { path = "../webschembly-compiler-crates/vec-map" }

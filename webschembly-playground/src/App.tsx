@@ -129,7 +129,7 @@ export default function App() {
                     checked={enableJitLog}
                     onChange={(e) => setEnableJitLog(e.target.checked)}
                   />
-                  Visualize JIT CFG
+                  Visualize JIT CFG (Pre-alpha)
                 </label>
               </div>
             </div>
