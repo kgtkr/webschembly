@@ -21,7 +21,7 @@ export type JitLogEvent = {
   bb_id: number;
   index: number;
   successors: number[];
-  display: string
+  display: string;
 };
 
 type JitGraphProps = {
@@ -75,15 +75,15 @@ export function JitGraph({ logs }: JitGraphProps) {
     for (const log of logs) {
       if (log.type === "bb" && log.module_id === 1) {
         genuineNodeIds.add(
-          `bb-${log.module_id}-${log.func_id}-${log.env_index}-${log.func_index}-${log.bb_id}-${log.index}`
+          `bb-${log.module_id}-${log.func_id}-${log.env_index}-${log.func_index}-${log.bb_id}-${log.index}`,
         );
       }
     }
 
     for (const log of logs) {
-      if (log.type === "bb"
+      if (
+        log.type === "bb"
         && log.module_id === 1 // workaround: 入力ファイルのみ対象にする
-
       ) {
         const nodeId =
           `bb-${log.module_id}-${log.func_id}-${log.env_index}-${log.func_index}-${log.bb_id}-${log.index}`;
@@ -93,8 +93,7 @@ export function JitGraph({ logs }: JitGraphProps) {
             id: nodeId,
             position: { x: 0, y: 0 },
             data: {
-              label:
-                log.display,
+              label: log.display,
             },
             style: {
               border: "1px solid #777",
