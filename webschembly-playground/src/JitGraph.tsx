@@ -5,12 +5,28 @@ import {
   type Node,
   Position,
   ReactFlow,
+  ReactFlowProvider,
+  useReactFlow,
   useEdgesState,
   useNodesState,
 } from "@xyflow/react";
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo } from "react";
 import "@xyflow/react/dist/style.css";
 import dagre from "dagre";
+
+function LayoutFitUpdater({ nodes }: { nodes: Node[] }) {
+  const { fitView } = useReactFlow();
+
+  useEffect(() => {
+    // グラフ構造の変更を検知して自動でfitViewするが、
+    // アニメーション付きでスムーズに移動させる
+    window.requestAnimationFrame(() => {
+      fitView({ duration: 800, padding: 0.2 });
+    });
+  }, [nodes.length, fitView]);
+
+  return null;
+}
 
 export type JitLogEvent = {
   type: "bb";
@@ -64,7 +80,6 @@ const getLayoutedElements = (nodes: Node[], edges: Edge[], direction = "TB") => 
 };
 
 export function JitGraph({ logs }: JitGraphProps) {
-  console.log(logs)
   const { nodes: initialNodes, edges: initialEdges } = useMemo(() => {
     const nodes: Node[] = [];
     const edges: Edge[] = [];
@@ -146,17 +161,20 @@ export function JitGraph({ logs }: JitGraphProps) {
 
   return (
     <div style={{ width: "100%", height: "100%" }}>
-      <ReactFlow
-        nodes={initialNodes}
-        edges={initialEdges}
-        nodesDraggable={false}
-        nodesConnectable={false}
-        elementsSelectable={false}
-        fitView
-      >
-        <Background />
-        <Controls />
-      </ReactFlow>
+      <ReactFlowProvider>
+        <ReactFlow
+          nodes={initialNodes}
+          edges={initialEdges}
+          nodesDraggable={false}
+          nodesConnectable={false}
+          elementsSelectable={false}
+          fitView
+        >
+          <LayoutFitUpdater nodes={initialNodes} />
+          <Background />
+          <Controls />
+        </ReactFlow>
+      </ReactFlowProvider>
     </div>
   );
 }
