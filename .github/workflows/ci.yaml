@@ -169,7 +169,7 @@ jobs:
         run: git push origin github-action-benchmark-data:github-action-benchmark-data
         if: github.ref == 'refs/heads/master'
   deploy:
-    needs: [build, store-benchmark-results]
+    needs: build
     if: github.ref == 'refs/heads/master'
     permissions:
       id-token: write
