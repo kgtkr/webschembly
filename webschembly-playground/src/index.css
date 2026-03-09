@@ -23,12 +23,16 @@ body {
   font-family: var(--font-sans);
   background-color: var(--bg-color);
   background-image:
-    radial-gradient(circle at 15% 10%,
+    radial-gradient(
+      circle at 15% 10%,
       rgba(59, 130, 246, 0.15) 0%,
-      transparent 40%),
-    radial-gradient(circle at 85% 90%,
-      rgba(16, 185, 129, 0.1) 0%,
-      transparent 40%);
+      transparent 40%
+    ),
+    radial-gradient(
+    circle at 85% 90%,
+    rgba(16, 185, 129, 0.1) 0%,
+    transparent 40%
+  );
   background-attachment: fixed;
   color: var(--text-primary);
   min-height: 100vh;

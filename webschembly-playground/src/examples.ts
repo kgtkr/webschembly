@@ -1,5 +1,5 @@
 export const examples: Record<string, string> = {
-    "sum": `(define (sum n)
+  "sum": `(define (sum n)
   (define (sum-rec n m)
     (if (= n 0)
       m
@@ -9,7 +9,7 @@ export const examples: Record<string, string> = {
 (write (sum 100))
 (newline)
 `,
-    "tak": `(define (tak x y z)
+  "tak": `(define (tak x y z)
   (define (tak-rec x y z)
     (if (not (< y x))
       z
@@ -21,7 +21,7 @@ export const examples: Record<string, string> = {
 (write (tak 18 12 6))
 (newline)
 `,
-    "matmul": `(define (matrix-multiply a b size)
+  "matmul": `(define (matrix-multiply a b size)
   (let ((c (make-f64vector (* size size))))
     (define (loop-k i j k sum)
       (if (< k size)
@@ -64,5 +64,5 @@ export const examples: Record<string, string> = {
 
 (write (matrix-multiply mat-a mat-b size))
 (newline)
-`
+`,
 };
