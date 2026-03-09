@@ -3,16 +3,9 @@ import { JitGraph, type JitLogEvent } from "./JitGraph";
 import playgroundWorker from "./playground.worker?worker";
 import type { WorkerRequest, WorkerResponse } from "./worker-types";
 
-const exampleCode = `(define (sum n)
-  (define (sum-rec n m)
-    (if (= n 0)
-      m
-      (sum-rec (- n 1) (+ m n))))
-  (sum-rec n 0))
+import { examples } from "./examples";
 
-(write (sum 100))
-(newline)
-`;
+const exampleCode = examples["sum"];
 
 export default function App() {
   const [src, setSrc] = useState(exampleCode);
@@ -125,15 +118,32 @@ export default function App() {
                     Run Code
                   </button>
                 )}
-              <div className="visualize-toggle">
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={enableJitLog}
-                    onChange={(e) => setEnableJitLog(e.target.checked)}
-                  />
-                  Visualize JIT CFG (Pre-alpha)
-                </label>
+              <div className="options-container">
+                <select
+                  className="example-select"
+                  onChange={(e) => {
+                    const code = examples[e.target.value];
+                    if (code) setSrc(code);
+                  }}
+                  defaultValue="sum"
+                >
+                  <option value="" disabled>Load Example...</option>
+                  {Object.keys(examples).map((key) => (
+                    <option key={key} value={key}>
+                      {key}
+                    </option>
+                  ))}
+                </select>
+                <div className="visualize-toggle">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={enableJitLog}
+                      onChange={(e) => setEnableJitLog(e.target.checked)}
+                    />
+                    Visualize JIT State (Pre-alpha)
+                  </label>
+                </div>
               </div>
             </div>
           </div>
@@ -161,7 +171,7 @@ export default function App() {
           </div>
           {enableJitLog && (
             <div className="output-panel panel graph-panel">
-              <h3>JIT CFG</h3>
+              <h3>JIT State</h3>
               <div className="graph-container" style={{ height: "400px" }}>
                 <JitGraph logs={jitLogs} />
               </div>
