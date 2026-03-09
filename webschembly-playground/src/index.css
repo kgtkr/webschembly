@@ -23,16 +23,12 @@ body {
   font-family: var(--font-sans);
   background-color: var(--bg-color);
   background-image:
-    radial-gradient(
-      circle at 15% 10%,
+    radial-gradient(circle at 15% 10%,
       rgba(59, 130, 246, 0.15) 0%,
-      transparent 40%
-    ),
-    radial-gradient(
-    circle at 85% 90%,
-    rgba(16, 185, 129, 0.1) 0%,
-    transparent 40%
-  );
+      transparent 40%),
+    radial-gradient(circle at 85% 90%,
+      rgba(16, 185, 129, 0.1) 0%,
+      transparent 40%);
   background-attachment: fixed;
   color: var(--text-primary);
   min-height: 100vh;
@@ -133,6 +129,44 @@ body {
   padding: 0.25rem 0.5rem;
   border-radius: 0.25rem;
   border: 1px solid var(--panel-border);
+}
+
+.options-container {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  margin-left: auto;
+}
+
+.example-select {
+  background: rgba(15, 23, 42, 0.6);
+  color: var(--text-primary);
+  border: 1px solid var(--panel-border);
+  border-radius: 0.5rem;
+  padding: 0.5rem 2rem 0.5rem 1rem;
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  appearance: none;
+  cursor: pointer;
+  outline: none;
+  transition: all 0.2s;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+}
+
+.example-select:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.example-select:focus {
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+.example-select option {
+  background: var(--bg-color);
+  color: var(--text-primary);
 }
 
 .run-button {
