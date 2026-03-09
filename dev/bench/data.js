@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1772990271815,
+  "lastUpdate": 1773047403083,
   "repoUrl": "https://github.com/kgtkr/webschembly",
   "entries": {
     "Benchmark": [
@@ -3718,6 +3718,198 @@ window.BENCHMARK_DATA = {
             "name": "matmul.b.scm,no_liftoff,with dynamic warmup,enableJitSmallBlockFusion=true,enableJitLargeBlockFusion=false",
             "value": 45.23,
             "range": "±0.14%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "me@kgtkr.net",
+            "name": "kgtkr",
+            "username": "kgtkr"
+          },
+          "committer": {
+            "email": "me@kgtkr.net",
+            "name": "kgtkr",
+            "username": "kgtkr"
+          },
+          "distinct": true,
+          "id": "ba86fd4509bcc3a346c09d6bfe24703de34e3844",
+          "message": "一旦高速でデプロイ",
+          "timestamp": "2026-03-09T16:55:42+09:00",
+          "tree_id": "11d3256d40dc2ee51e5cece6262eccf98d8064ac",
+          "url": "https://github.com/kgtkr/webschembly/commit/ba86fd4509bcc3a346c09d6bfe24703de34e3844"
+        },
+        "date": 1773047402526,
+        "tool": "benchmarkjs",
+        "benches": [
+          {
+            "name": "div2-large.b.scm,enableJitSmallBlockFusion=false,enableJitLargeBlockFusion=true",
+            "value": 14.96,
+            "range": "±0.21%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "div2-large.b.scm,with warmup,enableJitSmallBlockFusion=false,enableJitLargeBlockFusion=true",
+            "value": 16140.69,
+            "range": "±2.74%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "div2-large.b.scm,with dynamic warmup,enableJitSmallBlockFusion=false,enableJitLargeBlockFusion=true",
+            "value": 16285.29,
+            "range": "±3.06%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "div2-large.b.scm,with dynamic warmup,enableJitSmallBlockFusion=true,enableJitLargeBlockFusion=false",
+            "value": 16500.57,
+            "range": "±2.99%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "div2-large.b.scm,no_liftoff,with dynamic warmup,enableJitSmallBlockFusion=false,enableJitLargeBlockFusion=true",
+            "value": 16849.12,
+            "range": "±3.07%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "div2-large.b.scm,no_liftoff,with dynamic warmup,enableJitSmallBlockFusion=true,enableJitLargeBlockFusion=false",
+            "value": 17081.35,
+            "range": "±3.39%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "gambit/ack.b.scm,enableJitSmallBlockFusion=false,enableJitLargeBlockFusion=true",
+            "value": 3.26,
+            "range": "±0.47%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "gambit/ack.b.scm,with warmup,enableJitSmallBlockFusion=false,enableJitLargeBlockFusion=true",
+            "value": 3.69,
+            "range": "±0.84%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "gambit/ack.b.scm,with dynamic warmup,enableJitSmallBlockFusion=false,enableJitLargeBlockFusion=true",
+            "value": 3.7,
+            "range": "±0.86%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "gambit/ack.b.scm,with dynamic warmup,enableJitSmallBlockFusion=true,enableJitLargeBlockFusion=false",
+            "value": 3.68,
+            "range": "±1.32%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "gambit/browse.b.scm,enableJitSmallBlockFusion=false,enableJitLargeBlockFusion=true",
+            "value": 2.65,
+            "range": "±0.11%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "gambit/browse.b.scm,with warmup,enableJitSmallBlockFusion=false,enableJitLargeBlockFusion=true",
+            "value": 166.06,
+            "range": "±0.58%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "gambit/browse.b.scm,with dynamic warmup,enableJitSmallBlockFusion=false,enableJitLargeBlockFusion=true",
+            "value": 165.95,
+            "range": "±0.56%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "gambit/browse.b.scm,with dynamic warmup,enableJitSmallBlockFusion=true,enableJitLargeBlockFusion=false",
+            "value": 166.27,
+            "range": "±0.42%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "matmul.b.scm,enableJitSmallBlockFusion=false,enableJitLargeBlockFusion=true",
+            "value": 4.13,
+            "range": "±0.15%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "matmul.b.scm,with warmup,enableJitSmallBlockFusion=false,enableJitLargeBlockFusion=true",
+            "value": 52.88,
+            "range": "±0.66%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "matmul.b.scm,with dynamic warmup,enableJitSmallBlockFusion=false,enableJitLargeBlockFusion=true",
+            "value": 52.94,
+            "range": "±0.96%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "matmul.b.scm,with dynamic warmup,enableJitSmallBlockFusion=true,enableJitLargeBlockFusion=false",
+            "value": 52.8,
+            "range": "±0.69%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "gambit/ack.b.scm,no_liftoff,with dynamic warmup,enableJitSmallBlockFusion=false,enableJitLargeBlockFusion=true",
+            "value": 3.71,
+            "range": "±1.35%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "gambit/ack.b.scm,no_liftoff,with dynamic warmup,enableJitSmallBlockFusion=true,enableJitLargeBlockFusion=false",
+            "value": 3.71,
+            "range": "±0.96%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "gambit/browse.b.scm,no_liftoff,with dynamic warmup,enableJitSmallBlockFusion=false,enableJitLargeBlockFusion=true",
+            "value": 174.33,
+            "range": "±0.66%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "gambit/browse.b.scm,no_liftoff,with dynamic warmup,enableJitSmallBlockFusion=true,enableJitLargeBlockFusion=false",
+            "value": 173.55,
+            "range": "±0.69%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "matmul.b.scm,no_liftoff,with dynamic warmup,enableJitSmallBlockFusion=false,enableJitLargeBlockFusion=true",
+            "value": 45.21,
+            "range": "±0.15%",
+            "unit": "ops/sec",
+            "extra": "64 samples"
+          },
+          {
+            "name": "matmul.b.scm,no_liftoff,with dynamic warmup,enableJitSmallBlockFusion=true,enableJitLargeBlockFusion=false",
+            "value": 45.21,
+            "range": "±0.16%",
             "unit": "ops/sec",
             "extra": "64 samples"
           }
