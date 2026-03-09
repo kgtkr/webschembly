@@ -1,0 +1,24 @@
+WEBSCHEMBLY_RUNTIME_DIR := clean(justfile_directory() / "../webschembly-runtime")
+WEBSCHEMBLY_RUNTIME_FILE := "webschembly_runtime.wasm"
+WEBSCHEMBLY_RUNTIME := WEBSCHEMBLY_RUNTIME_DIR / WEBSCHEMBLY_RUNTIME_FILE
+WEBSCHEMBLY_RUNTIME_ENV := "WEBSCHEMBLY_RUNTIME=" + '"' + WEBSCHEMBLY_RUNTIME + '"' + " "
+
+[private]
+build-runtime:
+	make -C "{{WEBSCHEMBLY_RUNTIME_DIR}}" "{{WEBSCHEMBLY_RUNTIME_FILE}}"
+
+[private]
+build-runtime-release:
+	make -C "{{WEBSCHEMBLY_RUNTIME_DIR}}" CARGO_RELEASE=1 "{{WEBSCHEMBLY_RUNTIME_FILE}}"
+
+[private]
+npm-install:
+    npm install
+
+default: dev
+
+dev: build-runtime npm-install
+    {{WEBSCHEMBLY_RUNTIME_ENV}}npm run dev
+
+dev-release: build-runtime-release npm-install
+    {{WEBSCHEMBLY_RUNTIME_ENV}}npm run dev
