@@ -17,8 +17,6 @@ This project consists of the following components:
 
 - webschembly-runtime-rust: Rust-implemented parts of the runtime library
 
-For a detailed technical overview, see [ARCHITECTURE.md](./ARCHITECTURE.md).
-
 ## Requirements
 
 - Nix
