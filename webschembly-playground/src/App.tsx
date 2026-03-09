@@ -125,7 +125,7 @@ export default function App() {
                     const code = examples[e.target.value];
                     if (code) setSrc(code);
                   }}
-                  defaultValue="sum (rec)"
+                  defaultValue="sum"
                 >
                   <option value="" disabled>Load Example...</option>
                   {Object.keys(examples).map((key) => (
