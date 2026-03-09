@@ -132,7 +132,7 @@ export default function App() {
                     checked={enableJitLog}
                     onChange={(e) => setEnableJitLog(e.target.checked)}
                   />
-                  Visualize JIT CFG (Pre-alpha)
+                  Visualize JIT State (Pre-alpha)
                 </label>
               </div>
             </div>
@@ -161,7 +161,7 @@ export default function App() {
           </div>
           {enableJitLog && (
             <div className="output-panel panel graph-panel">
-              <h3>JIT CFG</h3>
+              <h3>JIT State</h3>
               <div className="graph-container" style={{ height: "400px" }}>
                 <JitGraph logs={jitLogs} />
               </div>
