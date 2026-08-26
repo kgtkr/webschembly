@@ -243,7 +243,7 @@ pub struct DefUseChain {
 pub struct Def {
     pub local: LocalId,
     pub bb_id: BasicBlockId,
-    pub expr_idx: usize,
+    pub instr_idx: usize,
 }
 
 impl HasId for Def {
@@ -284,7 +284,7 @@ impl DefUseChain {
             let def = Def {
                 local,
                 bb_id: bb.id,
-                expr_idx: idx,
+                instr_idx: idx,
             };
             // 既に存在する場合は同じ定義である
             debug_assert!(self.defs.get(local).map(|&x| x == def).unwrap_or(true));
@@ -302,7 +302,7 @@ impl DefUseChain {
         local: LocalId,
     ) -> Option<&'a InstrKind> {
         if let Some(def) = self.defs.get(local) {
-            let instr = &bbs[def.bb_id].instrs[def.expr_idx];
+            let instr = &bbs[def.bb_id].instrs[def.instr_idx];
             debug_assert_eq!(instr.local, Some(local));
             Some(&instr.kind)
         } else {
