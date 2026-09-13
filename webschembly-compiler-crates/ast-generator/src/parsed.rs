@@ -70,7 +70,7 @@ impl Parsed {
             LSExpr {
                 value: SExpr::Symbol(s),
                 span,
-            } => Ok(Expr::Var((), s).with_span(span)),
+            } => Ok(Expr::Var((), Ident::root(s)).with_span(span)),
             LSExpr {
                 value: SExpr::Nil,
                 span,
@@ -124,7 +124,7 @@ impl Parsed {
                 ] => Ok(Expr::Define(
                     (),
                     Define {
-                        name: name.with_span(name_span),
+                        name: Ident::root(name).with_span(name_span),
                         expr: vec![Self::from_sexpr(expr)?],
                     },
                 )
@@ -141,7 +141,7 @@ impl Parsed {
                 ] => Ok(Expr::Define(
                     (),
                     Define {
-                        name: name.with_span(name_span),
+                        name: Ident::root(name).with_span(name_span),
                         expr: vec![Self::parse_lambda(lambda_span, args, exprs)?],
                     },
                 )
@@ -258,10 +258,12 @@ impl Parsed {
                     span: name_span
                 },
                 ..cdr
-            ] => Ok(
-                Expr::NamedLet((), name.with_span(name_span), Self::parse_let_like(cdr)?)
-                    .with_span(span),
-            ),
+            ] => Ok(Expr::NamedLet(
+                (),
+                Ident::root(name).with_span(name_span),
+                Self::parse_let_like(cdr)?,
+            )
+            .with_span(span)),
             list_pattern![
                 LSExpr {
                     value: SExpr::Symbol("let"),
@@ -309,7 +311,7 @@ impl Parsed {
                             init,
                             ..step
                         ] => Ok(DoBinding {
-                            name: name.with_span(name_span),
+                            name: Ident::root(name).with_span(name_span),
                             init: vec![Self::from_sexpr(init)?],
                             step: match step {
                                 LSExpr {
@@ -387,7 +389,7 @@ impl Parsed {
                     Ok(Expr::Set(
                         (),
                         Set {
-                            name: name.with_span(name_span),
+                            name: Ident::root(name).with_span(name_span),
                             expr: vec![expr],
                         },
                     )
@@ -464,7 +466,7 @@ impl Parsed {
                             } => name_span,
                             expr,
                         ] => Ok(Binding {
-                            name: name.with_span(name_span),
+                            name: Ident::root(name).with_span(name_span),
                             expr: vec![Self::from_sexpr(expr)?],
                         }
                         .with_span(binding.span)),
@@ -490,7 +492,7 @@ impl Parsed {
         let args = args
             .into_iter()
             .map(|arg| match arg.value {
-                SExpr::Symbol(s) => Ok(s.with_span(arg.span)),
+                SExpr::Symbol(s) => Ok(Ident::root(s).with_span(arg.span)),
                 _ => Err(compiler_error!("Expected a symbol")),
             })
             .collect::<Result<Vec<_>>>()?;
@@ -498,7 +500,7 @@ impl Parsed {
             LSExpr {
                 value: SExpr::Symbol(s),
                 span,
-            } => Some(s.with_span(span)),
+            } => Some(Ident::root(s).with_span(span)),
             LSExpr {
                 value: SExpr::Nil, ..
             } => None,

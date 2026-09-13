@@ -82,7 +82,7 @@ pub struct UsedSetR {
 
 #[derive(Debug, Clone)]
 struct Context {
-    env: FxHashMap<String, EnvLocalVar>,
+    env: FxHashMap<Ident, EnvLocalVar>,
 }
 
 impl Context {
@@ -124,7 +124,7 @@ pub struct VarMeta {
 pub struct VarIdGen {
     global_count: usize,
     local_count: usize,
-    globals: FxHashMap<String, GlobalVarId>,
+    globals: FxHashMap<Ident, GlobalVarId>,
     mutated_vars: FxHashSet<LocalVarId>,
     captured_vars: FxHashSet<LocalVarId>,
     // 以下はモジュールごとにリセットされる状態
@@ -170,14 +170,14 @@ impl VarIdGen {
         id
     }
 
-    fn global_var_id(&mut self, name: &str) -> GlobalVarId {
-        let id = if let Some(id) = self.globals.get(name) {
+    fn global_var_id(&mut self, ident: &Ident) -> GlobalVarId {
+        let id = if let Some(id) = self.globals.get(ident) {
             *id
         } else {
             let id = self.gen_global(VarMeta {
-                name: name.to_string(),
+                name: ident.to_string(),
             });
-            self.globals.insert(name.to_string(), id);
+            self.globals.insert(ident.clone(), id);
             id
         };
         self.use_globals.insert(id);
@@ -185,7 +185,7 @@ impl VarIdGen {
     }
 
     pub fn get_global_id(&self, name: &str) -> Option<GlobalVarId> {
-        self.globals.get(name).copied()
+        self.globals.get(&Ident::root(name)).copied()
     }
 
     fn flag_mutate(&mut self, id: LocalVarId) {
@@ -272,7 +272,9 @@ impl<P: UsedPrevPhase> Used<P> {
                     .args
                     .iter()
                     .map(|Located { value: arg, .. }| {
-                        let id = var_id_gen.gen_local(VarMeta { name: arg.clone() });
+                        let id = var_id_gen.gen_local(VarMeta {
+                            name: arg.to_string(),
+                        });
                         new_ctx.env.insert(
                             arg.clone(),
                             EnvLocalVar {
@@ -291,7 +293,7 @@ impl<P: UsedPrevPhase> Used<P> {
                          ..
                      }| {
                         let id = var_id_gen.gen_local(VarMeta {
-                            name: variadic_arg.clone(),
+                            name: variadic_arg.to_string(),
                         });
                         new_ctx.env.insert(
                             variadic_arg.clone(),
@@ -417,7 +419,7 @@ impl<P: UsedPrevPhase> Used<P> {
                 } in let_.bindings.iter()
                 {
                     let id = var_id_gen.gen_local(VarMeta {
-                        name: name.value.clone(),
+                        name: name.value.to_string(),
                     });
                     new_ctx.env.insert(
                         name.value.clone(),
@@ -461,7 +463,7 @@ impl<P: UsedPrevPhase> Used<P> {
                 } in letrec.bindings.iter()
                 {
                     let id = var_id_gen.gen_local(VarMeta {
-                        name: name.value.clone(),
+                        name: name.value.to_string(),
                     });
                     new_ctx.env.insert(
                         name.value.clone(),

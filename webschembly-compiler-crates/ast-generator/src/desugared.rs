@@ -8,7 +8,7 @@ pub trait DesugaredPrevPhase = AstPhase<XExt = !>;
 #[derive(Debug, Clone)]
 pub struct Desugared<P: DesugaredPrevPhase> {
     _marker: std::marker::PhantomData<P>,
-    var_counter: usize,
+    mark_counter: usize,
 }
 
 impl<P: DesugaredPrevPhase> ExtendAstPhase for Desugared<P> {
@@ -43,7 +43,7 @@ impl<P: DesugaredPrevPhase> Desugared<P> {
     pub fn new() -> Self {
         Self {
             _marker: std::marker::PhantomData,
-            var_counter: 0,
+            mark_counter: 0,
         }
     }
 
@@ -54,10 +54,9 @@ impl<P: DesugaredPrevPhase> Desugared<P> {
         }
     }
 
-    fn gen_temp_var(&mut self) -> String {
-        let var_name = format!("__desugared_temp_{}", self.var_counter);
-        self.var_counter += 1;
-        var_name
+    fn gen_temp_ident(&mut self, name: &str) -> Ident {
+        self.mark_counter += 1;
+        Ident::new(name, Mark(self.mark_counter))
     }
 
     fn process_expr(&mut self, expr: LExpr<P>, exprs: &mut Vec<LExpr<Self>>) {
@@ -120,7 +119,7 @@ impl<P: DesugaredPrevPhase> Desugared<P> {
                         }
                         CondClause::TestOnly { test } => {
                             let cond_branch = self.process_exprs(test);
-                            let temp_var = self.gen_temp_var();
+                            let temp_var = self.gen_temp_ident("temp");
                             else_branch = vec![
                                 Expr::Let(
                                     (),
@@ -160,7 +159,7 @@ impl<P: DesugaredPrevPhase> Desugared<P> {
                         CondClause::Allow { test, func } => {
                             let cond_branch = self.process_exprs(test);
                             let func_branch = self.process_exprs(func);
-                            let temp_var = self.gen_temp_var();
+                            let temp_var = self.gen_temp_ident("temp");
                             else_branch = vec![
                                 Expr::Let(
                                     (),
@@ -317,7 +316,7 @@ impl<P: DesugaredPrevPhase> Desugared<P> {
                 exprs.push(letrec);
             }
             Expr::Do(_, do_) => {
-                let loop_var = self.gen_temp_var();
+                let loop_var = self.gen_temp_ident("loop");
                 let letrec = Expr::LetRec(
                     (),
                     LetLike {
@@ -439,7 +438,7 @@ impl<P: DesugaredPrevPhase> Desugared<P> {
                         vec![Expr::Const((), Const::Bool(false)).with_span(expr.span)];
                     for or_expr in or_exprs.into_iter().rev() {
                         let test = self.process_exprs(or_expr);
-                        let temp_var = self.gen_temp_var();
+                        let temp_var = self.gen_temp_ident("temp");
                         else_branch = vec![
                             Expr::Let(
                                 (),

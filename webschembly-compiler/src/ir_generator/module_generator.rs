@@ -736,7 +736,8 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                     },
                 ] = func.as_slice()
                     && let VarId::Global(_) = x.var_id
-                    && let Some(builtin) = ast::Builtin::from_name(name)
+                    && name.mark == ast::Mark::ROOT
+                    && let Some(builtin) = ast::Builtin::from_name(&name.name)
                 {
                     let rules = BuiltinConversionRule::from_builtin(builtin)
                         .into_iter()
@@ -1007,7 +1008,8 @@ impl<'a, 'b> FuncGenerator<'a, 'b> {
                         }
                     }
                     VarId::Global(id) => {
-                        if let Some(_) = ast::Builtin::from_name(&name.value)
+                        if name.value.mark == ast::Mark::ROOT
+                            && let Some(_) = ast::Builtin::from_name(&name.value.name)
                             && !self.module_generator.config.allow_set_builtin
                         {
                             let msg = self.builder.local(Type::Val(ValType::String));

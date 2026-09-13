@@ -8,6 +8,8 @@
 
 mod astx;
 mod builtin;
+mod ident;
 
 pub use astx::*;
 pub use builtin::*;
+pub use ident::*;

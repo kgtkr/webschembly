@@ -5,6 +5,8 @@ use ordered_float::NotNan;
 use webschembly_compiler_locate::L;
 use webschembly_compiler_sexpr::LSExpr;
 
+use crate::Ident;
+
 pub type LExpr<X> = L<Expr<X>>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -110,7 +112,7 @@ where
     X: AstPhase,
 {
     Const(X::XConst, Const),
-    Var(X::XVar, String),
+    Var(X::XVar, Ident),
     Define(X::XDefine, Define<X>),
     Lambda(X::XLambda, Lambda<X>),
     If(X::XIf, If<X>),
@@ -121,7 +123,7 @@ where
     Let(X::XLet, LetLike<X>),
     LetStar(X::XLetStar, LetLike<X>),
     LetRec(X::XLetRec, LetLike<X>),
-    NamedLet(X::XNamedLet, L<String>, LetLike<X>),
+    NamedLet(X::XNamedLet, L<Ident>, LetLike<X>),
     Do(X::XDo, Do<X>),
     Vector(X::XVector, Vec<ExprBox<LExpr<X>>>),
     UVector(X::XUVector, UVector<X>),
@@ -149,7 +151,7 @@ pub struct Define<X>
 where
     X: AstPhase,
 {
-    pub name: L<String>,
+    pub name: L<Ident>,
     pub expr: ExprBox<LExpr<X>>,
 }
 
@@ -158,8 +160,8 @@ pub struct Lambda<X>
 where
     X: AstPhase,
 {
-    pub args: Vec<L<String>>,
-    pub variadic_arg: Option<L<String>>,
+    pub args: Vec<L<Ident>>,
+    pub variadic_arg: Option<L<Ident>>,
     pub body: Vec<LExpr<X>>,
 }
 
@@ -224,7 +226,7 @@ pub struct Set<X>
 where
     X: AstPhase,
 {
-    pub name: L<String>,
+    pub name: L<Ident>,
     pub expr: ExprBox<LExpr<X>>,
 }
 
@@ -242,7 +244,7 @@ pub struct Binding<X>
 where
     X: AstPhase,
 {
-    pub name: L<String>,
+    pub name: L<Ident>,
     pub expr: ExprBox<LExpr<X>>,
 }
 
@@ -261,7 +263,7 @@ pub struct DoBinding<X>
 where
     X: AstPhase,
 {
-    pub name: L<String>,
+    pub name: L<Ident>,
     pub init: ExprBox<LExpr<X>>,
     pub step: Option<ExprBox<LExpr<X>>>,
 }
