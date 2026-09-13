@@ -6,15 +6,15 @@ Webschembly は **Scheme を WebAssembly にJITコンパイルする処理系**�
 
 ### コンポーネント構成
 
-| ディレクトリ | 言語 | 役割 |
-|---|---|---|
-| `webschembly-compiler` | Rust | Scheme → Wasm コンパイラライブラリ (パーサ、AST、IR、Wasm生成) |
-| `webschembly-compiler-cli` | Rust | コンパイラの CLI (デバッグ用) |
-| `webschembly-compiler-crates/*` | Rust | コンパイラの補助クレート (ast, ir, error, sexpr, locate, vec-map, ast-generator) |
-| `webschembly-runtime-rust` | Rust → Wasm | ランタイムの Rust 実装部分 (シンボル管理、I/O、JIT橋渡し) |
-| `webschembly-runtime` | WAT + Nix | Wasm GC ランタイム (値の型定義、プリミティブ操作)。WAT + Rust Wasm を `wasm-merge` で結合 |
-| `webschembly-js` | TypeScript | JS-Wasm ブリッジ、CLI ランナー、REPL、E2Eテスト・ベンチマーク |
-| `webschembly-playground` | TypeScript/React | Web Playground (Vite, React 19, React Flow) |
+| ディレクトリ                    | 言語             | 役割                                                                                      |
+| ------------------------------- | ---------------- | ----------------------------------------------------------------------------------------- |
+| `webschembly-compiler`          | Rust             | Scheme → Wasm コンパイラライブラリ (パーサ、AST、IR、Wasm生成)                            |
+| `webschembly-compiler-cli`      | Rust             | コンパイラの CLI (デバッグ用)                                                             |
+| `webschembly-compiler-crates/*` | Rust             | コンパイラの補助クレート (ast, ir, error, sexpr, locate, vec-map, ast-generator)          |
+| `webschembly-runtime-rust`      | Rust → Wasm      | ランタイムの Rust 実装部分 (シンボル管理、I/O、JIT橋渡し)                                 |
+| `webschembly-runtime`           | WAT + Nix        | Wasm GC ランタイム (値の型定義、プリミティブ操作)。WAT + Rust Wasm を `wasm-merge` で結合 |
+| `webschembly-js`                | TypeScript       | JS-Wasm ブリッジ、CLI ランナー、REPL、E2Eテスト・ベンチマーク                             |
+| `webschembly-playground`        | TypeScript/React | Web Playground (Vite, React 19, React Flow)                                               |
 
 ### コンパイルパイプライン
 
@@ -78,6 +78,7 @@ Scheme Source
 ## コーディング規約
 
 ### Rust
+
 - エラー型: `CompilerError(String)` + `compiler_error!` マクロ
 - ID 型 (`FuncId`, `LocalId`, `GlobalId`, `BasicBlockId` 等) は `VecMap` のキーとして使用
 - AST は "Trees that Grow" パターン (`AstPhase` トレイト + associated types) でフェーズごとに型安全に変換
@@ -86,12 +87,14 @@ Scheme Source
 - `FxHashMap` / `FxBiHashMap` を高頻度ルックアップに使用
 
 ### TypeScript
+
 - ESM (`"type": "module"`)
 - `WebAssembly.Module` の同期的インスタンス化 (`js_instantiate` コールバック)
 - `dynamic` オブジェクトによる動的モジュールリンク
 - Worker によるバックグラウンド実行 (Playground)
 
 ### WebAssembly
+
 - Wasm GC の struct/array で Scheme の値を表現 (Nil, Bool, Int, Float, String, Symbol, Cons, Vector, Closure 等)
 - 文字列は Copy-on-Write (`StringBuf.shared` フラグ)
 - リニアメモリは Rust ヒープと GC↔リニアメモリ間データ転送にのみ使用

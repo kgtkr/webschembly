@@ -1,0 +1,161 @@
+name: benchmark
+on:
+  workflow_dispatch:
+    inputs:
+      full:
+        description: "Run full benchmark (16 shards instead of 4 shards)"
+        required: false
+        type: boolean
+        default: true
+
+jobs:
+  build:
+    permissions:
+      contents: write
+      id-token: write
+    env:
+      CI: "true"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: ./.github/actions/setup
+      - name: Build WebAssembly runtime
+        run: |
+          nix build .#webschembly-runtime --out-link result-runtime
+      - uses: actions/upload-artifact@v4
+        with:
+          name: runtime
+          path: result-runtime/lib/webschembly_runtime.wasm
+      - name: Build Playground
+        run: |
+          nix build .#webschembly-playground-for-pages --out-link result-playground
+      - uses: actions/upload-artifact@v4
+        with:
+          name: playground
+          path: result-playground
+
+  setup-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      shard-matrix: ${{ steps.set-matrix.outputs.shard-matrix }}
+      kind-shard-matrix: ${{ steps.set-matrix.outputs.kind-shard-matrix }}
+    steps:
+      - id: set-matrix
+        run: |
+          generate_shards() {
+            local bits=$1
+            local max=$((2 ** bits))
+            local result="["
+
+            for ((i = 0; i < max; i++)); do
+              result+="\"$(printf "%0${bits}d" "$i")\""
+              [ $i -lt $((max - 1)) ] && result+=","
+            done
+
+            result+="]"
+            echo "$result"
+          }
+
+          if [ "${{ inputs.full }}" = "true" ]; then
+            echo "shard-matrix=$(generate_shards 4)" >> $GITHUB_OUTPUT
+            echo "kind-shard-matrix=$(generate_shards 2)" >> $GITHUB_OUTPUT
+          else
+            echo "shard-matrix=$(generate_shards 2)" >> $GITHUB_OUTPUT
+            echo "kind-shard-matrix=$(generate_shards 2)" >> $GITHUB_OUTPUT
+          fi
+
+  e2e-benchmark:
+    needs: [build, setup-matrix]
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        shard: ${{ fromJson(needs.setup-matrix.outputs.shard-matrix) }}
+        kind_shard: ${{ fromJson(needs.setup-matrix.outputs.kind-shard-matrix) }}
+        no_liftoff: [true, false]
+    steps:
+      - uses: actions/checkout@v3
+      - uses: DeterminateSystems/nix-installer-action@main
+      - name: Install nodejs
+        run: |
+          nix profile install .#nodejs
+      - uses: actions/download-artifact@v4
+        with:
+          name: runtime
+          path: ./result-runtime
+      - run: npm ci
+      - name: Run benchmark
+        run: |
+          if [ "${{ matrix.no_liftoff }}" = "true" ]; then
+            npm run benchmark-turbofan-only
+          else
+            npm run benchmark
+          fi
+          mv ./benchmark.result ./benchmark.result-${{ matrix.shard }}-${{ matrix.kind_shard }}-${{ matrix.no_liftoff }}
+        env:
+          WEBSCHEMBLY_SHARD_PREFIX: ${{ matrix.shard }}
+          WEBSCHEMBLY_KIND_SHARD_PREFIX: ${{ matrix.kind_shard }}
+          WEBSCHEMBLY_RUNTIME: ../result-runtime/webschembly_runtime.wasm
+          BENCH_DEV_CI: ${{ inputs.full != true && '1' || '' }}
+        working-directory: ./webschembly-js
+      - uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-result-${{ matrix.shard }}-${{ matrix.kind_shard }}-${{ matrix.no_liftoff }}
+          path: ./webschembly-js/benchmark.result-${{ matrix.shard }}-${{ matrix.kind_shard }}-${{ matrix.no_liftoff }}
+
+  store-benchmark-results:
+    needs: e2e-benchmark
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v3
+      - name: Download benchmark results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: benchmark-result-*
+          path: ./benchmark-results
+          merge-multiple: true
+      - name: Combine benchmark results
+        run: |
+          cat ./benchmark-results/* | tee ./benchmark.result
+      - name: Store benchmark result
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          tool: "benchmarkjs"
+          output-file-path: ./benchmark.result
+          gh-pages-branch: github-action-benchmark-data
+          auto-push: false
+      - name: Push benchmark result
+        run: git push origin github-action-benchmark-data:github-action-benchmark-data
+        if: github.ref == 'refs/heads/master'
+
+  deploy:
+    needs: [build, store-benchmark-results]
+    if: github.ref == 'refs/heads/master'
+    permissions:
+      id-token: write
+      pages: write
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/download-artifact@v4
+        with:
+          name: playground
+          path: ./result-playground
+      - name: Prepare pages
+        run: |
+          mkdir -p pages
+          cp -r result-playground/* pages/
+          git fetch --depth=1 origin github-action-benchmark-data
+          git archive origin/github-action-benchmark-data | tar -x -C pages
+      - name: Upload Playground
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./pages
+      - uses: actions/deploy-pages@v4
+        id: deployment

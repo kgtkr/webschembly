@@ -1,6 +1,7 @@
 # コンパイラアーキテクチャ詳細ルール
 
 ## コンパイルパイプライン全体
+
 Webschembly のコンパイラ (`webschembly-compiler` クレート) は、Scheme ソースコードを WebAssembly に変換するために複数の厳密なフェーズを経由する。
 
 ```mermaid
@@ -18,15 +19,18 @@ graph TD;
 ## 1. フロントエンド
 
 ### Lexer (字句解析)
+
 - `nom` を使用したパーサコンビネータで実装。
 - `nom_locate` を用いて、各トークンに元のソースコード上の位置情報 (`Span`) を付与する。
 - S式に必要な括弧類や、ベクタ、UVector(数値配列の独自拡張)、数値(Int/Float/NaN)、文字列、真偽値等をトークン化。
 
 ### S-Expr Parser (S式構文解析)
+
 - Lexer が出力したトークン列に対して `nom` を適用する。
 - ドット対 `(a . b)` や、クォート構文糖衣 `'expr` → `(quote expr)` の展開を行う。
 
 ### AST Generator (Trees that Grow パターン)
+
 Haskell などで知られる "Trees that Grow" パターンを採用し、コンパイルフェーズが進むごとに AST の型を安全に狭めていく。`AstPhase` トレイトの関連型を用いて拡張ポイントを制御する。
 
 1. **Parsed**: S式からの直接の変換。拡張型は空(`()`)。
@@ -38,12 +42,14 @@ Haskell などで知られる "Trees that Grow" パターンを採用し、コ�
 ## 2. ミドルエンド (IR)
 
 ### IR Generator (SSA 形式の構築)
+
 - 生成された最終 AST をもとに SSA (Static Single Assignment) 形式の中間表現を生成する。
 - Scheme の値はコンパイル時・ランタイムともに全て `Obj` (Wasm GC の `anyref` 相当) としてボックス化して扱われる。プリミティブ操作の前後で `ToObj`/`FromObj` 命令が挿入される。
 - クロージャは第一級オブジェクトであり、環境(キャプチャした変数)とエントリポイントテーブルを持つ。
 - Variadic args (可変長引数) のサポートが含まれる。
 
 ### IR Processor & Optimizer (最適化と解析)
+
 IR に対する解析・最適化は多岐にわたる。
 
 1. **CFG (制御フローグラフ) 解析**: 逆ポストオーダー (`calculate_rpo`) やドミネータツリー (`build_dom_tree`) の構築。
@@ -62,10 +68,12 @@ IR に対する解析・最適化は多岐にわたる。
 ## 3. バックエンド
 
 ### Relooper
+
 - Wasm は `goto` ではなく構造化制御フロー (ブロック、ループ) を要求するため、CFG から構造化制御フローを復元する必要がある。
-- 論文 *"Simple and Efficient Construction of WebAssembly Control Flow"* (Stackifier/Relooper) のアルゴリズムを実装。
+- 論文 _"Simple and Efficient Construction of WebAssembly Control Flow"_ (Stackifier/Relooper) のアルゴリズムを実装。
 - ドミネータツリーとループヘッダを利用して `Simple`, `If`, `Block`, `Loop`, `Break`, `Exit` の構造を再構築する。
 
 ### Wasm Generator
+
 - `wasm-encoder` を使用してバイナリを出力。
 - Wasm GC 命令を全面的に活用し、Scheme の型を Wasm struct/array にマッピングして出力する。
